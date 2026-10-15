@@ -28,7 +28,7 @@ const data = {
   '/dashboard/stats': stats,
   '/tasks?status=open&limit=5': [{ id: 't1', title: 'Heizung prüfen', due_date: '2026-10-09', priority: 'high' }],
   '/notifications?status=unread&limit=5': [{ id: 'n1', title: 'Neue Ablesung', severity: 'info' }],
-  '/reports/cashflow?months=12': { incomeTotal: 10000, expenseTotal: 2500, netTotal: 7500 },
+  '/reports/cashflow?months=12': { incomeTotal: 10000, expenseTotal: 2500, netTotal: 7500, filters: { date_from: '2025-11-01', date_to: '2026-10-15' } },
   '/reports/receivables-aging': { openTotal: 3250, openCredits: 100, buckets: { current: 1500, days1to30: 1750, days31to60: 0, days61to90: 0, days90plus: 0 } },
   '/reports/maintenance-costs': { categories: [{ category: 'Heizung', estimatedCost: 400 }] },
   '/reports/liquidity-forecast?months=6': { forecast: [{ month: '2026-11', projected_balance: 15000, projected_income: 3000, projected_expense: 1000 }] },
@@ -55,11 +55,16 @@ describe('dashboard working overview', () => {
     const metrics = screen.getByRole('region', { name: 'Bestand im Überblick' });
     expect(within(metrics).getAllByRole('link')).toHaveLength(4);
     expect(within(metrics).getByRole('link', { name: /Immobilien/ })).toHaveAttribute('href', '/properties');
-    expect(within(metrics).getByRole('link', { name: /Aktive Verträge/ })).toHaveAttribute('href', '/contracts');
+    expect(within(metrics).getByRole('link', { name: /Aktive Verträge/ })).toHaveAttribute('href', '/contracts?status=active');
+    expect(within(metrics).getByRole('link', { name: /Belegung/ })).toHaveAttribute('href', '/units?status=occupied');
     expect(within(metrics).getByText('75 %')).toBeInTheDocument();
     expect(screen.getByText('MV-42')).toBeInTheDocument();
     expect(screen.getByText('Neue Ablesung')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /Forderungen/ }).every(link => link.getAttribute('href') === '/receivables')).toBe(true);
+    expect(screen.getByRole('link', { name: /Offene Forderungen Aktueller Bestand/ })).toHaveAttribute('href', '/receivables?status=unpaid');
+    const finance = screen.getByRole('region', { name: 'Finanzen im Überblick' });
+    expect(within(finance).getByRole('link', { name: 'Saldo der Buchungen im angezeigten Zeitraum' })).toHaveAttribute('href', '/bookings?date_from=2025-11-01&date_to=2026-10-15');
+    expect(within(finance).getByRole('link', { name: /10\.000,00\s€/ })).toHaveAttribute('href', '/bookings?date_from=2025-11-01&date_to=2026-10-15&flow=income');
+    expect(within(finance).getByRole('link', { name: /2\.500,00\s€/ })).toHaveAttribute('href', '/bookings?date_from=2025-11-01&date_to=2026-10-15&flow=expense');
     expect(screen.queryByText('Fortschritt')).not.toBeInTheDocument();
     expect(screen.queryByText('100%')).not.toBeInTheDocument();
   });

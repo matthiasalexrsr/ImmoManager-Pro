@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { SearchIcon } from '../components/Icons';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { bulkDelete } from '../utils/bulkActions';
@@ -45,6 +47,7 @@ const FIELDS = [
 export default function Contacts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -119,6 +122,7 @@ export default function Contacts() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={() => [{ label: 'Dubletten prüfen', icon: <SearchIcon size={14} />, onClick: row => navigate(`/duplicate-check?kind=contact&id=${encodeURIComponent(row.id)}`) }]}
       />
       {modal && (
         <FormModal

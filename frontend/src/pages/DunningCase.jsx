@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -7,6 +7,8 @@ import { formatDate, formatDateTime, formatMoney } from '../utils/format';
 import { dunningService } from '../features/dunning/dunningApi';
 import { dunningText } from '../features/dunning/dunningText';
 import { LetterFigures, Problem } from '../features/dunning/DunningTabs';
+import useEditableDraft from '../features/workCenter/useEditableDraft';
+import EditableDraft from '../features/workCenter/EditableDraft';
 import '../features/dunning/dunning.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -14,6 +16,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 // Mahnakte of one contract: claims, next step, letters with their originals, blocks, disputes, results, timeline.
 export default function DunningCase() {
   const { contractId } = useParams();
+  return <DunningCaseSession key={contractId} contractId={contractId} />;
+}
+
+function DunningCaseSession({ contractId }) {
   const { locale } = useTranslation();
   const say = useCallback((key, params) => dunningText(locale, key, params), [locale]);
   const canWrite = useCanWrite('/dunning');
@@ -27,7 +33,7 @@ export default function DunningCase() {
     const controller = new AbortController();
     setLoading(true);
     dunningService.contractFile(contractId, { signal: controller.signal })
-      .then(data => { setFile(data); setError(null); })
+      .then(data => { if (!controller.signal.aborted) { setFile(data); setError(null); } })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message || say('loadFailed')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -103,7 +109,7 @@ export default function DunningCase() {
       </section>
 
       {file.cases.map(c => (
-        <CaseSection key={c.id} item={c} say={say} canWrite={canWrite} act={act} />
+        <CaseSection key={c.id} item={c} say={say} canWrite={canWrite} act={act} contractId={contractId} />
       ))}
 
       <Blocks file={file} say={say} canWrite={canWrite} act={act} contractId={contractId} />
@@ -112,7 +118,7 @@ export default function DunningCase() {
   );
 }
 
-function CaseSection({ item, say, canWrite, act }) {
+function CaseSection({ item, say, canWrite, act, contractId }) {
   const [timeline, setTimeline] = useState(null);
   const [pdf, setPdf] = useState(null);
   const loadTimeline = async (more = false) => {
@@ -143,7 +149,7 @@ function CaseSection({ item, say, canWrite, act }) {
             <PdfPreview url={pdf.url} title={pdf.title} />
           </div>
         )}
-        {item.status === 'open' && canWrite && <ResultForm caseId={item.id} say={say} act={act} />}
+        {item.status === 'open' && canWrite && <ResultForm caseId={item.id} say={say} act={act} contractId={contractId} />}
         <div className="dn-actions">
           <button type="button" className="btn btn-sm btn-secondary" onClick={() => act(() => loadTimeline())}>
             {say('timeline')}</button>
@@ -161,7 +167,7 @@ function CaseSection({ item, say, canWrite, act }) {
             )}
             {timeline.has_more && <button type="button" className="btn btn-sm btn-secondary"
               onClick={() => loadTimeline(true)}>{say('more')}</button>}
-            {canWrite && <NoteForm caseId={item.id} say={say} onSaved={() => loadTimeline()} />}
+            {canWrite && <NoteForm caseId={item.id} say={say} onSaved={() => loadTimeline()} contractId={contractId} />}
           </div>
         )}
       </div>
@@ -215,54 +221,79 @@ function LetterCard({ letter, say, canWrite, act, onShow }) {
   );
 }
 
-function ResultForm({ caseId, say, act }) {
+function ResultForm({ caseId, say, act, contractId }) {
+  const [values, setValues] = useState({ result: 'paid', result_date: today(), reference: '', note: '' });
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const draft = useEditableDraft({ context: `dunning-action#result-${caseId}`, kind: 'contract', id: contractId,
+    fields: ['result_date', 'reference', 'note'], values });
   const submit = event => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    act(() => dunningService.result(caseId, { result: form.get('result'), result_date: form.get('result_date'),
-      reference: form.get('reference'), note: form.get('note') || null }));
+    if (lock.current || draft.blocked) return;
+    lock.current = true; setBusy(true);
+    act(() => draft.finish(() => dunningService.result(caseId, { ...values, note: values.note || null })))
+      .finally(() => { lock.current = false; setBusy(false); });
   };
+  const set = (key, value) => setValues(current => ({ ...current, [key]: value }));
   return (
+    <EditableDraft draft={draft} values={values} busy={busy} beforeRestore={() => dunningService.contractFile(contractId)}
+      onRestore={restored => setValues({ result: '', result_date: restored.result_date || today(), reference: restored.reference || '', note: restored.note || '' })}>
     <form className="dn-form" onSubmit={submit} aria-label={say('result')}>
       <label>{say('result')}
-        <select name="result" defaultValue="paid">
+        <select name="result" required value={values.result} onChange={event => set('result', event.target.value)}>
+          <option value="">—</option>
           {['paid', 'partially_paid', 'written_off', 'handed_over'].map(r => (
             <option key={r} value={r}>{say(`result_${r}`)}</option>))}
         </select>
       </label>
-      <label>{say('resultDate')}<input name="result_date" type="date" required defaultValue={today()} /></label>
-      <label>{say('resultReference')}<input name="reference" required maxLength={200} /></label>
-      <label>{say('note')}<input name="note" maxLength={2000} /></label>
+      <label>{say('resultDate')}<input name="result_date" type="date" required value={values.result_date} onChange={event => set('result_date', event.target.value)} /></label>
+      <label>{say('resultReference')}<input name="reference" required maxLength={200} value={values.reference} onChange={event => set('reference', event.target.value)} /></label>
+      <label>{say('note')}<input name="note" maxLength={2000} value={values.note} onChange={event => set('note', event.target.value)} /></label>
       <button type="submit" className="btn btn-secondary">{say('save')}</button>
     </form>
+    </EditableDraft>
   );
 }
 
-function NoteForm({ caseId, say, onSaved }) {
+function NoteForm({ caseId, say, onSaved, contractId }) {
   const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const lock = useRef(false);
+  const draft = useEditableDraft({ context: `dunning-action#note-${caseId}`, kind: 'contract', id: contractId, fields: ['text'], values: { text } });
   const save = async event => {
     event.preventDefault();
-    await dunningService.addNote(caseId, text);
-    setText('');
-    onSaved();
+    if (lock.current || draft.blocked) return;
+    lock.current = true; setBusy(true); setError(null);
+    try { await draft.finish(() => dunningService.addNote(caseId, text)); draft.resetSnapshot({ text: '' }); setText(''); await onSaved(); }
+    catch (failure) { setError(failure.message); }
+    finally { lock.current = false; setBusy(false); }
   };
   return (
+    <EditableDraft draft={draft} values={{ text }} busy={busy} beforeRestore={() => dunningService.contractFile(contractId)} onRestore={restored => setText(restored.text || '')}>
     <form className="dn-form" onSubmit={save}>
+      {error && <p role="alert">{error}</p>}
       <label>{say('addNote')}<input value={text} onChange={e => setText(e.target.value)} required maxLength={5000} /></label>
       <button type="submit" className="btn btn-sm btn-secondary">{say('save')}</button>
     </form>
+    </EditableDraft>
   );
 }
 
 function Blocks({ file, say, canWrite, act, contractId }) {
+  const [values, setValues] = useState({ reason: '', blocked_until: '' });
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const draft = useEditableDraft({ context: 'dunning-action#block', kind: 'contract', id: contractId,
+    fields: ['reason', 'blocked_until'], values, enabled: canWrite });
   const submit = event => {
     event.preventDefault();
-    const target = event.currentTarget;
-    const form = new FormData(target);
+    if (lock.current || draft.blocked) return;
+    lock.current = true; setBusy(true);
     act(async () => {
-      await dunningService.addBlock(contractId, { reason: form.get('reason'), blocked_until: form.get('blocked_until') });
-      target.reset();
-    });
+      await draft.finish(() => dunningService.addBlock(contractId, values));
+      const empty = { reason: '', blocked_until: '' }; draft.resetSnapshot(empty); setValues(empty);
+    }).finally(() => { lock.current = false; setBusy(false); });
   };
   return (
     <section className="dn-section" aria-labelledby="dn-blocks">
@@ -280,11 +311,14 @@ function Blocks({ file, say, canWrite, act, contractId }) {
         </ul>
       )}
       {canWrite && (
+        <EditableDraft draft={draft} values={values} busy={busy} beforeRestore={() => dunningService.contractFile(contractId)}
+          onRestore={restored => setValues({ reason: restored.reason || '', blocked_until: restored.blocked_until || '' })}>
         <form className="dn-form" onSubmit={submit} aria-label={say('addBlock')}>
-          <label>{say('blockReason')}<input name="reason" required maxLength={500} /></label>
-          <label>{say('blockedUntil')}<input name="blocked_until" type="date" required /></label>
+          <label>{say('blockReason')}<input name="reason" required maxLength={500} value={values.reason} onChange={event => setValues(current => ({ ...current, reason: event.target.value }))} /></label>
+          <label>{say('blockedUntil')}<input name="blocked_until" type="date" required value={values.blocked_until} onChange={event => setValues(current => ({ ...current, blocked_until: event.target.value }))} /></label>
           <button type="submit" className="btn btn-secondary">{say('addBlock')}</button>
         </form>
+        </EditableDraft>
       )}
     </section>
   );
@@ -292,14 +326,19 @@ function Blocks({ file, say, canWrite, act, contractId }) {
 
 function Disputes({ file, say, canWrite, act, contractId }) {
   const claims = [...file.claims, ...file.excluded];
+  const [values, setValues] = useState({ claim_key: claims[0]?.key || '', reason: '' });
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const draft = useEditableDraft({ context: 'dunning-action#dispute', kind: 'contract', id: contractId,
+    fields: ['claim_key', 'reason'], values, enabled: canWrite && claims.length > 0 });
   const submit = event => {
     event.preventDefault();
-    const target = event.currentTarget;
-    const form = new FormData(target);
+    if (lock.current || draft.blocked) return;
+    lock.current = true; setBusy(true);
     act(async () => {
-      await dunningService.addDispute(contractId, { claim_key: form.get('claim_key'), reason: form.get('reason') });
-      target.reset();
-    });
+      await draft.finish(() => dunningService.addDispute(contractId, values));
+      const empty = { claim_key: claims[0]?.key || '', reason: '' }; draft.resetSnapshot(empty); setValues(empty);
+    }).finally(() => { lock.current = false; setBusy(false); });
   };
   return (
     <section className="dn-section" aria-labelledby="dn-disputes">
@@ -324,13 +363,16 @@ function Disputes({ file, say, canWrite, act, contractId }) {
         </ul>
       )}
       {canWrite && claims.length > 0 && (
+        <EditableDraft draft={draft} values={values} busy={busy} beforeRestore={() => dunningService.contractFile(contractId)}
+          onRestore={restored => setValues({ claim_key: claims.some(claim => claim.key === restored.claim_key) ? restored.claim_key : '', reason: restored.reason || '' })}>
         <form className="dn-form" onSubmit={submit} aria-label={say('addDispute')}>
           <label>{say('claim')}
-            <select name="claim_key">{claims.map(c => <option key={c.key} value={c.key}>{c.description}</option>)}</select>
+            <select name="claim_key" required value={values.claim_key} onChange={event => setValues(current => ({ ...current, claim_key: event.target.value }))}><option value="">—</option>{claims.map(c => <option key={c.key} value={c.key}>{c.description}</option>)}</select>
           </label>
-          <label>{say('reason')}<input name="reason" required maxLength={1000} /></label>
+          <label>{say('reason')}<input name="reason" required maxLength={1000} value={values.reason} onChange={event => setValues(current => ({ ...current, reason: event.target.value }))} /></label>
           <button type="submit" className="btn btn-secondary">{say('addDispute')}</button>
         </form>
+        </EditableDraft>
       )}
     </section>
   );

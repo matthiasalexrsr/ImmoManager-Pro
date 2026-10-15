@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
@@ -350,6 +350,7 @@ function DocumentsWorkspace() {
         {tenantId && party && <button className="btn btn-secondary" onClick={() => party.openParty(tenantId)}>Parteienkarte öffnen</button>}
         {/* contracts, invoices, receipts for the document management system: package or hand-over */}
         <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
+        <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
       </div>
       {aktenwerkOpen && <AktenwerkDialog ready={aktenwerkReady} onClose={() => setAktenwerkOpen(false)} />}
       {tenantId && <p className="text-muted">Dokumente von {overview?.tenant.full_name || 'dieser Partei'} und ihren Mietverträgen. Neue Uploads werden dieser Partei zugeordnet.</p>}
@@ -482,6 +483,14 @@ function DocumentsWorkspace() {
         columns={columns}
         data={filtered}
         serverPaged={Boolean(tenantId)}
+        viewAnchor={tenantId ? { kind: 'tenant', id: tenantId } : undefined}
+        viewConfig={tenantId ? { search, column_filters: { document_type: docType, document_filter: filter } } : { column_filters: { document_filter: filter } }}
+        onApplyView={tenantId ? config => {
+          setSearch(typeof config.search === 'string' ? config.search : '');
+          setDocType(typeof config.column_filters?.document_type === 'string' ? config.column_filters.document_type : '');
+          setFilter(['all', 'no_assignment', 'ocr_open'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all');
+          setSkip(0);
+        } : config => setFilter(['all', 'no_assignment', 'ocr_open'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
         loadExportData={tenantId ? loadPartyExport : undefined}
         onAdd={() => fileRef.current?.click()}
         onEdit={row => setModal(row)}

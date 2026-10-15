@@ -19,6 +19,10 @@ const INTEGRITY_TONE = { unchanged: 'green', changed: 'red', unavailable: 'orang
 // One invoice under review: the original document beside the checks, the decision and the history.
 export default function InvoiceReviewDetail() {
   const { id } = useParams();
+  return <InvoiceReviewSession key={id} id={id} />;
+}
+
+function InvoiceReviewSession({ id }) {
   const { tx } = useReviewText();
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
@@ -29,7 +33,7 @@ export default function InvoiceReviewDetail() {
   useEffect(() => {
     const controller = new AbortController();
     setError(null);
-    reviewApi.load(id, { signal: controller.signal }).then(setView)
+    reviewApi.load(id, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setView(value); })
       .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message || tx.loadFailed); });
     return () => controller.abort();
   }, [id, revision, tx]);
@@ -37,7 +41,7 @@ export default function InvoiceReviewDetail() {
   useEffect(() => {
     if (!view || view.review) return undefined;
     const controller = new AbortController();
-    api.list('/properties', { signal: controller.signal }).then(setProperties).catch(() => {});
+    api.list('/properties', { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setProperties(value); }).catch(() => {});
     return () => controller.abort();
   }, [view]);
 

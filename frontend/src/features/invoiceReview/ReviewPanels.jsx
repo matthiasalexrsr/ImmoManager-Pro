@@ -1,20 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format';
 import { Empty, Fact, Pill, Section } from '../maintenanceProject/ProjectUi';
 import { PAYMENT_TONE, compact, findingText, reviewApi } from './reviewApi';
 import { fill, useReviewText } from './text';
+import useEditableDraft from '../workCenter/useEditableDraft';
+import EditableDraft from '../workCenter/EditableDraft';
 
 const SEVERITY_TONE = { error: 'red', warning: 'orange', info: 'gray' };
+const RECEIPT_DRAFT = ['received_on', 'kind', 'credit_for_invoice_id', 'skonto_percent', 'skonto_days', 'payment_days', 'property_id', 'cost_category', 'recoverable', 'document_id', 'duplicate_reason'];
 
 function useAction(onChanged) {
+  const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const run = async action => {
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
-    try { await action(); onChanged(); } catch (failure) { setError(failure.message); } finally { setBusy(false); }
+    try { await action(); onChanged(); } catch (failure) { setError(failure.message); } finally { lock.current = false; setBusy(false); }
   };
   return { busy, error, run };
 }
@@ -81,22 +87,26 @@ export function ReceiptForm({ view, properties, onChanged }) {
     skonto_percent: '', skonto_days: '', payment_days: '', property_id: view.invoice.property_id || '',
     cost_category: '', recoverable: false, document_id: view.invoice.source_document_id || '',
     accept_duplicate: false, duplicate_reason: '' });
+  const draft = useEditableDraft({ context: 'invoice-review-action#receipt', kind: 'invoice', id: view.invoice.id, fields: RECEIPT_DRAFT, values });
   const set = (key, value) => setValues(current => ({ ...current, [key]: value }));
   const number = key => (values[key] === '' ? undefined : Number(values[key]));
   const submit = event => {
     event.preventDefault();
-    run(() => reviewApi.receive(view.invoice.id, compact({
+    if (draft.blocked || busy) return;
+    run(() => draft.finish(() => reviewApi.receive(view.invoice.id, compact({
       ...values, skonto_percent: number('skonto_percent'), skonto_days: number('skonto_days'),
       payment_days: number('payment_days'),
       credit_for_invoice_id: values.kind === 'credit_note' ? values.credit_for_invoice_id : undefined,
       property_id: view.invoice.property_id ? undefined : values.property_id,
       accept_duplicate: values.accept_duplicate || undefined,
       duplicate_reason: values.accept_duplicate ? values.duplicate_reason : undefined,
-      recoverable: values.recoverable })));
+      recoverable: values.recoverable }))));
   };
   return (
     <Section id="ir-receipt" title={tx.receipt}>
       <p className="text-muted">{tx.receiptHint}</p>
+      <EditableDraft draft={draft} values={values} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
+        onRestore={restored => setValues(current => ({ ...current, ...Object.fromEntries(RECEIPT_DRAFT.filter(key => Object.hasOwn(restored, key)).map(key => [key, restored[key]])), accept_duplicate: false }))}>
       <form onSubmit={submit}>
         {error && <div className="alert-error" role="alert">{error}</div>}
         <div className="mp-form-grid">
@@ -131,6 +141,7 @@ export function ReceiptForm({ view, properties, onChanged }) {
         </div>
         <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{tx.receipt}</button></div>
       </form>
+      </EditableDraft>
     </Section>
   );
 }
@@ -148,11 +159,14 @@ export function Checks({ view, onChanged }) {
   const { busy, error, run } = useAction(onChanged);
   const [notes, setNotes] = useState({ factual: '', arithmetic: '' });
   const [manual, setManual] = useState(() => ({ ...(review?.checklist || {}) }));
-  const send = (kind, result) => run(() => reviewApi.check(view.invoice.id, kind, compact({
-    result, note: notes[kind], checklist: kind === 'arithmetic' ? manual : undefined })));
+  const draft = useEditableDraft({ context: 'invoice-review-action#checks', kind: 'invoice', id: view.invoice.id,
+    fields: ['factual', 'arithmetic'], values: notes, enabled: abilities.factual_check || abilities.arithmetic_check });
+  const send = (kind, result) => { if (!draft.blocked && !busy) run(() => draft.finish(() => reviewApi.check(view.invoice.id, kind, compact({
+    result, note: notes[kind], checklist: kind === 'arithmetic' ? manual : undefined })))); };
   const lines = view.arithmetic.lines;
   return (
-    <>
+    <EditableDraft draft={draft} values={notes} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
+      onRestore={restored => { setNotes({ factual: restored.factual || '', arithmetic: restored.arithmetic || '' }); setManual({}); }}>
       <Section id="ir-factual" title={tx.factual}>
         {error && <div className="alert-error" role="alert">{error}</div>}
         <CheckResult result={review?.factual_result} by={review?.factual_by_name} />
@@ -211,7 +225,7 @@ export function Checks({ view, onChanged }) {
           </div>
         )}
       </Section>
-    </>
+    </EditableDraft>
   );
 }
 
@@ -221,11 +235,13 @@ export function Decision({ view, onChanged }) {
   const { busy, error, run } = useAction(onChanged);
   const [reason, setReason] = useState('');
   const [amount, setAmount] = useState('');
+  const draft = useEditableDraft({ context: 'invoice-review-action#decision', kind: 'invoice', id: view.invoice.id,
+    fields: ['reason', 'amount'], values: { reason, amount }, enabled: abilities.decide });
   if (!review) return null;
   const decide = decision => {
-    if (decision !== 'approve' && !reason.trim()) return;
-    run(() => reviewApi.decide(view.invoice.id, compact({ decision, reason: reason.trim(),
-      amount: decision === 'partial' ? Number(amount) : undefined })));
+    if (draft.blocked || busy || (decision !== 'approve' && !reason.trim())) return;
+    run(() => draft.finish(() => reviewApi.decide(view.invoice.id, compact({ decision, reason: reason.trim(),
+      amount: decision === 'partial' ? Number(amount) : undefined }))));
   };
   return (
     <Section id="ir-decision" title={tx.decision}>
@@ -234,6 +250,8 @@ export function Decision({ view, onChanged }) {
       {review.decided_by_name && <p>{fill(tx.decidedBy, { name: review.decided_by_name })}
         {review.decision_reason ? ` – ${review.decision_reason}` : ''}</p>}
       {abilities.decide && (
+        <EditableDraft draft={draft} values={{ reason, amount }} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
+          onRestore={restored => { setReason(restored.reason || ''); setAmount(restored.amount || ''); }}>
         <div className="ir-check-actions">
           <label className="form-group">{tx.reason}
             <input value={reason} onChange={e => setReason(e.target.value)} aria-describedby="ir-reason-hint" /></label>
@@ -250,6 +268,7 @@ export function Decision({ view, onChanged }) {
               onClick={() => decide('reject')}>{tx.reject}</button>
           </div>
         </div>
+        </EditableDraft>
       )}
     </Section>
   );
@@ -261,6 +280,8 @@ export function Payment({ view, onChanged }) {
   const { busy, error, run } = useAction(onChanged);
   const [candidates, setCandidates] = useState(null);
   const [choice, setChoice] = useState({ booking_id: '', amount: '' });
+  const draft = useEditableDraft({ context: 'invoice-review-action#payment', kind: 'invoice', id: view.invoice.id,
+    fields: ['booking_id', 'amount'], values: choice, enabled: view.abilities.pay && s.payment_status !== 'rejected' && view.kind === 'invoice' });
   useEffect(() => { setCandidates(null); }, [view.invoice.id]);
   const loadCandidates = () => reviewApi.paymentCandidates(view.invoice.id).then(page => setCandidates(page.items || []))
     .catch(() => setCandidates([]));
@@ -285,10 +306,13 @@ export function Payment({ view, onChanged }) {
           <span>{formatMoney(p.amount)}</span></li>)}</ul>
       )}
       {view.abilities.pay && s.payment_status !== 'rejected' && view.kind === 'invoice' && (
+        <EditableDraft draft={draft} values={choice} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
+          onRestore={restored => { setChoice({ booking_id: restored.booking_id || '', amount: restored.amount || '' }); loadCandidates(); }}>
+        {
         candidates === null
           ? <button type="button" className="btn btn-secondary btn-sm" onClick={loadCandidates}>{tx.addPayment}</button>
           : <form className="ir-check-actions" onSubmit={event => { event.preventDefault();
-            run(() => reviewApi.addPayment(view.invoice.id, { booking_id: choice.booking_id, amount: Number(choice.amount) })); }}>
+            if (!draft.blocked && !busy) run(() => draft.finish(() => reviewApi.addPayment(view.invoice.id, { booking_id: choice.booking_id, amount: Number(choice.amount) }))); }}>
             <label className="form-group">{tx.booking}
               <select value={choice.booking_id} required onChange={e => {
                 const found = candidates.find(c => c.id === e.target.value);
@@ -303,6 +327,7 @@ export function Payment({ view, onChanged }) {
                 onChange={e => setChoice(c => ({ ...c, amount: e.target.value }))} /></label>
             <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{tx.save}</button></div>
           </form>
+        }</EditableDraft>
       )}
     </Section>
   );
@@ -313,6 +338,8 @@ export function Dispute({ view, onChanged }) {
   const { review } = view;
   const { busy, error, run } = useAction(onChanged);
   const [values, setValues] = useState({ outcome: 'written_off', amount: '', reason: '' });
+  const draft = useEditableDraft({ context: 'invoice-review-action#dispute', kind: 'invoice', id: view.invoice.id,
+    fields: ['amount', 'reason'], values, enabled: view.abilities.resolve_dispute });
   if (!review?.dispute_status && view.credit_notes.length === 0) return null;
   return (
     <Section id="ir-dispute" title={tx.dispute}>
@@ -327,11 +354,14 @@ export function Dispute({ view, onChanged }) {
           <span>{formatMoney(note.invoice.gross_amount)} · {tx[`status_${note.status}`]}</span></li>)}</ul>
       </>}
       {view.abilities.resolve_dispute && (
+        <EditableDraft draft={draft} values={values} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
+          onRestore={restored => setValues({ amount: restored.amount || '', reason: restored.reason || '', outcome: '' })}>
         <form className="ir-check-actions" onSubmit={event => { event.preventDefault();
-          run(() => reviewApi.resolve(view.invoice.id, compact({ outcome: values.outcome, reason: values.reason,
-            amount: values.outcome === 'partial_payment' ? Number(values.amount) : undefined }))); }}>
+          if (!draft.blocked && !busy) run(() => draft.finish(() => reviewApi.resolve(view.invoice.id, compact({ outcome: values.outcome, reason: values.reason,
+            amount: values.outcome === 'partial_payment' ? Number(values.amount) : undefined })))); }}>
           <label className="form-group">{tx.outcome}
-            <select value={values.outcome} onChange={e => setValues(v => ({ ...v, outcome: e.target.value }))}>
+            <select required value={values.outcome} onChange={e => setValues(v => ({ ...v, outcome: e.target.value }))}>
+              <option value="">{tx.none}</option>
               {['credit', 'partial_payment', 'written_off'].map(key => <option key={key} value={key}>{tx[`outcome_${key}`]}</option>)}
             </select></label>
           {values.outcome === 'partial_payment' && <label className="form-group">{tx.amount}
@@ -341,6 +371,7 @@ export function Dispute({ view, onChanged }) {
             <input required value={values.reason} onChange={e => setValues(v => ({ ...v, reason: e.target.value }))} /></label>
           <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{tx.resolve}</button></div>
         </form>
+        </EditableDraft>
       )}
     </Section>
   );
@@ -353,6 +384,8 @@ export function Transfer({ view, onChanged }) {
   const [values, setValues] = useState({ billing_period_id: '', allocation_key_id: '' });
   const place = view.invoice.property_id || view.review?.property_id;
   const eligible = view.review?.recoverable && view.abilities.transfer_cost && view.assignment.kind !== 'service_contract';
+  const draft = useEditableDraft({ context: 'invoice-review-action#transfer', kind: 'invoice', id: view.invoice.id,
+    fields: ['billing_period_id', 'allocation_key_id'], values, enabled: !view.transfer && eligible });
   if (!view.transfer && !eligible) return null;
   const load = () => Promise.all([api.list('/billing/periods').catch(() => []), api.list('/billing/allocation-keys').catch(() => [])])
     .then(([periods, keys]) => setOptions({
@@ -362,9 +395,10 @@ export function Transfer({ view, onChanged }) {
     <Section id="ir-transfer" title={tx.transfer}>
       {error && <div className="alert-error" role="alert">{error}</div>}
       {view.transfer ? <p><Pill tone="green">{fill(tx.transferDone, { period: view.transfer.billing_period_id })}</Pill>
-        {' '}{formatMoney(view.transfer.amount)}</p> : options === null
+        {' '}{formatMoney(view.transfer.amount)}</p> : <EditableDraft draft={draft} values={values} busy={busy}
+          beforeRestore={() => reviewApi.load(view.invoice.id)} onRestore={restored => { setValues({ billing_period_id: restored.billing_period_id || '', allocation_key_id: restored.allocation_key_id || '' }); load(); }}>{options === null
         ? <button type="button" className="btn btn-secondary btn-sm" onClick={load}>{tx.transferAction}</button>
-        : <form className="ir-check-actions" onSubmit={event => { event.preventDefault(); run(() => reviewApi.transfer(view.invoice.id, values)); }}>
+        : <form className="ir-check-actions" onSubmit={event => { event.preventDefault(); if (!draft.blocked && !busy) run(() => draft.finish(() => reviewApi.transfer(view.invoice.id, values))); }}>
           <label className="form-group">{tx.period}
             <select required value={values.billing_period_id} onChange={e => setValues(v => ({ ...v, billing_period_id: e.target.value }))}>
               <option value="">{tx.none}</option>
@@ -376,7 +410,7 @@ export function Transfer({ view, onChanged }) {
               {options.keys.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select></label>
           <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{tx.transferAction}</button></div>
-        </form>}
+        </form>}</EditableDraft>}
     </Section>
   );
 }

@@ -72,7 +72,7 @@ function show(abilities) {
 
 const tab = name => fireEvent.click(screen.getByRole('tab', { name }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); localStorage.clear(); });
 afterEach(cleanup);
 
 describe('maintenance project file', () => {

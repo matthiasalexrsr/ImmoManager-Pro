@@ -6,6 +6,8 @@ import { commandKey, projectApi } from './projectApi';
 import { choices, day } from './projectFormat';
 import { Empty, Modal, PdfDialog, PickerDialog, Pill, Section } from './ProjectUi';
 import { fill } from './text';
+import useEditableDraft from '../workCenter/useEditableDraft';
+import EditableDraft from '../workCenter/EditableDraft';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const PROTOCOL_TYPES = ['acceptance', 'inspection', 'site_visit'];
@@ -14,6 +16,7 @@ const SEVERITIES = ['minor', 'major', 'critical'];
 const DOC_ROLES = ['damage_photo', 'quote', 'order', 'invoice', 'protocol', 'report', 'other'];
 const emptyDefect = () => ({ title: '', location: '', severity: 'minor', due_date: '', description: '', photo_ids: [] });
 const orNull = value => (value === '' || value === undefined ? null : value);
+const PROTOCOL_DRAFT = ['protocol_type', 'protocol_date', 'title', 'participants', 'notes', 'work_package_id', 'order_id', 'photo_ids', 'defects'];
 
 function ProtocolDialog({ ctx, protocol, onClose }) {
   const { project, caseId, tx } = ctx;
@@ -28,6 +31,9 @@ function ProtocolDialog({ ctx, protocol, onClose }) {
   }));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const lock = useRef(false);
+  const draft = useEditableDraft({ context: `maintenance-protocol#${protocol?.id || 'new'}`, kind: 'maintenance', id: caseId,
+    fields: PROTOCOL_DRAFT, values });
   const set = (key, value) => setValues(current => ({ ...current, [key]: value }));
   const setDefect = (index, key, value) => setValues(current => ({
     ...current, defects: current.defects.map((defect, i) => (i === index ? { ...defect, [key]: value } : defect)) }));
@@ -37,6 +43,8 @@ function ProtocolDialog({ ctx, protocol, onClose }) {
 
   const submit = async event => {
     event.preventDefault();
+    if (lock.current || draft.blocked) return;
+    lock.current = true;
     setSaving(true);
     setError(null);
     const payload = {
@@ -46,18 +54,20 @@ function ProtocolDialog({ ctx, protocol, onClose }) {
         description: orNull(defect.description) })),
     };
     try {
-      if (protocol) await projectApi.updateProtocol(caseId, protocol.id, payload);
-      else await projectApi.addProtocol(caseId, payload);
+      await draft.finish(() => protocol ? projectApi.updateProtocol(caseId, protocol.id, payload) : projectApi.addProtocol(caseId, payload));
       onClose(true);
     } catch (failure) {
       setError(failure.message);
     } finally {
+      lock.current = false;
       setSaving(false);
     }
   };
 
   return (
     <Modal title={protocol ? tx.editProtocol : tx.addProtocol} onClose={() => onClose(false)} wide>
+      <EditableDraft draft={draft} values={values} busy={saving} beforeRestore={() => projectApi.load(caseId)}
+        onRestore={restored => setValues(current => ({ ...current, ...Object.fromEntries(PROTOCOL_DRAFT.filter(key => Object.hasOwn(restored, key)).map(key => [key, restored[key]])), result: '' }))}>
       <form onSubmit={submit}>
         <div className="modal-body mp-protocol-form">
           {error && <div className="alert-error" role="alert">{error}</div>}
@@ -160,6 +170,7 @@ function ProtocolDialog({ ctx, protocol, onClose }) {
           <button type="submit" className="btn btn-primary" disabled={saving}>{tx.save}</button>
         </div>
       </form>
+      </EditableDraft>
     </Modal>
   );
 }

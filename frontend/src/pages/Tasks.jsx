@@ -13,6 +13,9 @@ import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
+import InlineFieldEditor from '../features/workCenter/InlineFieldEditor';
+import UndoNotice from '../features/workCenter/UndoNotice';
+import '../features/workCenter/workCenter.css';
 
 function parseRecurrence(rule) {
   if (!rule) return '—';
@@ -68,6 +71,7 @@ export default function Tasks() {
   const [modal, setModal] = useState(null);
   // values of a duplicated task for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
+  const [quickChange, setQuickChange] = useState(null);
   const [filter, setFilter] = useState('all');
   const [loadError, setLoadError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -136,26 +140,38 @@ export default function Tasks() {
   const inProgressCount = enriched.filter(t => t.status === 'in_progress').length;
   const recurringCount = enriched.filter(t => !!t.recurrence_rule).length;
 
+  const applyQuickChange = result => {
+    if (!result?.record?.id) return;
+    setTasks(current => current.map(task => task.id === result.record.id ? result.record : task));
+    setQuickChange(result.undo_id ? result : null);
+    store?.invalidateRelated('tasks');
+  };
+  const inline = (row, field, label, content, options, type) => <InlineFieldEditor record={row} field={field} label={label}
+    options={options} type={type} canEdit={canWrite && !busy.has(row.id)} onSaved={applyQuickChange}>{content}</InlineFieldEditor>;
   const columns = [
     { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text' },
     { key: 'property_name', hidden: true, label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
-    { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text' },
+    { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text',
+      render: (value, row) => inline(row, 'assignee', 'Zuständig', value || '—') },
     { key: 'due_date', label: t('pages.tasks.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
-        if (!v) return '—';
-        const display = formatDate(v);
-        if (isOverdue(v, row.status)) {
-          return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span>;
-        }
-        return display;
+        const display = v ? formatDate(v) : '—';
+        return inline(row, 'due_date', 'Fällig am', isOverdue(v, row.status)
+          ? <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span> : display, undefined, 'date');
       }},
     { key: 'is_overdue', hidden: true, label: 'Überfällig',
       render: v => v ? <StatusBadge status="danger" label="Überfällig" /> : '—' },
     { key: 'recurrence_label', hidden: true, label: t('pages.tasks.form.recurrence') || 'Wiederholung', filterType: 'text' },
-    { key: 'priority', label: t('pages.tasks.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
+    { key: 'priority', label: t('pages.tasks.columns.priority') || 'Priorität', type: 'status', filterType: 'select',
+      render: (value, row) => inline(row, 'priority', 'Priorität', <StatusBadge status={value} />, [
+        { value: 'low', label: 'Niedrig' }, { value: 'medium', label: 'Mittel' }, { value: 'high', label: 'Hoch' }, { value: 'urgent', label: 'Dringend' },
+      ]) },
     { key: 'status', label: t('pages.tasks.columns.status') || 'Status', type: 'status', filterType: 'select',
-      render: v => <StatusBadge status={v} /> },
+      render: (value, row) => inline(row, 'status', 'Status', <StatusBadge status={value} />, [
+        { value: 'open', label: 'Offen' }, { value: 'in_progress', label: 'In Arbeit' },
+        { value: 'completed', label: 'Erledigt' }, { value: 'cancelled', label: 'Abgebrochen' },
+      ]) },
   ];
 
   const fields = [
@@ -267,6 +283,7 @@ export default function Tasks() {
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.tasks.title') || 'Aufgaben'}</h1>
+      {quickChange && <UndoNotice key={quickChange.undo_id} change={quickChange} onDismiss={() => setQuickChange(null)} onUndone={applyQuickChange} />}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
         {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
         <button className="btn btn-secondary btn-sm" onClick={retry} disabled={loading}>Erneut laden</button>
@@ -328,6 +345,8 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
+        viewConfig={{ column_filters: { workflow_filter: filter } }}
+        onApplyView={config => setFilter(['all', 'open', 'today', 'week', 'overdue', 'recurring'].includes(config.column_filters?.workflow_filter) ? config.column_filters.workflow_filter : 'all')}
         onAdd={values => { setPrefill(values || null); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

@@ -5,11 +5,21 @@ import { api } from '../../api';
 import { useCanWrite } from '../../contexts/AuthContext';
 import { PartyWorkspaceProvider, PartyLink } from './PartyWorkspace';
 
-vi.mock('../../api', () => ({ api: { get: vi.fn() } }));
+vi.mock('../../api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../../contexts/AuthContext', () => ({
   useCanWrite: vi.fn(() => true),
   useAuth: vi.fn(() => ({ user: { id: 'u1', role: 'verwalter' }, write: null })),
 }));
+vi.mock('../../utils/workspaceClient', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, workspace: { ...actual.workspace,
+    list: async () => ({ items: [], next_cursor: null }),
+    get: async () => { throw Object.assign(new Error('Nicht gemerkt'), { statusCode: 404 }); },
+    touch: async () => ({}),
+    put: async (resource, id, body) => ({ ...body, id, revision: 1 }),
+    remove: async () => ({ deleted: true }),
+  } };
+});
 
 const tenant = { id: 't1', full_name: 'Anna Müller', archived: false, email: 'anna@example.com', phone: '+49 1234', address_line: 'Lindenstraße 8', postal_code: '10115', city: 'Berlin', country: 'DE', notes: 'Bitte per E-Mail kontaktieren.' };
 const contracts = [
@@ -29,6 +39,7 @@ function mount() {
 beforeEach(() => {
   useCanWrite.mockReturnValue(true);
   api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? overview : path.includes('/ocr-text') ? { has_ocr: false } : response()));
+  api.post.mockResolvedValue({});
 });
 afterEach(() => {
   cleanup();
@@ -46,6 +57,30 @@ const housingSource = contractId => ({
 });
 
 describe('party workspace', () => {
+  it('keeps a dirty conversation above its party and shows the saved note in activities', async () => {
+    const revision = '2026-10-15T09:00:00Z';
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? { ...overview, tenant: { ...tenant, updated_at: revision } }
+      : path.startsWith('/work-center/timeline') ? { entity_revision: revision, can_note: true, items: api.post.mock.calls.length
+        ? [{ id: 'note1', occurred_at: revision, title: 'Telefonat', body: 'Heizung besprochen' }] : [], next_cursor: null } : response()));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
+    const panel = await screen.findByRole('dialog', { name: 'Anna Müller' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Gespräch / Wiedervorlage' }));
+    const note = await screen.findByRole('dialog', { name: /Gespräch \/ Wiedervorlage/ });
+    await waitFor(() => expect(within(note).getByLabelText('Gesprächsnotiz *')).toBeEnabled());
+    expect(panel).toHaveAttribute('inert');
+    fireEvent.change(within(note).getByLabelText('Gesprächsnotiz *'), { target: { value: 'Heizung besprochen' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Ungespeicherte Änderungen verwerfen?');
+    expect(panel.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter bearbeiten' }));
+    fireEvent.submit(note.querySelector('form'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Gespräch \/ Wiedervorlage/ })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert');
+    fireEvent.click(screen.getByRole('tab', { name: 'Aktivitäten' }));
+    expect(await screen.findByText('Heizung besprochen')).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/work-center/notes', expect.objectContaining({ entity_type: 'tenant', entity_id: 't1', base_revision: revision }));
+  });
   it('opens the housing confirmation of exactly the chosen contract on top of the panel', async () => {
     api.get.mockImplementation(path => Promise.resolve(path.includes('/overview') ? overview
       : path.includes('/housing-confirmations/source') ? housingSource('c2')
@@ -154,14 +189,15 @@ describe('party workspace', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
     await screen.findByRole('dialog', { name: 'Anna Müller' });
-    // The label shows for 2 s after the clipboard promise settles. A role query computes the
-    // accessible name of every element in the large dialog and took longer than that window
-    // under CI load, so watch the clicked button's own label, which is cheap to poll. The 2 s
-    // start when the label appears, not at the click: polling every 10 ms catches it however
-    // late it comes, so the wait is not capped below 2 s (that cap failed under CI load).
     const copyButton = screen.getByRole('button', { name: 'Kopieren: Adresse' });
-    fireEvent.click(copyButton);
-    await waitFor(() => expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse'), { timeout: 8000, interval: 10 });
+    // Control the transient label's clock so host load cannot skip its 2 s window.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await act(async () => fireEvent.click(copyButton));
+      expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse');
+      act(() => vi.advanceTimersByTime(2000));
+      expect(copyButton).toHaveAttribute('aria-label', 'Kopieren: Adresse');
+    } finally { vi.useRealTimers(); }
     expect(writeText).toHaveBeenCalledWith('Lindenstraße 8\n10115 Berlin\nDE');
     api.get.mockRejectedValue(new Error('Verbindung unterbrochen'));
     fireEvent.click(screen.getByRole('tab', { name: /Dokumente/ }));

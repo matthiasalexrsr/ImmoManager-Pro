@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -15,6 +15,8 @@ import { newEntryLink } from '../utils/newEntry';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import { propertyFields } from '../features/properties/propertyFields';
+import EntityActions from '../features/workCenter/EntityActions';
+import EntityTimeline from '../features/workCenter/EntityTimeline';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -56,6 +58,11 @@ function PropertyDossier({ id }) {
   const [viewerFile, setViewerFile] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [editing, setEditing] = useState(null);       // the portfolios for the edit form, once loaded
+  const [activityRevision, setActivityRevision] = useState(0);
+  const [contractView, setContractView] = useState('all');
+  const [maintenanceView, setMaintenanceView] = useState('all');
+  const rentSources = useRef(null);
+  const focusRentSources = () => { rentSources.current?.focus(); rentSources.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); };
   const canEdit = useCanWrite('/properties');
   const navigate = useNavigate();
   // a New form of another list, prefilled with this property
@@ -118,15 +125,16 @@ function PropertyDossier({ id }) {
     { key: 'finance', label: t('navigation.sections.finance') || 'Finanzen' },
     { key: 'documents', label: `${docLabel} (${documents.length})` },
     { key: 'maintenance', label: `${maintLabel} (${openMaintenance})` },
+    { key: 'timeline', label: 'Aktivitäten' },
   ];
 
   const UNIT_COLUMNS = [
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text',
       render: (value, unit) => <Link to={`/units/${encodeURIComponent(unit.id)}`}>{value || unit.unit_number || 'Einheit öffnen'}</Link> },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right',
+    { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', sum: true, align: 'right',
       render: v => formatArea(v) },
-    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', align: 'right',
+    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', sum: true, align: 'right',
       render: v => v != null ? fmt(v) : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
   ];
@@ -184,24 +192,26 @@ function PropertyDossier({ id }) {
         <div className="dossier-actions">
           {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
+          <EntityActions entityType="property" entityId={id} entityRevision={property.updated_at} title={property.name}
+            onChanged={() => setActivityRevision(value => value + 1)} />
         </div>
       </div>
 
       {/* KPI Summary */}
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <div className="stat-card">
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
           <div className="stat-label">Plan-Kaltmiete gesamt</div>
           <div className="stat-value">{fmt(totalColdRent)}</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
           <div className="stat-label">Plan-Kaltmiete €/m²</div>
           <div className="stat-value">{formatMoney(rentPerSqm)}</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
           <div className="stat-label">{t('pages.propertyDetail.totalArea') || 'Gesamtfläche'}</div>
           <div className="stat-value">{formatArea(totalArea)}</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
           <div className="stat-label">{unitLabel}</div>
           <div className="stat-value">
             <span className="text-green">{occupiedCount}</span>
@@ -209,15 +219,15 @@ function PropertyDossier({ id }) {
             {units.length}
             {vacantCount > 0 && <span className="text-red"> ({vacantCount} {t('units.status.vacant') || 'leer'})</span>}
           </div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => { setContractView('active'); setTab('contracts'); }}>
           <div className="stat-label">{t('pages.propertyOverview.activeContracts') || 'Aktive Verträge'}</div>
           <div className="stat-value">{activeContracts}</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => { setMaintenanceView('open'); setTab('maintenance'); }}>
           <div className="stat-label">{t('pages.dashboard.openMaintenance') || 'Offene Wartung'}</div>
           <div className={`stat-value ${openMaintenance > 0 ? 'text-red' : ''}`}>{openMaintenance}</div>
-        </div>
+        </button>
       </div>
       <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheiten. Tatsächliche Vertragsmieten und Zahlungseingänge können abweichen.</p>
 
@@ -236,6 +246,7 @@ function PropertyDossier({ id }) {
 
       {/* Tab Content */}
       <div className="detail-tab-content">
+        {tab === 'timeline' && <EntityTimeline entityType="property" entityId={id} revision={activityRevision} />}
         {tab === 'overview' && (
           <div className="detail-overview-grid">
             <div className="panel">
@@ -295,8 +306,12 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'contracts' && (
-          <DataTable title="Mieter & Verträge" columns={CONTRACT_COLUMNS} data={contractRows} settingsKey="property-contracts"
-            onAdd={startNew('/contracts')} addLabel="Vertrag anlegen" writeArea="/contracts" />
+          <><div className="filter-chips"><button type="button" className="btn btn-sm btn-secondary" aria-pressed={contractView === 'all'} onClick={() => setContractView('all')}>Alle Verträge</button>
+            <button type="button" className="btn btn-sm btn-secondary" aria-pressed={contractView === 'active'} onClick={() => setContractView('active')}>Aktive Verträge</button></div>
+          <DataTable title="Mieter & Verträge" columns={CONTRACT_COLUMNS} data={contractView === 'active' ? contractRows.filter(row => row.status === 'active') : contractRows} settingsKey="property-contracts"
+            viewConfig={{ column_filters: { workflow_filter: contractView } }} viewAnchor={{ kind: 'property', id }}
+            onApplyView={config => setContractView(config.column_filters?.workflow_filter === 'active' ? 'active' : 'all')}
+            onAdd={startNew('/contracts')} addLabel="Vertrag anlegen" writeArea="/contracts" /></>
         )}
 
         {tab === 'finance' && (
@@ -304,22 +319,23 @@ function PropertyDossier({ id }) {
             <div className="panel-header">{t('pages.propertyDetail.financeOverview') || 'Finanzübersicht'}</div>
             <div className="panel-body">
               <div className="stats-grid">
-                <div className="stat-card">
+                <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
                   <div className="stat-label">Monatliche Plan-Kaltmiete</div>
                   <div className="stat-value">{fmt(totalColdRent)}</div>
-                </div>
-                <div className="stat-card">
+                </button>
+                <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
                   <div className="stat-label">Jährliche Plan-Kaltmiete</div>
                   <div className="stat-value">{fmt(totalColdRent * 12)}</div>
-                </div>
-                <div className="stat-card">
+                </button>
+                <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
                   <div className="stat-label">Plan-Kaltmiete Ø €/m²</div>
                   <div className="stat-value">{formatMoney(rentPerSqm)}</div>
-                </div>
+                </button>
               </div>
               <div style={{ marginTop: '1rem' }}>
                 <h4>Planmieten nach Einheit</h4>
-                <div className="dossier-table-scroll" role="region" aria-label="Planmieten nach Einheit" tabIndex={0}>
+                <p className="text-muted">Monatssumme aus diesen Einheiten · Jahresplan = Monatssumme × 12 · €/m² = Monatssumme / Gesamtfläche ({formatArea(totalArea)}).</p>
+                <div ref={rentSources} className="dossier-table-scroll" role="region" aria-label="Planmieten nach Einheit" tabIndex={0}>
                 <table className="simple-table">
                   <thead>
                     <tr>
@@ -358,7 +374,7 @@ function PropertyDossier({ id }) {
                 </div>
               </div>
               <div className="dossier-navigation dossier-finance-links">
-                <Link className="btn btn-secondary btn-sm" to={`/bookings?suche=${encodeURIComponent(property.name)}`}>Buchungen dieser Immobilie <ArrowRightIcon size={14} /></Link>
+                <Link className="btn btn-secondary btn-sm" to={`/bookings?property_id=${encodeURIComponent(id)}`}>Buchungen dieser Immobilie <ArrowRightIcon size={14} /></Link>
                 <Link className="btn btn-secondary btn-sm" to="/rent-overview">Mietübersicht (Soll und Ist) <ArrowRightIcon size={14} /></Link>
                 <Link className="btn btn-secondary btn-sm" to={`/invoices?suche=${encodeURIComponent(property.name)}`}>Rechnungen <ArrowRightIcon size={14} /></Link>
               </div>
@@ -371,9 +387,13 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'maintenance' && (
-          <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenance}
+          <><div className="filter-chips"><button type="button" className="btn btn-sm btn-secondary" aria-pressed={maintenanceView === 'all'} onClick={() => setMaintenanceView('all')}>Alle Wartungsfälle</button>
+            <button type="button" className="btn btn-sm btn-secondary" aria-pressed={maintenanceView === 'open'} onClick={() => setMaintenanceView('open')}>Offene Wartung</button></div>
+          <DataTable title={t('pages.propertyDetail.maintenanceTitle') || 'Wartung & Instandhaltung'} columns={MAINT_COLUMNS} data={maintenanceView === 'open' ? maintenance.filter(row => ['open', 'in_progress'].includes(row.status)) : maintenance}
+            viewConfig={{ column_filters: { workflow_filter: maintenanceView } }} viewAnchor={{ kind: 'property', id }}
+            onApplyView={config => setMaintenanceView(config.column_filters?.workflow_filter === 'open' ? 'open' : 'all')}
             settingsKey="property-maintenance" onAdd={startNew('/maintenance')} addLabel="Wartungsfall anlegen" writeArea="/maintenance"
-            onRowClick={item => navigate(`/maintenance/${encodeURIComponent(item.id)}`)} />
+            onRowClick={item => navigate(`/maintenance/${encodeURIComponent(item.id)}`)} /></>
         )}
       </div>
       {editing && <FormModal title="Immobilie bearbeiten" fields={propertyFields(t, editing.portfolios)}

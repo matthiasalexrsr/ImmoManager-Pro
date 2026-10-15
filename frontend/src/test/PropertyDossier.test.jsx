@@ -20,6 +20,18 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'viewer' }, write: access.canWrite ? access.write : [] }),
 }));
 vi.mock('../components/PhotoDropZone', () => ({ default: () => null }));
+// Personal workspace requests have their own workflow coverage. Keep domain
+// request assertions in these existing dossier tests independent of that traffic.
+vi.mock('../utils/workspaceClient', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, workspace: { ...actual.workspace,
+    list: async () => ({ items: [], next_cursor: null }),
+    get: async () => { throw Object.assign(new Error('Nicht gemerkt'), { statusCode: 404 }); },
+    touch: async () => ({}),
+    put: async (resource, id, body) => ({ ...body, id, revision: 1 }),
+    remove: async () => ({ deleted: true }),
+  } };
+});
 
 const properties = {
   p1: { id: 'p1', name: 'Haus Alpha', address_line: 'Am Park 1', city: 'Berlin', status: 'active' },
@@ -221,6 +233,28 @@ describe('property page as the place to act on a property', () => {
       return base(path);
     });
   };
+
+  it('opens exactly the active contracts and open maintenance behind their counts', async () => {
+    const base = api.list.getMockImplementation();
+    api.list.mockImplementation(path => {
+      if (path.startsWith('/contracts')) return Promise.resolve([contract, { ...contract, id: 'c2', contract_number: 'MV-Alt', status: 'ended' }]);
+      if (path.startsWith('/maintenance')) return Promise.resolve([
+        { id: 'm1', title: 'Heizung offen', status: 'open' }, { id: 'm2', title: 'Dach erledigt', status: 'completed' },
+      ]);
+      return base(path);
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /Aktive Verträge\s*1/ }));
+    expect(screen.getByText('MV-7')).toBeInTheDocument();
+    expect(screen.queryByText('MV-Alt')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Offene Wartung\s*1/ }));
+    expect(screen.getByText('Heizung offen')).toBeInTheDocument();
+    expect(screen.queryByText('Dach erledigt')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Finanzen' }));
+    fireEvent.click(screen.getByRole('button', { name: /Jährliche Plan-Kaltmiete/ }));
+    expect(screen.getByRole('region', { name: 'Planmieten nach Einheit' })).toHaveFocus();
+    expect(screen.getByRole('link', { name: 'Buchungen dieser Immobilie' })).toHaveAttribute('href', '/bookings?property_id=p1');
+  });
 
   it('lists who lives in the property with links to the party and the unit', async () => {
     withContract();

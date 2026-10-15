@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import StatusBadge from '../components/StatusBadge';
 import DashboardWorkflow from '../components/DashboardWorkflow';
 import SetupChecklist from '../components/SetupChecklist';
+import WorkSummary from '../features/workCenter/WorkSummary';
 import { ArrowRightIcon } from '../components/Icons';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -96,8 +97,8 @@ function Inventory({ source, stats }) {
   const metrics = [
     { label: 'Immobilien', value: stats.properties, detail: `${formatNumber(stats.portfolios)} Portfolios`, to: '/properties' },
     { label: 'Einheiten', value: stats.units, detail: `${formatNumber(stats.unitsOccupied)} vermietet · ${formatNumber(stats.unitsReserved)} reserviert`, to: '/units' },
-    { label: 'Aktive Verträge', value: stats.contractsActive, detail: `${formatNumber(stats.tenants)} Parteien im Bestand`, to: '/contracts' },
-    { label: 'Belegung', value: occupancy === null ? '—' : `${occupancy} %`, detail: stats.units > 0 ? `${formatNumber(Math.max(0, stats.units - stats.unitsOccupied - stats.unitsReserved))} freie Einheiten` : 'Noch keine Einheiten', to: '/units' },
+    { label: 'Aktive Verträge', value: stats.contractsActive, detail: `${formatNumber(stats.tenants)} Parteien im Bestand`, to: '/contracts?status=active' },
+    { label: 'Belegung', value: occupancy === null ? '—' : `${occupancy} %`, detail: stats.units > 0 ? `${formatNumber(Math.max(0, stats.units - stats.unitsOccupied - stats.unitsReserved))} freie Einheiten` : 'Noch keine Einheiten', to: '/units?status=occupied' },
   ];
   return <section className="dashboard-inventory" aria-label="Bestand im Überblick">
     <div className="dashboard-metrics">{metrics.map(metric => <Link key={metric.label} to={metric.to} className="dashboard-metric">
@@ -109,18 +110,24 @@ function Inventory({ source, stats }) {
 }
 
 function FinanceOverview({ cashflow, aging, stats, known }) {
+  const sourceFilters = new URLSearchParams();
+  ['date_from', 'date_to', 'property_id', 'unit_id', 'portfolio_id'].forEach(key => {
+    if (cashflow.data?.filters?.[key]) sourceFilters.set(key, cashflow.data.filters[key]);
+  });
+  const bookings = `/bookings${sourceFilters.size ? `?${sourceFilters}` : ''}`;
+  const sourceLink = flow => `${bookings}${sourceFilters.size ? '&' : '?'}flow=${flow}`;
   return <section className="dashboard-card dashboard-finance" aria-labelledby="dashboard-finance-heading">
     <div className="dashboard-card-heading"><h2 id="dashboard-finance-heading">Finanzen im Überblick</h2><span>Letzte 12 Monate</span></div>
     <SourceState source={cashflow} label="Zahlungsübersicht" singular />
     {cashflow.status === 'success' && <>
       <p className="dashboard-finance-label">Einnahmen abzüglich Ausgaben</p>
-      <strong className={`dashboard-finance-total ${Number(cashflow.data.netTotal) < 0 ? 'is-negative' : ''}`}>{formatMoney(cashflow.data.netTotal)}</strong>
-      <dl className="dashboard-finance-breakdown"><div><dt>Einnahmen</dt><dd>{formatMoney(cashflow.data.incomeTotal)}</dd></div><div><dt>Ausgaben</dt><dd>{formatMoney(cashflow.data.expenseTotal)}</dd></div></dl>
+      <Link to={bookings} className={`dashboard-finance-total ${Number(cashflow.data.netTotal) < 0 ? 'is-negative' : ''}`} aria-label="Saldo der Buchungen im angezeigten Zeitraum">{formatMoney(cashflow.data.netTotal)}</Link>
+      <dl className="dashboard-finance-breakdown"><div><dt>Einnahmen</dt><dd><Link to={sourceLink('income')}>{formatMoney(cashflow.data.incomeTotal)}</Link></dd></div><div><dt>Ausgaben</dt><dd><Link to={sourceLink('expense')}>{formatMoney(cashflow.data.expenseTotal)}</Link></dd></div></dl>
     </>}
     <div className="dashboard-finance-open"><SourceState source={aging} label="Forderungsübersicht" singular />
-      {aging.status === 'success' && <Link to="/receivables"><span>Offene Forderungen <small>Aktueller Bestand · alle Fälligkeiten</small></span><strong>{formatMoney(aging.data.openTotal)}</strong><ArrowRightIcon size={16} /></Link>}
+      {aging.status === 'success' && <Link to="/receivables?status=unpaid"><span>Offene Forderungen <small>Aktueller Bestand · alle Fälligkeiten</small></span><strong>{formatMoney(aging.data.openTotal)}</strong><ArrowRightIcon size={16} /></Link>}
     </div>
-    <div className="dashboard-card-footer"><Link to="/bookings">Buchungen ansehen <ArrowRightIcon size={14} /></Link><Link to="/accounts">{known ? `${formatNumber(stats.accounts)} Konten` : 'Konten'}</Link></div>
+    <div className="dashboard-card-footer"><Link to={bookings}>Buchungen ansehen <ArrowRightIcon size={14} /></Link><Link to="/accounts">{known ? `${formatNumber(stats.accounts)} Konten` : 'Konten'}</Link></div>
   </section>;
 }
 
@@ -265,6 +272,7 @@ export default function Dashboard() {
     <SetupChecklist stats={stats} ready={inventory.status === 'success'} />
     <Inventory source={inventory} stats={stats} />
     {dashView === 'work' && <>
+      <WorkSummary />
       <div className="dashboard-start-grid"><DashboardWorkflow {...workflowProps} section="attention" /><FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} /></div>
       <div className="dashboard-activity-grid">
         <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">

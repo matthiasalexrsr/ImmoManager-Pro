@@ -17,6 +17,8 @@ import { depositText } from '../deposits/depositText';
 import PartyDocuments from './PartyDocuments';
 import { useModalDialog } from './useModalDialog';
 import { usePartyText } from './text';
+import EntityActions from '../workCenter/EntityActions';
+import EntityTimeline from '../workCenter/EntityTimeline';
 import './partyWorkspace.css';
 
 const PartyWorkspaceContext = createContext(null);
@@ -40,7 +42,7 @@ export function PartyWorkspaceProvider({ children }) {
   const closeParty = useCallback(() => setSelection(null), []);
   const openParty = useCallback((tenantId, { tab = 'overview' } = {}) => {
     if (!tenantId) return;
-    setSelection({ tenantId: String(tenantId), tab: tab === 'documents' ? 'documents' : 'overview' });
+    setSelection({ tenantId: String(tenantId), tab: ['documents', 'timeline'].includes(tab) ? tab : 'overview' });
   }, []);
   const setTab = useCallback(tab => setSelection(previous => previous ? { ...previous, tab } : previous), []);
   useEffect(() => {
@@ -122,9 +124,11 @@ function PartyPanel({ tenantId, tab, onTab, onClose }) {
   const [handover, setHandover] = useState(null);
   const [deposit, setDeposit] = useState(null);
   const [contractFilter, setContractFilter] = useState('');
+  const [conversationOpen, setConversationOpen] = useState(false);
+  const [activityRevision, setActivityRevision] = useState(0);
   const dialogRef = useRef(null);
   const id = useId();
-  useModalDialog(dialogRef, onClose);
+  useModalDialog(dialogRef, onClose, !conversationOpen);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,16 +155,17 @@ function PartyPanel({ tenantId, tab, onTab, onClose }) {
   const handoverChanged = useCallback(() => store?.invalidateRelated('documents', 'handover_protocols'), [store]);
   const closeDeposit = useCallback(() => setDeposit(null), []);
   const depositChanged = useCallback(() => store?.invalidateRelated('deposits', 'bookings', 'receivables', 'documents'), [store]);
-  const covered = Boolean(viewer || housing || handover || deposit);   // a dialog on top: the panel is inert behind it
+  const covered = Boolean(viewer || housing || handover || deposit || conversationOpen);
   const openContractDocuments = contractId => { setContractFilter(contractId); onTab('documents'); };
   const tabKeydown = event => {
-    const tabs = ['overview', 'documents'];
+    const tabs = ['overview', 'documents', 'timeline'];
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[1] : tabs[tab === 'overview' ? 1 : 0];
+    const index = tabs.indexOf(tab);
+    const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs.at(-1) : tabs[(index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length];
     onTab(next);
     dialogRef.current?.querySelector(`[data-party-tab="${next}"]`)?.focus();
   };
 
-  return createPortal(<><div className="party-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}><section className="party-panel" role="dialog" aria-modal="true" aria-labelledby={`${id}-name`} aria-hidden={covered ? true : undefined} inert={covered ? true : undefined} tabIndex={-1} ref={dialogRef}><header className="party-panel-header"><span className="party-eyebrow">{text.party}</span><button type="button" className="party-icon-button party-close" onClick={onClose} aria-label={text.close}><X size={21} aria-hidden="true" /></button><div className="party-identity"><div className="party-avatar" aria-hidden="true">{initials || <UserRound size={27} />}</div><div className="party-identity-text"><h2 id={`${id}-name`}>{name}</h2>{tenant && <span className={`party-status party-status-${tenant.archived ? 'neutral' : 'active'}`}><span aria-hidden="true" />{tenant.archived ? text.archived : text.active}</span>}</div></div>{tenant && <div className="party-primary-actions"><Link className="btn btn-sm btn-primary" to={`/tenants/${encodeURIComponent(tenantId)}/account`}>{text.account}</Link>{canEdit && <Link className="btn btn-sm btn-secondary" to={`/tenants?edit=${encodeURIComponent(tenantId)}`}>{text.edit}</Link>}</div>}</header><div className="party-tabs" role="tablist" aria-label={text.party} onKeyDown={tabKeydown}>{['overview', 'documents'].map(value => <button key={value} type="button" id={`${id}-${value}`} role="tab" data-party-tab={value} aria-selected={tab === value} aria-controls={`${id}-content`} tabIndex={tab === value ? 0 : -1} onClick={() => onTab(value)}>{text[value]}{value === 'documents' && overview && <span className="party-tab-count">{overview.document_count ?? 0}</span>}</button>)}</div><div className="party-panel-content" id={`${id}-content`} role="tabpanel" aria-labelledby={`${id}-${tab}`} tabIndex={0}>{error && <div className="party-error" role="alert"><p>{text.loadFailed}</p><p className="party-muted">{error}</p><button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(value => value + 1)}>{text.retry}</button></div>}{loading && !overview ? <div className="party-loading" role="status">{text.loading}</div> : overview && (tab === 'overview' ? <PartyOverview overview={overview} onDocuments={openContractDocuments} onHousing={setHousing} onHandover={setHandover} onDeposit={setDeposit} /> : <PartyDocuments tenantId={tenantId} overview={overview} onPreview={setViewer} contractFilter={contractFilter} onContractFilter={setContractFilter} />)}</div></section></div>{viewer && <FileViewer key={viewer.id} fileUrl={viewer.file_url} title={viewer.title} onClose={closeViewer} />}{housing && <HousingConfirmationDialog contractId={housing} onClose={closeHousing} onPublished={housingPublished} />}{handover && <HandoverProtocolsDialog contractId={handover} onClose={closeHandover} onChanged={handoverChanged} />}{deposit && <DepositsDialog contractId={deposit} onClose={closeDeposit} onChanged={depositChanged} />}</>, document.body);
+  return createPortal(<><div className="party-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}><section className="party-panel" role="dialog" aria-modal="true" aria-labelledby={`${id}-name`} aria-hidden={covered ? true : undefined} inert={covered ? true : undefined} tabIndex={-1} ref={dialogRef}><header className="party-panel-header"><span className="party-eyebrow">{text.party}</span><button type="button" className="party-icon-button party-close" onClick={onClose} aria-label={text.close}><X size={21} aria-hidden="true" /></button><div className="party-identity"><div className="party-avatar" aria-hidden="true">{initials || <UserRound size={27} />}</div><div className="party-identity-text"><h2 id={`${id}-name`}>{name}</h2>{tenant && <span className={`party-status party-status-${tenant.archived ? 'neutral' : 'active'}`}><span aria-hidden="true" />{tenant.archived ? text.archived : text.active}</span>}</div></div>{tenant && <div className="party-primary-actions"><Link className="btn btn-sm btn-primary" to={`/tenants/${encodeURIComponent(tenantId)}/account`}>{text.account}</Link>{canEdit && <Link className="btn btn-sm btn-secondary" to={`/tenants?edit=${encodeURIComponent(tenantId)}`}>{text.edit}</Link>}<EntityActions entityType="tenant" entityId={tenantId} entityRevision={tenant.updated_at} title={name} onDialogChange={setConversationOpen} onChanged={() => setActivityRevision(value => value + 1)} /></div>}</header><div className="party-tabs" role="tablist" aria-label={text.party} onKeyDown={tabKeydown}>{['overview', 'documents', 'timeline'].map(value => <button key={value} type="button" id={`${id}-${value}`} role="tab" data-party-tab={value} aria-selected={tab === value} aria-controls={`${id}-content`} tabIndex={tab === value ? 0 : -1} onClick={() => onTab(value)}>{value === 'timeline' ? 'Aktivitäten' : text[value]}{value === 'documents' && overview && <span className="party-tab-count">{overview.document_count ?? 0}</span>}</button>)}</div><div className="party-panel-content" id={`${id}-content`} role="tabpanel" aria-labelledby={`${id}-${tab}`} tabIndex={0}>{error && <div className="party-error" role="alert"><p>{text.loadFailed}</p><p className="party-muted">{error}</p><button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(value => value + 1)}>{text.retry}</button></div>}{loading && !overview ? <div className="party-loading" role="status">{text.loading}</div> : overview && (tab === 'overview' ? <PartyOverview overview={overview} onDocuments={openContractDocuments} onHousing={setHousing} onHandover={setHandover} onDeposit={setDeposit} /> : tab === 'timeline' ? <EntityTimeline entityType="tenant" entityId={tenantId} revision={activityRevision} /> : <PartyDocuments tenantId={tenantId} overview={overview} onPreview={setViewer} contractFilter={contractFilter} onContractFilter={setContractFilter} />)}</div></section></div>{viewer && <FileViewer key={viewer.id} fileUrl={viewer.file_url} title={viewer.title} onClose={closeViewer} />}{housing && <HousingConfirmationDialog contractId={housing} onClose={closeHousing} onPublished={housingPublished} />}{handover && <HandoverProtocolsDialog contractId={handover} onClose={closeHandover} onChanged={handoverChanged} />}{deposit && <DepositsDialog contractId={deposit} onClose={closeDeposit} onChanged={depositChanged} />}</>, document.body);
 }
