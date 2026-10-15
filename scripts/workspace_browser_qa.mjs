@@ -43,14 +43,15 @@ function fixturePdf(text) {
   const start = Buffer.byteLength(data);
   return Buffer.from(data + `xref\n0 6\n0000000000 65535 f \n${offsets.map(value => `${String(value).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`);
 }
-async function editTenant(name) {
+async function editTenant(name, { recovery = false } = {}) {
   await page.goto(`${base.origin}/tenants`);
   // The list deliberately remembers the previous search; start this new lookup
   // with an explicit clear rather than depending on changing row-count titles.
   await page.locator('.data-table-wrapper .search-input').fill('');
   await tenantRow(name).getByRole('button', { name: 'Bearbeiten', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Mieter bearbeiten' });
-  await expect(dialog.getByLabel('Vollständiger Name', { exact: false })).toBeEnabled();
+  await expect(recovery ? dialog.getByRole('button', { name: 'Entwurf wiederaufnehmen', exact: true })
+    : dialog.getByLabel('Vollständiger Name', { exact: false })).toBeEnabled();
   return dialog;
 }
 try {
@@ -219,6 +220,48 @@ try {
       await page.getByRole('button', { name: `Als Favorit merken: ${property.name}` }).click();
       await expect(page.getByRole('button', { name: `Favorit entfernen: ${property.name}` })).toHaveAttribute('aria-pressed', 'true');
     } finally { await readerContext.close(); page = ownerPage; }
+  });
+  await step('Account changes in another tab isolate unsaved drafts and require the current identity', async () => {
+    const privateNote = 'QA Privater Entwurf ausschließlich Konto A';
+    const dialog = await editTenant(tenant.full_name);
+    await dialog.getByLabel('Notizen', { exact: true }).fill(privateNote);
+    await expect(dialog.getByText('Entwurf automatisch gesichert', { exact: true })).toBeVisible();
+    const originalPage = page;
+    await context.addInitScript(id => { if (id) localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, process.env.QA_OTHER_ID);
+    const otherTab = await context.newPage();
+    otherTab.setDefaultTimeout(15000);
+    otherTab.on('pageerror', error => result.errors.push(String(error)));
+    try {
+      page = otherTab;
+      await login('verwalter');
+      page = originalPage;
+      await page.bringToFront();
+      await expect(page.getByRole('dialog', { name: 'Mieter bearbeiten', exact: true })).toHaveCount(0, { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: 'Mieter', exact: true })).toBeVisible();
+      await expect(page.getByLabel('Ansicht', { exact: true })).not.toContainText('QA Parteienansicht');
+      const token = await otherTab.evaluate(() => localStorage.getItem('access_token'));
+      const otherApi = await request.newContext({ baseURL: base.origin, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+      try {
+        const identity = await otherApi.get('/api/v1/auth/me');
+        assert.ok(identity.ok(), 'Second account must authenticate');
+        assert.equal((await identity.json()).username, 'verwalter');
+        let cursor;
+        do {
+          const response = await otherApi.get(`/api/v1/workspace/drafts?context=tenants&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+          assert.ok(response.ok(), `Private second-account draft listing should succeed: ${response.status()} ${await response.text()}`);
+          const drafts = await response.json();
+          assert.ok(drafts.items.every(item => !JSON.stringify(item.values).includes(privateNote)), 'Account A draft must never be written into account B');
+          cursor = drafts.next_cursor;
+        } while (cursor);
+      } finally { await otherApi.dispose(); }
+      await login('owner');
+      const recovered = await editTenant(tenant.full_name, { recovery: true });
+      await recovered.getByRole('button', { name: 'Entwurf wiederaufnehmen', exact: true }).click();
+      await expect(recovered.getByLabel('Notizen', { exact: true })).toHaveValue(privateNote);
+      await recovered.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+      await page.getByRole('button', { name: 'Verwerfen', exact: true }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    } finally { page = originalPage; await otherTab.close(); }
   });
   for (const width of [1440, 360, 320]) await step(`Work center keyboard/mobile layout ${width}px`, async () => {
     await page.setViewportSize({ width, height: 1000 }); await page.goto(`${base.origin}/work-center`);

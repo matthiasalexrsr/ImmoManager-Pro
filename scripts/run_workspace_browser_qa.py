@@ -35,12 +35,15 @@ def main() -> int:
         server.start()
         users = setup_users(server, Findings())
         reader = users['steuerberater'].ok('GET', '/auth/me')
-        status, _ = users['owner'].call('PATCH', '/auth/users/' + reader['id'],
-                                        {'portfolio_access': 'all', 'portfolio_ids': []})
-        if status != 200:
-            raise RuntimeError('Cannot configure the synthetic reader scope')
+        manager = users['verwalter'].ok('GET', '/auth/me')
+        for profile in (reader, manager):
+            status, _ = users['owner'].call('PATCH', '/auth/users/' + profile['id'],
+                                            {'portfolio_access': 'all', 'portfolio_ids': []})
+            if status != 200:
+                raise RuntimeError('Cannot configure the synthetic user scope')
         environment = {**os.environ, 'QA_BASE_URL': server.base.removesuffix('/api/v1'),
                        'QA_ALLOW_TEST_WRITES': '1', 'QA_PASSWORD': PASSWORD, 'QA_READONLY_ID': reader['id'],
+                       'QA_OTHER_ID': manager['id'],
                        'QA_PLAYWRIGHT_PATH': str(module), 'QA_OUTPUT': str(output / 'checks')}
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
             process, job = start_owned(['node', str(ROOT / 'scripts' / 'workspace_browser_qa.mjs')],

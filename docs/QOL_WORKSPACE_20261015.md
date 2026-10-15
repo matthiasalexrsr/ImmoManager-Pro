@@ -14,7 +14,7 @@ werden durch Entwurfssicherung, Dublettenprüfung oder Gesprächsnotizen ausgel�
 | Gemerkte Akten | „Merken“ an Immobilien, Einheiten und Parteien. Arbeitszentrale und Aktenbereiche zeigen Favoriten und zuletzt geöffnete Vorgänge. |
 | Arbeitszentrale | Aufgaben, Instandhaltung, Rechnungen, Forderungen, Belege, Mahnvorgänge, fehlende Vertragsunterlagen, Vertragsfristen, Zählerprüfungen, fehlende Ablesungen und offene Mieterwechsel. Quelle und Umfang bleiben sichtbar; weitere Seiten sind erreichbar. |
 | Zurückstellen | Einen konkreten Hinweis mit Begründung bis zu einem Datum zurückstellen. Die Zurückstellung ist persönlich und ändert den Fachvorgang nicht. Neue Mahnakten übernehmen keine Zurückstellung eines geschlossenen Falls. |
-| Aktenchronik | Aktivitäten in Immobilien-, Einheiten- und Parteienakten zusammenhängend ansehen, einschließlich zugehöriger Originale, Zahlungen, Aufgaben, Schäden und künftig erfasster Feldänderungen. |
+| Aktenchronik | Aktivitäten in Immobilien-, Einheiten- und Parteienakten zusammenhängend ansehen, einschließlich zugehöriger Originale, Zahlungen, Aufgaben, Schäden und künftig erfasster Feldänderungen mit Vorher-/Nachher-Werten. |
 | Gespräch und Wiedervorlage | In einer Akte „Gespräch / Wiedervorlage“ öffnen. Notiz und optionale Folgeaufgabe werden gemeinsam gespeichert; eine Wiederholung legt keine zweite Aufgabe an. |
 | Schnelländerung | In Aufgabenlisten Status, Zuständigkeit und Fälligkeit direkt ändern. Eine zwischenzeitliche Änderung führt zu einem verständlichen Konflikt. |
 | Rückgängig | Aufgabenänderung oder bestätigte Belegzuordnung zurücknehmen, solange kein späterer Bearbeitungsstand überschrieben würde. Finanzbuchungen verwenden den bestehenden verknüpften Stornoablauf. |
@@ -34,6 +34,12 @@ werden durch Entwurfssicherung, Dublettenprüfung oder Gesprächsnotizen ausgel�
   Objektberechtigungen gebunden. Ein Kontowechsel oder eine geänderte
   Bestandsauswahl verwirft den bisherigen Cache. Verspätete Daten- und
   Berechtigungsantworten dürfen den neuen Arbeitsbereich nicht überschreiben.
+- Kontowechsel in einem zweiten Browser-Tab sperren alte Schreibvorgänge
+  unmittelbar und verlangen eine erneute Sitzungsprüfung. Bereits begonnene
+  Vorgänge, Uploads, Importe und Downloads behalten ihren ursprünglichen
+  Benutzerbezug. Eine normale Token-Erneuerung desselben Kontos bleibt möglich.
+  Private Browserentwürfe bleiben bei einem automatischen Kontowechsel ihrem
+  ursprünglichen Benutzer zugeordnet; eine ausdrückliche Abmeldung bereinigt sie.
 - Entwürfe speichern keine Passwörter, Zugriffsschlüssel oder Dateiobjekte.
   Noch nicht bestätigte Eingaben besitzen zusätzlich einen benutzergebundenen
   Browserpuffer. Dessen Wiederaufnahme verlangt eine erfolgreiche Serverprüfung.
@@ -114,14 +120,18 @@ werden nicht als Anwendungsdaten oder Zugangsdaten nach GitHub übertragen.
 | Prüfung | Beleg und Ergebnis |
 | --- | --- |
 | Fachliche QoL-, Konflikt-, Snapshot- und Migrationsprüfungen | `qol-backend-focused.log`: 114 bestanden. Einschließlich echter Windows-Schlüsseldateisperre. |
+| Schadenchronik und gemeinsamer Rollback | Abschließende Instandhaltungs- und QoL-Prüfung: 34 bestanden je Memory/SQLite. Zusätzliche Werteübernahme in direkte und verwandte Aktenchronik: 9 bestanden je Backend, `qol-final-timeline-memory.log` und `qol-final-timeline-sql.log`. |
 | Formular-, Quellen-, Navigation- und Cache-Regressionen | `qol-final-regressions.log`: 59 bestanden. Weitere abschließende Tests sichern Benutzerwechsel und verspätete Berechtigungsantworten ab. |
+| Vollständiges Frontend | `qol-frontend-accepted.log`: 92 Testdateien, 574 bestandene Tests auf dem eingefrorenen Funktionsstand; lokal zwei parallele Testworker. |
+| Kontowechsel und Dateiübertragung | 17 neue Mehrtab-Regressionsfälle; abschließende Sitzungsprüfung 62 bestanden. Geschützte Dateiabläufe 51 bestanden, anschließend 23 weitere gezielte Nachprüfungen der letzten Kontextbereinigung. |
+| Formularabschluss beim Neuladen | 34 bestandene Prüfungen, einschließlich fünf neuer Integrationstests mit tatsächlichem Formular und Datenzwischenspeicher; keine erneute Öffnung nach erfolgreichem Abschluss. |
 | Zusätzliche Kennzahlquellen | 38 gezielte Prüfungen der Akten-, Dokument-, Zähler-, Interessenten-, Abrechnungs- und Mieterkontoseiten bestanden. |
 | Entwurfswiederaufnahme und an Parteien gebundene Ansichten | Abschließender gemeinsamer Nachlauf: 23 bestanden. Berechtigungs- und Quellvergleichsanforderungen wurden nicht gelockert. |
 | Benutzerwechsel und Sitzungsprüfung | Die vier neuen Cache-/Berechtigungstests sowie die bestehenden Rollen- und Sitzungsprüfungen bestanden. |
 | Mehr als 10.000 Vorgänge | `qol-scale-memory-second.log` und `qol-scale-sqlite.log`: jeweils vollständiger Durchlauf mit 10.005 Aufgaben, genauer Gesamtzahl und verlustfreier Seitennavigation in Arbeitszentrale und Chronik. Native PostgreSQL-Ausführung gehört ebenfalls zum verpflichtenden Prüfpfad. |
-| Tatsächlicher Browser | `browser-release/qol-mxjnmo0y/checks/results.json`: 13/13 bestanden, keine Fehler; Quellen, Absturzpuffer, Serverentwurf, Ansichten, Favoriten, Wiedervorlage, Rückgängig, zwei echte PDFs, explizite Zuordnungsübernahme und Leserrechte. |
+| Tatsächlicher Browser | `browser-confirmed/qol-3qd302bg/checks/results.json`: 15/15 bestanden, keine Fehler; Quellen, Absturzpuffer, Serverentwurf, Ansichten, Favoriten, Wiedervorlage, Rückgängig, zwei echte PDFs, explizite Zuordnungsübernahme, Leserrechte, sichtbare Änderungswerte und Kontowechsel zwischen zwei bearbeitungsberechtigten Benutzern. Privater Entwurf unter B nicht vorhanden und nach Rückkehr zu A vollständig wiederaufnehmbar. `completion.json` bestätigt Exitcode 0 und beendeten Testserver. |
 | Mobile Bedienung | Derselbe Browserlauf: 1440, 360 und 320 Pixel, tatsächliche Tastaturfokussierung; in allen drei Ansichten keine überlaufenden Elemente. Screenshots liegen neben dem Ergebnisprotokoll. |
-| Frontendqualität | Abschließendes ESLint und Produktionsbuild erfolgreich, `qol-lint-final.log` und `qol-build-final.log`. |
+| Frontendqualität | Abschließendes ESLint und Produktionsbuild erfolgreich, `qol-lint-accepted.log` und `qol-build-accepted.log`. Server: Ruff vollständig erfolgreich und Linux-Typprüfung für 416 Dateien ohne Fehler, `qol-ruff-release.log` und `qol-mypy-release.log`. |
 
 Die vollständige gemeinsame Freigabe verwendet zusätzlich die GitHub-Pipeline
 des konkreten Commits: Frontendprüfungen, alle Backendtests mit mindestens
@@ -139,6 +149,15 @@ SQL-Feldhistorie verdoppelte bereits fachlich erfasste Schadenstatusänderungen.
 Die Korrektur erhält fachliche Statusgründe und Autoren, trennt die Statusliste
 von anderen Feldänderungen und prüft den gemeinsamen Rollback von Änderung
 und Historie. Vorhandene historische Nachweise werden nicht heuristisch gelöscht.
+
+Die erweiterte Browserprüfung deckte außerdem ein erneutes Öffnen bereits
+gespeicherter Formulare auf: Eine Listenaktualisierung hatte den Dialog vor
+Entwurfsbereinigung und Schließen ausgehängt. Die betroffenen Lade-/Fehleransichten
+halten offene Dialoge nun bis zum Abschluss ihres Ablaufs. Die neuen
+Integrationsprüfungen halten sowohl das Neuladen als auch die Entwurfslöschung
+künstlich offen und prüfen auch leere Erstelllisten und „Speichern & weiteren“.
+Die zusätzliche Prüfung mehrerer Tabs sichert Konto-, Antwort-, Wiederholungs-
+und Abmeldegrenzen einschließlich Multipart-Dateien und privaten Entwürfen ab.
 
 Unterbrochene lokale Läufe und der Versuch gegen einen nach Unterbrechung
 beendeten PostgreSQL-Testserver gelten ausdrücklich nicht als bestanden. Lokale
