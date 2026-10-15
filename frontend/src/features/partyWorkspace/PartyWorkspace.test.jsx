@@ -76,7 +76,7 @@ describe('party workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Weiter bearbeiten' }));
     fireEvent.submit(note.querySelector('form'));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Gespräch \/ Wiedervorlage/ })).not.toBeInTheDocument());
-    expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert');
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Anna Müller' })).not.toHaveAttribute('inert'));
     fireEvent.click(screen.getByRole('tab', { name: 'Aktivitäten' }));
     expect(await screen.findByText('Heizung besprochen')).toBeInTheDocument();
     expect(api.post).toHaveBeenCalledWith('/work-center/notes', expect.objectContaining({ entity_type: 'tenant', entity_id: 't1', base_revision: revision }));
