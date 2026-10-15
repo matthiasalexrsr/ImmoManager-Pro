@@ -189,7 +189,13 @@ class _TeeWriter:
         self.log_file = log_file
 
     def write(self, text):
-        self.original.write(text)
+        try:
+            self.original.write(text)
+        except UnicodeEncodeError as exc:
+            # Legacy Windows consoles cannot represent every request/log label.
+            # Escape only their copy; the UTF-8 startup log keeps the full text.
+            encoding = self.encoding or exc.encoding
+            self.original.write(text.encode(encoding, errors="backslashreplace").decode(encoding))
         if self.log_file:
             try:
                 self.log_file.write(text)
