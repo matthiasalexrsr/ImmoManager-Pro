@@ -26,6 +26,7 @@ class DraftWrite(WorkspaceMutation):
     mode: Literal["create", "edit"] = "create"
     source: DraftSource | None = None
     anchor: EntityReference | None = None
+    anchor_revision: str | None = Field(default=None, min_length=1, max_length=120)
     field_keys: list[str] = Field(default_factory=list, max_length=250)
     form_key: str = Field(default="", max_length=240)
     values: dict[str, Any] = Field(default_factory=dict)

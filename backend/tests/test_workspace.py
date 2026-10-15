@@ -287,7 +287,8 @@ def test_custom_drafts_recheck_nested_references_and_clear_confirmations(estate)
     assert housing.json()["values"]["occupants"][0]["name"] == "Mia"
     assert housing.json()["values"]["confirmed_authority"] is False
     source = staff.get(f"{API}/source/property/{prop.id}")
-    assert source.status_code == 200 and set(source.json()) == {"kind", "id", "revision", "title", "href"}
+    assert source.status_code == 200 and set(source.json()) == {"kind", "id", "revision", "title", "href", "values", "dependency_etags"}
+    assert source.json()["values"]["id"] == prop.id
 
 
 def test_revoked_row_mark_is_omitted_from_read_and_retry_without_mutating_state(estate):
@@ -312,8 +313,26 @@ def test_revoked_row_mark_is_omitted_from_read_and_retry_without_mutating_state(
     assert replacement.json()["state"] == {"scroll_top": 450}
 
 
-def test_simultaneous_retries_create_once_and_competing_updates_conflict(estate):
+def test_simultaneous_retries_create_once_and_competing_updates_conflict(estate, monkeypatch):
     _, owner = client("race")
+    postgres_pids: set[int] = set()
+    native = hasattr(store, "db") and store.db.get_bind().dialect.name == "postgresql"
+    if native:
+        from threading import Barrier
+
+        from backend.services import document_versions as archive
+
+        ready = Barrier(2)
+        begin = archive.begin_writer
+
+        def begin_independently(db):
+            begin(db)
+            if len(postgres_pids) < 2:
+                connection = db.connection().connection.driver_connection
+                postgres_pids.add(connection.get_backend_pid())
+                ready.wait(timeout=15)
+
+        monkeypatch.setattr(archive, "begin_writer", begin_independently)
     path = f"{API}/drafts/{uuid4()}"
     body = command(context="tasks", values={"title": "Einmal"})
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -325,6 +344,8 @@ def test_simultaneous_retries_create_once_and_competing_updates_conflict(estate)
         results = list(executor.map(lambda value: owner.put(path, json=value), competing))
     assert sorted(result.status_code for result in results) == [200, 409]
     assert owner.get(path).json()["revision"] == 2
+    if native:
+        assert len(postgres_pids) == 2
 
 
 def test_context_links_identify_exact_records_and_derive_unambiguous_property(estate):
@@ -386,3 +407,31 @@ def test_contract_wizard_creates_private_nested_draft_without_source_or_anchor(e
     credentials = staff.put(f"{API}/drafts/{uuid4()}", json=command(context="contract-wizard",
         values={"form": {"tenant": {"password": "hidden"}}}))
     assert credentials.status_code == 422
+
+
+def test_anchor_only_create_draft_detects_changes_and_rebases_without_executing_domain(estate):
+    _, _, prop, _ = estate
+    _, owner = client("anchor-only")
+    identifier = str(uuid4())
+    body = command(context="conversation-note", anchor={"kind": "property", "id": prop.id},
+                   values={"body": "Noch nicht geführtes Gespräch"})
+    saved = owner.put(f"{API}/drafts/{identifier}", json=body)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["source"] is None
+    assert saved.json()["anchor_revision"] == prop.updated_at.isoformat()
+    updated = store.update_property(prop.id, PropertyCreate(**{**prop.model_dump(), "name": "Geänderte Akte"}))
+    recovered = owner.get(f"{API}/drafts/{identifier}").json()
+    assert recovered["source_state"]["status"] == "changed"
+    assert recovered["source_state"]["reference"] == "anchor"
+    assert recovered["values"]["body"] == "Noch nicht geführtes Gespräch"
+    assert owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=prop.updated_at.isoformat(), values=recovered["values"])).status_code == 409
+    rebased = owner.post(f"{API}/drafts/{identifier}/rebase", json=command(1, source_revision=updated.updated_at.isoformat(), values=recovered["values"]))
+    assert rebased.status_code == 200, rebased.text
+    assert rebased.json()["source"] is None and rebased.json()["source_state"]["status"] == "current"
+    assert rebased.json()["anchor_revision"] == updated.updated_at.isoformat()
+    assert not store.list_tasks()
+    store.delete_property(prop.id)
+    deleted = owner.get(f"{API}/drafts/{identifier}")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["source_state"]["status"] == "deleted"
+    assert deleted.json()["values"]["body"] == "Noch nicht geführtes Gespräch"

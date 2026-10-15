@@ -103,9 +103,10 @@ def _remember(unit, key: str, digest: str, response: dict, authorization: dict):
 
 
 def _source_state(unit, payload: dict) -> dict:
-    source = payload.get("source")
+    source = payload.get("source") or payload.get("anchor")
     if not source:
         return {"status": "new", "current_revision": None}
+    anchored = not payload.get("source")
     try:
         current = contexts.resolve_context(unit.store, source["kind"], source["id"], unit.actor_id, include_dependencies=True)
     except HTTPException as exc:
@@ -116,10 +117,13 @@ def _source_state(unit, payload: dict) -> dict:
             raise HTTPException(404, "Arbeitsstand nicht gefunden.") from None
         _check_deleted_anchors(unit, payload)
         return {"status": "deleted", "current_revision": None}
-    dependencies_changed = payload.get("_source_dependencies", current["dependencies"]) != current["dependencies"]
-    return {"status": "current" if contexts.same_revision(source["revision"], current["revision"]) and not dependencies_changed else "changed",
+    dependency_key = "_anchor_dependencies" if anchored else "_source_dependencies"
+    expected = (payload.get("_anchor_revision") or current["revision"]) if anchored else source["revision"]
+    dependencies_changed = payload.get(dependency_key, current["dependencies"]) != current["dependencies"]
+    return {"status": "current" if contexts.same_revision(expected, current["revision"]) and not dependencies_changed else "changed",
             "dependencies_changed": dependencies_changed,
-            "current_revision": current["revision"]}
+            "current_revision": current["revision"], "reference": "anchor" if anchored else "source",
+            "kind": current["kind"], "id": current["entity_id"], "title": current["title"]}
 
 
 def _source_exists_unscoped(unit, source: dict) -> bool:
@@ -162,7 +166,7 @@ def _authorize(unit, kind: str, payload: dict, *, write: bool = False):
     if kind == "drafts":
         state = _source_state(unit, payload)
         anchor = payload.get("anchor")
-        source = payload.get("source")
+        source = payload.get("source") or anchor
         own_deleted_anchor = state["status"] == "deleted" and anchor and source and (
             contexts.canonical_kind(anchor["kind"]), anchor["id"]) == (
                 contexts.canonical_kind(source["kind"]), source["id"])
@@ -233,6 +237,7 @@ def _public(unit, kind: str, row) -> dict:
         return {"id": row.id, "revision": row.revision, "deleted": True}
     if kind == "drafts":
         result["source_state"] = _source_state(unit, row.payload)
+        result["anchor_revision"] = row.payload.get("_anchor_revision")
     elif kind in ("recents", "favorites"):
         entity = contexts.resolve_context(unit.store, payload["kind"], payload["entity_id"], unit.actor_id)
         result.update(kind=entity["kind"], title=entity["title"], href=entity["href"])
@@ -269,6 +274,7 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
         payload = {key: deepcopy(value) for key, value in body.items()
                    if key not in {"base_revision", "idempotency_key"}}
         payload["context"] = context
+        supplied_anchor_revision = payload.pop("anchor_revision", None)
         payload["values"] = contexts.recovery_values(payload.get("values", {}))
         if contexts.context_key(context) == "conversation-note" and not payload.get("anchor"):
             raise HTTPException(422, "Eine Gesprächsnotiz braucht einen Bezug.")
@@ -283,8 +289,18 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
                     raise HTTPException(409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."})
             payload["_portfolio_anchors"] = prior.payload.get("_portfolio_anchors", [])
             payload["_source_dependencies"] = prior.payload.get("_source_dependencies", [])
+            payload["_anchor_revision"] = prior.payload.get("_anchor_revision")
+            payload["_anchor_dependencies"] = prior.payload.get("_anchor_dependencies", [])
+            if supplied_anchor_revision and not contexts.same_revision(supplied_anchor_revision, payload.get("_anchor_revision") or ""):
+                raise HTTPException(409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."})
         else:
             refs = [_anchor(unit, payload.get("anchor"), lock=True)]
+            if payload.get("anchor"):
+                anchor = payload["anchor"]
+                resolved_anchor = contexts.resolve_context(unit.store, anchor["kind"], anchor["id"], unit.actor_id,
+                                                          lock=True, include_dependencies=True)
+                payload["_anchor_revision"] = supplied_anchor_revision or resolved_anchor["revision"]
+                payload["_anchor_dependencies"] = resolved_anchor["dependencies"]
             if payload.get("source"):
                 source = payload["source"]
                 resolved = contexts.resolve_context(unit.store, source["kind"], source["id"], unit.actor_id,
@@ -297,7 +313,7 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
                 refs.append(resolved)
                 payload["_source_dependencies"] = resolved["dependencies"]
             payload["_portfolio_anchors"] = sorted({pid for ref in refs if ref for pid in ref["portfolio_ids"]})
-        deleted_source = payload.get("source") if _source_state(unit, payload)["status"] == "deleted" else None
+        deleted_source = (payload.get("source") or payload.get("anchor")) if _source_state(unit, payload)["status"] == "deleted" else None
         contexts.validate_values(unit.store, context, payload.get("values", {}), unit.actor_id,
                                  payload.get("field_keys"), deleted_source=deleted_source)
         _authorize(unit, kind, payload, write=True)
@@ -366,16 +382,20 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                     if prior is not None and not prior.deleted:
                         _authorize(unit, kind, prior.payload, write=kind != "view-state")
                     if rebase:
-                        if kind != "drafts" or prior is None or prior.deleted or not prior.payload.get("source"):
+                        if kind != "drafts" or prior is None or prior.deleted or not (prior.payload.get("source") or prior.payload.get("anchor")):
                             raise HTTPException(404, "Bearbeitungsentwurf nicht gefunden.")
-                        source = prior.payload["source"]
+                        source = prior.payload.get("source") or prior.payload["anchor"]
                         live = contexts.resolve_context(unit.store, source["kind"], source["id"], actor_id,
                                                         lock=True, include_dependencies=True)
                         if not contexts.same_revision(body["source_revision"], live["revision"]):
                             raise HTTPException(409, {"code": "source_conflict", "current_revision": live["revision"]})
                         context, payload = prior.context, deepcopy(prior.payload)
-                        payload["source"]["revision"] = body["source_revision"]
-                        payload["_source_dependencies"] = live["dependencies"]
+                        if payload.get("source"):
+                            payload["source"]["revision"] = body["source_revision"]
+                            payload["_source_dependencies"] = live["dependencies"]
+                        else:
+                            payload["_anchor_revision"] = body["source_revision"]
+                            payload["_anchor_dependencies"] = live["dependencies"]
                         payload["values"] = contexts.recovery_values(body["values"])
                         contexts.validate_values(unit.store, context, payload["values"], actor_id, payload.get("field_keys"))
                     else:

@@ -40,9 +40,10 @@ def get_contexts(actor: Actor):
 
 @router.get("/source/{kind}/{entity_id}")
 def get_source(kind: str, entity_id: str, actor: Actor):
-    resolved = contexts.resolve_context(store, kind, entity_id, actor.id)
+    resolved = contexts.resolve_context(store, kind, entity_id, actor.id, include_dependencies=True)
     return {"kind": resolved["kind"], "id": entity_id, "revision": resolved["revision"],
-            "title": resolved["title"], "href": resolved["href"]}
+            "title": resolved["title"], "href": resolved["href"], "values": resolved["values"],
+            "dependency_etags": resolved["dependencies"]}
 
 
 @router.get("/drafts")
