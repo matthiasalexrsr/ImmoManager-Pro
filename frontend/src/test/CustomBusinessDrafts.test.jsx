@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { api } from '../api';
@@ -42,7 +42,8 @@ describe('custom business form recovery', () => {
       duplicate_reason: 'Zweite Ausfertigung', accept_duplicate: true,
     });
     const changed = vi.fn();
-    render(<MemoryRouter><ReceiptForm view={{ invoice: { id: 'i1', property_id: 'p1' }, duplicates: [{ id: 'i2' }] }} properties={[]} onChanged={changed} /></MemoryRouter>);
+    // Prepare the source and draft promises before interacting with recovery.
+    await act(async () => { render(<MemoryRouter><ReceiptForm view={{ invoice: { id: 'i1', property_id: 'p1' }, duplicates: [{ id: 'i2' }] }} properties={[]} onChanged={changed} /></MemoryRouter>); });
     fireEvent.click(await screen.findByRole('button', { name: 'Entwurf übernehmen' }));
     await waitFor(() => expect(screen.getByLabelText('Kostenart')).toHaveValue('Heizung'));
     expect(screen.getByLabelText('Trotz Dublettenverdacht erfassen')).not.toBeChecked();
@@ -69,7 +70,7 @@ describe('custom business form recovery', () => {
     const reload = vi.fn();
     render(<MemoryRouter><ProtocolsTab ctx={{ caseId: 'm1', tx: maintenanceText, can: { write_protocols: true }, reload,
       project: { protocols: [], work_packages: [], orders: [], photos: [] } }} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: maintenanceText.addProtocol }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: maintenanceText.addProtocol })); });
     const dialog = screen.getByRole('dialog');
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Entwurf übernehmen' }));
     await waitFor(() => expect(within(dialog).getByLabelText(maintenanceText.title)).toHaveValue('Dachbegehung'));
@@ -87,9 +88,9 @@ describe('custom business form recovery', () => {
     api.get.mockResolvedValue({ contract: { id: 'c1', number: 'V1' }, next: { status: 'not_due' },
       totals: { overdue_principal: 100, open_charges: 0, unapplied_payments: 0 },
       claims: [], excluded: [], manual: [], cases: [], blocks: [], disputes: [], as_of: '2026-10-15' });
-    render(<MemoryRouter initialEntries={['/dunning/contracts/c1']}><Routes>
+    await act(async () => { render(<MemoryRouter initialEntries={['/dunning/contracts/c1']}><Routes>
       <Route path="/dunning/contracts/:contractId" element={<DunningCase />} />
-    </Routes></MemoryRouter>);
+    </Routes></MemoryRouter>); });
     fireEvent.click(await screen.findByRole('button', { name: 'Entwurf übernehmen' }));
     const form = screen.getByRole('form', { name: 'Mahnsperre setzen' });
     await waitFor(() => expect(within(form).getByLabelText('Grund')).toHaveValue('Rückfrage zugesagt'));

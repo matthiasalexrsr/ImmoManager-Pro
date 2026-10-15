@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DataTable from '../components/DataTable';
 import { workspace } from '../utils/workspaceClient';
@@ -13,15 +13,19 @@ beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMock
 afterEach(cleanup);
 it('does not offer a view bound to another party under the same document table title', async () => {
   let firstContext;
+  const applyView = vi.fn();
   workspace.list.mockImplementation(async (_, { context }) => {
     firstContext ||= context;
     return { items: context === firstContext ? [{ id: 'a', revision: 1, name: 'Belege Partei A', config: {} }] : [] };
   });
   const view = id => <MemoryRouter initialEntries={['/documents']}><DataTable title="Dokumente" columns={columns} data={rows}
-    serverPaged viewAnchor={{ kind: 'tenant', id }} /></MemoryRouter>;
+    serverPaged onApplyView={applyView} viewAnchor={{ kind: 'tenant', id }} /></MemoryRouter>;
   const { rerender } = render(view('party-a'));
   await screen.findByRole('option', { name: 'Belege Partei A' });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Ansicht' }), { target: { value: 'a' } });
+  expect(applyView).toHaveBeenCalledWith({});
   rerender(view('party-b'));
   await waitFor(() => expect(workspace.list).toHaveBeenCalledTimes(2));
+  expect(workspace.list.mock.calls[1][1].context).not.toBe(firstContext);
   expect(screen.queryByRole('option', { name: 'Belege Partei A' })).not.toBeInTheDocument();
 });
