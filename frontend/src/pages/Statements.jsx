@@ -136,14 +136,11 @@ function getStmtColumns(t, onError) {
 }
 
 /** Trigger browser download of a single statement PDF. */
-function downloadStatementPdf(statementId, onError) {
-  const token = localStorage.getItem('access_token');
-  fetch(`/api/v1/billing/statements/${statementId}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(res => {
-    if (!res.ok) throw new Error('PDF-Download fehlgeschlagen');
-    return res.blob();
-  }).then(blob => {
+async function downloadStatementPdf(statementId, onError) {
+  try {
+    const current = api.captureSession();
+    const blob = await api.getBlob(`/billing/statements/${statementId}/pdf`);
+    current();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -152,7 +149,7 @@ function downloadStatementPdf(statementId, onError) {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
-  }).catch(err => onError?.(err.message) || console.error(err.message));
+  } catch (err) { onError?.(err.message) || console.error(err.message); }
 }
 
 /** Helper: is a period in a mutable (editable) state? */
@@ -236,6 +233,9 @@ export default function Statements() {
   const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const currentPeriod = useRef(null);
+  currentPeriod.current = selectedPeriod?.id;
+  useEffect(() => { currentPeriod.current = selectedPeriod?.id; return () => { currentPeriod.current = null; }; }, [selectedPeriod?.id]);
   const [costModal, setCostModal] = useState(null);
   const [view, setView] = useState('list');
   const [preflight, setPreflight] = useState(null);
@@ -524,23 +524,22 @@ export default function Statements() {
     setOcrUploading(true);
     setOcrDraft(null);
     try {
+      const current = api.captureSession();
       // Step 1: Upload file
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const uploadRes = await fetch('/api/v1/files/upload?folder=billing-ocr', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error('Datei-Upload fehlgeschlagen');
-      const uploadData = await uploadRes.json();
+      const uploadData = await api.upload('/files/upload?folder=billing-ocr', formData);
+      current();
+      if (currentPeriod.current !== selectedPeriod.id) return;
+      if (!uploadData?.file_url) throw new Error('Datei-Upload fehlgeschlagen');
 
       // Step 2: Call OCR import endpoint
       const ocrRes = await api.post(
         `/billing/cost-items/import-ocr?billing_period_id=${selectedPeriod.id}&file_url=${encodeURIComponent(uploadData.file_url)}`,
         {}
       );
+      current();
+      if (currentPeriod.current !== selectedPeriod.id) return;
 
       if (ocrRes?.success) {
         setOcrDraft(ocrRes);
@@ -579,19 +578,9 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setExporting(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export?format=csv`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        let message = 'Export fehlgeschlagen';
-        try {
-          const body = await res.json();
-          message = body?.detail || message;
-        } catch { /* ignore */ }
-        throw new Error(message);
-      }
-      const blob = await res.blob();
+      const current = api.captureSession();
+      const blob = await api.getBlob(`/billing/periods/${selectedPeriod.id}/export?format=csv`);
+      current();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -611,19 +600,9 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setExporting(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`/api/v1/billing/periods/${selectedPeriod.id}/export-zip`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        let message = 'ZIP-Export fehlgeschlagen';
-        try {
-          const body = await res.json();
-          message = body?.detail || message;
-        } catch { /* ignore */ }
-        throw new Error(message);
-      }
-      const blob = await res.blob();
+      const current = api.captureSession();
+      const blob = await api.getBlob(`/billing/periods/${selectedPeriod.id}/export-zip`);
+      current();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -701,6 +680,7 @@ export default function Statements() {
 
     return (
       <div className="page">
+        {toast.Toast}
         {/* Workflow step indicator */}
         <StepIndicator currentStep={workflowStep} t={t} />
 
@@ -1128,6 +1108,7 @@ export default function Statements() {
 
   return (
     <div className="page">
+      {toast.Toast}
       <div className="filter-chips"><label>Quelle <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
         if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;

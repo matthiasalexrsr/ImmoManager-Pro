@@ -5,7 +5,6 @@ import FileViewer from '../../components/FileViewer';
 import FormModal from '../../components/FormModal';
 import { formatDate } from '../../utils/format';
 
-const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 // Documents of a contract: linked ones and the scans of its bills; upload goes to the first location's property.
 export default function DocumentsTab({ contract, canWrite }) {
@@ -17,6 +16,9 @@ export default function DocumentsTab({ contract, canWrite }) {
   const [uploading, setUploading] = useState(false);
   const [revision, setRevision] = useState(0);
   const fileRef = useRef(null);
+  const currentContract = useRef(contract.id);
+  currentContract.current = contract.id;
+  useEffect(() => { currentContract.current = contract.id; return () => { currentContract.current = null; }; }, [contract.id]);
   const base = `/service-contracts/${encodeURIComponent(contract.id)}/documents`;
 
   useEffect(() => {
@@ -44,19 +46,22 @@ export default function DocumentsTab({ contract, canWrite }) {
     setUploading(true);
     setError(null);
     try {
+      const current = api.captureSession();
       const form = new FormData();
       form.append('file', file);
-      const response = await fetch(`${BASE}/files/upload?folder=documents`, {
-        method: 'POST', body: form, credentials: 'include',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
-      });
-      if (!response.ok) throw new Error(t('serviceContracts.uploadFailed'));
-      const uploaded = await response.json();
+      const uploaded = await api.upload('/files/upload?folder=documents', form);
+      current();
+      if (currentContract.current !== contract.id) return;
+      if (!uploaded?.file_url) throw new Error(t('serviceContracts.uploadFailed'));
       const document = await api.post('/documents', {
         title: file.name.replace(/\.[^.]+$/, ''), document_type: 'service_contract', file_url: uploaded.file_url,
         property_id: contract.property_ids[0] || null, document_date: new Date().toISOString().slice(0, 10),
       });
+      current();
+      if (currentContract.current !== contract.id) return;
       await api.post(base, { document_id: document.id });
+      current();
+      if (currentContract.current !== contract.id) return;
       reload();
     } catch (failure) {
       setError(failure.message);

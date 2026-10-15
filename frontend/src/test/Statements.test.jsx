@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Statements from '../pages/Statements';
 import { api } from '../api';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), captureSession: vi.fn(() => () => {}) } }));
 const t = (key) => key;
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t, locale: 'de-DE' }) }));
 
@@ -42,11 +42,47 @@ async function openPeriod() {
 describe('Statements detail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.captureSession.mockReturnValue(() => {});
     DATA['/billing/periods'] = [period];
     delete DATA['/billing/objections?billing_period_id=bp'];
     api.get.mockImplementation((path) => Promise.resolve(
       path.endsWith('/preflight') ? { has_blockers: false, blockers: [], warnings: [], metrics: {} } : DATA[path] ?? []));
     api.list.mockImplementation((path) => Promise.resolve(DATA[path] ?? []));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('downloads statement PDF, CSV and ZIP through the protected blob client', async () => {
+    withPeriod({ status: 'finalized' });
+    const blob = new Blob(['protected']);
+    api.getBlob.mockResolvedValue(blob);
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = vi.fn(() => 'blob:protected'); static revokeObjectURL = vi.fn(); });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    await openPeriod();
+    for (const label of ['PDF', 'pages.statements.csvExport', 'pages.statements.zipExport']) {
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: label, exact: true })); });
+    }
+    expect(api.getBlob.mock.calls.map(([path]) => path)).toEqual([
+      '/billing/statements/s1/pdf', '/billing/periods/bp/export?format=csv', '/billing/periods/bp/export-zip',
+    ]);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(3);
+    expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not continue an OCR upload under a changed session', async () => {
+    let finishUpload; let changed = false;
+    api.captureSession.mockImplementation(() => () => { if (changed) throw new Error('Sitzung gewechselt'); });
+    api.upload.mockImplementation(() => new Promise(resolve => { finishUpload = resolve; }));
+    await openPeriod();
+    const file = new File(['scan'], 'scan.pdf');
+    fireEvent.change(document.querySelector('input[type=file]'), { target: { files: [file] } });
+    expect(api.upload).toHaveBeenCalledWith('/files/upload?folder=billing-ocr', expect.any(FormData));
+    expect(api.upload.mock.calls[0][1].get('file')).toBe(file);
+    changed = true;
+    await act(async () => { finishUpload({ file_url: '/uploads/scan.pdf' }); });
+    expect(api.post).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'OCR-Ergebnis prüfen' })).not.toBeInTheDocument();
+    expect(screen.getByText('Sitzung gewechselt')).toBeInTheDocument();
   });
 
   it('shows usage periods and the vacancy row without a PDF button', async () => {

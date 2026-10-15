@@ -5,8 +5,6 @@ import { useConfirm } from './ConfirmDialog';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { prepareUploadAccess } from '../utils/uploadAccess';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 // onChange (optional) runs after a photo was added or removed, e.g. to refresh a record that lists them.
 export default function PhotoDropZone({ entityType, entityId, onChange }) {
   return entityId ? <PhotoDropZoneSession key={`${entityType}:${entityId}`} entityType={entityType} entityId={entityId}
@@ -52,14 +50,12 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
   const uploadFile = async (file) => {
     setUploading(true);
     try {
+      const current = api.captureSession();
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(
-        `${BASE}/photos/upload?entity_type=${entityType}&entity_id=${entityId}`,
-        { method: 'POST', body: formData, headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) throw new Error('Upload fehlgeschlagen');
+      await api.upload(`/photos/upload?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`, formData);
+      current();
+      if (!mounted.current) return;
       loadPhotos();
       onChange?.();
     } catch (err) {

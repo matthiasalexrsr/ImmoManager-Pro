@@ -3,8 +3,6 @@ import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/Toast';
 import { api } from '../../api';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 export default function BackupSection() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -37,11 +35,9 @@ export default function BackupSection() {
   const handleExport = async () => {
     setExportLoading(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/data/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const blob = await res.blob();
+      const current = api.captureSession();
+      const blob = await api.getBlob('/data/export');
+      current();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -61,16 +57,12 @@ export default function BackupSection() {
     setImportLoading(true);
     setImportResult(null);
     try {
+      const current = api.captureSession();
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/data/import`, {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      setImportResult(res.ok ? data : { error: data?.error?.message || t('toasts.error.generic') });
+      const data = await api.upload('/data/import', formData);
+      current();
+      setImportResult(data);
     } catch (err) {
       setImportResult({ error: err.message });
     } finally {

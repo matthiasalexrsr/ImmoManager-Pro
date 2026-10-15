@@ -22,7 +22,7 @@ const context = vi.hoisted(() => ({
   })[key],
 }));
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(), upload: vi.fn(), captureSession: vi.fn(() => () => {}) } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: context.t, locale: 'de-DE' }) }));
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => context.canWrite, useAuth: () => null }));
 vi.mock('../contexts/DataStoreContext', () => ({
@@ -67,6 +67,7 @@ function mount(url = '/documents?tenant_id=t1') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.captureSession.mockReturnValue(() => {});
   context.canWrite = true;
   context.entities = { tenants_all: [anna, ben], properties: [], units: [], contracts: [contract] };
   api.get.mockImplementation(path => {
@@ -141,8 +142,8 @@ describe('party documents page', () => {
   });
 
   it('prefills an uploaded document for the selected tenant and saves the reviewed values with that file', async () => {
-    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ file_url: '/uploads/brief-neu.docx' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ file_url: '/uploads/zweiter.docx' }) });
+    api.upload.mockResolvedValueOnce({ file_url: '/uploads/brief-neu.docx' })
+      .mockResolvedValueOnce({ file_url: '/uploads/zweiter.docx' });
     mount();
     await screen.findByText('Direkter Brief');
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), {
@@ -170,31 +171,46 @@ describe('party documents page', () => {
 
   it('imports every file with the tenant ID and shows success only after persistence, retaining each failure', async () => {
     const pending = deferred();
-    fetch.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: { message: 'Zuordnung wurde abgelehnt' } }) });
+    api.upload.mockReturnValueOnce(pending.promise).mockRejectedValueOnce(new Error('Zuordnung wurde abgelehnt'));
     mount();
     await screen.findByText('Direkter Brief');
     const files = [new File(['a'], 'Erste.docx'), new File(['b'], 'Zweite.docx')];
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files } });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/Gespeichert/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeDisabled();
-    await act(async () => pending.resolve({ ok: true, json: async () => ({ id: 'new-doc' }) }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await act(async () => pending.resolve({ id: 'new-doc' }));
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(2));
     await screen.findByText(/Zuordnung wurde abgelehnt/);
     const queue = (await screen.findByText(/Erste\.docx — Gespeichert/)).closest('[role="status"]');
     expect(queue).toHaveTextContent('✓ Erste.docx — Gespeichert');
     expect(queue).toHaveTextContent('✗ Zweite.docx');
     expect(queue).not.toHaveTextContent('Zweite.docx — Gespeichert');
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
-    for (const [index, [url, options]] of fetch.mock.calls.entries()) {
-      expect(url).toBe('/api/v1/documents/import');
-      expect(options.method).toBe('POST');
-      expect(options.body).toBeInstanceOf(FormData);
-      expect(options.body.get('file')).toBe(files[index]);
-      expect(options.body.get('tenant_id')).toBe('t1');
-      expect(options.body.get('title')).toBe(index === 0 ? 'Erste' : 'Zweite');
+    for (const [index, [url, body]] of api.upload.mock.calls.entries()) {
+      expect(url).toBe('/documents/import');
+      expect(body).toBeInstanceOf(FormData);
+      expect(body.get('file')).toBe(files[index]);
+      expect(body.get('tenant_id')).toBe('t1');
+      expect(body.get('title')).toBe(index === 0 ? 'Erste' : 'Zweite');
     }
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('stops the entire import batch after its captured session changes', async () => {
+    const pending = deferred(); let changed = false;
+    api.captureSession.mockImplementation(() => () => { if (changed) throw new Error('Sitzung gewechselt'); });
+    api.upload.mockReturnValueOnce(pending.promise);
+    mount();
+    await screen.findByText('Direkter Brief');
+    fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['a'], 'A.docx'), new File(['b'], 'B.docx')] } });
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(1));
+    changed = true;
+    await act(async () => { pending.resolve({ id: 'old-owner-document' }); });
+    expect(api.upload).toHaveBeenCalledTimes(1);
+    expect(context.store.invalidateRelated).not.toHaveBeenCalled();
+    expect(screen.getByText('Sitzung gewechselt')).toBeInTheDocument();
+    expect(screen.queryByText(/— Gespeichert/)).not.toBeInTheDocument();
   });
 
   it('allows readers to view documents without upload, edit, or delete controls', async () => {
@@ -244,24 +260,24 @@ describe('party documents page', () => {
   it('keeps a new party upload busy when a previous party upload finishes after navigation', async () => {
     const annaUpload = deferred();
     const benUpload = deferred();
-    fetch.mockReturnValueOnce(annaUpload.promise).mockReturnValueOnce(benUpload.promise);
+    api.upload.mockReturnValueOnce(annaUpload.promise).mockReturnValueOnce(benUpload.promise);
     mount();
     await screen.findByText('Direkter Brief');
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['anna'], 'Anna.docx')] } });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(1));
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeDisabled();
 
     fireEvent.click(screen.getByRole('link', { name: 'Zu Ben wechseln' }));
     await waitFor(() => expect(screen.getByLabelText('Mieter / Partei')).toHaveValue('t2'));
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['ben'], 'Ben.docx')] } });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    await act(async () => annaUpload.resolve({ ok: true, json: async () => ({ file_url: '/uploads/anna.docx' }) }));
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(2));
+    await act(async () => annaUpload.resolve({ file_url: '/uploads/anna.docx' }));
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeDisabled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText(/\/uploads\/anna\.docx/)).not.toBeInTheDocument();
 
-    await act(async () => benUpload.resolve({ ok: true, json: async () => ({ file_url: '/uploads/ben.docx' }) }));
+    await act(async () => benUpload.resolve({ file_url: '/uploads/ben.docx' }));
     const dialog = await screen.findByRole('dialog', { name: 'Dokument erstellen' });
     await waitFor(() => expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t2'));
     expect(within(dialog).getByLabelText(/Titel/)).toHaveValue('Ben');
@@ -271,20 +287,20 @@ describe('party documents page', () => {
 
   it('discards the previous party import queue and stops its remaining files after navigation', async () => {
     const firstImport = deferred();
-    fetch.mockReturnValueOnce(firstImport.promise);
+    api.upload.mockReturnValueOnce(firstImport.promise);
     mount();
     await screen.findByText('Direkter Brief');
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['a'], 'Anna-eins.docx'), new File(['b'], 'Anna-zwei.docx')] } });
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(1));
     expect(screen.getByText(/Anna-eins\.docx/)).toBeInTheDocument();
-    expect(fetch.mock.calls[0][1].body.get('tenant_id')).toBe('t1');
+    expect(api.upload.mock.calls[0][1].get('tenant_id')).toBe('t1');
     fireEvent.click(screen.getByRole('link', { name: 'Zu Ben wechseln' }));
     await waitFor(() => expect(screen.getByLabelText('Mieter / Partei')).toHaveValue('t2'));
     expect(screen.queryByText(/Anna-eins\.docx/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Anna-zwei\.docx/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
-    await act(async () => firstImport.resolve({ ok: true, json: async () => ({ id: 'saved-for-anna' }) }));
-    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => firstImport.resolve({ id: 'saved-for-anna' }));
+    expect(api.upload).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Anna-eins\.docx/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Dokumentdateien wählen')).toBeEnabled();
   });

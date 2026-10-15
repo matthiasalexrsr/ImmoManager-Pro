@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { api } from '../api';
 import BackupSection from '../pages/settings/BackupSection';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(() => Promise.resolve({})), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), captureSession: () => () => {} } }));
 const t = (key) => key;
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t }) }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
@@ -14,25 +15,18 @@ function importFile(container) {
 }
 
 describe('BackupSection import', () => {
-  beforeEach(() => { global.fetch = vi.fn(); });
-  afterEach(() => { delete global.fetch; });
+  beforeEach(() => { api.upload.mockReset(); });
 
   it('shows why an import was rejected', async () => {
     // Regression: a 400 response rendered nothing, so a failed import looked like success.
-    global.fetch.mockResolvedValue({
-      ok: false,
-      json: () => Promise.resolve({ error: { message: 'Import abgebrochen – 1 Problem(e)' } }),
-    });
+    api.upload.mockRejectedValue(new Error('Import abgebrochen – 1 Problem(e)'));
     const { container } = render(<BackupSection />);
     importFile(container);
     expect(await screen.findByRole('alert')).toHaveTextContent('Import abgebrochen');
   });
 
   it('reports records that already existed', async () => {
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ imported: {}, skipped_existing: { tenants: 3 } }),
-    });
+    api.upload.mockResolvedValue({ imported: {}, skipped_existing: { tenants: 3 } });
     const { container } = render(<BackupSection />);
     importFile(container);
     expect(await screen.findByText('tenants: 3 pages.settings.skippedExisting')).toBeInTheDocument();

@@ -15,8 +15,6 @@ import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 import KpiAction from '../components/KpiAction';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
   if (/mietvertrag|lease|vertrag/.test(lower)) return 'Mietvertrag';
@@ -214,16 +212,11 @@ function DocumentsWorkspace() {
     setUploadedUrl('');
     setError(null);
     try {
+      const current = api.captureSession();
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/files/upload?folder=documents`, {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(t('pages.documents.upload.failed') || 'Upload fehlgeschlagen');
-      const data = await res.json();
+      const data = await api.upload('/files/upload?folder=documents', formData);
+      current();
       if (generation !== uploadGeneration.current) return;
       if (!data.file_url) throw new Error('Der Server hat keine Datei zurückgegeben.');
       setUploadedUrl(data.file_url);
@@ -233,6 +226,7 @@ function DocumentsWorkspace() {
       if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
         try {
           const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
+          current();
           if (generation !== uploadGeneration.current) return;
           suggestedType = ocrRes.guessedType || ocrRes.document_type || suggestedType;
           setOcrResult({
@@ -248,6 +242,7 @@ function DocumentsWorkspace() {
       } else {
         setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
       }
+      current();
       if (generation !== uploadGeneration.current) return;
       setCreateInitial({ title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url,
         document_type: DOC_TYPES.some(type => type.value === suggestedType) ? suggestedType : 'Sonstiges', tenant_id: tenantId || null });
@@ -268,8 +263,12 @@ function DocumentsWorkspace() {
     const fileList = Array.from(files);
     setUploading(true); setError(null); setUploadedUrl(''); setOcrResult(null);
     setUploadQueue(fileList.map(f => ({ name: f.name, status: 'pending' })));
+    let current;
+    let sessionValid = true;
     try {
+      current = api.captureSession();
       for (let i = 0; i < fileList.length; i++) {
+        current();
         if (generation !== uploadGeneration.current) break;
         setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'uploading' } : q));
         try {
@@ -279,22 +278,24 @@ function DocumentsWorkspace() {
           body.append('title', file.name.replace(/\.[^.]+$/, ''));
           body.append('document_type', guessDocType(file.name));
           if (tenantId) body.append('tenant_id', tenantId);
-          const response = await fetch(`${BASE}/documents/import`, { method: 'POST', body,
-            headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } });
-          if (!response.ok) {
-            const problem = await response.json().catch(() => null);
-            throw new Error(problem?.error?.message || (typeof problem?.detail === 'string' ? problem.detail : `Import fehlgeschlagen (${response.status})`));
-          }
+          await api.upload('/documents/import', body);
+          current();
           if (generation === uploadGeneration.current) setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'done' } : q));
         } catch (err) {
+          // A rejected owner fence stops the entire batch, including the next file.
+          current();
           if (generation === uploadGeneration.current) setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'failed', error: err.message } : q));
         }
       }
+    } catch (err) {
+      sessionValid = false;
+      if (generation === uploadGeneration.current) setError(err.message);
     } finally {
+      try { current?.(); } catch { sessionValid = false; }
       uploadBusy.current = false;
-      if (generation === uploadGeneration.current) { setUploading(false); refreshData(); }
+      if (generation === uploadGeneration.current) { setUploading(false); if (sessionValid) refreshData(); }
       if (fileRef.current) fileRef.current.value = '';
-      store?.invalidateRelated('documents');
+      if (sessionValid) store?.invalidateRelated('documents');
     }
   }, [canWrite, tenantId, refreshData, store]);
 

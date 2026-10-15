@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import FileViewer from '../../components/FileViewer';
 import PhotoDropZone from '../../components/PhotoDropZone';
 import { api } from '../../api';
@@ -9,7 +9,6 @@ import { fill } from './text';
 import useEditableDraft from '../workCenter/useEditableDraft';
 import EditableDraft from '../workCenter/EditableDraft';
 
-const BASE = import.meta.env.VITE_API_URL || '/api/v1';
 const PROTOCOL_TYPES = ['acceptance', 'inspection', 'site_visit'];
 const RESULTS = ['accepted', 'accepted_with_defects', 'refused'];
 const SEVERITIES = ['minor', 'major', 'critical'];
@@ -243,15 +242,7 @@ export function ProtocolsTab({ ctx }) {
 async function uploadFile(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await fetch(`${BASE}/files/upload?folder=documents`, {
-    method: 'POST', body: formData, credentials: 'include',
-    headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
-  });
-  if (!response.ok) {
-    const failure = await response.json().catch(() => ({}));
-    throw new Error(failure?.error?.message || failure?.detail || 'Upload');
-  }
-  const data = await response.json();
+  const data = await api.upload('/files/upload?folder=documents', formData);
   if (!data.file_url) throw new Error('Upload');
   return data.file_url;
 }
@@ -265,6 +256,9 @@ export function DocumentsTab({ ctx }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileRef = useRef(null);
+  const currentCase = useRef(caseId);
+  currentCase.current = caseId;
+  useEffect(() => { currentCase.current = caseId; return () => { currentCase.current = null; }; }, [caseId]);
   const loadDocuments = useCallback(async (params, options) => {
     const rows = await api.get(`/documents?property_id=${encodeURIComponent(record.property_id)}&skip=${params.skip}`
       + `&limit=${params.limit + 1}&sort_by=created_at&sort_order=desc`, options);
@@ -283,12 +277,19 @@ export function DocumentsTab({ ctx }) {
     setUploading(true);
     setUploadError(null);
     try {
+      const current = api.captureSession();
       const fileUrl = await uploadFile(file);
+      current();
+      if (currentCase.current !== caseId) return;
       const document = await api.post('/documents', {
         title: file.name, file_url: fileUrl, property_id: record.property_id, unit_id: record.unit_id || null,
         document_type: 'maintenance', description: record.title,
       });
+      current();
+      if (currentCase.current !== caseId) return;
       await projectApi.linkDocument(caseId, { document_id: document.id, role });
+      current();
+      if (currentCase.current !== caseId) return;
       reload();
     } catch (failure) {
       setUploadError(`${tx.uploadFailed}: ${failure.message}`);

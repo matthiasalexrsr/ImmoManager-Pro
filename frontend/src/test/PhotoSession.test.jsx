@@ -3,7 +3,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import PhotoDropZone from '../components/PhotoDropZone';
 import { api } from '../api';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), del: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), del: vi.fn(), upload: vi.fn(), captureSession: () => () => {} } }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn() }));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const photos = [{ id: '1', file_url: '/uploads/photo.png', caption: 'Haus' }];
