@@ -82,12 +82,12 @@ def _stats(unit, status=None, severity=None, kind=None):
     if unit.db is None:
         rows = unit.store.list_notifications()
         summaries = [(n, state.get(unit, 'notice:' + n.id)) for n in rows]
-        def own_status(r):
+        def memory_status(r):
             return 'archived' if r['payload'].get('archived_at') else 'read' if r['payload'].get('read_at') else 'unread'
-        selected = sum((not status or own_status(r) == status) and (not severity or n.severity == severity)
+        selected = sum((not status or memory_status(r) == status) and (not severity or n.severity == severity)
                        and (not kind or contexts.KIND_ALIASES.get(n.entity_type, n.entity_type) == kind) for n, r in summaries)
         version = [(n.id, str(n.updated_at), r['revision']) for n, r in sorted(summaries, key=lambda pair: pair[0].id)]
-        return selected, sum(own_status(r) == 'unread' for _, r in summaries), state.digest('inbox', version)
+        return selected, sum(memory_status(r) == 'unread' for _, r in summaries), state.digest('inbox', version)
     n, r, joined, own_status = _joined(unit)
     selected = and_(*_filters(n, own_status, status, severity, kind)) if any((status, severity, kind)) else true()
     row = unit.db.execute(select(func.count(), func.sum(case((own_status == 'unread', 1), else_=0)),
@@ -129,8 +129,8 @@ def _page(unit, status, severity, kind, limit, offset=0, after=None):
         result = []
         for notice in rows:
             receipt = state.get(unit, 'notice:' + notice.id)['payload']
-            own_status = 'archived' if receipt.get('archived_at') else 'read' if receipt.get('read_at') else 'unread'
-            if status and status != own_status or severity and severity != notice.severity or kind and kind != contexts.KIND_ALIASES.get(notice.entity_type, notice.entity_type):
+            item_status = 'archived' if receipt.get('archived_at') else 'read' if receipt.get('read_at') else 'unread'
+            if status and status != item_status or severity and severity != notice.severity or kind and kind != contexts.KIND_ALIASES.get(notice.entity_type, notice.entity_type):
                 continue
             if after and (notice.created_at.replace(tzinfo=None), notice.id) >= (datetime.fromisoformat(after[0]).replace(tzinfo=None), after[1]):
                 continue

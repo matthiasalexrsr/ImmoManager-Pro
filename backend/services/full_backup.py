@@ -313,9 +313,11 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
             revision = row[0] if row else None
         from .bank_backup import key_ids
         from .communication_backup import needed_key_ids as communication_key_ids
+        from .teha_restore import needed_key_ids as teha_key_ids
         return {"integrity": check, "row_counts": counts, "revision": revision,
                 "bank_key_ids": key_ids(connection, tables),
-                "communication_key_ids": communication_key_ids(connection, tables)}
+                "communication_key_ids": communication_key_ids(connection, tables),
+                "teha_key_ids": teha_key_ids(connection, tables)}
     finally:
         connection.close()
 
@@ -375,12 +377,15 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
 
                 from .tax_archive_validation import needed_key_ids
                 tax_keys = sorted(needed_key_ids(connection))
+                from .teha_restore import needed_key_ids as teha_key_ids
+                teha_keys = teha_key_ids(connection, tables)
                 _run([tool, "--format=custom", "--no-owner", "--no-privileges", f"--snapshot={snapshot}",
                       f"--file={target}", "--dbname", conninfo], env)
     finally:
         engine.dispose()
     return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
-            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys, "communication_key_ids": communication_keys}
+            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys,
+            "communication_key_ids": communication_keys, "teha_key_ids": teha_keys}
 
 
 class _Lock:
@@ -665,7 +670,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
         env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
-        needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])) | set(facts.get('communication_key_ids', [])))
+        needed = sorted(set(_needed_key_ids(state_bytes))
+                        | set(facts.get("bank_key_ids", []))
+                        | set(facts.get("communication_key_ids", []))
+                        | set(facts.get("teha_key_ids", [])))
         if dialect == "sqlite":
             from .tax_archive_validation import needed_key_ids
             tax_engine = create_engine(f"sqlite:///{db_copy.resolve().as_posix()}", poolclass=NullPool)
@@ -986,7 +994,15 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     tax_proof = verify_tax_archive(connection, lambda token, context: secret_box.open_with(keys, token, context))
     from .communication_backup import verify as verify_communication
     communication_proof = verify_communication(connection, keys, tables)
+    from .teha_restore import verify_teha_with_keys
+    try:
+        teha_proof = verify_teha_with_keys(connection, keys)
+    except Exception:
+        # Not even provider exception messages or SQL parameters can be used
+        # as a successful (or user-visible) restore diagnostic.
+        raise BackupError("Geschützte TEHA-Originale und Übernahmebelege sind nicht vollständig prüfbar.") from None
     return {
+        "teha": teha_proof,
         "communication": communication_proof,
         "bank_originals": bank_proof, "tax_receipts_verified": tax_proof,
         "present": proof["present"], "verified_rows": proof["rows"],

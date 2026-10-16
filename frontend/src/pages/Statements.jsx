@@ -7,7 +7,7 @@ import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { formatMoney } from '../utils/format';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -700,6 +700,7 @@ export default function Statements() {
           </button>
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
+            <Link to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
             <span className="text-muted">
               {propMap[selectedPeriod.property_id]?.name || '—'} · {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
             </span>

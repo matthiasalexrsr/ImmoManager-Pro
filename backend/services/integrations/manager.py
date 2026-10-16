@@ -47,6 +47,11 @@ class IntegrationManager:
         self._config.setdefault(integration_id, {})
 
     def seed_defaults(self) -> None:
+        # Import only after the integration package and registry have loaded.
+        # Importing this provider eagerly re-enters integrations.__init__ while
+        # tests or plugin clients directly import the provider class.
+        from ..providers.teha_provider import TehaProvider
+
         for provider in (
             EmailIntegrationProvider(),
             WhatsAppIntegrationProvider(),
@@ -55,6 +60,7 @@ class IntegrationManager:
             ListingPortalProvider(),
             HuggingFaceProvider(),
             AktenwerkProvider(),
+            TehaProvider(),
         ):
             self.register(provider)
         self._load_state()

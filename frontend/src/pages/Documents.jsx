@@ -350,6 +350,7 @@ function DocumentsWorkspace() {
   return (
     <div className="page documents-page">
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
+      <a className="btn btn-secondary" href="/teha">TEHA-Empfang und Originalhistorie</a>
       <div className="toolbar" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>

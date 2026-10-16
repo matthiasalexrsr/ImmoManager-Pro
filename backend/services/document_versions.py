@@ -91,7 +91,7 @@ class Unit:
     def __init__(self, store, db: Session | None, user: dict, archive: MemoryArchive | None):
         self.store, self.db, self.user, self.archive = store, db, user, archive
         self._undo: list[tuple[dict, Any, bool, Any]] = []
-        self._appends: list[list] = []
+        self._appends: list[tuple[list, Any, Any]] = []
 
     @property
     def actor_id(self) -> str:
@@ -109,14 +109,27 @@ class Unit:
         self._undo.append((collection, key, key in collection, collection.get(key)))
         del collection[key]
 
-    def append(self, collection: list, value: Any) -> None:
+    def append(self, collection: list, value: Any, *, lock=None) -> None:
+        """Register the exact appended object, not only the list length.
+
+        Another writer may append after this unit. Rolling back our entry must
+        never remove the other writer's later value. Shared stores can pass the
+        same lock used for independent appends.
+        """
         assert self.db is None
-        collection.append(value)
-        self._appends.append(collection)
+        with lock if lock is not None else nullcontext():
+            collection.append(value)
+            self._appends.append((collection, value, lock))
 
     def rollback(self) -> None:
-        for collection in reversed(self._appends):
-            collection.pop()
+        for collection, appended, lock in reversed(self._appends):
+            with lock if lock is not None else nullcontext():
+                # Identity, not equality: duplicate audit values can have the
+                # same fields but must never delete another writer's entry.
+                for index in range(len(collection) - 1, -1, -1):
+                    if collection[index] is appended:
+                        del collection[index]
+                        break
         self._appends.clear()
         for collection, key, present, value in reversed(self._undo):
             if present:

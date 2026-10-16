@@ -41,7 +41,11 @@ export default function NotificationInbox({ compact = false }) {
         <small>{n.email_eligible ? 'E-Mail-Kanal zugelassen ? ' : 'E-Mail für diesen Hinweis nicht vorgesehen ? '}{n.target ? `Quelle: ${n.target.title}` : n.target_error} · {formatDateTime(n.created_at)}</small>
         {n.archived_at && <><p>Persönlich gelesen: {formatDateTime(n.read_at)}</p><button disabled={busy} onClick={() => mutate(n.id, { action: 'reopen', base_revision: n.revision })}>Wieder in den Eingang</button></>}
       </li>)}</ul>
-      {offset > 0 && <button onClick={() => { setSnapshot(page.snapshot); setOffset(Math.max(0, offset - (compact ? 10 : 50))); }}>Zurück</button>}
+      {history.length > 0 && <button onClick={() => {
+        setHistory(history.slice(0, -1));
+        setCursor(history[history.length - 1]);
+        setSnapshot(page.snapshot);
+      }}>Zurück</button>}
       {page.next_cursor && <button onClick={() => { setSnapshot(page.snapshot); setHistory([...history, cursor]); setCursor(page.next_cursor); }}>Weitere Hinweise</button>}
     </>}
     {compact && <Link to="/notifications">Vollständiger Eingang und Archiv</Link>}

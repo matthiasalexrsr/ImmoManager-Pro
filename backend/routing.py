@@ -70,6 +70,7 @@ from .routers import (
     tasks,
     tasks_status,
     tax_rates,
+    teha,
     tenants,
     units,
     updates,
@@ -114,6 +115,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
+    api_v1.include_router(teha.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
     api_v1.include_router(listings.router, dependencies=_auth_dep)
