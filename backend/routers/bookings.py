@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import store
 from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
+from ..services.bank_imports import protect_bank_booking
 from ..services.booking_writes import booking_write
 from ..services.deletion_guard import ensure_deletable
 from ..services.deposits import _booking_linked, ensure_booking_unchanged
@@ -159,6 +160,7 @@ def get_booking(booking_id: str) -> Booking:
 def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
     try:
         with booking_write(store, booking_id=booking_id, changes=payload.model_dump()) as target:
+            protect_bank_booking(target, booking_id, payload.model_dump())
             ensure_booking_unchanged(target, booking_id, payload.model_dump())
             booking = target.update_booking(booking_id, payload)
             _allocate(target, booking)
@@ -172,6 +174,7 @@ def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
 def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
     try:
         with booking_write(store, booking_id=booking_id, changes=payload.model_dump(exclude_unset=True)) as target:
+            protect_bank_booking(target, booking_id, payload.model_dump(exclude_unset=True))
             ensure_booking_unchanged(target, booking_id, payload.model_dump(exclude_unset=True))
             booking = target._patch_entity("booking", booking_id, payload)
             _allocate(target, booking)
@@ -186,6 +189,7 @@ def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
 def delete_booking(booking_id: str) -> None:
     try:
         store.get_booking(booking_id)
+        protect_bank_booking(store, booking_id)
         if store.list_booking_reversals(booking_id) or _deposit_linked(booking_id):   # the guard names them
             ensure_deletable(store, "booking", booking_id)
         ensure_booking_unallocated(store, booking_id)       # it pays an invoice

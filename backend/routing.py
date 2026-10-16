@@ -18,6 +18,7 @@ from .routers import (
     audit,
     auth,
     autotest,
+    bank_imports,
     billing,
     bookings,
     budgets,
@@ -97,6 +98,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)
+    api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(workspace.router, dependencies=_auth_dep)
     api_v1.include_router(business_qol.router, dependencies=_auth_dep)

@@ -18,7 +18,13 @@ import './bookingReview.css';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
 import { cashflowSide } from '../utils/cashflowBasis';
+import BankImport from '../components/BankImport';
+import FinTSImport from '../components/FinTSImport';
+import BankOriginal from '../components/BankOriginal';
+import { bankOriginalPath } from '../utils/bankOriginal';
 import { aktenwerkBulkAction, receiptExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
+
+const hasReceipt = value => Boolean(resolveFileUrl(value) || bankOriginalPath(value));
 
 export default function Bookings() {
   const [params, setParams] = useSearchParams();
@@ -201,7 +207,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     property_name: propertyMap[b.property_id] || '—',
     unit_label: unitMap[b.unit_id] || '—',
     tenant_name: tenantMap[b.tenant_id] || '—',
-    has_receipt: resolveFileUrl(b.receipt_url) ? 'Vorhanden' : b.receipt_url?.trim() ? 'Ungültig' : 'Fehlt',
+    has_receipt: hasReceipt(b.receipt_url) ? 'Vorhanden' : b.receipt_url?.trim() ? 'Ungültig' : 'Fehlt',
   }));
 
   // Filtered data
@@ -220,7 +226,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       case 'open': return rows.filter(b => b.status === 'open');
       case 'unassigned': return rows.filter(b => b.unassigned);
       case 'no_category': return rows.filter(b => !b.category_id);
-      case 'no_receipt': return rows.filter(b => !resolveFileUrl(b.receipt_url));
+      case 'no_receipt': return rows.filter(b => !hasReceipt(b.receipt_url));
       case 'income': return rows.filter(b => cashflowSide(b, categoryTypes) === 'income');
       case 'expense': return rows.filter(b => cashflowSide(b, categoryTypes) === 'expense');
       default: return rows;
@@ -232,9 +238,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
   const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
   const noCategory = basis.filter(b => !b.category_id).length;
-  const noReceipt = basis.filter(b => !resolveFileUrl(b.receipt_url)).length;
+  const noReceipt = basis.filter(b => !hasReceipt(b.receipt_url)).length;
 
-  const receiptAction = row => resolveFileUrl(row.receipt_url)
+  const receiptAction = row => bankOriginalPath(row.receipt_url) ? <BankOriginal value={row.receipt_url} /> : resolveFileUrl(row.receipt_url)
     ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => setViewer({ fileUrl: row.receipt_url, title: `Beleg: ${row.payment_text || formatDate(row.booking_date)}` })}>Beleg öffnen</button>
     : <span className="text-muted">{row.receipt_url?.trim() ? 'Belegadresse ist ungültig.' : 'Kein Beleg hinterlegt.'}</span>;
   const selectedAllocation = selected ? allocationInfo(selected) : null;
@@ -379,6 +385,11 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   return (
     <div className="page">
       <h1 className="page-title">{t('finance.bookings.title') || 'Buchungen'}</h1>
+      {canWrite && <BankImport accounts={accounts} onImported={() => {
+        if (store) store.invalidateRelated('bookings', 'accounts', 'categories');
+        refreshData();
+      }} />}
+      {canWrite && <FinTSImport accounts={accounts} />}
 
       {bookingId !== null && <section className="booking-selection" aria-label="Ausgewählte Buchung">
         <header className="booking-selection-header">

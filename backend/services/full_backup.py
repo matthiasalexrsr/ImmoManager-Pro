@@ -38,6 +38,7 @@ import subprocess
 import time
 import zipfile
 from collections.abc import Callable, Iterator
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -310,7 +311,9 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
         if "alembic_version" in tables:
             row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
             revision = row[0] if row else None
-        return {"integrity": check, "row_counts": counts, "revision": revision}
+        from .bank_backup import key_ids
+        return {"integrity": check, "row_counts": counts, "revision": revision,
+                "bank_key_ids": key_ids(connection, tables)}
     finally:
         connection.close()
 
@@ -363,11 +366,14 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
                 if "alembic_version" in tables:
                     revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
                 server = connection.execute(text("SHOW server_version")).scalar()
+                from .bank_backup import key_ids
+                bank_keys = key_ids(connection, tables)
                 _run([tool, "--format=custom", "--no-owner", "--no-privileges", f"--snapshot={snapshot}",
                       f"--file={target}", "--dbname", conninfo], env)
     finally:
         engine.dispose()
-    return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server}
+    return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
+            "bank_key_ids": bank_keys}
 
 
 class _Lock:
@@ -652,7 +658,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
         env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
-        needed = _needed_key_ids(state_bytes)
+        needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])))
         included_ids = set(_env_key_ids(env_bytes))
         if keyring_bytes:
             included_ids |= {key.id for key in secret_box.keys_from_bytes(keyring_bytes)}
@@ -872,6 +878,12 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
             for key, value in (values or {}).items():
                 if secret_box.is_sealed(value):
                     tokens.append((f"integrations/{integration_id}/{key}", value))
+    bank_path = extracted / DB_SQLITE
+    if bank_path.is_file():
+        from .bank_backup import tokens as bank_tokens
+        with closing(sqlite3.connect(f'{bank_path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
+            tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            tokens.extend(bank_tokens(connection, tables))
     result: dict[str, Any] = {"sealed_values": len(tokens), "decrypted": 0, "warning": warning}
     if not tokens or warning:
         return result
@@ -887,6 +899,11 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
     for context, token in tokens:
         secret_box.open_with(keys, token, context)
         result["decrypted"] += 1
+    if bank_path.is_file():
+        from .bank_backup import verify as verify_bank
+        with closing(sqlite3.connect(f'{bank_path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
+            tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            result['bank_originals'] = verify_bank(connection, tables, keys)
     return result
 
 
@@ -1101,6 +1118,12 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             raise BackupError("Schlüsselsicherung ist mit Passphrase geschützt: Passphrase angeben "
                               "(--passphrase-env).")
         archived_keys = _archived_connection_keys(files)
+        bank_counts = manifest["database"]["row_counts"]
+        if bank_counts.get("bank_imports", 0) or bank_counts.get("bank_fints_sessions", 0):
+            # Verify bank originals from the EXTRACTED archive and its archived
+            # keys before touching the final target. The connection verifier
+            # independently protects all integration action evidence.
+            _check_secrets(manifest, staging, passphrase, "")
         target.mkdir(parents=True, exist_ok=True)
         database = manifest["database"]
         steps = []

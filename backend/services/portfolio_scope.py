@@ -18,6 +18,7 @@ that belongs to it needs every location visible. A reference to a shared-read re
 (a contact as provider) needs that record readable, not owned.
 """
 
+import re
 from collections.abc import Iterator, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -92,6 +93,8 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    # Bank service authorizes every source through its current account before access.
+    "bank_imports", "bank_source_links", "bank_fints_sessions",
     # Private workspace services always predicate by owner and recheck source visibility.
     "workspace_drafts", "workspace_views", "workspace_recents", "workspace_favorites",
     "workspace_view_states", "workspace_deferrals", "workspace_commands",
@@ -578,7 +581,7 @@ def _guard_sql_write(db, table, values, *, entity_id=None, creating=False, pendi
             raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
     for field in ("file_url", "photo_url", "receipt_url"):
         if values.get(field):
-            require_file_access(values[field])
+            require_file_access(values[field], source=db)
 
 
 @event.listens_for(Session, "before_flush")
@@ -614,9 +617,26 @@ def _scope_native_writes(db, context, instances):
     created.update(inserted)
 
 
-def require_file_access(value: str):
+def require_file_access(value: str, *, source=None):
     scope = current_scope()
     if scope is None or scope.unrestricted:
+        return
+    bank_source = re.fullmatch(r'/api/v1/bank-imports/([0-9a-f-]{36})/original', value)
+    if bank_source:
+        from ..db.bank_models import BankImportORM
+        if source is None:
+            from ..dependencies import store as source
+        db = source.db if hasattr(source, 'db') else source if hasattr(source, 'scalar') else None
+        if db is not None:
+            account_id = db.scalar(select(BankImportORM.account_id).where(BankImportORM.id == bank_source[1]))
+            visible = account_id is not None and _sql_visible(db, Base.metadata.tables['accounts'], account_id)
+        else:
+            raw = object.__getattribute__(source, '__dict__')
+            original = raw.get('_integration_connections', {}).get('bank_imports', {}).get(bank_source[1])
+            account = raw.get('accounts', {}).get(original.account_id) if original else None
+            visible = account is not None and memory_visible(source, 'accounts', account)
+        if not visible:
+            raise HTTPException(403, 'Das Bankoriginal liegt außerhalb Ihrer erlaubten Konten.')
         return
     from ..dependencies import store
     from ..routers.files import _file_url_to_key, _ocr_key_from_file_key
@@ -880,7 +900,7 @@ class ScopedCollection(MutableMapping):
                 raise HTTPException(403, "Die Referenz liegt außerhalb Ihrer erlaubten Portfolios.")
         for field in ("file_url", "photo_url", "receipt_url"):
             if getattr(item, field, None):
-                require_file_access(getattr(item, field))
+                require_file_access(getattr(item, field), source=self.store)
         if (self.name, key) not in together and not memory_visible(self.store, self.name, item):
             parents = _parents(table) if table is not None else {}
             if any(getattr(item, field, None) for field in parents) or getattr(item, "entity_id", None):

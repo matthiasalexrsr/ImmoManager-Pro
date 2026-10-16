@@ -1,16 +1,21 @@
+import base64
 import csv
+import hashlib
 import io
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from ..auth import require_auth
 from ..concurrency import one_at_a_time
 from ..dependencies import store
 from ..domain.money import money
+from ..models import UserRead
 from ..services import report_service
+from ..services.bank_imports import BankImports, StageImport
 from ..services.csv_export import spreadsheet_cell
 from ..services.finance_ledger import Dimensions, FinanceFilter, add_months, month_start
 from ..services.read_cache import CachedReads
@@ -329,6 +334,7 @@ def datev_export(
 class ImportBookingsRequest(BaseModel):
     account_id: str
     csv_content: str = Field(..., description="CSV content with columns: date;amount;text")
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 @router.post("/bookings/import")
@@ -336,52 +342,23 @@ def import_bookings(
     account_id: str | None = None,
     csv_content: str | None = None,
     payload: ImportBookingsRequest | None = Body(None),
+    user: UserRead = Depends(require_auth),
 ) -> dict:
-    """Import bookings from CSV data.
-
-    Accepts either a JSON body with account_id and csv_content,
-    or keyword arguments (for backward compatibility).
-
-    Expected CSV format (semicolon-separated):
-    date;amount;text
-    2024-01-15;-500.00;Handwerker Rechnung
-    2024-01-20;800.00;Miete Wohnung 1
-    """
-    # Support both body and direct keyword arguments
-    _account_id = account_id if account_id is not None else (payload.account_id if payload else None)
-    _csv_content = csv_content if csv_content is not None else (payload.csv_content if payload else None)
-
-    if not _account_id or not _csv_content:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=422, detail="account_id and csv_content are required")
-
-    reader = csv.DictReader(io.StringIO(_csv_content), delimiter=";")
-    imported = []
-    errors = []
-
-    from ..models import BookingCreate
-
-    for i, row in enumerate(reader, start=1):
-        try:
-            booking_date = date.fromisoformat(row["date"].strip())
-            amount = float(row["amount"].strip().replace(",", "."))
-            text = row.get("text", "").strip()
-
-            booking = store.create_booking(BookingCreate(
-                account_id=_account_id,
-                booking_date=booking_date,
-                amount=amount,
-                payment_text=text,
-            ))
-            imported.append({"row": i, "bookingId": booking.id})
-        except Exception as e:
-            errors.append({"row": i, "error": str(e)})
-
-    return {
-        "imported": len(imported),
-        "errors": len(errors),
-        "details": {"imported": imported, "errors": errors},
-    }
+    """Legacy input now prepares the controlled preview, never a partial import."""
+    if not isinstance(user, UserRead):
+        raise HTTPException(409, 'Bankimporte benötigen einen angemeldeten Benutzer und eine bestätigte Vorschau unter /api/v1/bank-imports')
+    account = account_id or (payload.account_id if payload else None)
+    content = csv_content if csv_content is not None else payload.csv_content if payload else None
+    if not account or not content:
+        raise HTTPException(422, 'Bitte Konto und CSV-Inhalt angeben')
+    raw = content.encode('utf-8')
+    key = payload.idempotency_key if payload and payload.idempotency_key else 'legacy-bank/' + hashlib.sha256((account + '\0' + content).encode()).hexdigest()
+    preview = BankImports(store).stage(StageImport(idempotency_key=key, account_id=account,
+        filename='Legacy-Bankimport.csv', source_base64=base64.b64encode(raw).decode(), format='csv',
+        options={'source_provenance': 'submitted_text_utf8'}), user.id)
+    return {'imported': 0, 'errors': preview['error_count'], 'requires_confirmation': True,
+            'preview': preview, 'preview_url': f"/api/v1/bank-imports/{preview['id']}",
+            'message': 'Die vollständige Vorschau prüfen und anschließend ausdrücklich bestätigen.'}
 
 
 @router.get("/liquidity-forecast", response_model=None)

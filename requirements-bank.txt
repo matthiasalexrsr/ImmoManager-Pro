@@ -1,0 +1,4 @@
+# Optional read-only FinTS transport. Coordinator installs in an isolated environment.
+# Official release 2026-10-09; LGPL-3.0-or-later; Python >=3.11.
+# Exact transitive constraints must be resolved/locked and checked by coordinator before installation.
+fints==5.0.1

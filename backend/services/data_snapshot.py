@@ -61,6 +61,16 @@ class SnapshotError(ValueError):
         super().__init__(f"{len(problems)} Problem(e), nichts wurde geändert: {shown}{suffix}")
 
 
+def _require_full_bank_backup(store: Any) -> None:
+    from ..db.bank_models import BankImportORM
+    if hasattr(store, 'db'):
+        present = store.db.scalar(select(BankImportORM.id).limit(1)) is not None
+    else:
+        present = bool(store.__dict__.get('_integration_connections', {}).get('bank_imports'))
+    if present:
+        raise SnapshotError(['Dieser Bestand enthält geschützte Bankoriginale. Bitte die vollständige Sicherung mit Datenbank und Schlüsselring verwenden; JSON kann diese Quellen nicht verlustfrei wiederherstellen.'])
+
+
 @dataclass(frozen=True)
 class EntitySpec:
     key: str
@@ -158,6 +168,7 @@ def _backend(store: Any) -> _MemoryBackend | _SQLBackend:
 
 def export_snapshot(store: Any) -> dict:
     """All business data as a JSON-serialisable snapshot."""
+    _require_full_bank_backup(store)
     backend = _backend(store)
     data: dict[str, Any] = {
         "format": SNAPSHOT_FORMAT,
@@ -195,6 +206,8 @@ class PreparedImport:
 
 def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     """Validate a snapshot against the store; raises SnapshotError without writing."""
+    if replace:
+        _require_full_bank_backup(store)
     if not isinstance(data, dict):
         raise SnapshotError(["Die Datei enthält kein JSON-Objekt"])
     if "format" in data and data["format"] != SNAPSHOT_FORMAT:

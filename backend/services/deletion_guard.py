@@ -109,6 +109,16 @@ _ALTERNATIVES = {
 def dependents(store: Any, entity: str, entity_id: str) -> list[tuple[str, int]]:
     """(label, count) of every kind of record that references the entity."""
     found = []
+    if entity == 'account':
+        from sqlalchemy import func, select
+
+        from ..db.bank_models import BankImportORM
+        if hasattr(store, 'db'):
+            count = store.db.scalar(select(func.count()).select_from(BankImportORM).where(BankImportORM.account_id == entity_id))
+        else:
+            count = sum(r.account_id == entity_id for r in store.__dict__.get('_integration_connections', {}).get('bank_imports', {}).values())
+        if count:
+            found.append(('Bankoriginale', count))
     for list_method, field, (singular, plural) in _DEPENDENTS[entity][1]:
         count = sum(1 for item in getattr(store, list_method)() if getattr(item, field, None) == entity_id)
         if count:
@@ -121,6 +131,9 @@ def ensure_deletable(store: Any, entity: str, entity_id: str) -> None:
     found = dependents(store, entity, entity_id)
     if not found:
         return
+    if entity == 'account' and any(label == 'Bankoriginale' for label, _ in found):
+        raise HTTPException(status_code=409, detail='Dieses Konto enthält geschützte Bankoriginale und kann nicht gelöscht werden. '
+                            'Konto, Originale und Quellverknüpfungen bleiben gemeinsam für den Nachweis erhalten.')
     listing = ", ".join(f"{count} {label}" for label, count in found)
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
