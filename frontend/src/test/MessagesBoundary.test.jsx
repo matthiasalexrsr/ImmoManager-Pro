@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Messages from '../pages/Messages';
@@ -90,7 +90,8 @@ it('prevents duplicate sends while keeping a failed draft editable', async () =>
 
 it('aborts the previous read and ignores its late failure after selecting B', async () => {
   reads.a = deferred(); reads.b = deferred(); await open(); choose('a');
-  const firstSignal = api.get.mock.calls[0][1].signal;
+  await waitFor(() => expect(api.get.mock.calls.some(([url]) => url.startsWith('/messages/threads/a/page?'))).toBe(true));
+  const firstSignal = api.get.mock.calls.find(([url]) => url.startsWith('/messages/threads/a/page?'))[1].signal;
   choose('b'); expect(firstSignal.aborted).toBe(true);
   await act(async () => reads.b.resolve([message('b', 'B bleibt sichtbar')]));
   await act(async () => reads.a.reject(new Error('Alter A-Fehler')));
@@ -137,33 +138,42 @@ it('reconciles an uncertain send with its exact original key and preserves later
 });
 
 it('keeps cursor pages bounded and can return to the exact newer page', async () => {
-  api.get.mockResolvedValueOnce({ items: [message('a', 'Neueste Seite')], next_cursor: 'older-a', total: 101 })
-    .mockResolvedValueOnce({ items: [message('a', 'Älteste Seite')], next_cursor: null, total: 101 })
-    .mockResolvedValueOnce({ items: [message('a', 'Neueste Seite')], next_cursor: 'older-a', total: 101 });
+  api.get.mockImplementation(url => url.includes('cursor=older-a')
+    ? Promise.resolve({ items: [message('a', 'Älteste Seite')], next_cursor: null, total: 101 })
+    : Promise.resolve({ items: [message('a', 'Neueste Seite')], next_cursor: 'older-a', total: 101 }));
   await open(); choose('a'); await screen.findByText('Neueste Seite');
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Bleibender Entwurf' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ältere Nachrichten' }));
   expect(await screen.findByText('Älteste Seite')).toBeInTheDocument();
   expect(screen.queryByText('Neueste Seite')).not.toBeInTheDocument();
-  expect(api.get.mock.calls[1][0]).toContain('cursor=older-a');
+  const pageCalls = api.get.mock.calls.filter(([url]) => url.startsWith('/messages/threads/a/page?'));
+  expect(pageCalls[1][0]).toContain('cursor=older-a');
   expect(screen.getByRole('textbox')).toHaveValue('Bleibender Entwurf');
   fireEvent.click(screen.getByRole('button', { name: 'Neuere Nachrichten' }));
   expect(await screen.findByText('Neueste Seite')).toBeInTheDocument();
   expect(screen.queryByText('Älteste Seite')).not.toBeInTheDocument();
-  expect(api.get.mock.calls[2][0]).not.toContain('cursor=');
+  const finalPageCalls = api.get.mock.calls.filter(([url]) => url.startsWith('/messages/threads/a/page?'));
+  expect(finalPageCalls[2][0]).not.toContain('cursor=');
 });
 
 it('retries a failed older page without pretending the thread is empty', async () => {
-  api.get.mockResolvedValueOnce({ items: [message('a', 'Aktuell')], next_cursor: 'continue-a' })
-    .mockRejectedValueOnce(new Error('Seitenausfall'))
-    .mockResolvedValueOnce({ items: [message('a', 'Älterer Inhalt')], next_cursor: null });
+  let olderAttempts = 0;
+  api.get.mockImplementation(url => {
+    if (!url.includes('cursor=continue-a')) return Promise.resolve({
+      items: [message('a', 'Aktuell')], next_cursor: 'continue-a',
+    });
+    olderAttempts += 1;
+    if (olderAttempts === 1) return Promise.reject(new Error('Seitenausfall'));
+    return Promise.resolve({ items: [message('a', 'Älterer Inhalt')], next_cursor: null });
+  });
   await open(); choose('a'); await screen.findByText('Aktuell');
   fireEvent.click(screen.getByRole('button', { name: 'Ältere Nachrichten' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Seitenausfall');
   expect(screen.queryByText(/Noch keine Nachrichten/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Nachrichten erneut laden' }));
   expect(await screen.findByText('Älterer Inhalt')).toBeInTheDocument();
-  expect(api.get.mock.calls[1][0]).toBe(api.get.mock.calls[2][0]);
+  const pageCalls = api.get.mock.calls.filter(([url]) => url.startsWith('/messages/threads/a/page?'));
+  expect(pageCalls[1][0]).toBe(pageCalls[2][0]);
 });
 
 it('refuses cross-thread rows even if a transport returns success', async () => {
