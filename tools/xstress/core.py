@@ -58,6 +58,7 @@ def isolated_env(directory: Path, *, secret: str, persistent: bool = True) -> di
             "INTEGRATION_STATE_FILE": str(directory / "integrations.json"),
             "LOG_FILE": str(directory / "application.log"), "AI_CACHE_DIR": str(directory / "ai-cache"),
             "JWT_SECRET_KEY": secret, "ENVIRONMENT": "production", "IMMO_TESTVERSION": "false",
+            "BACKUP_PASSPHRASE": secret,
             "RATE_LIMIT_ENABLED": "false", "AUTO_SEED_DEMO_DATA": "false", "AUTO_MIGRATE": "false",
             "SQLITE_PERSISTENT_STORE": str(persistent).lower(),
             "ALLOW_INMEMORY_FALLBACK": str(not persistent).lower(),

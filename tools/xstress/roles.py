@@ -127,6 +127,11 @@ def matrix(users: dict[str, Client], f: Findings) -> None:
             elif not allowed and should:
                 f.add("RECHTE", "Rechte", f"Rolle „{role}“ darf „{action}“ nicht, sollte es aber ({status})")
             elif should and status >= 400 and action != "Backup wiederherstellen":
+                # Authorization succeeded; private bank originals intentionally
+                # require the complete backup, verified by the save/load phase.
+                message = content.get('error', {}).get('message', '') if isinstance(content, dict) else ''
+                if action == 'Daten exportieren' and status == 409 and 'vollständige Sicherung' in message and 'JSON' in message:
+                    continue
                 f.add("FALSCH", "Rechte", f"Erlaubte Aktion „{action}“ für „{role}“ schlägt fehl ({status})", content)
     owner, verwalter = users["owner"], users["verwalter"]
     # nobody may raise their own role

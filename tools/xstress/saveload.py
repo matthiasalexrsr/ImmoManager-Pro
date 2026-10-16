@@ -91,7 +91,21 @@ def hard_kill(server: Server, users: dict[str, Client], f: Findings, account_id:
 
 def export_import(server: Server, users: dict[str, Client], f: Findings) -> None:
     owner = users["owner"]
-    status, raw = owner.call("GET", "/data/export", raw=True, area="Export")
+    status, raw = owner.call("GET", "/data/export", raw=True, expect=(200, 409), area="Export")
+    if status == 409:
+        # Private evidence requires the full archive. Accept only the specific
+        # documented guard, then exercise its supported replacement explicitly.
+        error = json.loads(raw).get('error', {}).get('message', '')
+        if not f.check('vollständige Sicherung' in error and 'JSON' in error, 'FALSCH', 'Export',
+                       'Unerwarteter Exportkonflikt statt Vollbackup-Hinweis', error):
+            return
+        before = fingerprint(owner)
+        backup = owner.ok('POST', '/admin/operations/backup', {}, area='Vollsicherung')
+        probe = owner.ok('POST', '/admin/operations/restore-probe', {}, area='Vollsicherung prüfen') if backup else None
+        f.check(bool(probe and probe.get('ok') and probe.get('readiness') == 'data_verified'),
+                'KRITISCH', 'Vollsicherung', 'Bank-/Schnittstellenbestand nicht vollständig wiederherstellbar', probe)
+        compare(f, before, fingerprint(owner), 'Vollsicherung und isolierte Wiederherstellungsprobe')
+        return
     if status != 200:
         return
     before = fingerprint(owner)

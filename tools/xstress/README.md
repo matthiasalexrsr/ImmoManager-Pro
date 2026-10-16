@@ -36,6 +36,15 @@ Der Exitcode ist 1 bei jedem Befund außer `HINWEIS`, sonst 0. Ein gespeicherter
 allein bedeutet deshalb keinen erfolgreichen Test. Metadaten nennen System,
 Python-Version, CPU, Datenbank, ausgelassene Phasen und gemessenen Umfang.
 
+Der Persistenzvergleich liest ausschließlich die markierte eigene SQLite-Testdatenbank
+in einer schreibgeschützten Transaktion und vergleicht auch Bankoriginale und private
+Schnittstellennachweise anhand ihrer Hashes. Personenbezogene Nutzdaten und Schlüssel
+werden dabei nicht in den Prüfbericht ausgegeben. Der öffentliche JSON-Export darf
+solche Bestände weiterhin mit 409 und Vollbackup-Hinweis ablehnen. In diesem Fall prüft
+der Stresstest ausdrücklich das vollständige Archiv und seine isolierte Wiederherstellung;
+eine beliebige andere Exportablehnung gilt weiterhin als Fehler. Die Sicherung verwendet
+eine nur für die synthetische Testinstallation erzeugte Passphrase.
+
 Unter Windows startet der Prozess verborgen und zunächst angehalten, wird einem
 eigenen Job zugeordnet und erst danach fortgesetzt. Dadurch gehören auch Python-
 Launcher-Kinder zu diesem Job. Normaler und harter Abbruch beenden und prüfen den

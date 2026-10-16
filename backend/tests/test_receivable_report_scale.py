@@ -2,14 +2,18 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import create_engine, event, insert
 from sqlalchemy.orm import Session
 
 from backend.db import schema_state
-from backend.db.orm_models import ReceivableORM
-from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
+from backend.db.orm_models import BookingORM, ReceivableORM
+from backend.models import AccountCreate, ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.repositories import SQLAlchemyStore
 from backend.services import report_service
+from backend.services.portfolio_scope import AccessScope, scope_context
+from backend.services.receivable_residuals import cash_reserved
+from backend.storage import NotFoundError
 
 
 def test_summary_and_full_aging_keep_exact_legacy_balances_without_per_claim_parent_queries(tmp_path):
@@ -54,5 +58,39 @@ def test_summary_and_full_aging_keep_exact_legacy_balances_without_per_claim_par
             # This checks the externally measurable cost, not a particular
             # cache representation. A parent lookup per claim exceeded 1500.
             assert len(reads) < 80, f'{len(reads)} SQL reads for 501 claims'
+    finally:
+        engine.dispose()
+
+
+def test_cash_reservation_validates_all_sources_with_bounded_sql_round_trips(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'cash-history.db'}")
+    schema_state.initialise_empty(engine)
+    try:
+        with Session(engine) as session:
+            store = SQLAlchemyStore(session)
+            portfolio = store.create_portfolio(PortfolioCreate(name='Zahlungshistorie'))
+            account = store.create_account(AccountCreate(portfolio_id=portfolio.id, name='Bank', account_type='bank'))
+            rows = [{'id': f'cash-{index:04d}', 'account_id': account.id, 'booking_date': date(2026, 1, 1),
+                     'amount': Decimal('100.17'), 'status': 'booked'} for index in range(1001)]
+            session.execute(insert(BookingORM), rows)
+            session.commit()
+            reads = []
+            def count_reads(_conn, _cursor, statement, _parameters, _context, _many):
+                if statement.lstrip().upper().startswith('SELECT'):
+                    reads.append(statement)
+            event.listen(engine, 'before_cursor_execute', count_reads)
+            try:
+                assert cash_reserved(store, {row['id'] for row in rows}) == {}
+            finally:
+                event.remove(engine, 'before_cursor_execute', count_reads)
+            assert len(reads) <= 8, f'{len(reads)} reads for 1001 cash sources without settlement edges'
+            # Missing sources may not silently become an unreserved cash budget.
+            with pytest.raises(NotFoundError):
+                cash_reserved(store, {rows[0]['id'], 'missing-source'})
+            with scope_context(AccessScope('restricted-reader', 'readonly', False, ())):
+                with pytest.raises(NotFoundError):
+                    cash_reserved(store, {rows[0]['id']})
+            with scope_context(AccessScope('restricted-reader', 'readonly', False, (portfolio.id,))):
+                assert cash_reserved(store, {rows[0]['id']}) == {}
     finally:
         engine.dispose()

@@ -87,10 +87,31 @@ def cash_reserved(store, booking_ids=None):
     wanted = set(booking_ids) if booking_ids is not None else {b.id for b in store.list_bookings()}
     rows = Rows.reading(store)
     source_ids = set(wanted)
-    for key in wanted:
-        booking = store.get_booking(key)
-        if booking.reverses_booking_id:
-            source_ids.add(booking.reverses_booking_id)
+    if hasattr(store, 'db'):
+        from sqlalchemy import select
+
+        from ..db.orm_models import BookingORM
+        from ..storage import NotFoundError
+        from .portfolio_scope import scoped_clause
+
+        # Validate every requested source under the current portfolio boundary,
+        # without a separate SQL round trip for each cash row in a report.
+        parents: dict[str, str | None] = {}
+        keys = sorted(wanted)
+        for start in range(0, len(keys), 500):
+            query = select(BookingORM.id, BookingORM.reverses_booking_id).where(BookingORM.id.in_(keys[start:start + 500]))
+            boundary = scoped_clause(BookingORM)
+            if boundary is not None:
+                query = query.where(boundary)
+            parents.update(dict(store.db.execute(query).all()))
+        if wanted - parents.keys():
+            raise NotFoundError('Buchung nicht gefunden')
+        source_ids.update(parent for parent in parents.values() if parent)
+    else:
+        for key in wanted:
+            booking = store.get_booking(key)
+            if booking.reverses_booking_id:
+                source_ids.add(booking.reverses_booking_id)
     from .portfolio_scope import scope_context
     # Only authorized source IDs cross this boundary, and only their amounts return.
     with scope_context(None):

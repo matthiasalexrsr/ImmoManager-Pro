@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
+import subprocess
+import sys
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from .core import Client, Findings
+from .core import REPO, Client, Findings
 from .ledger import due_until, money, step_on
 from .timeline import Simulation
 
@@ -113,28 +114,28 @@ def run_checks(sim: Simulation, as_of: date) -> None:
 
 def counts(client: Client) -> dict:
     """Number of records per entity (enough to see whether an import wrote anything)."""
-    entities = client.ok("GET", "/data/export", area="Speichern") or {}
-    return {k: len(v) for k, v in entities.items() if isinstance(v, list)}
+    return _fixture_fingerprint(client)['counts']
+
+
+def _fixture_fingerprint(client: Client) -> dict:
+    result = subprocess.run([sys.executable, '-m', 'tools.xstress.fixture_snapshot', str(client.server.dir)],
+                            cwd=REPO, env=client.server.env(), capture_output=True, text=True, timeout=90,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    if result.returncode:
+        raise RuntimeError('Owned database fingerprint failed: ' + result.stderr[-800:])
+    return json.loads(result.stdout)
 
 
 def fingerprint(client: Client) -> dict:
     """Everything that must survive a restart, an export/import or a backup/restore."""
-    entities = client.ok("GET", "/data/export", area="Speichern") or {}
-    counts = {k: len(v) for k, v in entities.items() if isinstance(v, list)}
-    digest = {}
-    for name, rows in entities.items():
-        if not isinstance(rows, list):
-            continue
-        canon = sorted(json.dumps({k: v for k, v in r.items() if k not in ("updated_at",)}, sort_keys=True, default=str)
-                       for r in rows if isinstance(r, dict))
-        digest[name] = hashlib.sha256("\n".join(canon).encode()).hexdigest()[:16]
+    stored = _fixture_fingerprint(client)
     accounts = {}
     for tenant in client.all("/tenants", area="Speichern")[:60]:
         acc = client.ok("GET", f"/tenants/{tenant['id']}/account", area="Speichern") or {}
         accounts[tenant["id"]] = (acc.get("paid_total"), [(r["contract_number"], r["expected"], r["paid"])
                                                           for r in acc.get("contracts", [])])
     rents = client.ok("GET", "/contracts/current-rents", area="Speichern") or {}
-    return {"counts": counts, "digest": digest, "accounts": accounts, "rents": rents,
+    return {**stored, "accounts": accounts, "rents": rents,
             "review": (client.ok("GET", "/review", area="Speichern") or {}).get("count")}
 
 
