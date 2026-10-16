@@ -47,6 +47,16 @@ def isolated_private_memory_families(monkeypatch):
     if not hasattr(store, 'db'):
         monkeypatch.setitem(store.__dict__, '_integration_connections', {})
     yield
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item, nextitem):
+    # Run after ALL fixture finalizers, including monkeypatch restoration.
+    # A module's cleanup fixture can itself perform legacy read queries; the
+    # function fixture above may finalize before that fixture does.
+    yield
+    from backend import dependencies
+
     # Direct service/router tests can leave a read-only legacy caller Session.
     # They do not pass through request middleware. Close it at the test boundary
     # so connection-return tests measure their own requests, not a prior caller.

@@ -26,14 +26,12 @@ def bank(tmp_path, monkeypatch):
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-        from backend.db.orm_models import Base
+        from backend.db.schema_state import initialise_empty
         from backend.repositories import SQLAlchemyStore
         engine = create_engine(f"sqlite:///{(tmp_path / 'bank.db').as_posix()}")
-        Base.metadata.create_all(engine)
-        from alembic import command
-
-        from backend.db.schema_state import alembic_config
-        command.stamp(alembic_config(str(engine.url)), 'e160a1b2c301')
+        # The integrated ORM contains all current families. Stamp its actual
+        # reviewed head instead of claiming it is the old bank-only schema.
+        initialise_empty(engine)
         target = SQLAlchemyStore(cast(Session, scoped_session(sessionmaker(engine))))
     else:
         target = InMemoryStore()
