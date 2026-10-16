@@ -7,10 +7,14 @@ export default function DossierTabs({ tabs, value, onChange, children, label = '
   const keydown = event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const index = tabs.findIndex(tab => tab.key === value);
+    const controls = [...ref.current.querySelectorAll('[role="tab"]')];
+    // A URL navigation can still be pending after a click or previous key.
+    // Continue from actual keyboard focus, not that older selected prop.
+    const focused = controls.indexOf(event.target?.closest?.('[role="tab"]'));
+    const index = focused >= 0 ? focused : tabs.findIndex(tab => tab.key === value);
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
     onChange(tabs[next].key);
-    ref.current?.querySelectorAll('[role="tab"]')[next]?.focus();
+    controls[next]?.focus();
   };
   return <>
     <div className="detail-tabs" role="tablist" aria-label={label} ref={ref} onKeyDown={keydown}>
