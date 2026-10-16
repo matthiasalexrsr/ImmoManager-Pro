@@ -424,11 +424,13 @@ if __name__ == "__main__":
         # Clean exit (code 0 or None) should close the console normally.
         if exc.code:
             _pause_console()
+        raise
     except BaseException as exc:
         print(f"\nUnerwarteter Fehler:\n{exc}")
         import traceback
         traceback.print_exc()
         _pause_console()
+        raise SystemExit(1) from exc
     finally:
         if _log_fh:
             try:

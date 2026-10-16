@@ -1,5 +1,8 @@
 import os
 import runpy
+import socket
+import subprocess
+import sys
 from pathlib import Path
 
 from backend import __main__ as launcher
@@ -71,3 +74,39 @@ def test_packageless_frozen_entry_reloads_existing_config_and_keeps_explicit_ove
     assert os.environ['DATABASE_URL'] == original_database
     assert os.environ['LOG_FILE'] == explicit_log
     assert runtime_origins.ENV_FILE_ORIGINS['jwt_secret_key'] == str((directory / '.env').resolve())
+
+
+def _standalone_cli(tmp_path, *arguments):
+    # Execute the actual guard without a parent package. Its project and runtime
+    # files belong only to this fixture, even when the caller has a real .env.
+    script = tmp_path / 'bundle/backend/__main__.py'
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_bytes(Path(launcher.__file__).read_bytes())
+    data = tmp_path / 'data'
+    environment = {key: value for key, value in os.environ.items()
+                   if key.upper() in {'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'}}
+    environment.update(PYTHONPATH=str(Path(launcher.__file__).resolve().parents[1]),
+        DATA_DIR=str(data), DATABASE_URL=f'sqlite:///{(data / "app.db").as_posix()}',
+        JWT_SECRET_KEY='synthetic-cli-only-key-not-a-user-secret', ENVIRONMENT='development')
+    return subprocess.run([sys.executable, str(script), '--data-dir', str(data), '--no-browser', '--no-upgrade',
+                           *arguments], cwd=tmp_path, env=environment, capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL, timeout=30,
+                          creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+
+
+def test_standalone_cli_reports_occupied_port_as_failure(tmp_path):
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen()
+        result = _standalone_cli(tmp_path, '--port', str(listener.getsockname()[1]))
+    assert 'bereits belegt' in result.stdout
+    assert result.returncode == 1
+
+
+def test_standalone_cli_reports_unreadable_configuration_as_failure(tmp_path):
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    (bundle / '.env').write_bytes(b'BROKEN=\xff\xfe')
+    result = _standalone_cli(tmp_path)
+    assert 'Unerwarteter Fehler' in result.stdout
+    assert result.returncode == 1
