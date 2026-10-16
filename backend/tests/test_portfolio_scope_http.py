@@ -295,9 +295,27 @@ def test_figures_are_those_of_an_installation_without_the_other_portfolio(client
     concurrency.note_change()
     alone = _answers(client, owner)
     steady = _answers(client, owner)
+    staff_alone = _answers(client, staff)
+    staff_steady = _answers(client, staff)
 
+    # Private integration/communication workspaces are user-owned,
+    # permission-dependent projections, not portfolio-wide owner totals.
+    # Compare the SAME restricted account before/after removing South;
+    # comparing staff's personal rows against the owner's would incorrectly
+    # demand that unrelated users share encrypted private records.
+    personal = {
+        "/api/v1/integration-connections",
+        "/api/v1/integration-connections/catalog",
+        "/api/v1/messages/communication",
+        "/api/v1/notifications/inbox",
+        "/api/v1/teha/connections",
+    }
     differing = [path for path in restricted
-                 if path in alone and alone[path] == steady[path] and restricted[path] != alone[path]]
+                 if ((path in personal and path in staff_alone
+                      and staff_alone[path] == staff_steady.get(path)
+                      and restricted[path] != staff_alone[path])
+                     or (path not in personal and path in alone
+                         and alone[path] == steady[path] and restricted[path] != alone[path]))]
     for path in differing:
         a, b = restricted[path], alone[path]
         if isinstance(a, dict):

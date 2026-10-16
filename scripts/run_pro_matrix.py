@@ -20,6 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
+    # Windows PowerShell often exposes cp1252 stdout even when the child
+    # pytest process uses UTF-8. Diagnostic arrows and names from German
+    # source files must never crash the QA launcher before result.json is
+    # finalized; keep the original UTF-8 bytes in pytest.log.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend', choices=('memory', 'sql', 'native'), default='memory')
     parser.add_argument('--label', default='messages')
@@ -32,16 +38,23 @@ def main() -> int:
         parser.error('label must be alphanumeric')
     output = ROOT / 'artifacts' / 'pro-tests' / f'{options.label}-{options.backend}-{uuid4().hex}'
     output.mkdir(parents=True)
+    # Test evidence and runtime data have DIFFERENT owned directories.
+    # Long QA labels push Windows upload and invoice paths past MAX_PATH,
+    # causing synthetic file writes to fail before the product is exercised.
+    # Keep evidence verbose, but randomize the actual runtime below a short
+    # fixed path, without reaching the user's desktop or active installation.
+    runtime = ROOT / 'artifacts' / 'r' / uuid4().hex[:12]
+    runtime.mkdir(parents=True, exist_ok=False)
     environment = dict(os.environ)
     for key in ('JWT_SECRET_KEY', 'SECRET_KEYS', 'SECRET_KEY', 'SECRET_PASSPHRASE', 'IMMO_TEST_POSTGRES_ADMIN_URL'):
         environment.pop(key, None)
-    environment.update(DATA_DIR=str(output), UPLOADS_DIR=str(output / 'uploads'), BACKUP_DIR=str(output / 'backups'),
-                       INTEGRATION_STATE_FILE=str(output / 'integrations.json'), SECRET_KEY_FILE=str(output / 'keyring.json'),
+    environment.update(DATA_DIR=str(runtime), UPLOADS_DIR=str(runtime / 'uploads'), BACKUP_DIR=str(runtime / 'backups'),
+                       INTEGRATION_STATE_FILE=str(runtime / 'integrations.json'), SECRET_KEY_FILE=str(runtime / 'keyring.json'),
                        ENVIRONMENT='development', JOB_SCHEDULER_ENABLED='false', BACKUP_SCHEDULE_ENABLED='false',
                        TEST_STORE_BACKEND='memory' if options.backend == 'memory' else 'sql',
                        SQLITE_PERSISTENT_STORE='false' if options.backend == 'memory' else 'true',
                        ALLOW_INMEMORY_FALLBACK='true' if options.backend == 'memory' else 'false',
-                       DATABASE_URL='sqlite:///:memory:' if options.backend == 'memory' else f'sqlite:///{(output / "test.db").as_posix()}',
+                       DATABASE_URL='sqlite:///:memory:' if options.backend == 'memory' else f'sqlite:///{(runtime / "test.db").as_posix()}',
                        PYTHONPATH=str(ROOT), PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     if options.coverage:
         environment['COVERAGE_FILE'] = str(output / '.coverage')
@@ -50,7 +63,9 @@ def main() -> int:
     hashes = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths
               if (ROOT / path).is_file() and (path.startswith('backend/') or path.startswith('frontend/src/'))}
     report = {'commit': head, 'backend': options.backend, 'tests': options.tests,
-              'source_hashes': hashes, 'runtime': str(output), 'exit_code': None}
+              'source_hashes': hashes, 'runtime': str(runtime), 'evidence': str(output),
+              'launcher_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              'runtime_short_path': True, 'exit_code': None}
     (output / 'input.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print('QA_DIRECTORY=' + str(output), flush=True)
     print('QA_HEAD=' + head + ' BACKEND=' + options.backend, flush=True)
