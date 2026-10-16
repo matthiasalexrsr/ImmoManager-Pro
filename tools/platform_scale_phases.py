@@ -117,7 +117,7 @@ def run_platform(run):
         job = jobs.enqueue("platform.scale.backup", "platform-scale-backup")
         require(jobs.enqueue("platform.scale.backup", "platform-scale-backup").id == job.id, "Duplicate backup job")
         job = JobRunner(jobs, {"platform.scale.backup": backup}).run_one()
-        require(job.status == "completed", "Persistent backup job did not complete")
+        require(job.status == "succeeded", "Persistent backup job did not succeed: " + str(job.last_error))
         result["job"] = {"expected_ids": [job.id], "writes_acknowledged": 1, "writes_verified": 1}
     finally:
         engine.dispose()
