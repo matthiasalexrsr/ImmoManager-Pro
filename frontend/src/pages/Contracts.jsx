@@ -33,7 +33,7 @@ function remainingDays(endDate) {
 const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
 
 export default function Contracts() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
@@ -106,7 +106,7 @@ export default function Contracts() {
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  const enriched = contracts.map(c => {
+  const enriched = contracts.filter(c => !params.get('contract_id') || c.id === params.get('contract_id')).map(c => {
     const unit = unitMap[c.unit_id];
     const remaining = remainingDays(c.end_date);
     return {
@@ -250,6 +250,7 @@ export default function Contracts() {
   return (
     <div className="page">
       <h1 className="page-title">{t('tenantsContracts.contracts.title') || 'Verträge'}</h1>
+      {params.get('contract_id') && <p>Vertragsquelle des Finanzberichts <button type="button" onClick={() => setParams({})}>Alle Verträge anzeigen</button></p>}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
         {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
         <button className="btn btn-secondary btn-sm" onClick={retry} disabled={loading}>Erneut laden</button>

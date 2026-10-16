@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import { useTranslation } from '../i18n';
@@ -17,6 +18,7 @@ const PAGE = 50;
 
 /** Every deposit file the account may see, with what was received and where it stands; all counted, paged. */
 export default function Deposits({ service = depositService }) {
+  const [params] = useSearchParams();
   const { locale } = useTranslation();
   const say = useCallback((key, params) => depositText(locale, key, params), [locale]);
   const auth = useAuth();
@@ -29,7 +31,7 @@ export default function Deposits({ service = depositService }) {
   const [skip, setSkip] = useState(0);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(() => params.get('deposit_id'));
   const [contractId, setContractId] = useState('');
   const [contractDialog, setContractDialog] = useState(null);
   const [attempt, setAttempt] = useState(0);

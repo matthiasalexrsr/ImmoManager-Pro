@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import literal_column
+from sqlalchemy import literal_column, select
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import Base
@@ -134,6 +134,12 @@ class BaseRepository:
 
     @safe_db_operation("patch")
     def patch(self, entity_id: str, data: PydanticBaseModel) -> Any:
+        if self.orm_class.__tablename__ == "receivables":
+            from ..services.receivable_residuals import ensure_claim_unchanged
+            from .sql_store import SQLAlchemyStore
+            identifier_column = self.orm_class.__table__.c.id
+            self.db.scalar(select(identifier_column).where(identifier_column == entity_id).with_for_update())
+            ensure_claim_unchanged(SQLAlchemyStore(self.db), entity_id, data.model_dump(exclude_unset=True))
         orm_obj = self.db.get(self.orm_class, entity_id)
         if orm_obj is None:
             raise NotFoundError(self.not_found_msg)

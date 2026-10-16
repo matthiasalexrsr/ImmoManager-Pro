@@ -43,7 +43,7 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 6: dunning cases, letters, outbox, replies, blocks, disputes, settings (likewise)
 # 7: deposit file: instalments, payments, interest rates, settlements (likewise)
 # 8: shared conversation notes, reversible commands and document intake (likewise)
-SNAPSHOT_FORMAT_VERSION = 8
+SNAPSHOT_FORMAT_VERSION = 9  # canonical receivable settlement links; private saved definitions are full-backup only
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}
@@ -254,6 +254,8 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     problems += _check_references(plan, existing)
     problems += _check_unique(plan, existing)
     problems += _check_final_statements(plan, existing)
+    from .receivable_residuals import snapshot_problems as finance_snapshot_problems
+    problems += finance_snapshot_problems(plan, existing)
     fresh_originals: list = []
     if incoming:
         after = {spec.key: {**existing.get(spec.key, {}), **{obj.id: obj for obj in objs}} for spec, objs in plan}

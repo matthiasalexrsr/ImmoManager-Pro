@@ -64,8 +64,8 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 @router.get("/summary")
 @one_at_a_time
 def get_summary(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
-                portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
-    data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+                portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, as_of: date | None = None):
+    data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id), today=as_of)
 
     if format == "csv":
         f = data["finance"]
@@ -133,10 +133,10 @@ def get_occupancy_report(format: Format = None, portfolio_id: PortfolioId = None
 @one_at_a_time
 def get_receivables_aging(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
                           portfolio_id: PortfolioId = None, property_id: PropertyId = None,
-                          unit_id: UnitId = None):
+                          unit_id: UnitId = None, as_of: date | None = None):
     """Unpaid receivables (due in the period, if given) by days past due; credits apart."""
     data = report_service.compute_receivables_aging(
-        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id), today=as_of)
 
     if format == "csv":
         b = data["buckets"]
@@ -384,12 +384,15 @@ def liquidity_forecast(
 def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: DateTo = None,
                       portfolio_id: PortfolioId = None, property_id: PropertyId = None,
                       unit_id: UnitId = None,
-                      months: Annotated[int | None, Query(ge=1, le=120)] = None):
+                      months: Annotated[int | None, Query(ge=1, le=120)] = None, as_of: date | None = None):
     """Export the same filtered figures as JSON, with complete, wrapping PDF content."""
     from ..services.report_render import REPORT_TITLES, render_report_pdf
 
-    if report_name not in REPORT_TITLES:
-        raise HTTPException(400, f"Ungültiger Report. Erlaubt: {', '.join(REPORT_TITLES)}")
+    allowed = set(REPORT_TITLES) - {"performance-period-v2", "liquidity-v2"}
+    if report_name not in allowed:
+        raise HTTPException(400, f"Ungültiger Report. Erlaubt: {', '.join(sorted(allowed))}. Berichte v2 benötigen eine gespeicherte oder übergebene Definition.")
+    if as_of is not None and report_name not in ("summary", "receivables-aging"):
+        raise HTTPException(422, "Der Stichtag gilt hier nur für Forderungsreste und die Zusammenfassung.")
     flt = _filter(date_from, date_to, portfolio_id, property_id, unit_id)
     if months is not None and report_name != "cashflow":
         raise HTTPException(422, "Monatsanzahl gilt nur für die Zahlungsübersicht")
@@ -407,7 +410,16 @@ def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: Dat
             "receivables-aging": report_service.compute_receivables_aging,
             "period-result": report_service.compute_period_result,
         }[report_name]
-        data = compute(store, flt)
+        if report_name == "summary":
+            data = report_service.compute_summary(store, flt, today=as_of)
+        elif report_name == "receivables-aging":
+            data = report_service.compute_receivables_aging(store, flt, today=as_of)
+        else:
+            data = compute(store, flt)
+    if report_name == "receivables-aging":
+        data = {**data, "Forderungsreste": [{"Forderung": r["receivable_id"], "Rest": r["residual"],
+                "Altbestand ungeklärt": "Ja" if r["unresolved_legacy"] else "Nein"} for r in data.get("residuals", [])]}
+        data.pop("residuals", None)
 
     # Resolve labels through the same scoped store as the report. Never expose names
     # from an unfiltered lookup when a requested id is outside this user's access.

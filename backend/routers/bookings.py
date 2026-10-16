@@ -188,11 +188,13 @@ def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
 @router.delete("/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_booking(booking_id: str) -> None:
     try:
-        store.get_booking(booking_id)
-        protect_bank_booking(store, booking_id)
-        if store.list_booking_reversals(booking_id) or _deposit_linked(booking_id):   # the guard names them
-            ensure_deletable(store, "booking", booking_id)
-        ensure_booking_unallocated(store, booking_id)       # it pays an invoice
-        store.delete_booking(booking_id)
+        with booking_write(store, booking_id=booking_id) as target:
+            target.get_booking(booking_id)
+            protect_bank_booking(target, booking_id)
+            from ..services.payment_allocations import ensure_allocations_visible
+            ensure_allocations_visible(target, booking_id)
+            ensure_deletable(target, "booking", booking_id)
+            ensure_booking_unallocated(target, booking_id)
+            target.delete_booking(booking_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

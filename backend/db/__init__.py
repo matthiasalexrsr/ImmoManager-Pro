@@ -5,6 +5,7 @@ from . import (
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)
     dunning_models,  # noqa: F401  (dunning: cases, letters, outbox, replies)
+    finance_models,  # noqa: F401 (existing-money settlement links and report definitions)
     integration_attempt_models,  # noqa: F401  (private attempt and cursor receipts)
     integration_connection_models,  # noqa: F401 (private connections, mappings, runs and source receipts)
     invoice_review_models,  # noqa: F401  (review of existing invoices: history, transfers, settings)

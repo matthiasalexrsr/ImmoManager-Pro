@@ -22,7 +22,7 @@ from urllib.parse import quote
 
 from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
 from ..domain.money import money as _money
-from .payment_allocations import credited_by_tenant, deposit_shares
+from .payment_allocations import credited_by_tenant, non_rent_shares
 from .read_cache import CachedReads
 from .rent_history import charge_for, rent_steps
 
@@ -151,7 +151,7 @@ def review_items(store: Any, today: date) -> list[dict]:
     for rows in credited_by_tenant(store, bookings=bookings).values():
         for booking, _, amount in rows:
             credited[booking.id] = credited.get(booking.id, Decimal("0")) + amount
-    for booking_id, share in deposit_shares(store).items():     # a deposit receipt or payout is assigned
+    for booking_id, share in non_rent_shares(store, [b.id for b in bookings]).items():
         credited[booking_id] = credited.get(booking_id, Decimal("0")) + share
     # a reversal is decided with the booking it cancels: their rests and amounts add up
     reversed_amount: dict[str, Decimal] = {}

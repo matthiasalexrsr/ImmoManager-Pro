@@ -112,8 +112,15 @@ def apply_payments(claims: Iterable[Claim], payments: Iterable[Payment]) -> tupl
     remaining = {claim.key: money(claim.amount) for claim in ordered}
     reductions: dict[str, list[tuple[date, Decimal]]] = {claim.key: [] for claim in ordered}
     unapplied = ZERO
-    for payment in sorted(payments, key=lambda p: (p.day, p.claim_key is None)):
+    for payment in sorted(payments, key=lambda p: (p.day, p.claim_key is None, p.amount < 0)):
         left = money(payment.amount)
+        if left < 0 and payment.claim_key in remaining:
+            # A dated, claim-specific return restores the previously settled principal.
+            claim = next(c for c in ordered if c.key == payment.claim_key)
+            restored = min(-left, money(claim.amount) - remaining[claim.key])
+            remaining[claim.key] += restored
+            reductions[claim.key].append((payment.day, -restored))
+            continue
         if left <= 0:
             continue
         for claim in ordered:

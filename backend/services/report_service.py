@@ -25,7 +25,6 @@ from typing import Any
 from ..domain.lease_engine import LeaseEngine
 from ..domain.money import ZERO, as_number, cents, money, money_sum
 from ..domain.occupancy import NON_BILLABLE_STATUSES, unit_statuses_on
-from ..domain.receivables import is_open_credit, is_overdue_debt, is_unpaid_debt
 from .finance_ledger import (
     BookingTotal,
     Dimensions,
@@ -134,9 +133,12 @@ def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | 
     today = today or date.today()
     dims = Dimensions(store, flt)
     receivables = _receivables(store, flt)
-    open_receivables = money_sum(r.amount_due for r in receivables if is_unpaid_debt(r))
-    overdue_receivables = money_sum(r.amount_due for r in receivables if is_overdue_debt(r, today))
-    open_credits = -money_sum(r.amount_due for r in receivables if is_open_credit(r))
+    from .receivable_residuals import ResidualReader
+    residual_reader = ResidualReader(store)
+    balances = {r.id: money(residual_reader.read(r, today)["residual"]) for r in receivables}
+    open_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables)
+    overdue_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables if r.due_date < today or r.status == "overdue")
+    open_credits = -money_sum(min(balances[r.id], ZERO) for r in receivables)
     total_bookings = sum((row.amount for row in booking_totals(store, flt)), ZERO)
     # invoices name a property (or nothing), never a unit
     invoices = [inv for inv in store.list_invoices()
@@ -206,18 +208,24 @@ def compute_receivables_aging(store: Any, flt: FinanceFilter | None = None,
     today = today or date.today()
     receivables = _receivables(store, flt)
     buckets = {"current": ZERO, "days1to30": ZERO, "days31to60": ZERO, "days61to90": ZERO, "days90plus": ZERO}
+    from .receivable_residuals import ResidualReader
+    residual_reader = ResidualReader(store)
+    states = {r.id: residual_reader.read(r, today) for r in receivables}
     for r in receivables:
-        if not is_unpaid_debt(r):
+        amount = money(states[r.id]["residual"])
+        if amount <= 0:
             continue
         days = (today - r.due_date).days
         bucket = ("current" if days <= 0 else "days1to30" if days <= 30 else "days31to60" if days <= 60
                   else "days61to90" if days <= 90 else "days90plus")
-        buckets[bucket] += money(r.amount_due)
-    open_credits = -money_sum(r.amount_due for r in receivables if is_open_credit(r))
+        buckets[bucket] += amount
+    open_credits = -money_sum(min(money(state["residual"]), ZERO) for state in states.values())
     return {
         "openTotal": as_number(sum(buckets.values(), ZERO)),
         "buckets": {key: as_number(value) for key, value in buckets.items()},
         "openCredits": as_number(open_credits),
+        "residuals": list(states.values()),
+        "as_of": today.isoformat(),
         "filters": flt.echo(),
     }
 

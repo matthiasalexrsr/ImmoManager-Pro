@@ -87,7 +87,7 @@ from .deposit_validation import (
 from .final_statements import FINAL_STATUSES
 from .housing_confirmation import etag
 from .housing_confirmation_validation import digest
-from .payment_allocations import contract_ledger, deposit_shares, planned_pairs, rent_amount
+from .payment_allocations import contract_ledger, non_rent_shares, planned_pairs, rent_amount
 from .rent_history import charge_for
 
 logger = logging.getLogger(__name__)
@@ -502,7 +502,7 @@ def _reallocate(unit: archive.Unit, booking: Booking) -> None:
     """Credit the booking to rent again without its deposit share (and its reversals likewise)."""
     for item in [booking, *unit.store.list_booking_reversals(booking.id)]:
         allocations = unit.store.list_payment_allocations(booking_id=item.id)
-        available = rent_amount(item, deposit_shares(unit.store, [item.id]))
+        available = rent_amount(item, non_rent_shares(unit.store, [item.id]))
         manual = [a for a in allocations if a.source == "manual"]
         if manual:
             allocated = sum((money(a.amount) for a in manual), ZERO)
@@ -525,7 +525,7 @@ def _free_amount(unit: archive.Unit, booking: Booking) -> Decimal:
     """What of the booking is neither a deposit share nor allocated to rent by hand."""
     manual = sum((money(a.amount) for a in unit.store.list_payment_allocations(booking_id=booking.id)
                   if a.source == "manual"), ZERO)
-    return rent_amount(booking, deposit_shares(unit.store, [booking.id])) - manual
+    return rent_amount(booking, non_rent_shares(unit.store, [booking.id])) - manual
 
 
 def payment_candidates(store, deposit_id: str, actor_id: str) -> dict[str, Any]:
@@ -736,7 +736,11 @@ def _open_receivables(unit: archive.Unit, contract_id: str, settlement_id: str) 
     for receivable in unit.store.list_receivables():
         if receivable.contract_id != contract_id or receivable.status not in OPEN_RECEIVABLE:
             continue
-        open_amount = money(receivable.amount_due) - _offset_before(unit, receivable.id, settlement_id)
+        from .receivable_residuals import residual
+        state = residual(unit.store, receivable, date.max)
+        if state["unresolved_legacy"]:
+            continue
+        open_amount = money(state["residual"])
         if open_amount > 0:
             found.append((receivable, open_amount))
     return sorted(found, key=lambda pair: (pair[0].due_date, pair[0].id))
@@ -1144,7 +1148,8 @@ def finalize(store, deposit_id: str, settlement_id: str, payload: FinalizeReques
             if item.kind != "receivable" or item.receivable_id is None:
                 continue
             receivable = unit.store.get_receivable(item.receivable_id)
-            settled = _offset_before(unit, receivable.id, settlement.id) + money(item.amount)
+            from .receivable_residuals import residual
+            settled = money(receivable.amount_due) - money(residual(unit.store, receivable, date.max)["residual"]) + money(item.amount)
             status = "paid" if settled >= money(receivable.amount_due) else "partial"
             _put(unit, "receivables", receivable.model_copy(update={"status": status, "updated_at": stamp}))
         # 3. a remaining claim becomes a receivable of the contract
@@ -1459,10 +1464,14 @@ def _booking_linked(store, booking_id: str) -> bool:
 
 def ensure_booking_unchanged(store, booking_id: str, changes: dict[str, Any]) -> None:
     """A booking the deposit file names keeps amount, date, account and tenant (unlink it there first)."""
-    if not _booking_linked(store, booking_id):
+    from .receivable_residuals import cash_reserved
+    deposit_linked = _booking_linked(store, booking_id)
+    if not deposit_linked and not cash_reserved(store, [booking_id]):
         return
     current = store.get_booking(booking_id)
     guarded = ("amount", "booking_date", "account_id", "tenant_id", "reverses_booking_id")
     if any(name in changes and changes[name] != getattr(current, name) for name in guarded):
+        if not deposit_linked:
+            raise _conflict("Die Buchung gehört zu einem belegten Forderungsausgleich. Betrag, Datum, Konto und Mieter bleiben erhalten; Korrekturen erfolgen durch Storno oder Rücknahme.")
         raise _conflict("Die Buchung gehört zu einer Kautionsakte. Betrag, Datum, Konto und Mieter lassen sich nur "
                         "ändern, nachdem sie dort gelöst wurde (eine abgerechnete Kaution bleibt unverändert).")

@@ -120,6 +120,8 @@ export default function Invoices() {
       options: [{ value: '', label: '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
     { key: 'invoice_date', label: 'Rechnungsdatum', type: 'date', required: true },
     { key: 'due_date', label: 'Fälligkeitsdatum', type: 'date' },
+    { key: 'performance_start', label: 'Leistung von', type: 'date' },
+    { key: 'performance_end', label: 'Leistung bis', type: 'date' },
     { key: 'net_amount', label: 'Netto (€)', type: 'number', required: true },
     { key: 'vat_rate', label: 'MwSt-Satz (%)', type: 'select',
       default: defaultVatRate,

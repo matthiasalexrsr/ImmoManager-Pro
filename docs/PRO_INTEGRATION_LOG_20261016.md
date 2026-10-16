@@ -53,3 +53,13 @@ wird durch eine grüne Bank-/Connection-Prüfung automatisch erledigt.
 Jeder neue Paket-Import wird hier ergänzt: Quellstand, Dateikonflikte,
 gemeinsamer Schemahead, reale Prüfungen nach dem Import, externe Nachweise
 und erst danach eigener Commit und Freigabestatus.
+
+## Paket 2: gemeinsame Forderungsreste und Finanzberichte v2
+
+Quelle: unveränderter Arbeitsbaum `pro-finish-finance-20261016` ab c16e0970. 31 getrackte Dateideltas und 14 neue Dateien übernommen. Die drei Konflikte in DB-Registrierung, privaten Scope-Tabellen und Buchungslöschung wurden additiv zusammengeführt. Die Löschung hält nun den bestehenden `booking_write` und prüft darin Bankoriginalschutz, sichtbare Zahlungszuordnungen, alle Fachreferenzen und Rechnungszuordnung; kein zuvor vorhandener Schutz wurde entfernt. Bankimport und Forderungsausgleich verwenden weiterhin dieselben Buchungen/Zahlungszuordnungen.
+
+Neue reine Merge-Revision `e1f0a1b2c3f2` verbindet `e1f0a1b2c3f1` mit unverändertem `e160a1b2c302`. Quellpakettests sind historische Vorprüfungen. Dieser Import ist bis zur gemeinsamen Gegenprobe ein Entwicklungscheckpoint, keine Freigabe. Finanzumfang und offene Zusatzgates bleiben in `PRO_PACKAGE_FINANCE_20261016.md` ausdrücklich dokumentiert.
+
+Integrationsprüfung nach der Zusammenführung: `bank-finance-integrated-sql-59fd04d4a8b545eb84d1f8ae35fcf7c8` bestand mit 31/31 Fällen ohne Skip in 83,52 Sekunden. Geprüft wurden die neuen Finanzorakel und Migrationen sowie Bankmatching und Bank-HTTP-Grenzen auf demselben Arbeitsstand. Ruff für das gesamte Backend und Mypy für 471 Quelldateien bestanden. Eine vorhandene Starlette/httpx-Deprecation-Warnung blieb sichtbar. Das ersetzt keine native PostgreSQL-, Browser-, Last- oder gemeinsame Endabnahme.
+
+Die neue separate Umgebung `artifacts/full-test-venv` wurde mit Basis- und FinTS-Constraints vollständig installiert (`install_exit=0`, `pip_check_exit=0`). Der tatsächliche Offline-Bibliothekstest `real-fints-library-memory-f5bc1c366d644af0b5190d6b1edfe133` bestand 1/1 in 1,06 Sekunden. Netzverbindungen sind in diesem Test ausdrücklich verboten. Dies schließt das bisher fehlende Bibliotheksgate, nicht die externe Bankabnahme.

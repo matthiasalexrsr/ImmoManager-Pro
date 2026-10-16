@@ -47,16 +47,24 @@ def _tenant_payment_rows(store: Any, tenant_ids: set[str], until: date | None):
             ids = ids.where(BookingORM.booking_date <= until)
         bookings.extend(Booking.model_validate({c.key: getattr(row, c.key) for c in BookingORM.__table__.columns})
                         for row in store.db.scalars(selected))
-        allocation_query = select(PaymentAllocationORM).where(PaymentAllocationORM.booking_id.in_(ids))
-        allocations.extend(PaymentAllocation.model_validate(
-            {c.key: getattr(row, c.key) for c in PaymentAllocationORM.__table__.columns})
-                           for row in store.db.scalars(allocation_query))
-        for booking_id, amount in store.db.execute(
-                select(DepositPaymentORM.booking_id, DepositPaymentORM.amount)
-                .where(DepositPaymentORM.booking_id.in_(ids))):
-            # Preserve deposit_shares' rounding of each stored legacy link. Rounding
-            # a SQL SUM instead changes two half-cent links from two cents to one.
-            shares[booking_id] = shares.get(booking_id, ZERO) + money(amount)
+        from .portfolio_scope import scope_context, scoped_clause
+        bounded_ids = ids
+        clause = scoped_clause(BookingORM)
+        if clause is not None:
+            bounded_ids = ids.where(clause)
+        # Source cash stays bounded; hidden target shares still consume that cash.
+        with scope_context(None):
+            allocation_query = select(PaymentAllocationORM).where(PaymentAllocationORM.booking_id.in_(bounded_ids))
+            allocations.extend(PaymentAllocation.model_validate(
+                {c.key: getattr(row, c.key) for c in PaymentAllocationORM.__table__.columns})
+                               for row in store.db.scalars(allocation_query))
+            for booking_id, amount in store.db.execute(
+                    select(DepositPaymentORM.booking_id, DepositPaymentORM.amount)
+                    .where(DepositPaymentORM.booking_id.in_(bounded_ids))):
+                shares[booking_id] = shares.get(booking_id, ZERO) + money(amount)
+    from .receivable_residuals import cash_reserved
+    for key, amount in cash_reserved(store, {b.id for b in bookings}).items():
+        shares[key] = shares.get(key, ZERO) + amount
     return bookings, allocations, shares
 
 
@@ -92,19 +100,46 @@ def deposit_shares(store: Any, booking_ids: Iterable[str] | None = None) -> dict
     lister = getattr(store, "list_deposit_payments", None)
     if lister is None:
         return {}
-    if booking_ids is not None:
-        booking_ids = list(booking_ids)
-        if not booking_ids:
-            return {}
+    booking_ids = list(booking_ids) if booking_ids is not None else [b.id for b in store.list_bookings()]
+    if not booking_ids:
+        return {}
     shares: dict[str, Decimal] = defaultdict(lambda: ZERO)
-    for link in lister(booking_ids=booking_ids):
-        shares[link.booking_id] += money(link.amount)
+    from .portfolio_scope import scope_context
+    # The caller already authorized these cash sources. Hidden deposit links still
+    # consume their budget, without exposing a hidden file's identity or fields.
+    with scope_context(None):
+        for link in lister(booking_ids=booking_ids):
+            shares[link.booking_id] += money(link.amount)
+    return dict(shares)
+
+
+def non_rent_shares(store: Any, booking_ids: Iterable[str] | None = None) -> dict[str, Decimal]:
+    """The existing deposit shares plus explicit claim settlements, never labelled as deposits."""
+    booking_ids = list(booking_ids) if booking_ids is not None else [b.id for b in store.list_bookings()]
+    shares = defaultdict(lambda: ZERO, deposit_shares(store, booking_ids))
+    from .receivable_residuals import cash_reserved
+    for key, amount in cash_reserved(store, booking_ids).items():
+        shares[key] += amount
     return dict(shares)
 
 
 def rent_amount(booking: Any, shares: dict[str, Decimal]) -> Decimal:
     """What of the booking can pay rent: its amount without the deposit share."""
     return money(booking.amount) - shares.get(booking.id, ZERO)
+
+
+def ensure_allocations_visible(store: Any, booking_id: str) -> list[Any]:
+    """A write must not replace the invisible part of a shared cash source."""
+    from fastapi import HTTPException
+
+    from .maintenance_rows import Rows
+    from .portfolio_scope import scope_context
+    visible = store.list_payment_allocations(booking_id=booking_id)
+    with scope_context(None):
+        complete = Rows.reading(store).find("payment_allocations", booking_id=booking_id)
+    if {a.id for a in visible} != {a.id for a in complete}:
+        raise HTTPException(403, "Diese Buchung enthält Zuordnungen außerhalb Ihrer Portfolios. Änderungen benötigen Zugriff auf alle betroffenen Verträge.")
+    return visible
 
 
 def _stored_pairs(store: Any, booking_id: str) -> Pairs:
@@ -115,7 +150,7 @@ def planned_pairs(store: Any, booking: Any) -> Pairs:
     """The automatic allocation of a booking by the rules (without its deposit share)."""
     if not booking.tenant_id:
         return []
-    amount = rent_amount(booking, deposit_shares(store, [booking.id]))
+    amount = rent_amount(booking, non_rent_shares(store, [booking.id]))
     if not amount:
         return []
     if booking.reverses_booking_id:
@@ -123,7 +158,7 @@ def planned_pairs(store: Any, booking: Any) -> Pairs:
             original = store.get_booking(booking.reverses_booking_id)
         except NotFoundError:
             return []
-        original_amount = rent_amount(original, deposit_shares(store, [original.id]))
+        original_amount = rent_amount(original, non_rent_shares(store, [original.id]))
         return mirror_allocation(original_amount, _stored_pairs(store, original.id), amount)
     return suggest_allocation(amount, booking.booking_date, booking.unit_id,
                               _candidates(store, booking.tenant_id, booking.booking_date))
@@ -131,7 +166,9 @@ def planned_pairs(store: Any, booking: Any) -> Pairs:
 
 def auto_allocate(store: Any, booking: Any) -> list[Any]:
     """(Re)place the automatic allocations of a booking; manual ones are left as they are."""
-    current = store.list_payment_allocations(booking_id=booking.id)
+    current = ensure_allocations_visible(store, booking.id)
+    if booking.reverses_booking_id:
+        ensure_allocations_visible(store, booking.reverses_booking_id)
     if any(a.source == "manual" for a in current):
         return current
     for allocation in current:
@@ -153,6 +190,7 @@ def reallocate_reversals(store: Any, booking: Any) -> None:
 def set_allocations(store: Any, booking_id: str, items: Iterable[tuple[str, float]]) -> list[Any]:
     """Replace a booking's allocations by hand; an empty list leaves it unassigned."""
     booking = store.get_booking(booking_id)
+    ensure_allocations_visible(store, booking_id)
     wanted = [(contract_id, money(amount)) for contract_id, amount in items if amount]
     tenant_contracts = {c.id for c in store.list_contracts() if c.tenant_id and c.tenant_id == booking.tenant_id}
     for contract_id, amount in wanted:
@@ -160,7 +198,7 @@ def set_allocations(store: Any, booking_id: str, items: Iterable[tuple[str, floa
             raise ValidationError("Zuordnen lässt sich nur an Verträge des Mieters der Buchung")
         if (amount > 0) != (money(booking.amount) > 0):
             raise ValidationError("Zuordnungen haben dasselbe Vorzeichen wie die Buchung")
-    available = rent_amount(booking, deposit_shares(store, [booking.id]))
+    available = rent_amount(booking, non_rent_shares(store, [booking.id]))
     if abs(sum((amount for _, amount in wanted), ZERO)) > abs(available):
         raise ValidationError("Die Zuordnungen übersteigen den Buchungsbetrag"
                               + (" ohne den Anteil der Kaution" if available != money(booking.amount) else ""))
@@ -176,10 +214,11 @@ def set_allocations(store: Any, booking_id: str, items: Iterable[tuple[str, floa
 def allocate_unassigned(store: Any) -> dict:
     """Allocate tenant bookings that have no allocation yet (existing data, imports)."""
     allocated_ids = {a.booking_id for a in store.list_payment_allocations()}
-    shares = deposit_shares(store)
+    bookings = store.list_bookings()
+    shares = non_rent_shares(store, [b.id for b in bookings])
     done, unclear = 0, []
     # originals first: a reversal follows the allocation of the booking it cancels
-    for booking in sorted(store.list_bookings(), key=lambda b: bool(b.reverses_booking_id)):
+    for booking in sorted(bookings, key=lambda b: bool(b.reverses_booking_id)):
         if not booking.tenant_id or booking.id in allocated_ids or not rent_amount(booking, shares):
             continue         # a booking that is all deposit pays no rent
         if auto_allocate(store, booking):
@@ -210,14 +249,18 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
         # one tenant (account page, settlement): read only their bookings and allocations
         bookings = store.list_bookings(tenant_id=next(iter(wanted)))
         booking_ids = {b.id for b in bookings}
-        allocations = store.list_payment_allocations(booking_ids=booking_ids) if booking_ids else []
+        allocations = []
     else:
         bookings = [b for b in (store.list_bookings() if bookings is None else bookings)
                     if b.tenant_id and (wanted is None or b.tenant_id in wanted)]
         booking_ids = {b.id for b in bookings}
-        allocations = store.list_payment_allocations()
+        allocations = []
     if not sql_selected:
-        shares = deposit_shares(store, booking_ids if wanted is not None else None)
+        from .maintenance_rows import Rows
+        from .portfolio_scope import scope_context
+        with scope_context(None):
+            allocations = Rows.reading(store).find("payment_allocations", booking_id=booking_ids)
+        shares = non_rent_shares(store, booking_ids)
     stored: dict[str, list[Any]] = defaultdict(list)
     for allocation in allocations:
         if allocation.booking_id in booking_ids:
@@ -355,7 +398,7 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     for booking, _, amount in credited:
         allocated[booking.id] += amount
     own_bookings = [b for b in store.list_bookings(tenant_id=tenant_id) if b.booking_date <= as_of]
-    shares = deposit_shares(store, [b.id for b in own_bookings])
+    shares = non_rent_shares(store, [b.id for b in own_bookings])
     unassigned, unassigned_total = [], ZERO
     for booking in own_bookings:
         rest = rent_amount(booking, shares) - allocated[booking.id]
@@ -367,7 +410,9 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     totals = {name: as_number(value) for name, value in sums.items()}
     totals["balance"] = as_number(sums["outstanding"] - sums["overpaid"])
     totals["unassigned"] = as_number(unassigned_total)
+    deposit_total = sum(deposit_shares(store, [b.id for b in own_bookings]).values(), ZERO)
     return {"tenant_id": tenant_id, "as_of": as_of.isoformat(), "contracts": rows, "totals": totals,
             "paid_total": as_number(sum((money(b.amount) for b in own_bookings), ZERO)),
-            "deposit_total": as_number(sum(shares.values(), ZERO)),
+            "deposit_total": as_number(deposit_total),
+            "receivable_settlement_total": as_number(sum(shares.values(), ZERO) - deposit_total),
             "unassigned": unassigned}

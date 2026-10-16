@@ -70,7 +70,7 @@ DECIDED = ("approved", "partially_approved", "rejected")
 STATUS_LABELS = {"legacy": "nicht geprüft (Bestand)", "received": "Eingang erfasst", "query": "Rückfrage",
                  "approved": "freigegeben", "partially_approved": "teilweise freigegeben", "rejected": "abgelehnt"}
 # invoice fields a decided review fixes (the old API may still change status, notes, category …)
-FIXED_AFTER_DECISION = ("supplier", "invoice_number", "invoice_date", "net_amount", "vat_amount", "gross_amount",
+FIXED_AFTER_DECISION = ("performance_start", "performance_end", "supplier", "invoice_number", "invoice_date", "net_amount", "vat_amount", "gross_amount",
                         "vat_rate", "property_id")
 
 
@@ -150,7 +150,7 @@ def _links(rows: Rows, invoice_id: str) -> Links:
     return found
 
 
-def _effective_payments(rows: Rows, invoice_ids: list[str]) -> dict[str, list[rules.Payment]]:
+def _effective_payments(rows: Rows, invoice_ids: list[str], *, as_of: date | None = None) -> dict[str, list[rules.Payment]]:
     """Invoice payments and explicitly linked contract payments, after booking reversals.
 
     Both allocation paths share each booking's remaining amount. Unlinked contract
@@ -165,7 +165,7 @@ def _effective_payments(rows: Rows, invoice_ids: list[str]) -> dict[str, list[ru
     if not booking_ids:
         return {}
     bookings = {b.id: b for b in rows.find("bookings", id=booking_ids)}
-    capacity = booking_payment_capacity(rows, booking_ids)
+    capacity = booking_payment_capacity(rows, booking_ids, as_of=as_of)
     found: dict[str, list[rules.Payment]] = defaultdict(list)
     for table, allocation, invoice_id in allocations:
         booking = bookings.get(allocation.booking_id)
@@ -212,7 +212,7 @@ def settlements(rows: Rows, invoices: Iterable[Any], today: date | None = None) 
     invoices = list(invoices)
     ids = [i.id for i in invoices]
     reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=ids)}
-    payments = _effective_payments(rows, ids)
+    payments = _effective_payments(rows, ids, as_of=today)
     credits = _credit_totals(rows, ids)
     today = today or date.today()
     return {i.id: _settle(i, reviews.get(i.id), payments.get(i.id, []), credits.get(i.id, ZERO), today)

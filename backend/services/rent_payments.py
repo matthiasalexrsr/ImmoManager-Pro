@@ -37,7 +37,7 @@ from . import document_versions as archive
 from .housing_confirmation import etag
 from .jobs.schedule import local_today
 from .maintenance_rows import Rows
-from .payment_allocations import contract_ledger, credited_by_tenant, deposit_shares
+from .payment_allocations import contract_ledger, credited_by_tenant, non_rent_shares
 from .portfolio_scope import scope_context
 from .read_cache import CachedReads
 
@@ -144,7 +144,7 @@ def _record_payment(store: Any, request: ContractPaymentRequest, actor_id: str) 
                     or allocations[0].source != "manual" or allocations[0].contract_id != contract.id
                     or money(allocations[0].amount) != money(request.amount)
                     or unit.store.list_booking_reversals(booking_id)
-                    or deposit_shares(unit.store, [booking_id]).get(booking_id, ZERO)):
+                    or non_rent_shares(unit.store, [booking_id]).get(booking_id, ZERO)):
                 raise PaymentConflict("RENT_PAYMENT_CHANGED", "Diese Zahlung wurde bereits gebucht und danach "
                                       "bearbeitet oder storniert. Bitte die aktuelle Buchung prüfen; "
                                       "es wird keine weitere Zahlung angelegt.", booking_id=booking_id)

@@ -72,6 +72,13 @@ def update_invoice(invoice_id: str, payload: InvoiceCreate) -> Invoice:
 @router.patch("/{invoice_id}", response_model=Invoice)
 def patch_invoice(invoice_id: str, payload: InvoicePatch) -> Invoice:
     try:
+        changes = payload.model_dump(exclude_unset=True)
+        if {"performance_start", "performance_end"} & changes.keys():
+            current = store.get_invoice(invoice_id)
+            start = changes.get("performance_start", current.performance_start)
+            end = changes.get("performance_end", current.performance_end)
+            if bool(start) != bool(end) or (start and end < start):
+                raise HTTPException(422, "Leistungsbeginn und Leistungsende gemeinsam und in richtiger Reihenfolge angeben.")
         ensure_invoice_change_allowed(store, invoice_id, payload.model_dump(exclude_unset=True))
         return store._patch_entity("invoice", invoice_id, payload)
     except NotFoundError as exc:

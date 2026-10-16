@@ -14,6 +14,8 @@ from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spac
 from .housing_confirmation_render import _fonts
 
 REPORT_TITLES = {
+    "performance-period-v2": "Leistungsperiodenergebnis v2",
+    "liquidity-v2": "Liquiditätsprognose v2",
     "summary": "Bestands- und Finanzübersicht",
     "finance": "Finanzen nach Kategorien",
     "occupancy": "Belegung",
@@ -22,6 +24,8 @@ REPORT_TITLES = {
     "period-result": "Periodenergebnis",
 }
 _LABELS = {
+    "as_of": "Stichtag",
+    "balance": "Kontostand", "opening_balance": "Anfangssaldo", "closing_balance": "Endsaldo",
     "totals": "Gesamtwerte", "properties": "Immobilien", "units": "Einheiten", "contracts": "Verträge",
     "finance": "Finanzen", "bookingsTotal": "Buchungen gesamt", "invoicesTotal": "Rechnungen gesamt",
     "openReceivables": "Offene Forderungen", "overdueReceivables": "Überfällige Forderungen",

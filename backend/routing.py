@@ -36,6 +36,7 @@ from .routers import (
     dunning,
     escalation,
     files,
+    finance_reports,
     handover_protocols,
     history,
     housing_confirmations,
@@ -120,6 +121,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(deposits.router, dependencies=_auth_dep)
     api_v1.include_router(notifications.router, dependencies=_auth_dep)
     api_v1.include_router(reports.router, dependencies=_auth_dep)
+    api_v1.include_router(finance_reports.router, dependencies=_auth_dep)
     api_v1.include_router(tax_rates.router, dependencies=_auth_dep)
     api_v1.include_router(rent_adjustments.router, dependencies=_auth_dep)
     api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)

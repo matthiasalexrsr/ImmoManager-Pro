@@ -9,6 +9,7 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatMoney } from '../utils/format';
 import { useSearchParams } from 'react-router-dom';
+import ReceivableSettlement from '../features/ReceivableSettlement';
 
 export default function Receivables() {
   const [params, setParams] = useSearchParams();
@@ -71,6 +72,7 @@ export default function Receivables() {
   });
 
   const COLUMNS = [
+    { key: 'residual', label: 'Belegbarer Rest', render: (_, row) => <ReceivableSettlement receivable={row} onChanged={() => store.invalidateRelated('bookings', 'receivables', 'deposits', 'contracts')} /> },
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },

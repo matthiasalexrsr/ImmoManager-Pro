@@ -276,6 +276,8 @@ class Receivable(ReceivableCreate):
 
 
 class InvoiceCreate(BaseModel):
+    performance_start: Optional[date] = None
+    performance_end: Optional[date] = None
     property_id: Optional[str] = None
     supplier: str
     invoice_date: date
@@ -286,6 +288,14 @@ class InvoiceCreate(BaseModel):
     gross_amount: float
     payment_terms: Optional[str] = None
     status: str = "open"
+
+    @model_validator(mode="after")
+    def validate_performance_period(self):
+        if bool(self.performance_start) != bool(self.performance_end):
+            raise ValueError("Leistungsbeginn und Leistungsende gemeinsam angeben")
+        if self.performance_start and self.performance_end and self.performance_end < self.performance_start:
+            raise ValueError("Der Leistungszeitraum endet vor seinem Beginn")
+        return self
 
 
 class Invoice(InvoiceCreate):
@@ -585,6 +595,8 @@ class ReceivablePatch(BaseModel):
 
 
 class InvoicePatch(BaseModel):
+    performance_start: Optional[date] = None
+    performance_end: Optional[date] = None
     property_id: Optional[str] = None
     supplier: Optional[str] = None
     invoice_date: Optional[date] = None

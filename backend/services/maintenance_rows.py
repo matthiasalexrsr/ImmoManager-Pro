@@ -50,8 +50,15 @@ PROJECT = frozenset(pm.PROJECT_TABLES + rv.REVIEW_TABLES)
 def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
     from .. import models  # the UI contract fields extend some models at import time
     from .. import models_service_contracts as sc
+    from ..db.finance_models import ReceivableSettlementORM, SavedFinanceReportORM
+    from ..db.orm_models import PaymentAllocationORM, ReceivableORM
+    from ..finance_models import SavedReport, Settlement
 
     return {
+        "receivable_settlements": (ReceivableSettlementORM, Settlement),
+        "saved_finance_reports": (SavedFinanceReportORM, SavedReport),
+        "receivables": (ReceivableORM, models.Receivable),
+        "payment_allocations": (PaymentAllocationORM, models.PaymentAllocation),
         "maintenance_work_packages": (pm.MaintenanceWorkPackageORM, mm.MaintenanceWorkPackage),
         "maintenance_dependencies": (pm.MaintenanceDependencyORM, mm.MaintenanceDependency),
         "maintenance_participants": (pm.MaintenanceParticipantORM, mm.MaintenanceParticipant),
@@ -111,6 +118,9 @@ class Rows:
         return model.model_validate({column.key: getattr(obj, column.key) for column in orm.__table__.columns})
 
     def _collection(self, table: str) -> Any:
+        if table == "saved_finance_reports":
+            # Private records: finance_reports always predicates by authenticated owner.
+            return object.__getattribute__(self.store, "_saved_finance_reports")
         return getattr(self.store, table)        # bounded for a restricted account
 
     def _raw(self) -> dict[str, Any]:
@@ -174,7 +184,7 @@ class Rows:
             self.db.add(orm(**values))
             self.db.flush()
             return record
-        self.undo.append((self._raw()[table], record.id, False, None))
+        self.undo.append((self._collection(table) if table == "saved_finance_reports" else self._raw()[table], record.id, False, None))
         self._collection(table)[record.id] = record
         return record
 

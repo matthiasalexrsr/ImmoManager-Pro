@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import DashboardWorkflow from '../components/DashboardWorkflow';
 import SetupChecklist from '../components/SetupChecklist';
 import WorkSummary from '../features/workCenter/WorkSummary';
+import FinanceReports from '../features/FinanceReports';
 import { ArrowRightIcon } from '../components/Icons';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -270,6 +271,7 @@ export default function Dashboard() {
       <button type="button" aria-pressed={dashView === 'analysis'} onClick={() => setDashView('analysis')}>Analyse</button>
     </div>
     <SetupChecklist stats={stats} ready={inventory.status === 'success'} />
+    <FinanceReports />
     <Inventory source={inventory} stats={stats} />
     {dashView === 'work' && <>
       <WorkSummary />

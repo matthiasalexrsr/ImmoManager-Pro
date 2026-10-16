@@ -93,8 +93,9 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
-    # Bank service authorizes every source through its current account before access.
+    # Each service predicates by owner/current source grants before any private read.
     "bank_imports", "bank_source_links", "bank_fints_sessions",
+    "saved_finance_reports",  # owner predicate plus current definition/source checks in finance_reports
     # Private workspace services always predicate by owner and recheck source visibility.
     "workspace_drafts", "workspace_views", "workspace_recents", "workspace_favorites",
     "workspace_view_states", "workspace_deferrals", "workspace_commands",

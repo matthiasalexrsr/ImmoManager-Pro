@@ -7,7 +7,7 @@ only amounts are returned, never the identities of hidden invoice/contract rows.
 """
 
 from dataclasses import dataclass, field
-from datetime import timezone
+from datetime import date, timezone
 from decimal import Decimal
 from typing import Iterable
 
@@ -24,7 +24,7 @@ class BookingPaymentCapacity:
     effective: dict[tuple[str, str], Decimal] = field(default_factory=dict)
 
 
-def booking_payment_capacity(rows: Rows, booking_ids: Iterable[str]) -> BookingPaymentCapacity:
+def booking_payment_capacity(rows: Rows, booking_ids: Iterable[str], *, as_of: date | None = None) -> BookingPaymentCapacity:
     ids = set(booking_ids)
     result = BookingPaymentCapacity()
     if not ids:
@@ -38,14 +38,33 @@ def booking_payment_capacity(rows: Rows, booking_ids: Iterable[str]) -> BookingP
                        for row in rows.find(table, booking_id=ids)]
     reversed_by: dict[str, Decimal] = {}
     for reversal in reversals:
+        if as_of is not None and reversal.booking_date > as_of:
+            continue
         key = reversal.reverses_booking_id
         reversed_by[key] = reversed_by.get(key, ZERO) + money(reversal.amount)
     sign = {key: Decimal(1) if money(booking.amount) < 0 else Decimal(-1)
             for key, booking in bookings.items()}
-    left = {key: (ZERO if booking.reverses_booking_id else
+    left = {key: (ZERO if booking.reverses_booking_id or (as_of is not None and booking.booking_date > as_of) else
                   max(-(money(booking.amount) + reversed_by.get(key, ZERO)) * sign[key], ZERO))
             for key, booking in bookings.items()}
     reserved = {key: ZERO for key in bookings}
+    # Explicit tenant/deposit uses reserve the same cash before supplier refunds.
+    from .payment_allocations import non_rent_shares
+    with scope_context(None):
+        tenant_reserved = non_rent_shares(rows.store, ids)
+        rent_reserved = rows.store.list_payment_allocations(booking_ids=ids)
+    for allocation in rent_reserved:
+        if allocation.source == "manual":
+            tenant_reserved[allocation.booking_id] = tenant_reserved.get(allocation.booking_id, ZERO) + money(allocation.amount)
+    for key in left:
+        reserved[key] = abs(tenant_reserved.get(key, ZERO))
+        if not bookings[key].reverses_booking_id:
+            from .receivable_residuals import cash_reserved
+            own_reversals = [b.id for b in reversals if b.reverses_booking_id == key and
+                             (as_of is None or b.booking_date <= as_of)]
+            if own_reversals:
+                reserved[key] = max(reserved[key] + sum(cash_reserved(rows.store, own_reversals).values(), ZERO), ZERO)
+        left[key] = max(left[key] - reserved[key], ZERO)
 
     def ordering(entry):
         table, row = entry
@@ -61,7 +80,7 @@ def booking_payment_capacity(rows: Rows, booking_ids: Iterable[str]) -> BookingP
         left[key] = left.get(key, ZERO) - effective
         reserved[key] = reserved.get(key, ZERO) + wanted
     for key, booking in bookings.items():
-        capacity = ZERO if booking.reverses_booking_id else max(
+        capacity = ZERO if booking.reverses_booking_id or (as_of is not None and booking.booking_date > as_of) else max(
             -(money(booking.amount) + reversed_by.get(key, ZERO)) * sign[key], ZERO)
         result.available[key] = max(capacity - reserved[key], ZERO) * sign[key]
     return result

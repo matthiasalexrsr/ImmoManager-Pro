@@ -10,6 +10,7 @@ from .business_qol_models import BusinessCommand, ConversationNote, DocumentInta
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .domain.revision_time import next_updated_at
+from .finance_models import SavedReport, Settlement
 from .invoice_review_models import InvoiceCostTransfer, InvoiceReview, InvoiceReviewEvent, InvoiceReviewSettings
 from .maintenance_models import (
     InvoicePayment,
@@ -179,6 +180,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     invoices: Dict[str, Invoice] = field(default_factory=dict)
     maintenance_cases: Dict[str, MaintenanceCase] = field(default_factory=dict)
     receivables: Dict[str, Receivable] = field(default_factory=dict)
+    receivable_settlements: Dict[str, Settlement] = field(default_factory=dict)
+    _saved_finance_reports: Dict[str, SavedReport] = field(default_factory=dict)
     tasks: Dict[str, Task] = field(default_factory=dict)
     tenants: Dict[str, Tenant] = field(default_factory=dict)
     contracts: Dict[str, Contract] = field(default_factory=dict)
@@ -710,6 +713,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
 
     @atomic_memory_update("receivables")
     def update_receivable(self, receivable_id: str, data: ReceivableCreate) -> Receivable:
+        from .services.receivable_residuals import ensure_claim_unchanged
+        ensure_claim_unchanged(self, receivable_id, data.model_dump())
         if receivable_id not in self.receivables:
             raise NotFoundError("Forderung nicht gefunden")
         if data.contract_id not in self.contracts:
@@ -1537,6 +1542,9 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             raise NotFoundError(not_found_msg)
         old = collection[entity_id]
         updates = patch.model_dump(exclude_unset=True)
+        if entity_type == "receivable":
+            from .services.receivable_residuals import ensure_claim_unchanged
+            ensure_claim_unchanged(self, entity_id, updates)
         # Validate the merged record before storing it: an invalid value must
         # not be written (it would break every later read of the collection).
         updated = type(old).model_validate(

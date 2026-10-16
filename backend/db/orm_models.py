@@ -262,6 +262,8 @@ class InvoiceORM(Base):
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     supplier: Mapped[str] = mapped_column(Text, nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    performance_start: Mapped[date | None] = mapped_column(Date)
+    performance_end: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date)
     net_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     vat_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)

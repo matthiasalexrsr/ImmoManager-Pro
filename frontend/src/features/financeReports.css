@@ -1,0 +1,9 @@
+.finance-report-workspace { display: grid; gap: 12px; min-width: 0; }
+.finance-report-workspace label { display: grid; gap: 4px; min-width: 0; }
+.finance-report-workspace input,
+.finance-report-workspace select,
+.finance-report-workspace fieldset { box-sizing: border-box; min-width: 0; max-width: 100%; }
+.finance-report-workspace fieldset { padding: 10px; }
+.finance-report-workspace td,
+.finance-report-workspace th { padding: 8px; text-align: left; }
+.finance-report-workspace li { overflow-wrap: anywhere; }

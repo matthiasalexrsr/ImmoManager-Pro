@@ -306,7 +306,7 @@ export default function Statements() {
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  const enriched = (sourceFilter === 'preflight_blockers' ? sourceRows.items : periods).map(bp => {
+  const enriched = (sourceFilter === 'preflight_blockers' ? sourceRows.items : periods).filter(bp => !params.get('period_id') || bp.id === params.get('period_id')).map(bp => {
     const costs = costItems.filter(ci => ci.billing_period_id === bp.id);
     const totalCosts = costs.reduce((s, c) => s + (c.amount || 0), 0);
     const stmts = statements.filter(s => s.billing_period_id === bp.id);

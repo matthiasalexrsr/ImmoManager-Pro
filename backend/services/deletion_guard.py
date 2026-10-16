@@ -128,6 +128,31 @@ def dependents(store: Any, entity: str, entity_id: str) -> list[tuple[str, int]]
 
 def ensure_deletable(store: Any, entity: str, entity_id: str) -> None:
     """Raise 409 naming the dependents if the entity is still referenced."""
+    if entity in ("booking", "receivable", "contract", "tenant", "unit", "property", "portfolio", "account"):
+        from .receivable_residuals import settlement_rows
+        edges = settlement_rows(store)
+        if entity == "booking":
+            booking = store.get_booking(entity_id)
+            from .maintenance_rows import Rows
+            from .portfolio_scope import scope_context
+            with scope_context(None):
+                linked = bool(Rows.reading(store).find("receivable_settlements", booking_id={entity_id, booking.reverses_booking_id} - {None}))
+        elif entity == "receivable":
+            linked = any(entity_id in (e.receivable_id, e.credit_id) for e in edges)
+        else:
+            # Parent deletion may cascade into protected evidence; resolve through visible parents.
+            linked = False
+            for edge in edges:
+                claim = store.get_receivable(edge.receivable_id)
+                contract = store.get_contract(claim.contract_id)
+                prop = store.get_property(contract.property_id)
+                values = {"contract": contract.id, "tenant": contract.tenant_id, "unit": contract.unit_id,
+                          "property": contract.property_id, "portfolio": prop.portfolio_id}
+                if entity == "account" and edge.booking_id:
+                    values["account"] = store.get_booking(edge.booking_id).account_id
+                linked |= values.get(entity) == entity_id
+        if linked:
+            raise HTTPException(409, "Der Datensatz gehört zu einem belegten Forderungsausgleich und bleibt erhalten.")
     found = dependents(store, entity, entity_id)
     if not found:
         return

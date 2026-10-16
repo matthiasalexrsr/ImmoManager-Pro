@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Iterable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.orm_models import (
@@ -182,6 +183,10 @@ class FinanceRepository:
         return self._receivables.get(receivable_id)
 
     def update_receivable(self, receivable_id: str, data: ReceivableCreate) -> Receivable:
+        from ..services.receivable_residuals import ensure_claim_unchanged
+        from .sql_store import SQLAlchemyStore
+        self.db.scalar(select(ReceivableORM.id).where(ReceivableORM.id == receivable_id).with_for_update())
+        ensure_claim_unchanged(SQLAlchemyStore(self.db), receivable_id, data.model_dump())
         tr = self._tenant_repo
         if tr and not tr._contracts.exists(data.contract_id):
             raise ValidationError("Vertrag existiert nicht")

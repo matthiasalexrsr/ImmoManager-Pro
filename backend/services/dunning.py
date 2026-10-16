@@ -121,6 +121,7 @@ MAX_PAGE = 500
 RESULT_LABELS = {"paid": "bezahlt", "partially_paid": "teilweise bezahlt", "written_off": "abgeschrieben",
                  "handed_over": "abgegeben (Inkasso/Gericht)"}
 EXCLUSION_LABELS = {
+    "legacy_partial": "Altbestand mit unbelegter Teilzahlung: vor einer Mahnung anhand der Originalbelege klären",
     "objection": "Widerspruch gegen die Nebenkostenabrechnung noch nicht entschieden",
     "dispute": "vom Mieter bestritten, noch nicht entschieden",
     "dispute_upheld": "Einwand des Mieters berechtigt",
@@ -445,17 +446,22 @@ def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | Non
             claims.append(Claim(f"rent:{line.period_start:%Y-%m}", "rent", line.due_date, money(line.total_amount),
                                 f"Miete {line.period_start:%m/%Y}"))
     receivables = _receivables_of(ctx, contract_id)
-    offsets = _deposit_offsets(ctx, contract_id)
+    from .receivable_residuals import dated_evidence
+    offsets = defaultdict(list)
+    for claim_id, day, amount, _, _ in dated_evidence(ctx.store, contract_id):
+        offsets[claim_id].append((day, amount))
     payment_date = payments_until or as_of
     charge_items = {item.receivable_id: item for item in all_items if item.kind in ("fee", "interest")
                     and item.receivable_id}
     objected = _objected_statements(ctx, {r.statement_id for r in receivables if r.statement_id})
     manual: list[dict] = []
+    unresolved_legacy = set()
     for receivable in receivables:
         # A fully offset claim remains reconstructable before its settlement date.
-        offset_total = sum((amount for _, amount in offsets.get(receivable.id, [])), ZERO)
-        if not is_unpaid_debt(receivable) and not (receivable.status == "paid" and offset_total
-                                                   >= money(receivable.amount_due) > 0):
+        if receivable.status == "partial" and not offsets.get(receivable.id):
+            unresolved_legacy.add(f"receivable:{receivable.id}")
+        if not is_unpaid_debt(receivable) and not (receivable.status == "paid" and offsets.get(receivable.id)
+                                                   and money(receivable.amount_due) > 0):
             continue
         charge = charge_items.get(receivable.id)
         if charge is not None:
@@ -471,12 +477,15 @@ def evaluate(ctx: Any, contract: Any, as_of: date, *, payments_until: date | Non
         else:
             manual.append({"key": f"receivable:{receivable.id}", "receivable_id": receivable.id,
                            "description": receivable.description or "Forderung",
-                           "due_date": receivable.due_date.isoformat(), "amount": as_number(money(receivable.amount_due)),
-                           "reason": "manual", "reason_label": EXCLUSION_LABELS["manual"]})
+                           "due_date": receivable.due_date.isoformat(), "amount": as_number(max(ZERO, money(receivable.amount_due) - sum((amount for day, amount in offsets.get(receivable.id, []) if day <= payment_date), ZERO))),
+                           "reason": "legacy_partial" if receivable.status == "partial" and not offsets.get(receivable.id) else "manual",
+                           "reason_label": EXCLUSION_LABELS["legacy_partial" if receivable.status == "partial" and not offsets.get(receivable.id) else "manual"]})
     dunnable, excluded = [], []
     for claim in claims:
         reason = None
-        if claim.key in closed_keys:
+        if claim.key in unresolved_legacy:
+            reason = "legacy_partial"
+        elif claim.key in closed_keys:
             reason = "closed_case"
         elif claim.key in disputed:
             reason = {"open": "dispute", "upheld": "dispute_upheld", "objection": "objection"}[disputed[claim.key]]
