@@ -14,6 +14,7 @@ import random
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 from .core import Client, Findings, assign_portfolios
 from .ledger import Ledger, advances_between, money, monthly_due, step_on
@@ -250,9 +251,29 @@ class Simulation:
             result = b.ok("POST", "/reports/bookings/import", {"account_id": account, "csv_content": csv}, area="Bankimport")
             if not result:
                 continue
-            self.f.check(result.get("imported") == len(rows), "FALSCH", "Bankimport",
-                         f"{result.get('imported')} von {len(rows)} Zeilen importiert", result.get("details", {}).get("errors"))
-            imported = [x["bookingId"] for x in result.get("details", {}).get("imported", [])]
+            preview = result.get('preview', {})
+            if not self.f.check(result.get('requires_confirmation') is True and result.get('imported') == 0
+                                and preview.get('error_count') == 0 and preview.get('row_count') == len(rows),
+                                'FALSCH', 'Bankimport', 'Vollständige Bankvorschau fehlt oder enthält Fehler'):
+                continue
+            confirmed = b.ok('POST', f"/bank-imports/{preview['id']}/confirm", {
+                'idempotency_key': str(uuid4()), 'confirm': True, 'base_revision': preview['revision'],
+                'preview_sha256': preview['preview_sha256']}, area='Bankimport bestätigen')
+            if not confirmed:
+                continue
+            self.f.check(confirmed.get('receipt', {}).get('created') == len(rows), 'FALSCH', 'Bankimport',
+                         'Bestätigter Bankimport hat nicht genau die erwarteten Zeilen')
+            links, offset = [], 0
+            while True:
+                page = b.ok('GET', f"/bank-imports/{preview['id']}?offset={offset}&limit=250", area='Bankimport Nachweise')
+                if not page:
+                    break
+                links.extend(page['links'])
+                if page['next_offset'] is None:
+                    break
+                offset = page['next_offset']
+            imported = [item['booking_id'] for item in links]
+            self.f.check(len(imported) == len(rows), 'FALSCH', 'Bankimport', 'Buchungsnachweise fehlen')
             for booking_id, (_, t, amount) in zip(imported, rows):
                 if self.rnd.random() < 0.1:
                     self.ledger.book(amount)    # stays open for the review list

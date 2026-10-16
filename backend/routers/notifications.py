@@ -8,6 +8,7 @@ Route ordering: static paths (/templates, /generate/*) before path params (/{not
 
 import logging
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -266,21 +267,30 @@ def list_notifications(
     notification_type: str | None = Query(None),
     severity: str | None = Query(None),
     actor: UserRead = Depends(require_auth),
-) -> list[Notification]:
-    # Compatibility list remains complete through skip/limit and personal statuses.
-    rows = []
-    offset = 0
-    while True:
-        page = personal.inbox(store, actor.id, status_filter, offset, 200)
-        rows.extend(page["items"])
-        if page["next_offset"] is None:
+) -> list[dict[str, Any]]:
+    # Keep the legacy window without constructing the entire inbox first (the
+    # dashboard asks for five). A multi-page answer uses one stable snapshot.
+    rows: list[dict[str, Any]] = []
+    offset = 0 if notification_type else skip
+    to_skip = skip if notification_type else 0
+    snapshot = None
+    while len(rows) < limit:
+        size = 200 if notification_type else min(200, limit - len(rows))
+        page = personal.inbox(store, actor.id, status_filter, offset, size, snapshot, severity)
+        for row in page['items']:
+            if notification_type and row['notification_type'] != notification_type:
+                continue
+            if to_skip:
+                to_skip -= 1
+            else:
+                rows.append(row)
+                if len(rows) == limit:
+                    break
+        if len(rows) == limit or page["next_offset"] is None:
             break
+        snapshot = page['snapshot']
         offset = page["next_offset"]
-    if notification_type:
-        rows = [r for r in rows if r["notification_type"] == notification_type]
-    if severity:
-        rows = [r for r in rows if r["severity"] == severity]
-    return rows[skip:skip + limit]
+    return rows
 
 
 

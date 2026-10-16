@@ -1,6 +1,7 @@
 """Independent daily workflows: owner isolation, complete counts, replay and rollback."""
 from datetime import datetime
 from importlib import import_module
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -127,6 +128,42 @@ def test_reader_receipts_do_not_grant_business_writes_or_foreign_receipts():
     body = command(action="read_all", snapshot=ca.get(API + "/inbox").json()["snapshot"], owner_id="foreign")
     assert ca.post(API + "/all/receipt", json=body).status_code == 422
     assert ca.get(API + "/inbox").json()["unread_count"] == 1
+
+
+def test_legacy_notification_window_only_materializes_requested_cards(monkeypatch):
+    from datetime import timedelta
+
+    from sqlalchemy import insert
+
+    from backend.db.orm_models import NotificationORM
+    from backend.services import notification_inbox
+    actor, _ = client('legacy-notice-window')
+    rows: list[dict[str, Any]] = [{'id': f'legacy-{index:04d}', 'notification_type': 'task_due' if index % 3 == 0 else 'general',
+             'title': f'Hinweis {index}', 'content': 'Quellhinweis', 'status': 'unread',
+             'severity': 'warning' if index % 2 == 0 else 'info',
+             'created_at': datetime(2026, 1, 1) + timedelta(seconds=index),
+             'updated_at': datetime(2026, 1, 1) + timedelta(seconds=index)} for index in range(601)]
+    if hasattr(store, 'db'):
+        store.db.execute(insert(NotificationORM), rows)
+        store.db.commit()
+    else:
+        from backend.models import Notification
+        store.notifications.update({row['id']: Notification.model_validate(row) for row in rows})
+    rendered = []
+    original = notification_inbox.public
+    def card(*args, **kwargs):
+        rendered.append(args[1].id)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(notification_inbox, 'public', card)
+    shown = notifications.list_notifications(skip=100, limit=5, status_filter='unread',
+        notification_type=None, severity=None, actor=actor)
+    expected = list(reversed(rows))[100:105]
+    assert [row['id'] for row in shown] == [row['id'] for row in expected]
+    assert len(rendered) <= 5
+    filtered = notifications.list_notifications(skip=3, limit=4, status_filter='unread',
+        notification_type='task_due', severity='warning', actor=actor)
+    expected_filtered = [row for row in reversed(rows) if row['notification_type'] == 'task_due' and row['severity'] == 'warning'][3:7]
+    assert [row['id'] for row in filtered] == [row['id'] for row in expected_filtered]
 
 
 def test_settings_cas_validation_replay_and_independent_users():

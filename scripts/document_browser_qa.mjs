@@ -140,7 +140,9 @@ try {
       return { html: node.outerHTML, parents, children: [...node.querySelectorAll('*')].map(details) };
     });
     const screenshot = path.join(output, 'docx-long-1440.png');
-    await page.screenshot({ path: screenshot, fullPage: true }); report.screenshots.push(screenshot);
+    // The workbench is fixed to the viewport. A full-page capture temporarily
+    // resizes the viewport and can catch the native toolbar during refitting.
+    await page.screenshot({ path: screenshot }); report.screenshots.push(screenshot);
     await dialog.getByRole('button', { name: 'Neue Fassung speichern', exact: true }).click();
     await expect(dialog.getByText('Neue unveränderliche Fassung gespeichert.', { exact: true })).toBeVisible({ timeout: 60000 });
     const source = await call('GET', `/documents/${docx.doc.id}/work/source`);
@@ -178,7 +180,7 @@ try {
           text: child.textContent.slice(0, 100), right: child.getBoundingClientRect().right })) }));
     assert.ok(report.layout[width].scroll <= report.layout[width].client + 1, 'Dialog horizontal overflow');
     const screenshot = path.join(output, `pdf-tools-${width}.png`);
-    await page.screenshot({ path: screenshot, fullPage: true }); report.screenshots.push(screenshot);
+    await page.screenshot({ path: screenshot }); report.screenshots.push(screenshot);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
   });
