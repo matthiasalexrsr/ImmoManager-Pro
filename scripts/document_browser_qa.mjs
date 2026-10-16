@@ -25,7 +25,11 @@ async function call(method, route, data) {
 }
 async function step(name, action) {
   try { await action(); report.checks.push({ name, passed: true }); }
-  catch (error) { report.checks.push({ name, passed: false, error: String(error) }); throw error; }
+  catch (error) {
+    report.checks.push({ name, passed: false, error: String(error) });
+    await page?.screenshot({ path: path.join(output, `failure-${report.checks.length}.png`) }).catch(() => {});
+    throw error;
+  }
   finally { await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2)); }
 }
 async function upload(name, property, contract, unit) {
@@ -167,7 +171,12 @@ try {
     const dialog = await openTools(pdf.doc.id);
     await expect(dialog.locator('.pdf-preview-canvas[role="img"]')).toBeVisible({ timeout: 60000 });
     await expect(dialog.getByText('Anmerkungen', { exact: true })).toBeVisible();
-    assert.ok(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1), 'Dialog horizontal overflow');
+    report.layout ??= {};
+    report.layout[width] = await dialog.evaluate(node => ({ client: node.clientWidth, scroll: node.scrollWidth,
+      overflow: [...node.querySelectorAll('*')].filter(child => child.getBoundingClientRect().right > node.getBoundingClientRect().right + 1)
+        .slice(0, 12).map(child => ({ tag: child.tagName, class: typeof child.className === 'string' ? child.className : '',
+          text: child.textContent.slice(0, 100), right: child.getBoundingClientRect().right })) }));
+    assert.ok(report.layout[width].scroll <= report.layout[width].client + 1, 'Dialog horizontal overflow');
     const screenshot = path.join(output, `pdf-tools-${width}.png`);
     await page.screenshot({ path: screenshot, fullPage: true }); report.screenshots.push(screenshot);
     await page.keyboard.press('Escape');

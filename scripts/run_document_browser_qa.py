@@ -58,6 +58,8 @@ def main():
                 result["exit_code"] = process.wait(timeout=600)
             finally:
                 stop_owned(process, job, hard=True)
+        if result['exit_code']:
+            print((output / 'browser.log').read_text(encoding='utf-8', errors='replace')[-6000:], flush=True)
     finally:
         server.stop(hard=True)
         for user in users.values():

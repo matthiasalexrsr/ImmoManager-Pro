@@ -135,7 +135,7 @@ def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | 
     receivables = _receivables(store, flt)
     from .receivable_residuals import ResidualReader
     residual_reader = ResidualReader(store)
-    balances = {r.id: money(residual_reader.read(r, today)["residual"]) for r in receivables}
+    balances = {r.id: residual_reader.balance(r, today) for r in receivables}
     open_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables)
     overdue_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables if r.due_date < today or r.status == "overdue")
     open_credits = -money_sum(min(balances[r.id], ZERO) for r in receivables)

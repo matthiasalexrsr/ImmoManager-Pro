@@ -21,11 +21,11 @@ export default function NotificationInbox({ compact = false }) {
     return () => window.removeEventListener('notification-receipt', reset);
   }, []);
   return <section className="personal-inbox" aria-label="Persönliche Benachrichtigungen">
-    {!compact && <><h2>Persönlicher Eingang</h2><label>Ansicht <select value={status} onChange={e => { setStatus(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}>
+    {!compact && <><h2>Persönlicher Eingang</h2><label>Ansicht <select aria-label="Ansicht" value={status} onChange={e => { setStatus(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}>
       <option value="unread">Ungelesen</option><option value="archived">Gelesen und archiviert</option><option value="">Gesamte Historie</option>
     </select></label>
-      <label>Dringlichkeit <select value={severity} onChange={e => { setSeverity(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle</option><option value="info">Information</option><option value="warning">Warnung</option><option value="error">Fehler</option><option value="critical">Kritisch</option></select></label>
-      <label>Quelle <select value={kind} onChange={e => { setKind(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle Quellen</option>
+      <label>Dringlichkeit <select aria-label="Dringlichkeit" value={severity} onChange={e => { setSeverity(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle</option><option value="info">Information</option><option value="warning">Warnung</option><option value="error">Fehler</option><option value="critical">Kritisch</option></select></label>
+      <label>Quelle <select aria-label="Quelle" value={kind} onChange={e => { setKind(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle Quellen</option>
         {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', contract: 'Mietvertraege', property: 'Immobilien', tenant: 'Parteien', document: 'Dokumente', service_contract: 'Objektvertraege', billing_period: 'Abrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label></>}
     {error && <div role="alert">{error} <button onClick={() => { setCursor(null); setHistory([]); setSnapshot(null); reload(); }}>Neu laden</button></div>}

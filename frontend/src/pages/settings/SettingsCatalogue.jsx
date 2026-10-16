@@ -16,17 +16,20 @@ function SettingField({ item, onSaved }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(Boolean(recovery));
+  const dirtyNow = useRef(Boolean(recovery));
   const pending = useRef(recovery?.command || null);
   const mounted = useRef(true);
   const prefs = usePreferences();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // edit()/save() persist at the event boundary. A delayed effect carrying an
+  // older value must never overwrite a newer draft immediately before unmount.
   useEffect(() => {
-    if (dirty) { try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ } }
-  }, [dirty, value, storage]);
-  useEffect(() => {
-    if (!dirty) { setValue(item.value); expected.current = item.revision; }
+    // Initial/late effects must not replace an edit made before React has
+    // rendered the new dirty state. The input event fences them immediately.
+    if (!dirtyNow.current) { setValue(item.value); expected.current = item.revision; }
   }, [item.value, item.revision, dirty]);
   const edit = next => {
+    dirtyNow.current = true;
     setValue(next); setDirty(true);
     try { sessionStorage.setItem(storage, JSON.stringify({ value: next, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
   };
@@ -49,7 +52,7 @@ function SettingField({ item, onSaved }) {
         if (sentRecovery !== null && sessionStorage.getItem(storage) === sentRecovery) sessionStorage.removeItem(storage);
       } catch { /* optional recovery */ }
       if (!mounted.current) return;
-      pending.current = null; setDirty(false); onSaved(); prefs?.reload?.();
+      pending.current = null; dirtyNow.current = false; setDirty(false); onSaved(); prefs?.reload?.();
     } catch (failure) { if (mounted.current) setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.'); }
     finally { if (mounted.current) setBusy(false); }
   };
@@ -77,24 +80,33 @@ export default function SettingsCatalogue() {
   const [property, setProperty] = useState('');
   const [properties, setProperties] = useState([]);
   const [items, setItems] = useState([]);
+  const [loadedProperty, setLoadedProperty] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [propertyError, setPropertyError] = useState(null);
+  const [propertyAttempt, setPropertyAttempt] = useState(0);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true; const same = api.captureSession();
-    api.list('/properties').then(data => { same(); if (live) setProperties(data); }).catch(failure => { if (live) setError(failure.message); });
+    setPropertyError(null);
+    api.list('/properties').then(data => { same(); if (live) setProperties(data); }).catch(failure => { if (live) setPropertyError(failure.message); });
     return () => { live = false; };
-  }, []);
+  }, [propertyAttempt]);
   useEffect(() => {
-    let live = true; const same = api.captureSession(); setError(null);
+    let live = true; const same = api.captureSession(); setError(null); setLoading(true);
     api.get(`/auth/users/me/settings${property ? `?property_id=${encodeURIComponent(property)}` : ''}`).then(data => {
-      same(); if (live) setItems(data.items);
-    }).catch(failure => { if (live) setError(failure.message); });
+      same();
+      if (!Array.isArray(data?.items)) throw new Error('Die Einstellungsantwort ist unvollständig. Bitte erneut laden.');
+      if (live) { setItems(data.items); setLoadedProperty(property); }
+    }).catch(failure => { if (live) setError(failure.message); }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [property, attempt]);
   const normalize = value => String(value).normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de').replaceAll('ß', 'ss');
   const words = normalize(search).trim().split(/\s+/).filter(Boolean);
   const matches = value => words.every(word => normalize(value).includes(word));
-  const found = items.filter(item => matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
+  // A newly selected object must never render writable cards from the prior
+  // object's response while its own request is still pending.
+  const found = (loadedProperty === property ? items : []).filter(item => matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
   const links = [
     ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
     ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
@@ -105,9 +117,10 @@ export default function SettingsCatalogue() {
     <label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>
       <option value="">Ohne Objekt</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
     </select>
+    {propertyError && <p role="alert">Objekte konnten nicht geladen werden: {propertyError} <button onClick={() => setPropertyAttempt(n => n + 1)}>Objekte erneut laden</button></p>}
     <p>Persönliche Werte haben Vorrang vor Objektvorgaben und globalen Standardwerten. Ruhezeiten gelten für persoenliche E-Mail-Hinweise in Europe/Berlin, sobald beide Zeiten gesetzt und verschieden sind. Serverparameter stammen aus der bestehenden Serverkonfiguration und werden hier nur angezeigt. Währungen werden nicht umgerechnet; Belege behalten ihre Quellwährung.</p>
     {error && <p role="alert">{error} <button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
-    <p role="status">{found.length} Einstellungen gefunden</p>
+    <p role="status">{loading || loadedProperty !== property && !error ? 'Einstellungen werden geladen …' : error ? 'Aktuelle Einstellungen konnten nicht geladen werden.' : `${found.length} Einstellungen gefunden`}</p>
     <div className="setting-grid">{found.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div>
     {(!search || /sitz|sicher|anmeld|session/i.test(search)) && <SessionInventory />}
     {auth?.isAdmin && (!search || /api|plugin|erweiter/i.test(search)) && <ConfigurationContract />}

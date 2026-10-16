@@ -12,7 +12,11 @@ export default function SessionInventory() {
   const pending = useRef({});
   useEffect(() => {
     let live = true; const same = api.captureSession();
-    api.get('/auth/users/me/settings/sessions').then(result => { same(); if (live) setData(result); }).catch(failure => { if (live) setError(failure.message); });
+    api.get('/auth/users/me/settings/sessions').then(result => {
+      same();
+      if (!Array.isArray(result?.items)) throw new Error('Die Sitzungsantwort ist unvollständig. Bitte erneut laden.');
+      if (live) { setData(result); setError(null); }
+    }).catch(failure => { if (live) setError(failure.message); });
     return () => { live = false; };
   }, [attempt]);
   const revoke = async row => {

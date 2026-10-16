@@ -190,26 +190,54 @@ class ResidualReader:
             for edge in Rows.reading(store).find("receivable_settlements", booking_id={e.booking_id for e in edges if e.booking_id}):
                 self.booking_edges[edge.booking_id].append(edge)
         self.evidence: dict[str, list] = {}
+        self.currencies: dict[str, str] = {}
 
-    def read(self, receivable, as_of=None):
-        contract_id = receivable.contract_id
+    def contract_evidence(self, contract_id):
         if contract_id not in self.evidence:
             self.evidence[contract_id] = dated_evidence(self.store, contract_id, known_claims=self.claims[contract_id],
                 known_edges=self.edges[contract_id], booking_edges=self.booking_edges)
-        return residual(self.store, receivable, as_of, evidence=self.evidence[contract_id], edges=self.edges[contract_id])
+        return self.evidence[contract_id]
+
+    def balance(self, receivable, as_of=None):
+        """Aggregate callers need exact amounts, not per-row serialized proof.
+
+        The same source/permission validation runs for the report's graph; no
+        historical balance is inferred from an undated partial-payment status.
+        """
+        self.currency(receivable.contract_id)  # preserve the same authorized parent chain as a detailed read
+        own = [event for event in self.contract_evidence(receivable.contract_id) if event[0] == receivable.id]
+        return _balance(receivable, own, as_of or date.today())[1]
+
+    def currency(self, contract_id):
+        if contract_id not in self.currencies:
+            contract = self.store.get_contract(contract_id)
+            prop = self.store.get_property(contract.property_id)
+            self.currencies[contract_id] = self.store.get_portfolio(prop.portfolio_id).currency
+        return self.currencies[contract_id]
+
+    def read(self, receivable, as_of=None):
+        contract_id = receivable.contract_id
+        return residual(self.store, receivable, as_of, evidence=self.contract_evidence(contract_id),
+                        edges=self.edges[contract_id], currency=self.currency(contract_id))
 
 
-def residual(store, receivable, as_of=None, *, evidence=None, edges=None):
-    as_of = as_of or date.today()
-    evidence = dated_evidence(store, receivable.contract_id) if evidence is None else evidence
-    own = [e for e in evidence if e[0] == receivable.id]
-    applied = sum((e[2] for e in own if e[1] <= as_of), ZERO)
+def _balance(receivable, own, as_of):
+    applied = sum((event[2] for event in own if event[1] <= as_of), ZERO)
     original = money(receivable.amount_due)
     # An opaque legacy status cannot supply a payment date or a paid amount.
     unresolved = receivable.status == "partial" and not own
     from ..domain.receivables import UNPAID_RECEIVABLE_STATUSES
     legacy_closed = receivable.status not in UNPAID_RECEIVABLE_STATUSES and not own
     balance = ZERO if legacy_closed else original - applied
+    return applied, balance, unresolved, legacy_closed
+
+
+def residual(store, receivable, as_of=None, *, evidence=None, edges=None, currency=None):
+    as_of = as_of or date.today()
+    evidence = dated_evidence(store, receivable.contract_id) if evidence is None else evidence
+    own = [e for e in evidence if e[0] == receivable.id]
+    applied, balance, unresolved, legacy_closed = _balance(receivable, own, as_of)
+    original = money(receivable.amount_due)
     edges = Rows.reading(store).find("receivable_settlements", receivable_id=receivable.id) if edges is None else edges
     edge_by_id = {e.id: e for e in edges}
     def source_url(e):
@@ -228,7 +256,8 @@ def residual(store, receivable, as_of=None, *, evidence=None, edges=None):
             "evidence": [{"date": e[1].isoformat(), "amount": str(e[2]), "kind": e[3], "source_id": e[4], "url": source_url(e)}
                          for e in own if e[1] <= as_of],
             "allocations": [e.model_dump(mode="json") for e in edges if e.receivable_id == receivable.id],
-            "currency": store.get_portfolio(store.get_property(store.get_contract(receivable.contract_id).property_id).portfolio_id).currency}
+            "currency": currency if currency is not None else store.get_portfolio(store.get_property(
+                store.get_contract(receivable.contract_id).property_id).portfolio_id).currency}
 
 
 def allocate(store, receivable_id, payload: SettlementCommand, actor_id=None):

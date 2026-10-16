@@ -86,3 +86,33 @@ it('a late successful answer cannot erase a newer edit after the card remounts',
   expect(screen.getByLabelText(row.label)).toHaveValue(21);
   expect(JSON.parse(sessionStorage.getItem('workspace:settings-reader:setting-draft:personal:reminder_days')).value).toBe('21');
 });
+
+it('never offers the previous object settings while the newly selected object is loading', async () => {
+  let finishSouth;
+  api.list.mockResolvedValue([{ id: 'north', name: 'Haus Nord' }, { id: 'south', name: 'Haus Süd' }]);
+  api.get.mockImplementation(path => {
+    if (path.endsWith('property_id=north')) return Promise.resolve({ items: [{ ...row, label: 'Vorlauf Haus Nord', scope: 'object:north' }] });
+    if (path.endsWith('property_id=south')) return new Promise(resolve => { finishSouth = resolve; });
+    return Promise.resolve({ items: [row] });
+  });
+  mount(); await screen.findByLabelText(row.label);
+  fireEvent.change(screen.getByLabelText('Objektkontext'), { target: { value: 'north' } });
+  await screen.findByLabelText('Vorlauf Haus Nord');
+  fireEvent.change(screen.getByLabelText('Objektkontext'), { target: { value: 'south' } });
+  expect(screen.queryByLabelText('Vorlauf Haus Nord')).not.toBeInTheDocument();
+  expect(screen.getByText('Einstellungen werden geladen …')).toBeInTheDocument();
+  await act(async () => { finishSouth({ items: [{ ...row, label: 'Vorlauf Haus Süd', scope: 'object:south' }] }); });
+  fireEvent.change(await screen.findByLabelText('Vorlauf Haus Süd'), { target: { value: '20' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/auth/users/me/settings', expect.objectContaining({
+    scope: 'object:south', base_revision: 3, values: { reminder_days: '20' },
+  })));
+});
+
+it('shows an incomplete settings response as a recoverable load error instead of zero settings', async () => {
+  api.get.mockResolvedValue({});
+  mount();
+  expect(await screen.findByText(/Die Einstellungsantwort ist unvollständig/)).toBeInTheDocument();
+  expect(screen.queryByText('0 Einstellungen gefunden')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Erneut laden', exact: true })).toBeEnabled();
+});
