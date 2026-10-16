@@ -99,3 +99,16 @@ vorherige Revisionen still abzuändern.
 
 Dieser Frontendcheckpoint ist **keine** Freigabe
 für TEHA-, WhatsApp-, Portal-, Bank- oder Post-Liveaktionen.
+
+
+## Wiederholungsabnahme auf dem Codecheckpoint
+
+Der **exakte Folgecommit `9f34d12808da4acc91d82e83e23be5869b9b91ea`**
+wurde nach dem Einchecken nochmals vollständig getestet:
+`artifacts/pro-tests/frontend-committed-9f34d128-b34341b9f7244a4fac86ecdcd3a2335a`.
+Ergebnis **104/104 Testdateien, 657/657 Tests erfolgreich, Exit-Code 0**
+mit `--maxWorkers=2 --testTimeout=15000`.
+Die zuvor separate ESLint-/Vite-Produktionsbuildprüfung war ebenfalls
+erfolgreich; keine Produktassertion wurde gelöscht.
+Die beiden Testparameter sind ausdrücklich Teil der Reproduzierbarkeit
+und dürfen bei der endgültigen CI-Abnahme nicht verschwiegen werden.
