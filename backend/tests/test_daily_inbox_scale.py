@@ -91,9 +91,18 @@ def test_cursor_filters_validation_insert_and_current_grants():
         assert browser.get(API + '/inbox?' + query).status_code == 422
     assert browser.get(API + '/inbox', params=dict(cursor=first['next_cursor'], status='archived')).status_code == 422
     _, administrator = client('cursor-administrator')
+    engine = store.db.get_bind() if hasattr(store, 'db') else None
+    if engine is not None:
+        from backend.dependencies import cleanup_session
+        # End the direct fixture caller's read before measuring the HTTP worker.
+        cleanup_session()
+        assert engine.pool.checkedout() == 0
     changed = administrator.patch('/api/v1/auth/users/' + actor.id,
         json={'portfolio_access': 'selected', 'portfolio_ids': [south.id]})
     assert changed.status_code == 200, changed.text
+    if engine is not None:
+        # The small router app must use the real request-session boundary too.
+        assert engine.pool.checkedout() == 0
     assert changed.json()['portfolio_ids'] == [south.id]
     effective = auth.get_user_by_id(actor.id)
     assert effective is not None and effective['portfolio_ids'] == [south.id]

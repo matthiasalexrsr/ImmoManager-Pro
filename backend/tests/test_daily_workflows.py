@@ -13,12 +13,14 @@ from sqlalchemy import create_engine, inspect, text
 
 from backend import auth
 from backend.dependencies import store
+from backend.middleware import DBSessionMiddleware
 from backend.models import NotificationCreate, NotificationPatch, PortfolioCreate, PropertyCreate, TaskCreate
 from backend.routers import auth as auth_router
 from backend.routers import notifications
 from backend.services import daily_state, settings_catalogue
 
 app = FastAPI()
+app.add_middleware(DBSessionMiddleware)
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(auth_router.router, prefix="/api/v1")
 API = "/api/v1/notifications"
