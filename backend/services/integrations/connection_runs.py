@@ -7,11 +7,9 @@ that completion cannot alter any business source, even after rights withdrawal.
 
 from __future__ import annotations
 
-import hashlib
 import secrets
 from contextlib import contextmanager
 from datetime import timedelta
-from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -21,12 +19,12 @@ from sqlalchemy.orm import Session
 from ...db.integration_connection_models import (
     IntegrationActionRunORM,
     IntegrationConnectionORM,
-    IntegrationSourceBlockORM,
 )
 from .. import document_versions as archive
 from ..secret_box import SecretError
 from ..sqlite_writes import sqlite_write_gate
 from ..workspace_contexts import resolve_context
+from . import connection_attempts as attempts
 from . import connection_storage as storage
 from .connection_types import RunCancellation, RunDispatch, RunPreparation
 from .connections import Connections
@@ -37,15 +35,29 @@ FINAL = frozenset({"completed", "accepted", "cancelled", "reconciled"})
 
 
 class ConnectionRuns(Connections):
-    def _access(self, unit, run, *, write: bool = False):
-        if run.actor_id != unit.actor_id and (write or unit.user["role"] != "eigentuemer"):
+    def _access(self, unit, run, *, write: bool = False, recovery: bool = False):
+        owner_recovery = recovery and unit.user["role"] == "eigentuemer"
+        if run.actor_id != unit.actor_id and ((write and not owner_recovery) or unit.user["role"] != "eigentuemer"):
             raise HTTPException(404, "Vorgang nicht gefunden.")
         if run.source_kind and run.source_id:
-            return resolve_context(unit.store, run.source_kind, run.source_id, unit.actor_id, lock=write)
+            try:
+                return resolve_context(unit.store, run.source_kind, run.source_id, unit.actor_id, lock=write)
+            except HTTPException as error:
+                if error.status_code != 404 or (write and not recovery):
+                    raise
+                # The caller still has installation-wide access and owns the
+                # run (or is the owner). Keep its history and frozen context
+                # visible; never authorize a new write to the missing source.
+                frozen = storage.unseal(run.config_snapshot_token, f"connection-run/{run.id}/configuration", self.box)
+                source = frozen.get("source") or {"kind": run.source_kind, "entity_id": run.source_id,
+                                                   "revision": run.source_revision}
+                return {**source, "state": "unavailable"}
         return None
 
     def public_run(self, unit, run) -> dict:
-        self._access(unit, run)
+        source = self._access(unit, run)
+        source_state = (source or {}).get("state", "current")
+        source_changed = bool(source and not storage.commands.same_revision(source.get("revision", ""), run.source_revision or ""))
         expired = run.state == "executing" and run.lease_until is not None and run.lease_until <= storage.now()
         checkpoint = storage.unseal(run.checkpoint_token, f"connection-run/{run.id}/checkpoint", self.box) if run.checkpoint_token else {}
         return {"id": run.id, "connection_id": run.connection_id, "actor_id": run.actor_id,
@@ -56,7 +68,10 @@ class ConnectionRuns(Connections):
                 "safe_summary": run.safe_summary, "completed_pages": checkpoint.get("completed_pages", 0),
                 "has_more": run.state == "awaiting_page", "result_sha256": run.result_sha256,
                 "result_bytes": run.result_bytes, "result_blocks": run.result_blocks,
-                "created_at": storage.stamp(run.created_at), "updated_at": storage.stamp(run.updated_at)}
+                "created_at": storage.stamp(run.created_at), "updated_at": storage.stamp(run.updated_at),
+                "source_status": source_state, "source_changed": source_changed,
+                "can_dispatch": source_state == "current" and not source_changed,
+                "result_hash_scope": "latest_applied_attempt", **attempts.summary(unit, run.id)}
 
     def get_run(self, identifier: str, run_id: str, actor_id: str) -> dict:
         with storage.work(self.store, actor_id) as unit:
@@ -77,7 +92,7 @@ class ConnectionRuns(Connections):
             return page
 
     def prepare(self, identifier: str, payload: RunPreparation, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             connection = storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             prior = storage.replay(unit, "prepare:" + identifier, payload)
             if prior:
@@ -94,10 +109,12 @@ class ConnectionRuns(Connections):
             if set(payload.payload) - allowed or errors:
                 raise HTTPException(422, {"code": "invalid_action", "message": "Bitte die Angaben für die ausgewählte Aktion prüfen.",
                                           "errors": errors, "unknown_fields": sorted(set(payload.payload) - allowed)})
+            source_snapshot = None
             if payload.source_kind:
                 assert payload.source_id is not None and payload.source_revision is not None
                 source = resolve_context(unit.store, payload.source_kind, payload.source_id, actor_id, lock=True)
                 storage.commands.check_revision(payload.source_revision, source["revision"])
+                source_snapshot = {key: source.get(key) for key in ("kind", "entity_id", "revision", "title", "href", "property_id", "portfolio_ids")}
             identifier_run = str(uuid4())
             request = {**payload.payload, "action": payload.action}
             stamp = storage.now()
@@ -105,9 +122,10 @@ class ConnectionRuns(Connections):
                 "id": identifier_run, "connection_id": identifier, "actor_id": actor_id,
                 "command_key": payload.idempotency_key, "fingerprint": storage.digest(payload.model_dump(mode="json")),
                 "action": payload.action, "effect": action["effect"], "state": "prepared", "revision": 1,
-                "config_revision": connection.revision, "source_kind": payload.source_kind, "source_id": payload.source_id,
-                "source_revision": payload.source_revision,
-                "config_snapshot_token": storage.seal(self.snapshot(connection), f"connection-run/{identifier_run}/configuration", self.box),
+                "config_revision": connection.revision, "source_kind": source_snapshot["kind"] if source_snapshot else None,
+                "source_id": source_snapshot["entity_id"] if source_snapshot else None,
+                "source_revision": source_snapshot["revision"] if source_snapshot else None,
+                "config_snapshot_token": storage.seal({**self.snapshot(connection), "source": source_snapshot}, f"connection-run/{identifier_run}/configuration", self.box),
                 "action_manifest_token": storage.seal(action, f"connection-run/{identifier_run}/action", self.box),
                 "request_token": storage.seal(request, f"connection-run/{identifier_run}/request", self.box),
                 "request_sha256": storage.digest(request), "checkpoint_token": None, "result_token": None,
@@ -149,88 +167,20 @@ class ConnectionRuns(Connections):
                     db.rollback()
                     raise
 
-    def _save_result(self, unit, run, raw: dict, category: str) -> dict[str, Any]:
-        payload = storage.canonical(raw)
-        sha = hashlib.sha256(payload).hexdigest()
-        count = 0
-        for number, start in enumerate(range(0, len(payload), storage.BLOCK_BYTES)):
-            chunk = payload[start:start + storage.BLOCK_BYTES]
-            import base64
-            block_id = str(uuid4())
-            storage.put(unit, IntegrationSourceBlockORM, {
-                "id": block_id, "run_id": run.id, "category": category, "sequence": number,
-                "sha256": hashlib.sha256(chunk).hexdigest(), "byte_length": len(chunk),
-                "data_token": storage.seal(base64.b64encode(chunk).decode("ascii"), f"connection-block/{block_id}", self.box),
-                "created_at": storage.now(),
-            })
-            count += 1
-        return {"sha256": sha, "bytes": len(payload), "blocks": count, "category": category}
-
     def _finish(self, run_id: str, lease: str, actor_id: str, outcome: dict, action: dict) -> None:
-        with self._receipt_writer(actor_id) as unit:
-            run = storage.row(unit, IntegrationActionRunORM, run_id, lock=True)
-            if run.lease_token != lease or run.state != "executing":
-                # Never let an old worker publish after another worker fenced it.
-                # Its explicit failure is not permission to repeat the external call.
-                raise HTTPException(409, "Der Ausführungsstand wurde übernommen. Den externen Zustand vor weiteren Aktionen prüfen.")
-            category = f"attempt-{run.attempts}"
-            original = self._save_result(unit, run, outcome, category)
-            checkpoint = storage.unseal(run.checkpoint_token, f"connection-run/{run_id}/checkpoint", self.box) if run.checkpoint_token else {"completed_pages": 0}
-            more = False
-            if outcome["success"]:
-                checkpoint["completed_pages"] += 1
-                if action.get("cursor_field") and run.effect != "external_write":
-                    details = outcome.get("details")
-                    has_more = details.get(action.get("has_more_field", "has_more")) if isinstance(details, dict) else None
-                    cursor = details.get(action.get("next_cursor_field", "next_cursor")) if isinstance(details, dict) else None
-                    valid = isinstance(has_more, bool)
-                    more = has_more is True
-                    if more:
-                        valid = valid and isinstance(cursor, str) and bool(cursor)
-                        if valid:
-                            assert isinstance(cursor, str)
-                            cursor_bytes = cursor.encode("utf-8")
-                            cursor_hash = hashlib.sha256(cursor_bytes).hexdigest()
-                            seen = storage.find_one(unit, IntegrationSourceBlockORM, run_id=run_id,
-                                                    category="cursor-seen", sha256=cursor_hash)
-                            valid = seen is None
-                        if valid:
-                            import base64
-                            block_id = str(uuid4())
-                            storage.put(unit, IntegrationSourceBlockORM, {
-                                "id": block_id, "run_id": run_id, "category": "cursor-seen", "sequence": run.attempts,
-                                "sha256": cursor_hash, "byte_length": len(cursor_bytes),
-                                "data_token": storage.seal(base64.b64encode(cursor_bytes).decode("ascii"), f"connection-block/{block_id}", self.box),
-                                "created_at": storage.now(),
-                            })
-                            checkpoint["cursor"] = cursor
-                    if not valid:
-                        outcome = {**outcome, "success": False, "cursor_error": True}
-                        checkpoint["completed_pages"] -= 1
-                        more = False
-                state = "awaiting_page" if more else "accepted" if run.effect == "external_write" else "completed"
-            else:
-                state = "unknown" if run.effect == "external_write" else "retryable"
-            if outcome.get("cursor_error"):
-                state = "blocked"
-            summary = {"awaiting_page": "Abschnitt gespeichert; weitere Daten sind verfügbar.",
-                       "accepted": "Extern angenommen; eine Zustellung oder spätere Ausführung ist damit nicht bewiesen.",
-                       "completed": "Aktion ausgeführt und Ergebnis gespeichert.",
-                       "unknown": "Externer Ausgang unklar. Nicht erneut senden; zuerst abgleichen.",
-                       "retryable": "Lesender oder lokaler Schritt fehlgeschlagen; ausdrücklich erneut versuchen.",
-                       "blocked": "Die Fortsetzung der Quelle ist widersprüchlich. Keine Vollständigkeit bestätigt."}[state]
-            updated = storage.put(unit, IntegrationActionRunORM, {**storage.values(run), "state": state,
-                "revision": run.revision + 1, "lease_token": None, "lease_until": None,
-                "safe_summary": summary, "result_sha256": original["sha256"],
-                "result_bytes": (run.result_bytes or 0) + original["bytes"],
-                "result_blocks": (run.result_blocks or 0) + original["blocks"],
-                "result_token": storage.seal(original, f"connection-run/{run_id}/result", self.box),
-                "checkpoint_token": storage.seal(checkpoint, f"connection-run/{run_id}/checkpoint", self.box), "updated_at": storage.now()})
-            storage.record_event(unit, run.connection_id, "run_" + state, {"attempt": run.attempts,
-                "result": original, "revision": updated.revision}, run_id=run.id, box=self.box)
+        attempts.finish(self, run_id, lease, actor_id, outcome, action)
+
+    def attempts(self, identifier: str, run_id: str, actor_id: str, *, cursor=None, limit=50) -> dict:
+        return attempts.list_attempts(self, identifier, run_id, actor_id, cursor=cursor, limit=limit)
+
+    def attempt(self, identifier: str, run_id: str, attempt_id: str, actor_id: str) -> dict:
+        return attempts.read_attempt(self, identifier, run_id, attempt_id, actor_id)
+
+    def reconcile_recorded(self, identifier: str, run_id: str, payload, actor_id: str) -> dict:
+        return attempts.reconcile_recorded(self, identifier, run_id, payload, actor_id)
 
     def dispatch(self, identifier: str, run_id: str, payload: RunDispatch, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             connection = storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             run = storage.row(unit, IntegrationActionRunORM, run_id, lock=True)
             if run.connection_id != identifier:
@@ -261,9 +211,19 @@ class ConnectionRuns(Connections):
             if storage.digest(action) != storage.digest(original_action):
                 raise HTTPException(409, "Der Aktionsvertrag wurde geändert. Bitte eine neue Vorschau erstellen.")
             snapshot = storage.unseal(run.config_snapshot_token, f"connection-run/{run_id}/configuration", self.box)
+            if (not isinstance(snapshot, dict) or snapshot.get("provider_id") != connection.provider_id
+                    or snapshot.get("revision") != run.config_revision or action["effect"] != run.effect):
+                raise HTTPException(503, "Der gespeicherte Anbieter- und Ausführungsvertrag ist widersprüchlich.")
+            if "source" in snapshot:
+                frozen_source = snapshot["source"] or {}
+                if (frozen_source.get("kind"), frozen_source.get("entity_id"), frozen_source.get("revision")) != (
+                        run.source_kind, run.source_id, run.source_revision):
+                    raise HTTPException(503, "Die gespeicherte Quellzuordnung stimmt nicht mit der bestätigten Vorschau überein.")
             raw_config = self.effective_config(unit, connection, snapshot=snapshot)
             config = self._checked(connection.provider_id, raw_config, enabled=True)["applicable"]
             request = storage.unseal(run.request_token, f"connection-run/{run_id}/request", self.box)
+            if not isinstance(request, dict) or storage.digest(request) != run.request_sha256 or request.get("action") != run.action:
+                raise HTTPException(503, "Die gespeicherte Anfrage stimmt nicht mit ihrer bestätigten Vorschau überein.")
             checkpoint = storage.unseal(run.checkpoint_token, f"connection-run/{run_id}/checkpoint", self.box) if run.checkpoint_token else {}
             if checkpoint.get("cursor") and action.get("cursor_field"):
                 request[action["cursor_field"]] = checkpoint["cursor"]
@@ -272,6 +232,7 @@ class ConnectionRuns(Connections):
                 "attempts": run.attempts + 1, "revision": run.revision + 1, "lease_token": lease,
                 "lease_until": storage.now() + timedelta(seconds=LEASE_SECONDS),
                 "safe_summary": "Ausführung begonnen; Ergebnis noch unbestätigt.", "updated_at": storage.now()})
+            attempts.claim(self, unit, run, lease, request, snapshot, action)
             storage.record_event(unit, identifier, "dispatch_started", {"attempt": run.attempts, "effect": run.effect}, run_id=run_id, box=self.box)
             storage.receipt(unit, "dispatch:" + run_id, payload, identifier, {"run_id": run_id})
             provider = self.provider(connection.provider_id)
@@ -279,7 +240,12 @@ class ConnectionRuns(Connections):
         # There is no open business transaction during network IO.
         try:
             result = provider.run(request, config)
-            outcome = {"success": bool(result.success), "message": result.message, "details": result.details}
+            if (type(result.success) is not bool or not isinstance(result.message, str)
+                    or (result.details is not None and not isinstance(result.details, dict))):
+                outcome = {"success": False, "message": "Die Anbieterantwort konnte nicht vollständig eingeordnet werden.",
+                           "details": {"code": "invalid_provider_result"}, "observation_failed": True}
+            else:
+                outcome = {"success": result.success, "message": result.message, "details": result.details}
         except Exception as error:
             outcome = {"success": False, "message": "Der Anbieteraufruf wurde nicht bestätigt.",
                        "details": {"error_type": type(error).__name__}}
@@ -292,12 +258,12 @@ class ConnectionRuns(Connections):
         return self.get_run(identifier, run_id, actor_id)
 
     def cancel(self, identifier: str, run_id: str, payload: RunCancellation, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             run = storage.row(unit, IntegrationActionRunORM, run_id, lock=True)
             if run.connection_id != identifier:
                 raise HTTPException(404, "Vorgang nicht gefunden.")
-            self._access(unit, run, write=True)
+            self._access(unit, run, write=True, recovery=True)
             prior = storage.replay(unit, "cancel:" + run_id, payload)
             if prior:
                 return self.public_run(unit, run)

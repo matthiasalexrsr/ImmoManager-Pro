@@ -31,3 +31,7 @@
   .connection-facts dd { margin-bottom: .5rem; }
   .connection-workspace .page-title { font-size: clamp(1.5rem, 7vw, 2rem); }
 }
+
+.connection-evidence { border-top: 1px solid var(--color-border); padding-top: 1rem; margin-top: 1rem; }
+.connection-result-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 26rem; overflow: auto; padding: .75rem; background: var(--color-bg); }
+.connection-proof { min-width: 0; }

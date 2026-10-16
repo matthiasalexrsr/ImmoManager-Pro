@@ -75,6 +75,9 @@ def main() -> int:
                 connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
             created = True
             environment['DATABASE_URL'] = url.set(database=name).render_as_string(hide_password=False)
+            # Expose only this explicitly validated, owned admin URL to native
+            # subprocess gates. It is never inherited in memory/SQLite mode.
+            environment['IMMO_TEST_POSTGRES_ADMIN_URL'] = configured
             report['owned_database'] = name
         command = [sys.executable, '-m', 'pytest', *(str(ROOT / path) for path in options.tests),
                    '-q', '--tb=short', f'--junitxml={output / "junit.xml"}']
@@ -88,6 +91,9 @@ def main() -> int:
             report.update(total=len(cases), failures=sum(case.find('failure') is not None for case in cases),
                           errors=sum(case.find('error') is not None for case in cases),
                           skipped=sum(case.find('skipped') is not None for case in cases))
+            if options.backend == 'native' and (not cases or report['skipped']):
+                report['exit_code'] = 1
+                print(f"Native QA refused: {len(cases)} cases, {report['skipped']} skipped.", flush=True)
         for line in (output / 'pytest.log').read_text(encoding='utf-8', errors='replace').splitlines()[-24:]:
             print(line, flush=True)
     finally:

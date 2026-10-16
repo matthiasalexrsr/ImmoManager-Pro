@@ -437,3 +437,251 @@ def test_frozen_preview_is_bound_to_the_authorized_connection(fixture):
         fixture.service.preview(b["id"], run["id"], fixture.owner.id)
     assert error.value.status_code == 404
     assert "Private A-Nachricht" not in str(error.value.detail)
+
+
+def test_new_connection_rejects_a_secret_mask_instead_of_enabling_an_empty_credential(fixture):
+    command = ConnectionCreate(idempotency_key=str(uuid4()), provider_id="proof", name="Keine echte Anmeldung",
+                               config={"endpoint": "synthetic.example.test", "api_token": "***"}, enabled=True)
+    with pytest.raises(HTTPException) as error:
+        fixture.service.create(command, fixture.owner.id)
+    assert error.value.status_code == 422
+    assert fixture.service.list(fixture.owner.id)["total"] == 0
+    assert fixture.provider.calls == []
+
+
+def test_a_failed_decryption_does_not_hide_other_connections_or_claim_an_empty_success(fixture, tmp_path):
+    first = new_connection(fixture)
+    other_box = SecretBox(tmp_path / "separate-connection-key.json")
+    other = ConnectionRuns(store, fixture.manager, other_box)
+    second = other.create(ConnectionCreate(idempotency_key=str(uuid4()), provider_id="proof", name="Separater Schlüssel",
+        config={"endpoint": "synthetic.example.test", "api_token": "SECOND-SYNTHETIC-SECRET"}, enabled=True), fixture.owner.id)
+    page = fixture.service.list(fixture.owner.id)
+    assert page["total"] == 2
+    by_id = {item["id"]: item for item in page["items"]}
+    assert by_id[first["id"]]["configured"] is True
+    assert by_id[second["id"]]["configured"] is None
+    assert by_id[second["id"]]["configuration_state"] == "unreadable"
+    assert by_id[second["id"]]["read_error"]
+    assert "SECOND-SYNTHETIC-SECRET" not in json.dumps(page)
+    with pytest.raises(HTTPException) as error:
+        fixture.service.get(second["id"], fixture.owner.id)
+    assert error.value.status_code == 503
+
+
+def test_unreadable_connection_can_be_explicitly_disabled_without_mutating_ciphertext_or_creating_keys(fixture, tmp_path):
+    connection = new_connection(fixture)
+    with storage.work(store, fixture.owner.id) as unit:
+        before = storage.values(storage.row(unit, IntegrationConnectionORM, connection["id"]))
+    missing_key = tmp_path / "must-not-be-created.json"
+    other = ConnectionRuns(store, fixture.manager, SecretBox(missing_key))
+    command = ConnectionUpdate(idempotency_key=str(uuid4()), base_revision=1, enabled=False)
+    disabled = other.update(connection["id"], command, fixture.owner.id)
+    assert disabled["enabled"] is False and disabled["revision"] == 2
+    assert disabled["configured"] is None and disabled["read_error"]
+    assert other.update(connection["id"], command, fixture.owner.id) == disabled
+    assert not missing_key.exists()
+    with storage.work(store, fixture.owner.id) as unit:
+        after = storage.values(storage.row(unit, IntegrationConnectionORM, connection["id"]))
+    assert after["config_token"] == before["config_token"]
+    assert after["secret_refs"] == before["secret_refs"]
+    assert fixture.service.get(connection["id"], fixture.owner.id)["enabled"] is False
+    assert fixture.provider.calls == []
+
+
+def test_event_pagination_and_count_do_not_disclose_another_actors_private_runs(fixture):
+    connection = new_connection(fixture)
+    foreign = prepare(fixture, connection, "send", {"text": "Nur für den Ersteller"})
+    manager = auth.register_user("event-manager", "event-manager@example.test", "Verwalter", "Secret123", "verwalter")
+    auth.update_user(manager.id, {"portfolio_access": "all", "portfolio_ids": []})
+    own = fixture.service.prepare(connection["id"], RunPreparation(idempotency_key=str(uuid4()), config_revision=1,
+        action="read"), manager.id)
+    found, cursor = [], None
+    while True:
+        page = fixture.service.events(connection["id"], manager.id, cursor=cursor, limit=1)
+        assert page["total"] == 2  # one shared configuration event and this actor's preparation
+        found.extend(page["items"])
+        if not page["has_more"]:
+            break
+        cursor = page["next_cursor"]
+    assert len(found) == len({item["id"] for item in found}) == 2
+    assert {item["run_id"] for item in found} == {None, own["id"]}
+    assert foreign["id"] not in json.dumps(found)
+    assert fixture.service.events(connection["id"], fixture.owner.id)["total"] == 3
+
+
+def test_command_identity_cannot_be_overwritten_after_a_competing_creation(fixture):
+    from backend.services import business_qol as office
+    connection = new_connection(fixture)
+    command = ConnectionUpdate(idempotency_key=str(uuid4()), base_revision=1, name="Ein bestätigter Stand")
+    confirmed = fixture.service.update(connection["id"], command, fixture.owner.id)
+    identifier = office.command_id(fixture.owner.id, command.idempotency_key)
+    with storage.work(store, fixture.owner.id) as unit:
+        before = office.dump(office.get_record(unit, "business_qol_commands", identifier))
+    with pytest.raises(HTTPException) as error:
+        with storage.work(store, fixture.owner.id, write=True) as unit:
+            current = storage.row(unit, IntegrationConnectionORM, connection["id"], lock=True)
+            storage.put(unit, IntegrationConnectionORM, {**storage.values(current), "name": "Muss zurückgerollt werden"})
+            office.save_command(unit, fixture.owner.id, "connection:update:" + connection["id"], command,
+                {"kind": "integration_connection", "entity_id": connection["id"], "property_id": None},
+                {"wrong": "cannot overwrite the first result"})
+    assert error.value.status_code == 409
+    assert fixture.service.get(connection["id"], fixture.owner.id) == confirmed
+    with storage.work(store, fixture.owner.id) as unit:
+        assert office.dump(office.get_record(unit, "business_qol_commands", identifier)) == before
+
+
+def test_parallel_connection_creation_replays_once_on_independent_database_connections(fixture, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from backend.services import document_versions as archive
+    command = ConnectionCreate(idempotency_key=str(uuid4()), provider_id="proof", name="Eine einzige Verbindung",
+        config={"endpoint": "synthetic.example.test", "api_token": SECRET}, enabled=True)
+    bind = store.db.get_bind() if hasattr(store, "db") else None
+    native = bind is not None and bind.dialect.name == "postgresql"
+    barrier = Barrier(2)
+    database_pids = []
+    original = archive.begin_writer
+    if native:
+        def begin(db):
+            original(db)
+            database_pids.append(db.scalar(text("SELECT pg_backend_pid()")))
+            barrier.wait(timeout=15)
+        monkeypatch.setattr(archive, "begin_writer", begin)
+    def create(_index):
+        if bind is None:
+            return fixture.service.create(command, fixture.owner.id)["id"]
+        from backend.repositories.sql_store import SQLAlchemyStore
+        with Session(bind=bind) as session:
+            service = ConnectionRuns(SQLAlchemyStore(session), fixture.manager, fixture.box)
+            return service.create(command, fixture.owner.id)["id"]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        identifiers = list(pool.map(create, range(2)))
+    assert identifiers[0] == identifiers[1]
+    assert fixture.service.list(fixture.owner.id)["total"] == 1
+    if native:
+        assert len(set(database_pids)) == 2, "Two sessions on one PostgreSQL connection do not prove concurrency"
+    assert fixture.provider.calls == []
+
+
+def test_expired_worker_retains_its_real_acknowledgement_for_explicit_review_without_resending(fixture):
+    from backend.services.integrations.connection_types import RecordedResultReconcile
+    connection = new_connection(fixture)
+    run = prepare(fixture, connection, "send", {"text": "Genau ein externer Aufruf"})
+    def late_success(_payload, _config):
+        with storage.work(store, fixture.owner.id, write=True) as unit:
+            executing = storage.row(unit, IntegrationActionRunORM, run["id"], lock=True)
+            storage.put(unit, IntegrationActionRunORM, {**storage.values(executing),
+                "lease_until": storage.now() - timedelta(seconds=1)})
+        expired = fixture.service.get_run(connection["id"], run["id"], fixture.owner.id)
+        fenced = dispatch(fixture, connection, expired)
+        assert fenced["state"] == "unknown"
+        return IntegrationActionResult(True, "Verspätet bestätigt", {"receipt": "SYNTHETIC-ACK", "echo": SECRET})
+    fixture.provider.callback = late_success
+    current = dispatch(fixture, connection, run)
+    assert current["state"] == "unknown" and current["late_result_count"] == 1
+    assert len(fixture.provider.calls) == 1
+    page = fixture.service.attempts(connection["id"], run["id"], fixture.owner.id, limit=1)
+    assert page["total"] == 1
+    attempt = page["items"][0]
+    assert attempt["detached"] and attempt["state"] == "finished"
+    proof = fixture.service.attempt(connection["id"], run["id"], attempt["id"], fixture.owner.id)
+    assert proof["verified"] and proof["projection_is_original"] is False
+    assert proof["projection"]["details"] == {"receipt": "SYNTHETIC-ACK", "echo": "***"}
+    assert SECRET not in json.dumps(proof)
+    command = RecordedResultReconcile(idempotency_key=str(uuid4()), base_revision=current["revision"],
+        attempt_id=attempt["id"], confirm=True, reason="Verspäteten Beleg geprüft")
+    accepted = fixture.service.reconcile_recorded(connection["id"], run["id"], command, fixture.owner.id)
+    assert accepted["state"] == "accepted" and accepted["late_result_count"] == 0
+    assert accepted["result_sha256"] == attempt["result_sha256"]
+    assert accepted["result_bytes"] == attempt["result_bytes"]
+    assert fixture.service.reconcile_recorded(connection["id"], run["id"], command, fixture.owner.id) == accepted
+    assert len(fixture.provider.calls) == 1
+    after = fixture.service.attempt(connection["id"], run["id"], attempt["id"], fixture.owner.id)
+    assert after["manifest"] == proof["manifest"] and after["projection"] == proof["projection"]
+    assert after["attempt"]["reviewed_at"]
+
+
+def test_result_projection_is_verified_before_return_and_detects_missing_or_extra_blocks(fixture):
+    connection = new_connection(fixture)
+    fixture.provider.callback = lambda _payload, _config: IntegrationActionResult(True, "Beleg", {"large": "x" * 70000})
+    completed = dispatch(fixture, connection, prepare(fixture, connection))
+    attempt = fixture.service.attempts(connection["id"], completed["id"], fixture.owner.id)["items"][0]
+    assert attempt["result_blocks"] == 2
+    good = fixture.service.attempt(connection["id"], completed["id"], attempt["id"], fixture.owner.id)
+    assert good["verified"] and len(good["projection"]["details"]["large"]) == 70000
+    with storage.work(store, fixture.owner.id, write=True) as unit:
+        block = storage.find_one(unit, IntegrationSourceBlockORM, run_id=completed["id"], sequence=1)
+        storage.put(unit, IntegrationSourceBlockORM, {**storage.values(block), "sequence": 2})
+    with pytest.raises(HTTPException) as error:
+        fixture.service.attempt(connection["id"], completed["id"], attempt["id"], fixture.owner.id)
+    assert error.value.status_code == 503
+
+
+def test_result_rejects_a_block_copied_between_runs_even_when_the_plaintext_hash_matches(fixture):
+    connection = new_connection(fixture)
+    first = dispatch(fixture, connection, prepare(fixture, connection))
+    second = dispatch(fixture, connection, prepare(fixture, connection))
+    assert first["result_sha256"] == second["result_sha256"]
+    attempt = fixture.service.attempts(connection["id"], second["id"], fixture.owner.id)["items"][0]
+    with storage.work(store, fixture.owner.id, write=True) as unit:
+        source = storage.find_one(unit, IntegrationSourceBlockORM, run_id=first["id"], sequence=0)
+        target = storage.find_one(unit, IntegrationSourceBlockORM, run_id=second["id"], sequence=0)
+        storage.put(unit, IntegrationSourceBlockORM, {**storage.values(target), "data_token": source.data_token})
+    with pytest.raises(HTTPException) as error:
+        fixture.service.attempt(connection["id"], second["id"], attempt["id"], fixture.owner.id)
+    assert error.value.status_code == 503
+
+
+def test_each_paginated_attempt_has_a_complete_independently_recoverable_result(fixture):
+    connection = new_connection(fixture)
+    fixture.provider.callback = lambda payload, _config: IntegrationActionResult(True, "Seite", {
+        "items": [2] if payload.get("cursor") else [1], "has_more": not bool(payload.get("cursor")),
+        "next_cursor": None if payload.get("cursor") else "next", "future_field": {"untouched": UNKNOWN}})
+    first = dispatch(fixture, connection, prepare(fixture, connection, "pages"))
+    final = dispatch(fixture, connection, first)
+    page = fixture.service.attempts(connection["id"], final["id"], fixture.owner.id)
+    assert page["total"] == 2 and final["recorded_attempts"] == 2
+    results = [fixture.service.attempt(connection["id"], final["id"], item["id"], fixture.owner.id) for item in page["items"]]
+    assert sorted(value for result in results for value in result["projection"]["details"]["items"]) == [1, 2]
+    assert final["result_bytes"] == sum(result["manifest"]["bytes"] for result in results)
+    assert final["retained_result_bytes"] == final["result_bytes"]
+    assert all(result["projection"]["details"]["future_field"] == {"untouched": UNKNOWN} for result in results)
+    with storage.work(store, fixture.owner.id) as unit:
+        row = storage.row(unit, IntegrationActionRunORM, final["id"])
+        checkpoint = storage.unseal(row.checkpoint_token, f"connection-run/{row.id}/checkpoint", fixture.box)
+        assert "seen_cursor_hashes" not in checkpoint
+
+
+def test_deleted_business_source_keeps_history_but_cannot_authorize_another_dispatch(fixture):
+    connection = new_connection(fixture)
+    portfolio = store.create_portfolio(PortfolioCreate(name="Historischer Bestand"))
+    prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name="Historische Quelle", property_type="residential"))
+    run = prepare(fixture, connection, source_kind="property", source_id=prop.id, source_revision=prop.updated_at.isoformat())
+    store.delete_property(prop.id)
+    historical = fixture.service.get_run(connection["id"], run["id"], fixture.owner.id)
+    assert historical["source_status"] == "unavailable" and historical["can_dispatch"] is False
+    assert fixture.service.runs(connection["id"], fixture.owner.id)["total"] == 1
+    preview = fixture.service.preview(connection["id"], run["id"], fixture.owner.id)
+    assert preview["run"]["source_status"] == "unavailable"
+    with pytest.raises(HTTPException) as error:
+        dispatch(fixture, connection, historical)
+    assert error.value.status_code == 404
+    assert fixture.provider.calls == []
+    cancelled = fixture.service.cancel(connection["id"], run["id"], RunCancellation(idempotency_key=str(uuid4()),
+        base_revision=historical["revision"], reason="Quelle wurde entfernt"), fixture.owner.id)
+    assert cancelled["state"] == "cancelled"
+
+
+def test_owner_can_cancel_an_inactive_creators_prepared_run_without_impersonating_or_sending(fixture):
+    connection = new_connection(fixture)
+    run = prepare(fixture, connection, "send", {"text": "Nicht versendet"})
+    recovery = auth.register_user("recovery-owner", "recovery-owner@example.test", "Zweites Eigentümerkonto", "Secret123", "eigentuemer")
+    auth.update_user(fixture.owner.id, {"is_active": False})
+    cancelled = fixture.service.cancel(connection["id"], run["id"], RunCancellation(idempotency_key=str(uuid4()),
+        base_revision=run["revision"], reason="Ersteller deaktiviert; Auftrag zurückgenommen"), recovery.id)
+    assert cancelled["state"] == "cancelled" and cancelled["actor_id"] == fixture.owner.id
+    assert fixture.provider.calls == []

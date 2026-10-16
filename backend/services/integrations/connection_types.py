@@ -78,3 +78,11 @@ class RunReconcile(ConnectionCommand):
 class RunCancellation(ConnectionCommand):
     base_revision: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=500)
+
+
+class RecordedResultReconcile(ConnectionCommand):
+    """Acknowledge a verified retained result, never execute the original action again."""
+    base_revision: int = Field(ge=1)
+    attempt_id: str = Field(min_length=1, max_length=36)
+    reason: str = Field(min_length=1, max_length=500)
+    confirm: Literal[True]

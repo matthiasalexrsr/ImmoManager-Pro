@@ -245,8 +245,13 @@ def process_document(store, identifier: str, payload: ProcessDocument, actor_id:
                               lease_until=stamp + timedelta(minutes=10), actor_id=actor_id,
                               created_at=item.created_at if item else stamp, updated_at=stamp)
         office.put_record(unit, "business_document_intake", item)
-        office.save_command(unit, actor_id, operation, payload, context,
-                            {"intake": _public(context, item, unit.user), "replayed": False})
+        claim_response = {"intake": _public(context, item, unit.user), "replayed": False}
+        if expired_own:
+            assert receipt is not None
+            claim = office.advance_command(unit, actor_id, operation, payload,
+                                           receipt.updated_at.isoformat(), claim_response)
+        else:
+            claim = office.save_command(unit, actor_id, operation, payload, context, claim_response)
         source = dict(context)
     # Extraction is outside the database/account writer locks. Nothing from the
     # proposal is written into financial data or the document until review.
@@ -273,7 +278,7 @@ def process_document(store, identifier: str, payload: ProcessDocument, actor_id:
                                               "updated_at": next_updated_at(current.updated_at, office.timestamp())})
         office.put_record(unit, "business_document_intake", current)
         response = {"intake": _public(context, current, unit.user), "replayed": False}
-        office.save_command(unit, actor_id, operation, payload, context, response)
+        office.advance_command(unit, actor_id, operation, payload, claim.updated_at.isoformat(), response)
         return response
 
 

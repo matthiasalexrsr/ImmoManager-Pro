@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useCanWrite } from '../contexts/AuthContext';
 import { useModalDialog } from '../features/partyWorkspace/useModalDialog';
+import ConnectionEvidencePanel from './ConnectionEvidencePanel';
+import ConnectionEmergencyStop from './ConnectionEmergencyStop';
 import './integrationConnections.css';
 
 const BASE = '/integration-connections';
@@ -149,6 +151,7 @@ function RunDetail({ connectionId, initial, preview: proposedPreview, onUpdated 
   const [run, setRun] = useState(initial);
   const [preview, setPreview] = useState(proposedPreview);
   const [previewReady, setPreviewReady] = useState(false);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -158,7 +161,7 @@ function RunDetail({ connectionId, initial, preview: proposedPreview, onUpdated 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const request = new AbortController(); const current = api.captureSession();
-    setPreviewReady(false);
+    setPreviewReady(false); setError('');
     api.get(`${BASE}/${connectionId}/runs/${initial.id}/preview`, { signal: request.signal }).then(result => {
       if (request.signal.aborted) return; current();
       if (result?.run?.id !== initial.id || !result.payload || typeof result.payload !== 'object') throw new Error('Die gespeicherte Vorschau ist unvollständig.');
@@ -166,7 +169,7 @@ function RunDetail({ connectionId, initial, preview: proposedPreview, onUpdated 
       setPreview(result.payload); setPreviewReady(true);
     }).catch(failure => { if (!request.signal.aborted && failure.code !== 'SESSION_CHANGED') setError(failure.message || 'Die gespeicherte Vorschau konnte nicht geladen werden.'); });
     return () => request.abort();
-  }, [connectionId, initial.id]);
+  }, [connectionId, initial.id, previewAttempt]);
   async function updateRun({ execute = false, cancel = false } = {}) {
     if (busy) return;
     const current = api.captureSession(); setBusy(true); setError('');
@@ -187,12 +190,18 @@ function RunDetail({ connectionId, initial, preview: proposedPreview, onUpdated 
       setError(failure.message || 'Der Vorgangsstand konnte nicht bestätigt werden.');
     } finally { if (mounted.current) setBusy(false); }
   }
-  const executable = previewReady && !pending.current && ['prepared', 'retryable', 'awaiting_page'].includes(run.state) && !run.external_outcome_unknown;
+  const cancelable = previewReady && !pending.current && ['prepared', 'retryable', 'awaiting_page'].includes(run.state);
+  const executable = cancelable && run.can_dispatch !== false && !run.external_outcome_unknown
+    && (run.effect !== 'external_write' || run.state === 'prepared');
   return <section className="connection-run-detail" aria-labelledby="connection-run-heading">
     <h3 id="connection-run-heading">Vorgang: {statusNames[run.state] || run.state}</h3>
     <p>{run.safe_summary}</p>
+    {run.source_status === 'unavailable' && <p role="status">Die ursprüngliche Quelle ist nicht mehr verfügbar. Historie und Vorschau bleiben erhalten; ein neuer Anbieteraufruf ist gesperrt.</p>}
+    {run.source_changed && <p role="status">Die Quelle wurde geändert. Für weitere Anbieteraktionen ist eine neue geprüfte Vorschau nötig.</p>}
     {!previewReady && <p role="status">Die gespeicherte Vorschau wird geprüft. Bis dahin ist keine Ausführung möglich.</p>}
     {error && <div role="alert" className="alert alert-danger">{error}</div>}
+    {!previewReady && error && <button type="button" className="btn btn-secondary" disabled={busy}
+      onClick={() => setPreviewAttempt(value => value + 1)}>Vorschau erneut laden</button>}
     {run.external_outcome_unknown && <div className="alert alert-warning"><strong>Nicht erneut senden.</strong>
       <p>Prüfen Sie den Vorgang bei der Gegenstelle anhand dieser Kennung und des ursprünglichen Auftrags. Ein Timeout ist kein Nachweis, dass nichts ausgeführt wurde.</p></div>}
     {run.state === 'accepted' && <p>Die Gegenstelle hat die Aktion angenommen. Das ist noch kein Nachweis einer Zustellung oder einer späteren Ausführung.</p>}
@@ -207,14 +216,16 @@ function RunDetail({ connectionId, initial, preview: proposedPreview, onUpdated 
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => updateRun()}>Status aktualisieren</button>
       {canWrite && executable && <button type="button" className="btn btn-primary" disabled={busy || !confirmed}
         onClick={() => updateRun({ execute: true })}>{run.state === 'awaiting_page' ? 'Nächsten Abschnitt laden' : 'Jetzt ausführen'}</button>}
-      {canWrite && executable && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => updateRun({ cancel: true })}>Weitere Schritte abbrechen</button>}
+      {canWrite && cancelable && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => updateRun({ cancel: true })}>Weitere Schritte abbrechen</button>}
       {canWrite && pending.current && <button type="button" className="btn btn-secondary" disabled={busy}
         onClick={() => updateRun({ execute: true })}>Unbestätigten Befehl abgleichen</button>}
     </div>
+    {run.recorded_attempts !== undefined && <ConnectionEvidencePanel key={run.id} connectionId={connectionId} run={run}
+      onApplied={value => { setRun(value); onUpdated(value); setConfirmed(false); }} />}
   </section>;
 }
 
-function ConnectionDetail({ connection, contract, onEdit }) {
+function ConnectionDetail({ connection, contract, onEdit, onChanged }) {
   const [runs, setRuns] = useState({ items: [], next_cursor: null, total: null });
   const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -238,10 +249,12 @@ function ConnectionDetail({ connection, contract, onEdit }) {
   const updated = useCallback(run => setRuns(current => ({ ...current, items: current.items.map(item => item.id === run.id ? run : item) })), []);
   return <section className="connection-detail">
     <div className="connection-heading"><div><h2>{connection.name}</h2><p>{connection.provider_name} · Stand {connection.revision} · {connection.enabled ? 'Aktiv' : 'Deaktiviert'}</p></div>
-      {canWrite && <button type="button" className="btn btn-secondary" onClick={onEdit}>Verbindung bearbeiten</button>}</div>
+      {canWrite && !connection.read_error && <button type="button" className="btn btn-secondary" onClick={onEdit}>Verbindung bearbeiten</button>}</div>
+    {connection.read_error && <div role="alert">{connection.read_error}</div>}
+    {canWrite && connection.read_error && <ConnectionEmergencyStop connection={connection} onChanged={onChanged} />}
     {connection.unmapped_fields?.length > 0 && <p>Zusätzliche Quellfelder sind geschützt erhalten, aber nicht als Anbieterparameter freigegeben: {connection.unmapped_fields.join(', ')}.</p>}
-    {!connection.configured && <div className="alert alert-warning">Die Verbindung benötigt noch vollständige gültige Zugangseinstellungen.</div>}
-    {canWrite && <ActionEditor key={connection.id} connection={connection} contract={contract}
+    {!connection.read_error && !connection.configured && <div className="alert alert-warning">Die Verbindung benötigt noch vollständige gültige Zugangseinstellungen.</div>}
+    {canWrite && !connection.read_error && <ActionEditor key={connection.id} connection={connection} contract={contract}
       onPrepared={(run, values) => { setSelected(run); setPreview(values); setCursor(null); setHistory([]); setAttempt(current => current + 1); }} />}
     {selected && <RunDetail key={selected.id} connectionId={connection.id} initial={selected} preview={preview} onUpdated={updated} />}
     <h3>Vorgänge und Ergebnisnachweise {runs.total !== null && `(${runs.total})`}</h3>
@@ -276,7 +289,10 @@ export default function IntegrationConnections() {
     window.addEventListener('workspace-logout', invalidate); window.addEventListener('workspace-owner', invalidate);
     const query = new URLSearchParams({ limit: '50' }); if (cursor) query.set('cursor', cursor);
     Promise.all([api.get(`${BASE}/catalog`, { signal: request.signal }), api.get(`${BASE}?${query}`, { signal: request.signal }),
-      linked ? api.get(`${BASE}/${encodeURIComponent(linked)}`, { signal: request.signal }) : Promise.resolve(null)])
+      linked ? api.get(`${BASE}/${encodeURIComponent(linked)}`, { signal: request.signal }).catch(failure => {
+        if (failure.statusCode !== 503 || request.signal.aborted) throw failure;
+        return api.get(`${BASE}/${encodeURIComponent(linked)}/state`, { signal: request.signal });
+      }) : Promise.resolve(null)])
       .then(([schema, result, connection]) => {
         if (request.signal.aborted) return; current();
         if (!Array.isArray(schema?.providers) || !Array.isArray(result?.items)) throw new Error('Die Verbindungsübersicht ist unvollständig.');
@@ -296,13 +312,13 @@ export default function IntegrationConnections() {
     {!loading && !error && <div className="connection-layout"><aside aria-label="Verbindungen">
       <p>{page.total} Verbindungen</p>{!page.items.length && <p>Noch keine Verbindung angelegt.</p>}
       {page.items.map(connection => <button type="button" className="connection-card" key={connection.id} aria-label={`${connection.name} ${connection.provider_name} ${connection.enabled ? 'Aktiv' : 'Deaktiviert'}`} onClick={() => choose(connection)} aria-pressed={selected?.id === connection.id}>
-        <strong>{connection.name}</strong><span>{connection.provider_name}</span><small>{connection.enabled ? 'Aktiv' : 'Deaktiviert'} · Stand {connection.revision}</small></button>)}
+        <strong>{connection.name}</strong><span>{connection.provider_name}</span><small>{connection.read_error ? 'Zugangsdaten nicht lesbar' : connection.enabled ? 'Aktiv' : 'Deaktiviert'} · Stand {connection.revision}</small></button>)}
       <nav className="connection-actions" aria-label="Verbindungsseiten"><button type="button" className="btn btn-secondary" disabled={!history.length}
         onClick={() => { setCursor(history.at(-1)); setHistory(current => current.slice(0, -1)); }}>Zurück</button>
         <button type="button" className="btn btn-secondary" disabled={!page.next_cursor}
           onClick={() => { setHistory(current => [...current, cursor]); setCursor(page.next_cursor); }}>Weitere Verbindungen</button></nav>
     </aside>{selected ? <ConnectionDetail key={selected.id} connection={selected} contract={catalog.find(item => item.provider_id === selected.provider_id)}
-      onEdit={() => setEditor({ connection: selected })} /> : <section className="connection-detail"><h2>Verbindung auswählen</h2><p>Wählen Sie einen Zugang oder legen Sie eine benannte Verbindung an.</p></section>}</div>}
+      onEdit={() => setEditor({ connection: selected })} onChanged={() => setAttempt(value => value + 1)} /> : <section className="connection-detail"><h2>Verbindung auswählen</h2><p>Wählen Sie einen Zugang oder legen Sie eine benannte Verbindung an.</p></section>}</div>}
     {editor && <ConnectionEditor connection={editor.connection} catalog={catalog} onClose={() => setEditor(null)}
       onSaved={connection => { choose(connection); setAttempt(value => value + 1); }} />}
   </main>;

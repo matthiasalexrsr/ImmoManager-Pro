@@ -111,3 +111,40 @@ Die Git-Arbeitskopien wurden gelistet, nicht pauschal fachlich übernommen: inte
 6. Rückweg im Entwicklungs-/Integrationszweig: die beiden Codecommits in umgekehrter Reihenfolge regulär revertieren. Kein Schema-Downgrade erforderlich. Ein Revert stellt allerdings auch die früheren Fehlerpfade wieder her; keine automatische Empfehlung zur Produktivumstellung.
 
 Aktuelle Ergänzung: Der eigene Zweig wurde bis b264cf81 regulär gepusht; CI-Lauf 38815280138 ist gestartet. Die neue Migration, die aktuelle Übernahmereihenfolge und neuen Prüfungen stehen in PRO_MESSAGE_WORKFLOW_20261016.md. Zusammenführung, unabhängige Freigabe, Release und Umstellung bleiben bei Codex.
+
+
+## Fortsetzung 16.10.2026: gemeinsamer Verbindungsrahmen
+
+Die obige Matrix kennzeichnet den historischen Stand bis zur Nachrichtenabnahme. Für den aktuellen
+Verbindungsblock gilt ausschließlich `PRO_CONNECTION_SECURITY_ACCEPTANCE_20261016.md`.
+Im eigenen Arbeitszweig wurde die private Connection-/Mapping-/Run-/Attempt-/
+Receipt-Basis mit verschlüsselten Quellfeldern und dauerhaften, separat verifizierbaren
+Ergebnisblöcken implementiert. Verlorene und verspätete Ausführungsergebnisse werden
+getrennt mit expliziter Übernahme und ohne Neuversand behandelt. Ein Fehler bei der
+Wiederherstellung des eingefrorenen Config-Snapshots wurde anhand vier ursprünglich
+roter Archivefälle korrigiert.
+
+Teststand dieses Teils: je 41/41 Memory und SQLite nach dem Fix, native 47/47
+ohne Skip, zusätzliche native PostgreSQL-Vollsicherung samt frischer Zieldatenbank
+1/1 ohne Skip, vollständige Memory-Backupmatrix 56/56, SQLite-Backupmatrix
+57/57, jeweils >10.000 paginierte Events und 10.033 getrennte Runs
+mit Memory/SQLite ohne Verlust, reale Verbindungsbrowserprüfung 7/7
+mit visuell begutachteten 320/360/1440-Aufnahmen, Frontendkomponententest
+8/8 sowie gezielte Migrations-/Manipulations-/Recoveryprüfungen.
+Jeder Lauf besitzt seinen eigenen Runtimeordner und getrennte Hashmanifestdateien.
+Die Werkzeuge meldeten lediglich vorhandene Bibliothekswarnungen, keinen
+übersprungenen Pflichtfall in den genannten nativen Prüfungen.
+
+`full_backup.py` verifiziert die privaten SQL-Ciphertexte jetzt zusätzlich
+auf der aus dem Vollarchiv extrahierten und von der Anwendung unabhängigen
+Testkopie vor der Wiederherstellung. Beschädigte Belege verhindern Publikation;
+unterbrochene externe Writes bleiben nach Restore ausdrücklich `unknown`.
+Die Migration `e160a1b2c300` folgt additiv auf `d73f2b9a041c`.
+Der alte globale Konfigurationsweg bleibt bewusst eigenständig; ein ungetestetes
+automatisches Umstellen aller Legacy-Geheimnisse wurde **nicht** behauptet.
+
+Der übrige vollständige Handoverauftrag ist damit weiterhin offen.
+14 getrennte `pro-finish-*-20261016`-Worktrees sind für die Pakete vorbereitet;
+mehrere besitzen umfangreiche uncommittete Produktänderungen. Sie werden
+nicht still oder konfliktüberschreibend als fertig integriert deklariert.
+Ältere erfolgreiche Tests rechtfertigen keine Abnahme späterer Zusammenführungen.

@@ -11,7 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ...config import settings
@@ -65,12 +65,19 @@ def unseal(token: str, context: str, box: SecretBox | None = None) -> Any:
 
 
 @contextmanager
-def work(store, actor_id: str, *, write: bool = False):
+def work(store, actor_id: str, *, write: bool = False, command_key: str | None = None):
     try:
         with archive.work(store, actor_id, write_areas=("/integrations",) if write else ()) as unit:
             scope = scope_from_user(unit.user)
             if not scope.unrestricted:
                 raise HTTPException(403, "Diese Verbindungen betreffen die ganze Installation und benötigen Zugriff auf alle Portfolios.")
+            if write and command_key is not None and unit.db is not None and unit.db.get_bind().dialect.name == "postgresql":
+                # The account fence is a shared lock. Serialize a command key
+                # separately, BEFORE any connection/source row lock, so two
+                # creates cannot both pass the absent-receipt check.
+                key = hashlib.sha256(("immo:business-command:" + actor_id + ":" + command_key).encode()).digest()
+                identifier = int.from_bytes(key[:8], "big", signed=True)
+                unit.db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": identifier})
             with bound_actor(unit.user), scope_context(scope):
                 yield unit
     except SQLAlchemyError:
@@ -140,12 +147,26 @@ def revision(current, expected: int) -> None:
 def record_event(unit, connection_id: str, event_type: str, detail: dict,
                  *, run_id: str | None = None, box: SecretBox | None = None) -> str:
     identifier = str(uuid4())
-    put(unit, IntegrationConnectionEventORM, {
-        "id": identifier, "connection_id": connection_id, "run_id": run_id,
-        "actor_id": unit.actor_id, "event_type": event_type,
-        "detail_token": seal(detail, f"connection-event/{identifier}", box), "created_at": now(),
-    })
+    moment = now()
+    identity = {"id": identifier, "connection_id": connection_id, "run_id": run_id,
+                "actor_id": unit.actor_id, "event_type": event_type, "created_at": stamp(moment)}
+    envelope = {"format": "immomanager-connection-event/2", "identity": identity, "detail": detail}
+    put(unit, IntegrationConnectionEventORM, {**identity, "created_at": moment,
+        "detail_token": seal(envelope, f"connection-event/{identifier}", box)})
     return identifier
+
+
+def event_detail(item, box: SecretBox | None = None) -> tuple[dict, str]:
+    value = unseal(item.detail_token, f"connection-event/{item.id}", box)
+    if isinstance(value, dict) and value.get("format") == "immomanager-connection-event/2":
+        identity = {name: getattr(item, name) for name in ("id", "connection_id", "run_id", "actor_id", "event_type")}
+        identity["created_at"] = stamp(item.created_at)
+        if value.get("identity") != identity or not isinstance(value.get("detail"), dict):
+            raise HTTPException(503, "Der Ereignisnachweis wurde verändert oder einem anderen Vorgang zugeordnet.")
+        return value["detail"], "metadata-bound"
+    if not isinstance(value, dict):
+        raise HTTPException(503, "Der Ereignisnachweis ist nicht lesbar.")
+    return value, "legacy-id-only"
 
 
 def replay(unit, operation: str, payload) -> dict | None:
@@ -157,7 +178,8 @@ def receipt(unit, operation: str, payload, connection_id: str, response: dict) -
     commands.save_command(unit, unit.actor_id, "connection:" + operation, payload, context, response)
 
 
-def page(unit, model, actor_id: str, *, cursor: str | None = None, limit: int = 50, **filters) -> dict:
+def page(unit, model, actor_id: str, *, cursor: str | None = None, limit: int = 50,
+         sql_condition=None, memory_condition=None, **filters) -> dict:
     if not 1 <= limit <= 250:
         raise HTTPException(422, "Die Seitengröße muss zwischen 1 und 250 liegen.")
     namespace = ["connection-page-v1", model.__tablename__, actor_id, filters]
@@ -173,14 +195,19 @@ def page(unit, model, actor_id: str, *, cursor: str | None = None, limit: int = 
     selected: list[Any]
     if unit.db is None:
         selected = [item for item in memory(unit, model).values()
-                    if all(getattr(item, name) == value for name, value in filters.items())]
+                    if all(getattr(item, name) == value for name, value in filters.items())
+                    and (memory_condition is None or memory_condition(item))]
         total = len(selected)
         selected = [item for item in selected if anchor is None or (item.created_at, item.id) < anchor]
         selected.sort(key=lambda item: (item.created_at, item.id), reverse=True)
         selected = selected[:limit + 1]
     else:
         query = select(model).filter_by(**filters)
-        total = unit.db.scalar(select(func.count()).select_from(model).filter_by(**filters))
+        count_query = select(func.count()).select_from(model).filter_by(**filters)
+        if sql_condition is not None:
+            query = query.where(sql_condition)
+            count_query = count_query.where(sql_condition)
+        total = unit.db.scalar(count_query)
         if anchor:
             query = query.where(or_(model.created_at < anchor[0], and_(model.created_at == anchor[0], model.id < anchor[1])))
         selected = list(unit.db.scalars(query.order_by(model.created_at.desc(), model.id.desc()).limit(limit + 1)))

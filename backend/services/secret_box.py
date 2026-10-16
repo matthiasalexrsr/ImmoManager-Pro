@@ -340,6 +340,20 @@ def open_with(keys: list[Key], token: str, context: str) -> str:
         raise SecretCorrupt(f"Verschlüsselter Wert für „{context}“ ist verändert") from exc
 
 
+def seal_with(keys: list[Key], plaintext: str, context: str) -> str:
+    """Seal with explicitly supplied archived keys; never create/read a key file.
+
+    Restore normalization uses this while still inside its caller-owned offline
+    transaction. It cannot fall back to a running application's keyring.
+    """
+    if not keys:
+        raise SecretKeyMissing("explicit-archive-key")
+    key = keys[0]
+    nonce = secrets.token_bytes(_NONCE_BYTES)
+    sealed = AESGCM(key.material).encrypt(nonce, plaintext.encode("utf-8"), _aad(key.id, context))
+    return f"{TOKEN_PREFIX}{key.id}:{_b64encode(nonce + sealed)}"
+
+
 # --- passphrase envelopes (backup copies of the key file and .env) ----------------------
 
 _SCRYPT = {"n": 2 ** 15, "r": 8, "p": 1}

@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from fastapi import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from ..business_qol_models import BusinessCommand, ConversationNote, NoteCreate, QuickEdit, Undo
 from ..db.business_qol_models import BusinessCommandORM, ConversationNoteORM
@@ -137,8 +138,49 @@ def save_command(unit, actor_id: str, operation: str, payload: Any, context: dic
                               property_id=context["property_id"], fingerprint=fingerprint(operation, payload),
                               response=dump(response), inverse=inverse, post_revision=post_revision,
                               created_at=stamp, updated_at=stamp)
-    put_record(unit, "business_qol_commands", receipt)
+    # A command is an immutable creation receipt, not an upsert. A concurrent
+    # writer must roll back its domain mutation rather than overwrite a receipt
+    # that was committed after its replay check. Undo markers use put_record
+    # explicitly and are not new command creation.
+    if unit.db is None:
+        if receipt.id in unit.store.business_qol_commands:
+            raise conflict("Die Vorgangskennung wurde gleichzeitig verwendet. Bitte den gespeicherten Stand abgleichen.")
+        unit.insert(unit.store.business_qol_commands, receipt.id, receipt)
+    else:
+        values = receipt.model_dump()
+        for key, value in values.items():
+            if isinstance(value, datetime):
+                values[key] = utc(value).replace(tzinfo=None)
+        unit.db.add(BusinessCommandORM(**values))
+        try:
+            unit.db.flush()
+        except IntegrityError:
+            raise conflict("Die Vorgangskennung wurde gleichzeitig verwendet. Bitte den gespeicherten Stand abgleichen.") from None
     return receipt
+
+
+def advance_command(unit, actor_id: str, operation: str, payload: Any,
+                    expected_revision: str, response: dict) -> BusinessCommand:
+    """Advance one already issued receipt; never replace its identity/request.
+
+    A long-running action owns the expected revision of its claim. A different
+    request, a later claim, or a missing receipt is a conflict, not an upsert.
+    Its caller must additionally fence the domain-specific processing lease.
+    """
+    identifier = command_id(actor_id, payload.idempotency_key)
+    if unit.db is not None:
+        locked = unit.db.scalar(select(BusinessCommandORM).where(BusinessCommandORM.id == identifier).with_for_update())
+        if locked is None:
+            raise conflict("Der gespeicherte Vorgang ist nicht mehr vorhanden.")
+    current = get_record(unit, "business_qol_commands", identifier)
+    if (current is None or current.actor_id != actor_id or current.operation != operation
+            or current.fingerprint != fingerprint(operation, payload)
+            or not same_revision(expected_revision, current.updated_at.isoformat())):
+        raise conflict("Der gespeicherte Vorgang wurde inzwischen geändert.")
+    updated = current.model_copy(update={"response": dump(response),
+                                         "updated_at": next_updated_at(current.updated_at, timestamp())})
+    put_record(unit, "business_qol_commands", updated)
+    return updated
 
 
 def list_items(store, actor_id: str, *, kind=None, property_id=None, due_before=None, cursor=None, limit=50,

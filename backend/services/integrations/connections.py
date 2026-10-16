@@ -11,8 +11,10 @@ from copy import deepcopy
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from fastapi import HTTPException
+from sqlalchemy import or_, select
 
 from ...db.integration_connection_models import (
+    IntegrationActionRunORM,
     IntegrationConnectionEventORM,
     IntegrationConnectionMappingORM,
     IntegrationConnectionORM,
@@ -157,6 +159,34 @@ class Connections:
                 "source": "database", "created_at": storage.stamp(connection.created_at),
                 "updated_at": storage.stamp(connection.updated_at), "planned": provider.manifest.planned}
 
+    def _unreadable(self, connection) -> dict:
+        # Keep the failed row visible, but never label an unreadable configuration
+        # as empty, configured, or safely executable. No decryption is attempted.
+        provider = self.provider(connection.provider_id)
+        return {"id": connection.id, "provider_id": connection.provider_id,
+                "provider_name": provider.manifest.name, "name": connection.name,
+                "revision": connection.revision, "enabled": connection.enabled,
+                "archived": connection.archived, "is_default": connection.is_default,
+                "config": {}, "configured": None, "configuration_state": "unreadable",
+                "read_error": "Geschützte Verbindungsdaten sind nicht lesbar. Schlüssel oder Wiederherstellung prüfen.",
+                "validation": {"valid": None, "errors": {}}, "unmapped_fields": [],
+                "secret_fields_present": [], "source": "database",
+                "created_at": storage.stamp(connection.created_at),
+                "updated_at": storage.stamp(connection.updated_at), "planned": provider.manifest.planned}
+
+    def _public_or_problem(self, unit, connection) -> dict:
+        try:
+            return self.public(unit, connection)
+        except HTTPException as failure:
+            if failure.status_code != 503:
+                raise
+            return self._unreadable(connection)
+
+    def state(self, identifier: str, actor_id: str) -> dict:
+        """Explicit degraded-state view; an unreadable configuration is never empty success."""
+        with storage.work(self.store, actor_id) as unit:
+            return self._public_or_problem(unit, storage.row(unit, IntegrationConnectionORM, identifier))
+
     def get(self, identifier: str, actor_id: str) -> dict:
         with storage.work(self.store, actor_id) as unit:
             return self.public(unit, storage.row(unit, IntegrationConnectionORM, identifier))
@@ -165,7 +195,7 @@ class Connections:
         with storage.work(self.store, actor_id) as unit:
             filters = {} if include_archived else {"archived": False}
             page = storage.page(unit, IntegrationConnectionORM, actor_id, cursor=cursor, limit=limit, **filters)
-            page["items"] = [self.public(unit, item) for item in page["items"]]
+            page["items"] = [self._public_or_problem(unit, item) for item in page["items"]]
             return page
 
     def _create(self, unit, payload: ConnectionCreate, *, is_default=False, legacy_hash=None) -> dict:
@@ -175,6 +205,10 @@ class Connections:
             return self.public(unit, storage.row(unit, IntegrationConnectionORM, prior["connection_id"]))
         self.provider(payload.provider_id)
         raw = deepcopy(payload.config)
+        secret_keys = set(self.provider(payload.provider_id).manifest.secret_config_keys) | {
+            field["key"] for field in config_fields(self.provider(payload.provider_id).manifest) if field.get("secret")}
+        if any(raw.get(key) == "***" for key in secret_keys):
+            raise HTTPException(422, "Eine Geheimnismaske ist kein neuer Zugangsschlüssel. Bitte den tatsächlichen Wert eingeben.")
         self._checked(payload.provider_id, raw, enabled=payload.enabled)
         identifier = str(uuid5(NAMESPACE_URL, "immo:connection-default:" + payload.provider_id)) if is_default else str(uuid4())
         if storage.row(unit, IntegrationConnectionORM, identifier, required=False) is not None:
@@ -194,17 +228,36 @@ class Connections:
         return self.public(unit, connection)
 
     def create(self, payload: ConnectionCreate, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             return self._create(unit, payload)
 
     def update(self, identifier: str, payload: ConnectionUpdate, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             connection = storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             prior = storage.replay(unit, "update:" + identifier, payload)
             if prior:
-                return self.public(unit, connection)
+                return self._public_or_problem(unit, connection)
             storage.revision(connection, payload.base_revision)
-            raw = self.effective_config(unit, connection)
+            try:
+                raw = self.effective_config(unit, connection)
+            except HTTPException as failure:
+                disabling_only = ((payload.enabled is False or payload.archived is True)
+                                  and payload.name is None and payload.config is None and not payload.clear_secrets
+                                  and payload.enabled is not True and payload.archived is not False)
+                if failure.status_code != 503 or not disabling_only:
+                    raise
+                # An emergency stop never destroys unreadable ciphertext or
+                # creates a replacement key. Its existing command receipt is
+                # the durable actor/time/revision audit for this metadata-only
+                # transition; no unencrypted config event is fabricated.
+                connection = storage.put(unit, IntegrationConnectionORM, {**storage.values(connection),
+                    "enabled": False, "archived": bool(payload.archived or connection.archived),
+                    "revision": connection.revision + 1, "updated_at": storage.now()})
+                storage.receipt(unit, "update:" + identifier, payload, identifier,
+                    {"connection_id": identifier, "revision": connection.revision,
+                     "operation": "disable_unreadable", "enabled": False,
+                     "ciphertext_preserved": True})
+                return self._unreadable(connection)
             fields = config_fields(self.provider(connection.provider_id).manifest)
             secrets = set(self.provider(connection.provider_id).manifest.secret_config_keys) | {field["key"] for field in fields if field.get("secret")}
             if set(payload.clear_secrets) - secrets:
@@ -253,7 +306,7 @@ class Connections:
         if not getattr(self.manager, "connection_bridge_enabled", False):
             raise HTTPException(409, "Die eindeutige Umschaltung der bisherigen Konfiguration ist noch nicht aktiviert.")
         # The bridge uses this same writer lock for old configuration commands.
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             prior = storage.replay(unit, "adopt:" + payload.provider_id, payload)
             if prior:
                 return self.public(unit, storage.row(unit, IntegrationConnectionORM, prior["connection_id"]))
@@ -275,13 +328,32 @@ class Connections:
     def events(self, identifier: str, actor_id: str, *, cursor=None, limit=50) -> dict:
         with storage.work(self.store, actor_id) as unit:
             storage.row(unit, IntegrationConnectionORM, identifier)
-            page = storage.page(unit, IntegrationConnectionEventORM, actor_id, cursor=cursor, limit=limit, connection_id=identifier)
-            page["items"] = [{"id": item.id, "event_type": item.event_type, "actor_id": item.actor_id,
-                              "run_id": item.run_id, "created_at": storage.stamp(item.created_at)} for item in page["items"]]
+            # A recovery event recorded by an owner still belongs to the run's
+            # original creator. Filter by run identity before counts/paging,
+            # not by whoever happened to record its latest review.
+            condition = None if unit.user["role"] == "eigentuemer" else or_(
+                IntegrationConnectionEventORM.run_id.is_(None), IntegrationConnectionEventORM.run_id.in_(
+                    select(IntegrationActionRunORM.id).where(IntegrationActionRunORM.actor_id == actor_id)))
+            def owns_event(item):
+                if item.run_id is None:
+                    return True
+                run = storage.row(unit, IntegrationActionRunORM, item.run_id, required=False)
+                return run is not None and run.actor_id == actor_id
+            memory_condition = None if unit.user["role"] == "eigentuemer" else owns_event
+            page = storage.page(unit, IntegrationConnectionEventORM, actor_id, cursor=cursor, limit=limit,
+                                sql_condition=condition, memory_condition=memory_condition, connection_id=identifier)
+            items = []
+            for item in page["items"]:
+                _detail, binding = storage.event_detail(item, self.box)
+                # This is the shared metadata index, not a raw observation
+                # export. Private source values remain in their encrypted proof.
+                items.append({"id": item.id, "event_type": item.event_type, "actor_id": item.actor_id,
+                              "run_id": item.run_id, "created_at": storage.stamp(item.created_at), "proof_binding": binding})
+            page["items"] = items
             return page
 
     def observe(self, identifier: str, payload: SourceObservation, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             prior = storage.replay(unit, "observe:" + identifier, payload)
             if prior:
@@ -337,7 +409,7 @@ class Connections:
             return page
 
     def decide_mapping(self, identifier: str, mapping_id: str, payload: MappingDecision, actor_id: str) -> dict:
-        with storage.work(self.store, actor_id, write=True) as unit:
+        with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
             storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             mapping = storage.row(unit, IntegrationConnectionMappingORM, mapping_id, lock=True)
             if mapping.connection_id != identifier:

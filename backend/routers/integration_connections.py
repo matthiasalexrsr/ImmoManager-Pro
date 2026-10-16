@@ -19,6 +19,7 @@ from ..services.integrations.connection_types import (
     ConnectionUpdate,
     LegacyAdoption,
     MappingDecision,
+    RecordedResultReconcile,
     RunCancellation,
     RunDispatch,
     RunPreparation,
@@ -177,3 +178,32 @@ async def cancel(connection_id: str, run_id: str, request: Request, response: Re
 def preview(connection_id: str, run_id: str, response: Response, user: UserRead = Depends(require_auth)) -> dict:
     _private(response)
     return _service().preview(connection_id, run_id, user.id)
+
+
+@router.get("/{connection_id}/runs/{run_id}/attempts")
+def attempt_list(connection_id: str, run_id: str, response: Response,
+                 cursor: str | None = Query(None, max_length=4096), limit: int = Query(50, ge=1, le=250),
+                 user: UserRead = Depends(require_auth)) -> dict:
+    _private(response)
+    return _service().attempts(connection_id, run_id, user.id, cursor=cursor, limit=limit)
+
+
+@router.get("/{connection_id}/runs/{run_id}/attempts/{attempt_id}")
+def attempt_detail(connection_id: str, run_id: str, attempt_id: str, response: Response,
+                   user: UserRead = Depends(require_auth)) -> dict:
+    _private(response)
+    return _service().attempt(connection_id, run_id, attempt_id, user.id)
+
+
+@router.post("/{connection_id}/runs/{run_id}/reconcile-recorded", openapi_extra=_schema(RecordedResultReconcile))
+async def reconcile_recorded(connection_id: str, run_id: str, request: Request, response: Response,
+                             user: UserRead = Depends(require_auth)) -> dict:
+    _private(response)
+    payload = await _body(request, RecordedResultReconcile)
+    return await run_in_threadpool(_service().reconcile_recorded, connection_id, run_id, payload, user.id)
+
+
+@router.get("/{connection_id}/state")
+def connection_state(connection_id: str, response: Response, user: UserRead = Depends(require_auth)) -> dict:
+    _private(response)
+    return _service().state(connection_id, user.id)

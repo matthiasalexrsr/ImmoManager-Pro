@@ -890,6 +890,65 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
     return result
 
 
+def _archived_connection_keys(files: dict[str, bytes]) -> list[secret_box.Key]:
+    """Only keys actually bundled in the archive, never ambient process secrets."""
+    keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
+    for line in files.get(ENV, b"").decode("utf-8", "replace").splitlines():
+        field, _, value = line.strip().partition("=")
+        if field.strip() == "SECRET_KEYS":
+            keys.extend(secret_box.parse_env_keys(value.strip().strip('"').strip("'")))
+    return keys
+
+
+def _private_connection_proof(connection, keys: list[secret_box.Key], *, normalize: bool = False) -> dict:
+    """Verify all saved connection evidence before publishing an offline restore.
+
+    A recovery transition is performed in the CALLER'S fresh-target transaction.
+    It never calls auth, the runtime keyring, integrations or provider transports.
+    """
+    from .integrations.connection_archive import (
+        ConnectionArchiveError,
+        mark_restored_connections_unconfirmed,
+        verify_connection_state,
+    )
+
+    try:
+        if normalize:
+            recovered = mark_restored_connections_unconfirmed(connection, keys)
+        else:
+            recovered = 0
+        proof = verify_connection_state(connection, keys)
+    except ConnectionArchiveError:
+        # No private ciphertext, source values or driver parameters in user logs.
+        raise BackupError("Geschützte Verbindungsnachweise konnten nicht vollständig geprüft werden.") from None
+    return {
+        "present": proof["present"], "verified_rows": proof["rows"],
+        "verified_result_bytes": proof["verified_result_bytes"],
+        "legacy_id_only_records": proof["legacy_id_only_records"],
+        "restored_unconfirmed": recovered,
+    }
+
+
+def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, normalize: bool = False) -> dict:
+    from sqlalchemy.pool import NullPool
+
+    if normalize:
+        engine = create_engine(f"sqlite:///{path.as_posix()}", poolclass=NullPool)
+    else:
+        # Probe the extracted copy read-only: even a benign SQL transaction
+        # must not rewrite the archived evidence before its verification.
+        uri = f"{path.resolve().as_uri()}?mode=ro"
+        engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(uri, uri=True), poolclass=NullPool)
+    try:
+        if normalize:
+            with engine.begin() as connection:
+                return _private_connection_proof(connection, keys, normalize=True)
+        with engine.connect() as connection:
+            return _private_connection_proof(connection, keys)
+    finally:
+        engine.dispose()
+
+
 # --- restore probe ------------------------------------------------------------------------
 
 def restore_probe(archive: Path | None = None, sources: Sources | None = None,
@@ -927,6 +986,10 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
         manifest = _extract(archive, probe_dir, pulse)
         checks["files_restored"] = len(manifest["files"])
         database = manifest["database"]
+        secret_files, secret_warning = _secret_files(manifest, probe_dir, passphrase)
+        # A warning can remain for unrelated runtime secrets, but private SQL
+        # evidence MUST decrypt using the keys actually archived here.
+        private_keys = _archived_connection_keys(secret_files) if not secret_warning else []
         head = _code_head()
         if database["dialect"] == "sqlite":
             db_path = probe_dir / DB_SQLITE
@@ -937,6 +1000,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
             from .sqlite_backup import verify_archived_originals
 
             checks["archived_originals"] = verify_archived_originals(db_path)
+            checks["private_connections"] = _sqlite_private_connections(db_path, private_keys)
             if facts["revision"] != head:
                 from ..db.schema_state import run_migrations
 
@@ -945,7 +1009,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
                 warnings.append(f"Sicherung auf Revision {facts['revision']}, Programm auf {head}: nach einer "
                                 "Wiederherstellung ist python -m backend.upgrade nötig (in der Probe erfolgreich).")
         else:
-            checks.update(_probe_postgres(probe_dir / DB_POSTGRES, database, sources, head, warnings))
+            checks.update(_probe_postgres(probe_dir / DB_POSTGRES, database, sources, head, warnings, private_keys))
         checks["revision"] = database["revision"]
         checks["row_counts_match"] = True
         checks["rows"] = sum(database["row_counts"].values())
@@ -974,7 +1038,7 @@ def _compare(facts: dict[str, Any], database: dict[str, Any]) -> None:
 
 
 def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head: str | None,
-                    warnings: list[str]) -> dict[str, Any]:
+                    warnings: list[str], private_keys: list[secret_box.Key]) -> dict[str, Any]:
     tool = _pg_tool("pg_restore", sources.pg_bin_dir)
     listing = _run([tool, "--list", str(dump)])
     checks: dict[str, Any] = {"dump_entries": sum(1 for line in listing.splitlines() if line and line[0] != ";")}
@@ -1004,6 +1068,7 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
                     from .document_version_validation import verify_document_versions
 
                     checks["archived_originals"] = verify_document_versions(connection)
+                checks["private_connections"] = _private_connection_proof(connection, private_keys)
         finally:
             engine.dispose()
         _compare({"revision": revision, "row_counts": counts}, database)
@@ -1035,15 +1100,28 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
         if warning:
             raise BackupError("Schlüsselsicherung ist mit Passphrase geschützt: Passphrase angeben "
                               "(--passphrase-env).")
+        archived_keys = _archived_connection_keys(files)
         target.mkdir(parents=True, exist_ok=True)
         database = manifest["database"]
         steps = []
         if database["dialect"] == "sqlite":
+            private = _sqlite_private_connections(staging / DB_SQLITE, archived_keys, normalize=True)
+            steps.append(f"Geschützte Verbindungen vor Publikation geprüft ({private['verified_rows']} Datensätze); "
+                         f"{private['restored_unconfirmed']} unterbrochene Vorgänge gesperrt.")
             os.replace(staging / DB_SQLITE, target / "immo_manager.db")
         else:
             os.replace(staging / DB_POSTGRES, target / "postgres.dump")
             if pg_target_url:
                 _pg_restore_into(target / "postgres.dump", pg_target_url)
+                from sqlalchemy.pool import NullPool
+                verify_engine = create_engine(pg_target_url, poolclass=NullPool)
+                try:
+                    with verify_engine.begin() as connection:
+                        private = _private_connection_proof(connection, archived_keys, normalize=True)
+                    steps.append(f"Geschützte PostgreSQL-Verbindungen geprüft ({private['verified_rows']} Datensätze); "
+                                 f"{private['restored_unconfirmed']} unterbrochene Vorgänge gesperrt.")
+                finally:
+                    verify_engine.dispose()
                 steps.append("PostgreSQL-Dump in die Zieldatenbank eingespielt.")
             else:
                 steps.append("PostgreSQL: pg_restore --no-owner --dbname <leere Zieldatenbank> postgres.dump")
