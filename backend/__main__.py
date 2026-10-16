@@ -65,7 +65,9 @@ def _load_env_file(path):
     try:
         from dotenv import dotenv_values
 
-        from .runtime_origins import ENV_FILE_ORIGINS
+        # PyInstaller executes this entry point without a parent package.
+        # Existing .env files must load on subsequent frozen launches too.
+        from backend.runtime_origins import ENV_FILE_ORIGINS
         for key, value in dotenv_values(path, interpolate=False).items():
             if key and value is not None and key not in os.environ:
                 os.environ[key] = value
