@@ -2,6 +2,7 @@ from . import (
     access_models,  # noqa: F401  (portfolio grants)
     bank_models,  # noqa: F401 (bank source originals and ledger links)
     business_qol_models,  # noqa: F401  (conversation notes, undo, document processing)
+    datev_models,  # noqa: F401
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)
     dunning_models,  # noqa: F401  (dunning: cases, letters, outbox, replies)
@@ -12,5 +13,6 @@ from . import (
     job_models,  # noqa: F401  (durable job runs and occurrence ledger)
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)
     service_contract_models,  # noqa: F401  (property service contracts and their links)
+    tax_models,  # noqa: F401
     workspace_models,  # noqa: F401  (private drafts, saved views and navigation)
 )

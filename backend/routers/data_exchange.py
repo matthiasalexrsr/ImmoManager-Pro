@@ -30,7 +30,10 @@ def _json_serial(obj):
 @one_at_a_time
 def export_all_data() -> Response:
     """Export all business data as a single JSON file."""
-    data = export_snapshot(store)
+    try:
+        data = export_snapshot(store)
+    except SnapshotError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
     json_bytes = json.dumps(data, default=_json_serial, indent=2, ensure_ascii=False).encode("utf-8")
     return Response(

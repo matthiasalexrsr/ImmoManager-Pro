@@ -143,6 +143,8 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
 
     def clear_all(self) -> None:
         """Delete all rows from every mapped table. Used by tests to reset state."""
+        from backend.services.annual_tax_storage import guard_destructive_reset
+        guard_destructive_reset(self)
         from ..db.orm_models import Base
         for table in reversed(Base.metadata.sorted_tables):
             self.db.execute(table.delete())

@@ -23,6 +23,7 @@ import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -69,6 +70,15 @@ def _require_full_bank_backup(store: Any) -> None:
         present = bool(store.__dict__.get('_integration_connections', {}).get('bank_imports'))
     if present:
         raise SnapshotError(['Dieser Bestand enthält geschützte Bankoriginale. Bitte die vollständige Sicherung mit Datenbank und Schlüsselring verwenden; JSON kann diese Quellen nicht verlustfrei wiederherstellen.'])
+
+def _tax_snapshot_guard(store):
+    from .annual_tax_storage import guard_destructive_reset
+
+    try:
+        guard_destructive_reset(store)
+    except ValueError:
+        raise SnapshotError(["Gesicherte Steuerprofile und Exportoriginale benötigen das Vollbackup mit Schlüsseldatei. "
+                             "Ein JSON-Teilbestand kann diese Belege nicht vollständig sichern oder ersetzen."]) from None
 
 
 @dataclass(frozen=True)
@@ -119,6 +129,14 @@ class _MemoryBackend:
         return list(getattr(self._store, spec.key).values())
 
     def apply(self, plan: Plan, *, replace: bool, fresh_originals: list | None = None) -> None:
+        from .document_versions import memory_archive
+        with memory_archive(self._store).lock:
+            self._apply(plan, replace=replace, fresh_originals=fresh_originals)
+
+    def _apply(self, plan: Plan, *, replace: bool, fresh_originals: list | None = None) -> None:
+        if replace:
+            _require_full_bank_backup(self._store)
+            _tax_snapshot_guard(self._store)
         # Stage complete collections first so a failure leaves the data untouched.
         staged = {}
         for spec, objs in plan:
@@ -144,6 +162,10 @@ class _SQLBackend:
         session = self._session
         try:
             if replace:
+                from .document_versions import begin_writer
+                begin_writer(session)
+                _require_full_bank_backup(SimpleNamespace(db=session))
+                _tax_snapshot_guard(SimpleNamespace(db=session))
                 for spec, _ in reversed(plan):
                     session.execute(spec.table.delete())
             for spec, objs in plan:
@@ -169,6 +191,8 @@ def _backend(store: Any) -> _MemoryBackend | _SQLBackend:
 def export_snapshot(store: Any) -> dict:
     """All business data as a JSON-serialisable snapshot."""
     _require_full_bank_backup(store)
+
+    _tax_snapshot_guard(store)
     backend = _backend(store)
     data: dict[str, Any] = {
         "format": SNAPSHOT_FORMAT,
@@ -208,6 +232,8 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     """Validate a snapshot against the store; raises SnapshotError without writing."""
     if replace:
         _require_full_bank_backup(store)
+
+        _tax_snapshot_guard(store)
     if not isinstance(data, dict):
         raise SnapshotError(["Die Datei enthält kein JSON-Objekt"])
     if "format" in data and data["format"] != SNAPSHOT_FORMAT:

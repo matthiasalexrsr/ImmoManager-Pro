@@ -136,7 +136,8 @@ class TestDATEVExport:
         ))
         result = datev_export(start_date=None, end_date=None)
         assert isinstance(result, Response)
-        assert "EXTF_Buchungsstapel.csv" in result.headers["content-disposition"]
+        assert "Buchungen_neutral.csv" in result.headers["content-disposition"]
+        assert "EXTF" not in result.headers["content-disposition"]
 
     def test_datev_export_date_filter(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data

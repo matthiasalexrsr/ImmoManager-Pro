@@ -255,6 +255,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
 
     def clear_all(self) -> None:
         """Clear all entity collections. Used by tests to reset state."""
+        from backend.services.annual_tax_storage import guard_destructive_reset
+        guard_destructive_reset(self)
         for name, val in self.__dataclass_fields__.items():
             attr = getattr(self, name)
             if isinstance(attr, dict):

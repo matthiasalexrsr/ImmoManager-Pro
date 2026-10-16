@@ -368,12 +368,15 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
                 server = connection.execute(text("SHOW server_version")).scalar()
                 from .bank_backup import key_ids
                 bank_keys = key_ids(connection, tables)
+
+                from .tax_archive_validation import needed_key_ids
+                tax_keys = sorted(needed_key_ids(connection))
                 _run([tool, "--format=custom", "--no-owner", "--no-privileges", f"--snapshot={snapshot}",
                       f"--file={target}", "--dbname", conninfo], env)
     finally:
         engine.dispose()
     return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
-            "bank_key_ids": bank_keys}
+            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys}
 
 
 class _Lock:
@@ -659,6 +662,16 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
         needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])))
+        if dialect == "sqlite":
+            from .tax_archive_validation import needed_key_ids
+            tax_engine = create_engine(f"sqlite:///{db_copy.resolve().as_posix()}", poolclass=NullPool)
+            try:
+                with tax_engine.connect() as connection:
+                    needed = sorted(set(needed) | needed_key_ids(connection))
+            finally:
+                tax_engine.dispose()
+        else:
+            needed = sorted(set(needed) | set(facts.get("tax_needed_key_ids", [])))
         included_ids = set(_env_key_ids(env_bytes))
         if keyring_bytes:
             included_ids |= {key.id for key in secret_box.keys_from_bytes(keyring_bytes)}
@@ -885,7 +898,7 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             tokens.extend(bank_tokens(connection, tables))
     result: dict[str, Any] = {"sealed_values": len(tokens), "decrypted": 0, "warning": warning}
-    if not tokens or warning:
+    if warning:
         return result
     keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
     env_text = files.get(ENV, b"").decode("utf-8", "replace")
@@ -904,6 +917,17 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
         with closing(sqlite3.connect(f'{bank_path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             result['bank_originals'] = verify_bank(connection, tables, keys)
+
+    if manifest.get("database", {}).get("dialect") == "sqlite":
+        from .tax_archive_validation import verify_tax_archive
+        database_path = extracted / manifest["database"]["path"]
+        engine = create_engine(f"sqlite:///{database_path.resolve().as_posix()}", poolclass=NullPool)
+        try:
+            with engine.connect() as connection:
+                result["tax_receipts_verified"] = verify_tax_archive(connection,
+                    lambda token, context: secret_box.open_with(keys, token, context))
+        finally:
+            engine.dispose()
     return result
 
 
@@ -938,7 +962,16 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     except ConnectionArchiveError:
         # No private ciphertext, source values or driver parameters in user logs.
         raise BackupError("Geschützte Verbindungsnachweise konnten nicht vollständig geprüft werden.") from None
+    from .bank_backup import tokens as bank_tokens
+    from .bank_backup import verify as verify_bank
+    from .tax_archive_validation import verify_tax_archive
+    tables = set(inspect(connection).get_table_names())
+    for context, token in bank_tokens(connection, tables):
+        secret_box.open_with(keys, token, context)
+    bank_proof = verify_bank(connection, tables, keys)
+    tax_proof = verify_tax_archive(connection, lambda token, context: secret_box.open_with(keys, token, context))
     return {
+        "bank_originals": bank_proof, "tax_receipts_verified": tax_proof,
         "present": proof["present"], "verified_rows": proof["rows"],
         "verified_result_bytes": proof["verified_result_bytes"],
         "legacy_id_only_records": proof["legacy_id_only_records"],

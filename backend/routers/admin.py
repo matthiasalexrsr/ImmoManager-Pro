@@ -202,7 +202,10 @@ def integrity_check():
 @router.get("/export", response_model=None)
 def export_data():
     """Export all business data as a lossless JSON snapshot."""
-    content = json.dumps(export_snapshot(store), ensure_ascii=False, indent=2)
+    try:
+        content = json.dumps(export_snapshot(store), ensure_ascii=False, indent=2)
+    except SnapshotError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
     return StreamingResponse(
         iter([content]),

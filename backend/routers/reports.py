@@ -263,10 +263,10 @@ def datev_export(
     property_id: PropertyId = None,
     unit_id: UnitId = None,
 ) -> Response:
-    """Export bookings in DATEV-compliant CSV format (Buchungsstapel).
+    """Export neutral booking CSV; this is not a DATEV EXTF contract.
 
-    DATEV Buchungsstapel format uses semicolons, German number formatting,
-    and specific column headers recognized by DATEV accounting software.
+    Historical URL retained for clients. Validated EXTF files use /datev/preview
+    and its immutable export history; this file deliberately uses display names.
     A reversal is its own line with the opposite Soll/Haben mark.
     """
     dims = Dimensions(store, _filter(start_date, end_date, portfolio_id, property_id, unit_id))
@@ -323,7 +323,7 @@ def datev_export(
     return Response(
         output.getvalue(),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="EXTF_Buchungsstapel.csv"'},
+        headers={"Content-Disposition": 'attachment; filename="Buchungen_neutral.csv"'},
     )
 
 

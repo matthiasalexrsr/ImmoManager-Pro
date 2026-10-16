@@ -56,6 +56,7 @@ export const NAV_SECTIONS = [
     labelKey: 'navigation.sections.finance',
     fallback: 'Finanzen',
     items: [
+      { to: '/tax-exports', labelKey: 'navigation.main.taxExports', fallback: 'Steueraufbereitung / DATEV', icon: ChartIcon },
       { to: '/accounts', labelKey: 'finance.accounts.title', fallback: 'Konten', icon: AccountIcon },
       { to: '/bookings', labelKey: 'finance.bookings.title', fallback: 'Buchungen', icon: BookingIcon },
       { to: '/invoices', labelKey: 'finance.invoices.title', fallback: 'Rechnungen', icon: InvoiceIcon },

@@ -15,6 +15,7 @@ from .routers import (
     admin,
     admin_runtime,
     aktenwerk,
+    annual_tax,
     audit,
     auth,
     autotest,
@@ -29,6 +30,7 @@ from .routers import (
     contracts,
     dashboard,
     data_exchange,
+    datev,
     deposits,
     dev_notes,
     diagnostics,
@@ -122,6 +124,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(notifications.router, dependencies=_auth_dep)
     api_v1.include_router(reports.router, dependencies=_auth_dep)
     api_v1.include_router(finance_reports.router, dependencies=_auth_dep)
+
+    api_v1.include_router(datev.router, dependencies=_auth_dep)
+    api_v1.include_router(annual_tax.router, dependencies=_auth_dep)
     api_v1.include_router(tax_rates.router, dependencies=_auth_dep)
     api_v1.include_router(rent_adjustments.router, dependencies=_auth_dep)
     api_v1.include_router(handover_protocols.router, dependencies=_auth_dep)

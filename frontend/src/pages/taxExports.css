@@ -1,0 +1,15 @@
+.tax-exports { max-width: 1100px; margin: auto; padding: 1rem; overflow-wrap: anywhere; }
+.tax-exports section { border: 1px solid var(--border-color, #bbb); border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+.tax-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .8rem; }
+.tax-exports label { display: flex; flex-direction: column; gap: .3rem; margin: .5rem 0; }
+.tax-exports input, .tax-exports select, .tax-exports textarea { width: 100%; min-width: 0; padding: .45rem; box-sizing: border-box; color: inherit; background: var(--bg-primary, transparent); border: 1px solid #999; border-radius: .25rem; }
+.tax-exports button { margin: .4rem .4rem .4rem 0; padding: .5rem; }
+.tax-exports fieldset { border: 0; padding: 0; min-width: 0; }
+.tax-exports .tax-check { flex-direction: row; align-items: start; }
+.tax-check input { width: auto; }
+.tax-rule { margin: 1rem 0; padding: .7rem; border: 1px solid #aaa; }
+.tax-exports aside { padding: .8rem; border-left: 4px solid #ac7a00; }
+.tax-exports nav { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.tax-exports dl > div { display: flex; justify-content: space-between; gap: .7rem; }
+.tax-exports [role=alert] { border: 1px solid #b33; padding: .8rem; }
+.tax-exports :focus-visible { outline: 3px solid #4677c4; outline-offset: 2px; }
