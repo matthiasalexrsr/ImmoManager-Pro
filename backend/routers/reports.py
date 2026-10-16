@@ -341,7 +341,7 @@ class ImportBookingsRequest(BaseModel):
 def import_bookings(
     account_id: str | None = None,
     csv_content: str | None = None,
-    payload: ImportBookingsRequest | None = Body(None),
+    payload: Annotated[ImportBookingsRequest | None, Body()] = None,
     user: UserRead = Depends(require_auth),
 ) -> dict:
     """Legacy input now prepares the controlled preview, never a partial import."""

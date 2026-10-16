@@ -33,8 +33,12 @@ def client():
 
 
 @pytest.fixture
-def estate():
+def estate(monkeypatch):
     """Two portfolios with the same shape; the files exist on disk."""
+    from backend.services import file_storage
+    # Other tests simulate whole installations by swapping runtime settings.
+    # Use this application's upload root rather than their cached storage.
+    monkeypatch.setattr(file_storage, '_storage', file_storage.LocalStorage())
     sides = {}
     for side, number in (("north", "N-1"), ("south", "S-1")):
         url = f"/uploads/documents/{side}-vertrag.pdf"
