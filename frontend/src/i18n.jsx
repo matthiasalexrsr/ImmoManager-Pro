@@ -440,6 +440,7 @@ export function I18nProvider({ children }) {
   const setLocale = useCallback((loc) => {
     localStorage.setItem('locale', loc);
     setLocaleState(loc);
+    window.dispatchEvent(new CustomEvent('preference-locale', { detail: loc }));
   }, []);
 
   const t = useCallback((key, params) => {

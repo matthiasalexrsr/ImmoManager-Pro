@@ -1,0 +1,10 @@
+﻿.settings-catalogue { display: grid; gap: .65rem; min-width: 0; }
+.settings-catalogue > :is(input, select) { width: 100%; max-width: 38rem; min-width: 0; padding: .6rem; }
+.setting-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 1rem; }
+.setting-card { border: 1px solid var(--color-border, #ccc); padding: 1rem; border-radius: .6rem; min-width: 0; }
+.setting-card p { overflow-wrap: break-word; }
+.setting-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
+.setting-controls :is(input,select) { min-width: 0; max-width: 100%; padding: .5rem; flex: 1 1 10rem; }
+.setting-controls button { white-space: normal; }
+.settings-catalogue :focus-visible { outline: 3px solid var(--color-primary, #3267bf); outline-offset: 3px; }
+.settings-grid > .settings-catalogue { grid-column: 1 / -1; }

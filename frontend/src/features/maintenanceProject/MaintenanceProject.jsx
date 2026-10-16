@@ -1,3 +1,4 @@
+import NotificationArrival from '../../components/NotificationArrival';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import FormModal from '../../components/FormModal';
@@ -109,7 +110,7 @@ export default function MaintenanceProject({ caseId }) {
         <Link className="btn btn-sm btn-secondary" to="/maintenance">← {tx.back}</Link>
         <div className="detail-title mp-title">
           <span className="text-muted mp-kicker">{tx.projectFile}</span>
-          <h1>{record.title}</h1>
+          <NotificationArrival record={record} ready={!error} /><h1>{record.title}</h1>
           <span className="text-muted">
             {[record.property_name, record.unit_label].filter(Boolean).join(' · ') || '—'}
           </span>

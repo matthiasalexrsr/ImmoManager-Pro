@@ -1,3 +1,4 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from '../i18n';
@@ -70,7 +71,7 @@ export default function UnitOverview() {
     <div className="page unit-dossier">
       <div className="overview-header">
         <div>
-          <h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
+          <NotificationArrival record={unit} ready={!loading && !error} /><h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
           {property && <p className="text-muted"><Link to={`/properties/${encodeURIComponent(unit.property_id)}`}>{property.name}</Link> — {property.address_line}</p>}
           <StatusBadge status={unit.status} />
         </div>

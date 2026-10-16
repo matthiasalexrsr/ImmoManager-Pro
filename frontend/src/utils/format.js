@@ -1,5 +1,9 @@
 // One place for how numbers, amounts and dates look: in the user's locale (1.234,56 € / 03.01.2025).
 let locale = 'de-DE';
+let dateFormat = null;
+let currencyDisplay = 'symbol';
+export function setCurrencyDisplay(value) { currencyDisplay = value === 'code' ? 'code' : 'symbol'; cache.clear(); }
+export function setDateFormat(value) { dateFormat = value || null; }
 const cache = new Map();
 
 export function getFormatLocale() {
@@ -22,7 +26,7 @@ const isBlank = v => v == null || v === '' || Number.isNaN(Number(v));
 
 export function formatMoney(v, { blank = '—', currency = 'EUR' } = {}) {
   if (isBlank(v)) return blank;
-  return formatter(`money:${currency}`, () => new Intl.NumberFormat(locale, { style: 'currency', currency }))
+  return formatter(`money:${currency}:${currencyDisplay}`, () => new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay }))
     .format(Number(v));
 }
 
@@ -75,17 +79,18 @@ export function formatDate(v, { blank = '—' } = {}) {
   if (!v) return blank;
   const d = toDate(v);
   if (Number.isNaN(d.getTime())) return String(v);
-  return formatter('date', () => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }))
-    .format(d);
+  if (!dateFormat) return formatter('date', () => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })).format(d);
+  const parts = [String(d.getFullYear()).padStart(4, '0'), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')];
+  if (dateFormat === 'YYYY-MM-DD') return parts.join('-');
+  if (dateFormat === 'MM/DD/YYYY') return `${parts[1]}/${parts[2]}/${parts[0]}`;
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
 export function formatDateTime(v, { blank = '—' } = {}) {
   if (!v) return blank;
   const d = toDate(v);
   if (Number.isNaN(d.getTime())) return String(v);
-  return formatter('datetime', () => new Intl.DateTimeFormat(locale, {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })).format(d);
+  return `${formatDate(d)} ${formatter('time', () => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })).format(d)}`;
 }
 
 // "2025-01" → "01/2025"

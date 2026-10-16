@@ -36,6 +36,9 @@ export default function HandoverProtocols({ service = handoverProtocolService })
     return () => controller.abort();
   }, [attempt, say, service]);
 
+  const noticeProtocol = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('focus_id') : null;
+  useEffect(() => { if (noticeProtocol && !loading && !error && protocols.some(row => row.id === noticeProtocol)) setEditor(noticeProtocol); }, [noticeProtocol, loading, error, protocols]);
+
   const refresh = useCallback(() => {
     setAttempt(value => value + 1);
     store?.invalidateRelated('handover_protocols', 'documents', 'contracts', 'units');

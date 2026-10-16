@@ -1,9 +1,11 @@
 """Generated notifications and escalations: unpaid receivables, readable texts, no repeats."""
 
 from datetime import date
+from uuid import uuid4
 
 import pytest
 
+from backend import auth
 from backend.dependencies import store
 from backend.models import (
     ContractCreate,
@@ -16,6 +18,7 @@ from backend.models import (
     UnitCreate,
 )
 from backend.routers import escalation, notifications
+from backend.services import notification_inbox
 from backend.services.data_snapshot import clear_business_data
 
 AS_OF = date(2026, 10, 4)
@@ -71,8 +74,17 @@ def test_generators_do_not_repeat_themselves(contract):
                 + notifications.generate_expiring_contract_notifications(days_ahead=90, as_of=AS_OF))
 
     first = run()
-    for n in first:  # reading a notification does not bring it back
-        notifications.mark_notification_read(n.id)
+    user = auth.register_user("notice-" + uuid4().hex[:10], uuid4().hex + "@example.test", "Leser", "Secret123", "readonly")
+    try:
+        page = notification_inbox.inbox(store, user.id)
+        assert page["unread_count"] == 3
+        result = notification_inbox.mutate(store, user.id, "all", {
+            "action": "read_all", "snapshot": page["snapshot"], "base_revision": 0, "idempotency_key": str(uuid4())})
+        assert result == {"acknowledged": 3, "unread_count": 0}
+        assert notification_inbox.inbox(store, user.id)["unread_count"] == 0
+        assert all(n.status == "unread" for n in store.list_notifications())
+    finally:
+        auth.delete_user(user.id)
 
     assert [n.notification_type for n in first] == ["overdue_payment", "task_due", "contract_expiry"]
     assert run() == []

@@ -59,7 +59,7 @@ const READING_COLUMNS = [
 ];
 
 export default function Meters() {
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -120,6 +120,15 @@ export default function Meters() {
       setReadings(withConsumption);
     }).catch(() => setReadings([]));
   };
+
+  const noticeMeter = searchParams.get('notice_id') ? searchParams.get('focus_id') : null;
+  useEffect(() => {
+    if (noticeMeter && !loading && selectedMeter?.id !== noticeMeter) {
+      const meter = meters.find(row => row.id === noticeMeter); if (meter) handleSelectMeter(meter);
+    }
+  // The source changes only with the loaded meter set or navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noticeMeter, loading, meters]);
 
   const meterFields = [
     { key: 'unit_id', label: 'Einheit', type: 'select', required: true,

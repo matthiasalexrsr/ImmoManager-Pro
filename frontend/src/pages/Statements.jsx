@@ -1,3 +1,4 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -632,6 +633,14 @@ export default function Statements() {
       .finally(() => setPreflightLoading(false));
   };
 
+  const noticePeriod = params.get('notice_id') && !params.get('filter') ? params.get('focus_id') : null;
+  useEffect(() => {
+    if (noticePeriod && !loading && !loadError && selectedPeriod?.id !== noticePeriod) {
+      const period = periods.find(row => row.id === noticePeriod); if (period) handleSelectPeriod(period);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noticePeriod, loading, loadError, periods]);
+
   // Build revision history for the selected period (periods with same property + date range)
   const getRevisionHistory = () => {
     if (!selectedPeriod) return [];
@@ -683,6 +692,7 @@ export default function Statements() {
         {toast.Toast}
         {/* Workflow step indicator */}
         <StepIndicator currentStep={workflowStep} t={t} />
+        <NotificationArrival record={params.get('source_id') ? undefined : selectedPeriod} rows={periodCosts} ready={!loading && !loadError} />
 
         <div className="detail-header">
           <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>

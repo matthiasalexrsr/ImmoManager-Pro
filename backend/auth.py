@@ -20,6 +20,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError as JWTError
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .config import settings
@@ -311,19 +312,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, session_id: str | None = None) -> str:
     """Create a JWT access token with a unique jti."""
     expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    from .services.daily_sessions import issue
+    session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
-    payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti}
+    payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti, "sid": session_id}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, session_id: str | None = None) -> str:
     """Create a JWT refresh token with a unique jti for rotation tracking."""
     expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    from .services.daily_sessions import issue
+    session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
-    payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti}
+    payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti, "sid": session_id}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -480,8 +485,11 @@ def decode_token(token: str) -> TokenPayload:
         )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return TokenPayload(**payload)
-    except JWTError as exc:
+        from .services.daily_sessions import check
+        parsed = TokenPayload.model_validate(payload)
+        check(parsed.sid, parsed.sub)
+        return parsed
+    except (JWTError, ValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültiger Token",
@@ -983,6 +991,8 @@ def delete_user(user_id: str) -> None:
 def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
+    from .services.daily_sessions import _sessions
+    _sessions.clear()
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()

@@ -407,6 +407,11 @@ export default function HousingConfirmationDialog({ contractId, onClose, onPubli
 
               <fieldset className="housing-confirmation__section" disabled={locked}>
                 <legend>{say('provider')}</legend>
+                  {view.source.suggestions.issuer_name && <button type="button" className="btn btn-secondary" onClick={() => patchForm({
+                    housing_provider_name: view.source.suggestions.housing_provider_name || view.form.housing_provider_name,
+                    housing_provider_address: view.source.suggestions.housing_provider_address || view.form.housing_provider_address,
+                    issuer_name: view.source.suggestions.issuer_name, issuer_role: view.source.suggestions.issuer_role || view.form.issuer_role,
+                  })}>Briefkopf und Unterschriftsprofil als bearbeitbare Vorgabe ?bernehmen</button>}
                 {(view.source.suggestions.housing_provider_name || view.source.suggestions.housing_provider_address) && <div className="housing-confirmation__suggestion">
                   <div><span>{say('suggestedProvider')}</span>
                     <strong>{view.source.suggestions.housing_provider_name || '—'}</strong>

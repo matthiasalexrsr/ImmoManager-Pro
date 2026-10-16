@@ -71,6 +71,20 @@ def delete_thread(thread_id: str) -> None:
 
 # --- Messages within a thread ---
 
+@router.get('/threads/{thread_id}/messages/{message_id}', response_model=Message)
+def notification_message(thread_id: str, message_id: str, user: UserRead = Depends(require_auth)):
+    from ..services.document_versions import work
+    from ..services.portfolio_scope import scope_context, scope_from_user
+    with work(store, user.id) as unit, scope_context(scope_from_user(unit.user)):
+        try:
+            unit.store.get_message_thread(thread_id)
+            message = unit.store.get_message(message_id)
+            if message.thread_id != thread_id:
+                raise HTTPException(404, 'Nachricht gehört nicht zu dieser Konversation.')
+            return message
+        except NotFoundError:
+            raise HTTPException(404, 'Nachricht nicht zugänglich.') from None
+
 @router.get("/threads/{thread_id}/page")
 def get_message_page(
     thread_id: str,

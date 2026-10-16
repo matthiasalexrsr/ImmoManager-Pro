@@ -9,8 +9,10 @@ Route ordering: static paths (/templates, /generate/*) before path params (/{not
 import logging
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 
+from ..auth import require_auth
 from ..dependencies import store
 from ..domain.receivables import is_unpaid_debt
 from ..models import (
@@ -20,13 +22,53 @@ from ..models import (
     NotificationTemplate,
     NotificationTemplateCreate,
     NotificationTemplatePatch,
+    UserRead,
 )
+from ..services import notification_inbox as personal
 from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, receivable_debtor
 from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/notifications", tags=["Benachrichtigungen"])
+def private_response(response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+
+
+router = APIRouter(dependencies=[Depends(private_response)], prefix="/notifications", tags=["Benachrichtigungen"])
+
+
+class ReceiptCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    base_revision: int = Field(0, ge=0)
+    action: str
+    snapshot: str | None = None
+    source_kind: str | None = None
+    source_id: str | None = None
+    source_revision: str | None = None
+
+
+@router.get("/inbox")
+def personal_inbox(actor: UserRead = Depends(require_auth), status: str | None = None,
+                   offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), expected_snapshot: str | None = None, severity: str | None = None, kind: str | None = None, cursor: str | None = Query(None, max_length=4096)):
+    return personal.inbox(store, actor.id, status, offset, limit, expected_snapshot, severity, kind, cursor)
+
+
+@router.get("/{notification_id}/source")
+def notification_source(notification_id: str, actor: UserRead = Depends(require_auth)):
+    try:
+        return personal.open_source(store, actor.id, notification_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, "Hinweis oder Quelle nicht zugänglich.") from exc
+
+
+@router.post("/{notification_id}/receipt")
+def notification_receipt(notification_id: str, payload: ReceiptCommand, actor: UserRead = Depends(require_auth)):
+    try:
+        return personal.mutate(store, actor.id, notification_id, payload.model_dump())
+    except NotFoundError as exc:
+        raise HTTPException(404, "Hinweis oder Quelle nicht zugänglich.") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -206,15 +248,23 @@ def list_notifications(
     status_filter: str | None = Query(None, alias="status"),
     notification_type: str | None = Query(None),
     severity: str | None = Query(None),
+    actor: UserRead = Depends(require_auth),
 ) -> list[Notification]:
-    results = store.list_notifications()
-    if status_filter:
-        results = [r for r in results if r.status == status_filter]
+    # Compatibility list remains complete through skip/limit and personal statuses.
+    rows = []
+    offset = 0
+    while True:
+        page = personal.inbox(store, actor.id, status_filter, offset, 200)
+        rows.extend(page["items"])
+        if page["next_offset"] is None:
+            break
+        offset = page["next_offset"]
     if notification_type:
-        results = [r for r in results if r.notification_type == notification_type]
+        rows = [r for r in rows if r["notification_type"] == notification_type]
     if severity:
-        results = [r for r in results if r.severity == severity]
-    return results[skip : skip + limit]
+        rows = [r for r in rows if r["severity"] == severity]
+    return rows[skip:skip + limit]
+
 
 
 @router.post("", response_model=Notification, status_code=status.HTTP_201_CREATED)
@@ -243,14 +293,13 @@ def update_notification(notification_id: str, payload: NotificationCreate) -> No
 
 @router.post("/{notification_id}/read", response_model=Notification)
 def mark_notification_read(notification_id: str) -> Notification:
-    try:
-        return store.mark_notification_read(notification_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    raise HTTPException(409, "Bitte den persönlichen Eingang neu laden und die Quelle öffnen.")
 
 
 @router.patch("/{notification_id}", response_model=Notification)
 def patch_notification(notification_id: str, payload: NotificationPatch) -> Notification:
+    if payload.status is not None or payload.read_at is not None:
+        raise HTTPException(409, "Lesestatus nur mit persoenlicher Quittung aendern.")
     try:
         return store._patch_entity("notification", notification_id, payload)
     except NotFoundError as exc:

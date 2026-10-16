@@ -7,6 +7,8 @@ import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import useEffectiveSettings from '../hooks/useEffectiveSettings';
+import { defaultDueDate } from '../utils/settingDefaults';
 import { formatMoney } from '../utils/format';
 import { useSearchParams } from 'react-router-dom';
 import ReceivableSettlement from '../features/ReceivableSettlement';
@@ -15,6 +17,7 @@ export default function Receivables() {
   const [params, setParams] = useSearchParams();
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const { prefs } = useEffectiveSettings(params.get('property_id'));
   const store = useDataStore();
   const contractState = useEntities('contracts', '/contracts');
   const contracts = contractState.items;
@@ -88,7 +91,7 @@ export default function Receivables() {
     { key: 'contract_id', label: t('tenantsContracts.contracts.title'), required: true, type: 'select',
       options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
     { key: 'amount_due', label: t('finance.bookings.amount') + ' (€)', type: 'number', required: true },
-    { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', required: true },
+    { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', required: true, default: prefs ? defaultDueDate(prefs.default_due_day) : undefined },
     { key: 'status', label: 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('status.payment.open') },
       { value: 'paid', label: t('status.payment.paid') },

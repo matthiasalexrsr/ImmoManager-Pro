@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import DraftDefaults from '../components/DraftDefaults';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate, formatMoney } from '../utils/format';
 import { Empty, Modal, Pill } from '../features/maintenanceProject/ProjectUi';
@@ -273,6 +274,8 @@ function NewInvoice({ properties, onClose, onSaved }) {
                 {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </label>
+            <DraftDefaults context="invoice-review" propertyId={values.property_id} disabled={saving}
+              onApply={defaults => setValues(current => ({ ...current, cost_category: current.cost_category || defaults.cost_category || '', recoverable: defaults.recoverable ?? current.recoverable }))} />
             {input('cost_category', tx.costCategory)}
             {input('skonto_percent', tx.skontoPercent, 'number', { step: '0.01', min: '0', max: '99' })}
             {input('skonto_days', tx.skontoDays, 'number', { min: '0' })}

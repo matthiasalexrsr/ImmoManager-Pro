@@ -30,7 +30,7 @@
 .work-queue-table { width: 100%; border-collapse: collapse; }
 .work-queue-table td, .work-queue-table th { padding: .65rem; vertical-align: top; text-align: left; border-bottom: 1px solid var(--color-border); }
 .work-queue-table .work-preserve-lines { max-width: 38rem; }
-.work-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .75rem; margin: .5rem 0 1rem; }
+.work-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem; margin: .5rem 0 1rem; }
 .work-summary-metric { display: grid; gap: .3rem; align-content: start; padding: 1rem; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .65rem; }
 .work-summary-metric strong { font-size: 1.6rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .work-summary-metric small { color: var(--color-text-muted); font-size: .75rem; }
@@ -41,3 +41,6 @@
 .dossier-kpi-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .modal-body .work-carry-option { display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem; font-weight: 400; }
 .modal-body .work-carry-option input[type="checkbox"] { flex: 0 0 auto; width: 1rem; height: 1rem; margin: .15rem 0 0; padding: 0; }
+
+.work-summary-metric span, .work-summary-metric small { overflow-wrap: normal; word-break: normal; hyphens: auto; }
+.work-center h1 { overflow-wrap: normal; hyphens: auto; font-size: clamp(1.3rem, 1rem + 1vw, 2rem); }

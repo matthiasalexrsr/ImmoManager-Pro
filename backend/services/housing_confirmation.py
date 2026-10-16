@@ -140,13 +140,17 @@ def source(store, contract_id: str, actor_id: str) -> dict[str, Any]:
     with archive.work(store, actor_id) as unit:
         contract, prop, location, tenant, portfolio = _parents(unit, contract_id)
         snapshot, revisions = _source_snapshot(contract, prop, location, tenant, portfolio)
+        from .settings_catalogue import effective
+        defaults = {key: effective(unit, key, prop.id)[0] for key in ("document_sender", "document_address", "document_signature", "document_profile")}
         return {
             "contract_id": contract.id,
             "source": snapshot,
             "source_etags": revisions.model_dump(mode="json"),
             "suggestions": {
-                "housing_provider_name": portfolio.owner_name,
-                "housing_provider_address": None,
+                "housing_provider_name": defaults["document_sender"] or portfolio.owner_name,
+                "housing_provider_address": defaults["document_address"] or None,
+                "issuer_name": defaults["document_signature"],
+                "issuer_role": defaults["document_profile"],
                 "owner_name": portfolio.owner_name,
                 "apartment_address": _address(prop),
                 "apartment_label": location.label,

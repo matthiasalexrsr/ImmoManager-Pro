@@ -289,10 +289,11 @@ export default function IntegrationConnections() {
     window.addEventListener('workspace-logout', invalidate); window.addEventListener('workspace-owner', invalidate);
     const query = new URLSearchParams({ limit: '50' }); if (cursor) query.set('cursor', cursor);
     Promise.all([api.get(`${BASE}/catalog`, { signal: request.signal }), api.get(`${BASE}?${query}`, { signal: request.signal }),
-      linked ? api.get(`${BASE}/${encodeURIComponent(linked)}`, { signal: request.signal }).catch(failure => {
-        if (failure.statusCode !== 503 || request.signal.aborted) throw failure;
-        return api.get(`${BASE}/${encodeURIComponent(linked)}/state`, { signal: request.signal });
-      }) : Promise.resolve(null)])
+      (linked ? Promise.resolve(linked) : api.get('/auth/users/me/settings/selected-connection', { signal: request.signal }).then(result => result.selection?.connection_id))
+        .then(identifier => identifier ? api.get(`${BASE}/${encodeURIComponent(identifier)}`, { signal: request.signal }).catch(failure => {
+          if (failure.statusCode !== 503 || request.signal.aborted) throw failure;
+          return api.get(`${BASE}/${encodeURIComponent(identifier)}/state`, { signal: request.signal });
+        }) : null)])
       .then(([schema, result, connection]) => {
         if (request.signal.aborted) return; current();
         if (!Array.isArray(schema?.providers) || !Array.isArray(result?.items)) throw new Error('Die Verbindungsübersicht ist unvollständig.');

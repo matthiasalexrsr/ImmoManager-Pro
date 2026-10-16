@@ -1,0 +1,10 @@
+﻿.personal-inbox { min-width: 0; overflow-wrap: break-word; }
+.personal-inbox-list { list-style: none; padding: 0; margin: 1rem 0; }
+.personal-inbox-list li { padding: .8rem 0; border-bottom: 1px solid var(--border-color, #ddd); }
+.personal-inbox-list p, .personal-inbox dd { margin: .4rem 0; white-space: pre-wrap; }
+.personal-inbox button, .personal-inbox a { white-space: normal; }
+.notification-dropdown { width: min(28rem, calc(100vw - 2rem)); max-height: 75vh; overflow-y: auto; padding: 1rem; }
+.page-title { font-size: clamp(1.35rem, 1.05rem + 1vw, 2rem); word-break: normal; overflow-wrap: normal; hyphens: auto; }
+@media (max-width: 380px) { .page-title { font-size: 1.3rem; letter-spacing: -.025em; } }
+html[data-density="compact"] .data-table td, html[data-density="compact"] .data-table th { padding-top: .35rem; padding-bottom: .35rem; }
+html[data-density="compact"] .personal-inbox-list li { padding-top: .45rem; padding-bottom: .45rem; }

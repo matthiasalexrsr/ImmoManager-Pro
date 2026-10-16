@@ -10,6 +10,7 @@ import { formContext } from '../utils/workspaceClient';
 import useFormDraft from '../hooks/useFormDraft';
 import './workspace.css';
 import DuplicateHints from './DuplicateHints';
+import DraftDefaults from './DraftDefaults';
 
 const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
   && f.options.every(o => o.value === 'true' || o.value === 'false');
@@ -269,6 +270,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="alert-error" role="alert">{error}</div>}
+            {initial?.id == null && ['contracts', 'bookings'].includes(draftContext || formContext(window.location.pathname)) && <DraftDefaults
+              context={draftContext || formContext(window.location.pathname)} propertyId={values.property_id} disabled={fieldDisabled}
+              onApply={defaults => { const next = { ...values }; for (const [key, value] of Object.entries(defaults)) if (fields.some(field => field.key === key) && !next[key]) next[key] = value; setValues(next); setDirty(true); draft.stage(next); }} />}
             <DuplicateHints values={values} initial={initial} context={draftContext} />
             {draft.enabled && <div className="draft-status" role="status">
               {draft.status === 'loading' ? 'Gespeicherte Entwürfe werden geprüft …'

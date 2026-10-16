@@ -91,6 +91,7 @@ class Unit:
     def __init__(self, store, db: Session | None, user: dict, archive: MemoryArchive | None):
         self.store, self.db, self.user, self.archive = store, db, user, archive
         self._undo: list[tuple[dict, Any, bool, Any]] = []
+        self._appends: list[list] = []
 
     @property
     def actor_id(self) -> str:
@@ -108,7 +109,15 @@ class Unit:
         self._undo.append((collection, key, key in collection, collection.get(key)))
         del collection[key]
 
+    def append(self, collection: list, value: Any) -> None:
+        assert self.db is None
+        collection.append(value)
+        self._appends.append(collection)
+
     def rollback(self) -> None:
+        for collection in reversed(self._appends):
+            collection.pop()
+        self._appends.clear()
         for collection, key, present, value in reversed(self._undo):
             if present:
                 collection[key] = value

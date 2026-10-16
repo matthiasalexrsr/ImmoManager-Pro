@@ -620,6 +620,8 @@ class NotificationORM(Base):
     __table_args__ = (
         Index("idx_notifications_status", "status"),
         Index("idx_notifications_type", "notification_type"),
+        Index('idx_notifications_inbox_order', 'created_at', 'id'),
+        Index('idx_notifications_inbox_filter', 'entity_type', 'severity', 'created_at', 'id'),
     )
 
 

@@ -2,8 +2,10 @@ import { useState, useEffect, lazy, Suspense, Fragment } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
+import './components/notificationInbox.css';
 import DevModeOverlay from './components/DevModeOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
+import { usePreferences } from './contexts/PreferencesContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
@@ -26,6 +28,8 @@ const RentOverview = lazy(() => import('./pages/RentOverview'));
 const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
+const NotificationInbox = lazy(() => import('./components/NotificationInbox'));
+const NotificationLanding = lazy(() => import('./pages/NotificationLanding'));
 const Messages = lazy(() => import('./pages/Messages'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
@@ -62,6 +66,15 @@ const History = lazy(() => import('./pages/History'));
 const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+
+function StartPage() {
+  const preferences = usePreferences();
+  if (preferences?.error) return <div className="page" role="alert">{preferences.error} <button onClick={preferences.reload}>Erneut laden</button></div>;
+  if (preferences && !preferences.ready) return <LoadingSpinner />;
+  const target = preferences?.prefs?.start_page || '/';
+  return ['/', '/work-center', '/properties', '/tasks', '/notifications'].includes(target) && target !== '/'
+    ? <Navigate to={target} replace /> : <Dashboard />;
+}
 
 function ProtectedRoute({ children }) {
   const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
@@ -140,7 +153,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<StartPage />} />
           <Route path="portfolios" element={<Portfolios />} />
           <Route path="properties" element={<Properties />} />
           <Route path="properties/:id" element={<PropertyDetail />} />
@@ -158,6 +171,8 @@ export default function App() {
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />
           <Route path="maintenance/:id" element={<MaintenanceDetail />} />
+          <Route path="notifications" element={<NotificationInbox />} />
+          <Route path="notifications/open/:id" element={<NotificationLanding />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="documents" element={<Documents />} />
           <Route path="rent-overview" element={<RentOverview />} />

@@ -1,3 +1,4 @@
+import NotificationArrival from './NotificationArrival';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { api } from '../api';
 import { PlusIcon, TrashIcon } from './Icons';
@@ -14,6 +15,7 @@ export default function PhotoDropZone({ entityType, entityId, onChange }) {
 function PhotoDropZoneSession({ entityType, entityId, onChange }) {
   const confirm = useConfirm();
   const [photos, setPhotos] = useState([]);
+  const [loadedPhotos, setLoadedPhotos] = useState({});
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -33,7 +35,7 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
       if (!Array.isArray(rows)) throw new Error('Die Fotos konnten nicht gelesen werden.');
       await Promise.all(rows.map(photo => prepareUploadAccess(resolveFileUrl(photo.file_url), { signal: controller.signal })));
       if (!controller.signal.aborted) {
-        setPhotos(rows);
+        setLoadedPhotos({}); setPhotos(rows);
         setPhotoRevision(value => value + 1);
       }
     } catch (error) {
@@ -87,6 +89,7 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
 
   return (
     <div className="photo-drop-zone-container">
+      <NotificationArrival rows={photos.filter(photo => loadedPhotos[photo.id])} ready={!loadError && photoRevision > 0} />
       <div
         className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
         onDragOver={e => { e.preventDefault(); setDragActive(true); }}
@@ -110,7 +113,7 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
         <div className="photo-grid">
           {photos.map(p => (
             <div key={`${photoRevision}:${p.id}`} className="photo-thumb">
-              {resolveFileUrl(p.file_url) ? <img src={resolveFileUrl(p.file_url)} alt={p.caption || 'Foto'} onError={() => setLoadError('Ein Foto konnte nicht geladen werden. Bitte erneut versuchen.')} /> : <span>Kein gültiger Dateiverweis</span>}
+              {resolveFileUrl(p.file_url) ? <img src={resolveFileUrl(p.file_url)} alt={p.caption || 'Foto'} onLoad={() => setLoadedPhotos(current => ({ ...current, [p.id]: true }))} onError={() => setLoadError('Ein Foto konnte nicht geladen werden. Bitte erneut versuchen.')} /> : <span>Kein gültiger Dateiverweis</span>}
               {p.caption && <span className="photo-caption">{p.caption}</span>}
               <button className="photo-delete-btn" onClick={() => handleDelete(p.id)} title="Löschen">
                 <TrashIcon size={14} />

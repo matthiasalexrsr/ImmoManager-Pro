@@ -1,3 +1,4 @@
+import NotificationArrival from './NotificationArrival';
 import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
 import { useInRouterContext, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from '../i18n';
@@ -515,6 +516,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
           })} />
       )}
 
+      <NotificationArrival rows={pageData} />
       <div className="table-scroll">
         <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>

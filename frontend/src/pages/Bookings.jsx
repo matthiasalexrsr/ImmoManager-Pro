@@ -1,3 +1,4 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -402,6 +403,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
           <button type="button" className="btn btn-secondary" onClick={() => setSelectedAttempt(value => value + 1)}>Erneut laden</button>
         </div>}
         {selected && <>
+          <NotificationArrival record={selected} ready={!selectedLoading && !selectedError} />
           <h3>{selected.payment_text || 'Ohne Buchungstext'}</h3>
           <dl className="booking-selection-details">
             <div><dt>Datum</dt><dd>{formatDate(selected.booking_date)}</dd></div>

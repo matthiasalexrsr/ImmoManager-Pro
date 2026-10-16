@@ -1,3 +1,6 @@
+import NotificationArrival from '../components/NotificationArrival';
+import { resolveFileUrl } from '../features/partyWorkspace/files';
+import { prepareUploadAccess } from '../utils/uploadAccess';
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -88,6 +91,17 @@ export default function Listings() {
   const [previewListing, setPreviewListing] = useState(null);
   const [previewPortal, setPreviewPortal] = useState('immoscout24');
   const [copied, setCopied] = useState(false);
+
+  const photoId = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('source_id') : null;
+  const [noticePhoto, setNoticePhoto] = useState(null);
+  useEffect(() => {
+    if (!photoId) return;
+    let live = true; const same = api.captureSession(); setNoticePhoto(null);
+    api.get(`/listings/photos/${encodeURIComponent(photoId)}`).then(async photo => {
+      same(); await prepareUploadAccess(resolveFileUrl(photo.file_url)); if (live) setNoticePhoto(photo);
+    }).catch(failure => { if (live) setDeleteError(failure.message); });
+    return () => { live = false; };
+  }, [photoId]);
 
   const refreshData = () => {
     setLoading(true);
@@ -189,6 +203,10 @@ export default function Listings() {
 
   return (
     <div className="page">
+      {noticePhoto && listings.some(row => row.id === noticePhoto.listing_id) && <section aria-label="Inseratfoto aus dem Hinweis">
+        <h2>{noticePhoto.title || 'Inseratfoto'}</h2><img style={{ maxWidth: '100%' }} src={resolveFileUrl(noticePhoto.file_url)} alt={noticePhoto.title || 'Inseratfoto'} onLoad={() => setNoticePhoto(photo => ({ ...photo, imageReady: true }))} />
+        <NotificationArrival record={noticePhoto} ready={noticePhoto.imageReady === true} />
+      </section>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}

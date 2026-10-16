@@ -87,3 +87,11 @@ Gemeinsame Kommunikationsprüfungen: `integrated-communication-memory-17ab954604
 `ui-subset-1292810c47404f30ab8212a2d20ee63e`: vier tatsächliche Vitest-Dateien (Finanzpakete, Steuerexport, Kommunikationszentrale, Nachrichten-Recovery), 24/24 bestanden in 45,99 Sekunden. React-act-Warnungen in der Kommunikations-Testumgebung bleiben sichtbar; keine Fehler oder übersprungenen Fälle. Dies sind Komponententests, kein realer Browser- oder sauberer npm-ci-Nachweis.
 
 Nach diesen Laufständen wurden 17 Typbefunde durch genaue Union-/TypedDict-Angaben, getrennte Connectionnamen und ausdrückliche Nicht-None-Prüfungen korrigiert, ohne Fachassertionen zu entfernen. Ruff für das Backend und Mypy für 507 Quelldateien bestanden danach. Die spätere Gesamtmatrix muss die endgültigen Bytes erneut prüfen; die früheren Laufhashes werden nicht umetikettiert.
+
+## Paket 5: persönliche Hinweise, wirksame Einstellungen und Sitzungen
+
+Quelle: eigener Quellzweig `pro-finish-daily-20261016` einschließlich Commit `3c1caf78` UND des nachfolgenden uncommitteten Arbeitsbaums. Der Import wurde deshalb ausdrücklich gegen den gemeinsamen Vorfahren `c16e0970` erzeugt; ein Diff nur gegen den Quell-HEAD hätte die erste implementierte Stufe ausgelassen. Quellzweig und Dateien wurden nicht verändert. Patch, Basis- und Quellhash sind in `artifacts/pro-tools/source-pro-finish-daily-20261016.*` dokumentiert.
+
+Die zwei UI-Konflikte wurden fachlich zusammengeführt: Nachrichten behalten den echten Kommunikations-/Empfangsbereich und ersetzen ausschließlich den alten globalen Lesestatusbereich durch den persönlichen Eingang. Die Auswahl eines Standard-Integrationsprofils behält den bestehenden 503-Zustands-/Wiederanlaufpfad. Doppelte konkurrierende Threadauswahl bei Notification-Deep-Links wird vermieden.
+
+Alle drei ursprünglichen Daily-Migrationen bleiben erhalten; neue reine Merge-Revision `e1f0a1b2c3f5` verbindet den bisherigen Gesamtstand `e1f0a1b2c3f4` mit `e180a1b2c307`. Der Stand umfasst neuere Sitzungsfamilien, Nummernreservierung, tatsächliche Vorlagen-/Importverbraucher und begrenzte SQL-Inboxabfragen; der erste Paketbericht beschreibt nicht alle späteren Änderungen. Diese zusätzlichen Pfade werden ausdrücklich neu geprüft, nicht anhand des älteren Berichts freigegeben.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from contextlib import contextmanager
@@ -293,6 +294,11 @@ def revision(value: Any) -> str:
     return str(value or "")
 
 
+def record_revision(values: dict) -> str:
+    """Rows without an updated_at still have an exact content revision."""
+    return revision(values.get('updated_at')) or hashlib.sha256(json.dumps(values, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
+
+
 def same_revision(left: str, right: str) -> bool:
     try:
         def moment(value):
@@ -357,7 +363,21 @@ def resolve_context(store, entity_type: str, entity_id: str, actor_id: str, *, l
         href = f"/{paths[kind]}/{identifier}" if kind in paths else f"/{list_paths.get(kind, context)}?focus_id={identifier}"
         if kind == "booking":
             href = f"/bookings?booking_id={identifier}"
-        return {"kind": kind, "entity_id": entity_id, "revision": revision(values.get("updated_at")),
+        if kind == 'standalone_reading':
+            href = f"/meters?focus_id={quote(str(values['meter_id']), safe='')}&source_id={identifier}"
+        if kind == 'meter_reading':
+            href = f"/handover-protocols?focus_id={quote(str(values['handover_id']), safe='')}&source_id={identifier}"
+        if kind == 'cost_item':
+            href = f"/statements?focus_id={quote(str(values['billing_period_id']), safe='')}&source_id={identifier}"
+        if kind == 'message':
+            href = f"/messages?focus_id={quote(str(values['thread_id']), safe='')}&source_id={identifier}"
+        if kind == 'entity_photo':
+            parent_kind = canonical_kind(values['entity_type'])
+            if parent_kind in ('property', 'unit'):
+                href = f"/{paths[parent_kind]}/{quote(str(values['entity_id']), safe='')}?source_id={identifier}"
+        if kind == 'listing_photo':
+            href = f"/listings?focus_id={quote(str(values['listing_id']), safe='')}&source_id={identifier}"
+        return {"kind": kind, "entity_id": entity_id, "revision": record_revision(values),
                 "property_id": next(iter(properties)) if len(properties) == 1 else None,
                 "portfolio_id": next(iter(sorted(portfolios)), None),
                 "portfolio_ids": sorted(portfolios), "title": title, "href": href, "values": values,

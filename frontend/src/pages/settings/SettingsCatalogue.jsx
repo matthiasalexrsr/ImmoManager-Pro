@@ -1,0 +1,100 @@
+﻿import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api } from '../../api';
+import { useAuth } from '../../contexts/AuthContext';
+import { privateStorageKey } from '../../utils/workspaceIdentity';
+import { usePreferences } from '../../contexts/PreferencesContext';
+import './catalogue.css';
+import SessionInventory from './SessionInventory';
+import ConfigurationContract from './ConfigurationContract';
+
+function SettingField({ item, onSaved }) {
+  const storage = privateStorageKey(`setting-draft:${item.scope}:${item.key}`);
+  const [recovery] = useState(() => { try { return JSON.parse(sessionStorage.getItem(storage) || 'null'); } catch { return null; } });
+  const [value, setValue] = useState(recovery?.value ?? item.value);
+  const expected = useRef(recovery?.base_revision ?? item.revision);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(Boolean(recovery));
+  const pending = useRef(recovery?.command || null);
+  const prefs = usePreferences();
+  useEffect(() => {
+    if (dirty) { try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ } }
+  }, [dirty, value, storage]);
+  useEffect(() => {
+    if (!dirty) { setValue(item.value); expected.current = item.revision; }
+  }, [item.value, item.revision, dirty]);
+  const edit = next => {
+    setValue(next); setDirty(true);
+    try { sessionStorage.setItem(storage, JSON.stringify({ value: next, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
+  };
+  const save = async (reset = false) => {
+    if (busy) return;
+    const parsed = typeof item.value === 'boolean' ? value === true || value === 'true' : typeof item.value === 'number' ? Number(value) : value;
+    if (pending.current?.values[item.key] !== parsed || Boolean(pending.current?.reset) !== reset) pending.current = { values: { [item.key]: parsed }, scope: item.scope,
+      base_revision: expected.current, reset, idempotency_key: crypto.randomUUID() };
+    try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
+    setBusy(true); setError(null); const same = api.captureSession();
+    try {
+      await api.put('/auth/users/me/settings', pending.current); same(); pending.current = null; sessionStorage.removeItem(storage); setDirty(false); onSaved(); prefs?.reload?.();
+    } catch (failure) { setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.'); }
+    finally { setBusy(false); }
+  };
+  const choiceLabels = { symbol: 'W?hrungssymbol (Quellw?hrung)', code: 'ISO-W?hrungscode (Quellw?hrung)', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Uebersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persoenlicher Eingang' };
+  const id = `setting-${item.scope}-${item.key}`;
+  return <article className="setting-card">
+    <label htmlFor={id}><strong>{item.label}</strong></label>
+    <p className="text-muted">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {item.origin}</p>
+    {item.editable ? <div className="setting-controls">
+      {item.choices ? <select id={id} value={String(value)} onChange={e => edit(e.target.value)} disabled={busy}>
+        {item.choices.map(choice => <option key={String(choice.value ?? choice)} value={String(choice.value ?? choice)}>{choice.label || (choice === true ? 'Ja' : choice === false ? 'Nein' : choiceLabels[choice] || String(choice))}</option>)}
+      </select> : item.key === 'document_address' ? <textarea id={id} value={value} onChange={e => edit(e.target.value)} disabled={busy} /> : <input id={id} type={item.input_type || "number"} min={item.key === 'reminder_days' ? 0 : 1} max={item.key === 'reminder_days' ? 365 : item.key === 'default_due_day' ? 31 : undefined} value={value} onChange={e => edit(e.target.value)} disabled={busy} />}
+      <button className="btn btn-primary" onClick={() => save()} disabled={busy || !dirty}>{busy ? 'Speichert …' : 'Speichern'}</button>
+      {dirty && <small>Ungespeicherte Eingabe (in diesem Tab gesichert)</small>}
+    </div> : <p id={id}>{String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}
+    {item.editable && <button className="btn btn-secondary" disabled={busy} onClick={() => { expected.current = item.revision; pending.current = null; setDirty(true); save(true); }}>Vorgabe übernehmen</button>}
+    {dirty && item.revision !== expected.current && <p role="status">Aktuell gespeichert: {String(item.value)}. Ihre Eingabe: {String(value)}. <button onClick={() => { expected.current = item.revision; pending.current = null; setError(null); }}>Mit aktuellem Stand vergleichen und eigene Eingabe behalten</button></p>}
+    {error && <p role="alert">{error} Eingabe bleibt erhalten. Bei Konflikt zuerst den aktuellen Stand laden und vergleichen.</p>}
+  </article>;
+}
+
+export default function SettingsCatalogue() {
+  const auth = useAuth();
+  const [search, setSearch] = useState('');
+  const [property, setProperty] = useState('');
+  const [properties, setProperties] = useState([]);
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true; const same = api.captureSession();
+    api.list('/properties').then(data => { same(); if (live) setProperties(data); }).catch(failure => { if (live) setError(failure.message); });
+    return () => { live = false; };
+  }, []);
+  useEffect(() => {
+    let live = true; const same = api.captureSession(); setError(null);
+    api.get(`/auth/users/me/settings${property ? `?property_id=${encodeURIComponent(property)}` : ''}`).then(data => {
+      same(); if (live) setItems(data.items);
+    }).catch(failure => { if (live) setError(failure.message); });
+    return () => { live = false; };
+  }, [property, attempt]);
+  const found = items.filter(item => `${item.label} ${item.group} ${item.origin} ${item.key}`.toLocaleLowerCase('de').includes(search.toLocaleLowerCase('de')));
+  const links = [
+    ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
+    ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
+    ...(auth?.isAdmin ? [['Integrationen und Zugangsdaten', '/integrations'], ['Benutzer, Rollen und Objektzugriff', '/settings?section=users'], ['Sicherung, Wiederherstellung, Backupzeit, Aufbewahrung, Jobs und Betrieb', '/settings?section=system'], ['Updates und Erweiterungen', '/settings?section=system']] : []),
+  ].filter(([label]) => label.toLocaleLowerCase('de').includes(search.toLocaleLowerCase('de')));
+  return <section className="settings-catalogue"><h2>Einstellungen finden</h2>
+    <label htmlFor="settings-search">Suche nach Einstellung oder Bereich</label><input id="settings-search" type="search" value={search} onChange={e => setSearch(e.target.value)} />
+    <label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>
+      <option value="">Ohne Objekt</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+    </select>
+    <p>Persönliche Werte haben Vorrang vor Objektvorgaben und globalen Standardwerten. Ruhezeiten gelten für persoenliche E-Mail-Hinweise in Europe/Berlin, sobald beide Zeiten gesetzt und verschieden sind. Serverparameter stammen aus der bestehenden Serverkonfiguration und werden hier nur angezeigt. Währungen werden nicht umgerechnet; Belege behalten ihre Quellwährung.</p>
+    {error && <p role="alert">{error} <button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
+    <p role="status">{found.length} Einstellungen gefunden</p>
+    <div className="setting-grid">{found.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div>
+    {(!search || /sitz|sicher|anmeld|session/i.test(search)) && <SessionInventory />}
+    {auth?.isAdmin && (!search || /api|plugin|erweiter/i.test(search)) && <ConfigurationContract />}
+    <nav aria-label="Weitere Einstellungsbereiche">{links.map(([label, href]) => <p key={label}><Link to={href}>{label}</Link></p>)}</nav>
+  </section>;
+}

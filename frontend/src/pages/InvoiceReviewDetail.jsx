@@ -1,3 +1,4 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -62,7 +63,7 @@ function InvoiceReviewSession({ id }) {
     <div className="page ir-page">
       <Link to="/invoice-review" className="btn btn-ghost btn-sm ir-back">{tx.back}</Link>
       <div className="page-header ir-header">
-        <h1>{invoice.supplier} {invoice.invoice_number ? `· ${invoice.invoice_number}` : ''}</h1>
+        <NotificationArrival record={invoice} ready={!error} /><h1>{invoice.supplier} {invoice.invoice_number ? `· ${invoice.invoice_number}` : ''}</h1>
         <div className="ir-row-state">
           <Pill tone={STATUS_TONE[view.status]}>{view.kind === 'credit_note' ? tx.creditNote : tx[`status_${view.status}`]}</Pill>
           <strong>{formatMoney(invoice.gross_amount)}</strong>

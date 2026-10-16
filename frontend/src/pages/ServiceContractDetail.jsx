@@ -1,3 +1,4 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -89,7 +90,7 @@ function ServiceContractDossier({ id }) {
       <div className="detail-header">
         <Link className="btn btn-sm btn-secondary" to="/service-contracts">← {t('serviceContracts.backToList')}</Link>
         <div className="detail-title">
-          <h1>{contract.title}</h1>
+          <NotificationArrival record={contract} ready={!error} /><h1>{contract.title}</h1>
           <span className="text-muted">{typeLabel(t, contract.contract_type)} · {contract.provider_name}
             {contract.contract_number ? ` · ${t('serviceContracts.numberShort')} ${contract.contract_number}` : ''}</span>
         </div>

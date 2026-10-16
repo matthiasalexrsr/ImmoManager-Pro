@@ -100,7 +100,7 @@ INTERNAL = frozenset({
     "workspace_drafts", "workspace_views", "workspace_recents", "workspace_favorites",
     "workspace_view_states", "workspace_deferrals", "workspace_commands",
     "users",
-    "user_preferences",
+    "user_preferences", "daily_user_state", "daily_commands", "daily_setting_rules", "daily_inbox_epoch", "daily_auth_sessions", "daily_number_reservations",
     "login_attempts",
     "revoked_tokens",
     "integration_action_attempts", "integration_run_cursors",

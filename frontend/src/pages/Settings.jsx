@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { usePreferences } from '../contexts/PreferencesContext';
+import SecuritySection from './settings/SecuritySection';
+import { useTutorial } from '../components/Tutorial';
+import SettingsCatalogue from './settings/SettingsCatalogue';
+import { useSearchParams } from 'react-router-dom';
 import { useDevMode } from '../contexts/DevModeContext';
 import { useTranslation } from '../i18n';
 import { useToast } from '../components/Toast';
-import { useTutorial } from '../components/Tutorial';
 import { api } from '../api';
 import UpdateSection from './settings/UpdateSection';
 import AutotestSection from './settings/AutotestSection';
@@ -13,15 +15,17 @@ import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
 
 export default function Settings() {
-  const { prefs, toggleTheme, toggleSidebar, updatePrefs } = usePreferences();
+  const [params] = useSearchParams();
   const auth = useAuth();
+  const tutorial = useTutorial();
   const devMode = useDevMode();
-  const { t, locale, setLocale } = useTranslation();
-  const { start: startTour } = useTutorial();
+  const { t } = useTranslation();
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
-  const [settingsTab, setSettingsTab] = useState('personal');
+  const [settingsTab, setSettingsTab] = useState(params.get('section') || 'catalogue');
+
+  useEffect(() => { if (params.get('section')) setSettingsTab(params.get('section')); }, [params]);
 
   // Only admins may read /admin/version. Load once: the error toast re-renders the page, and
   // with toast/t as dependencies a refused request turned into an endless request loop.
@@ -32,14 +36,11 @@ export default function Settings() {
     });
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tr = (key, fallback) => {
-    const result = t(key);
-    return result === key ? fallback : result;
-  };
+  const tr = (key, fallback) => { const value = t(key); return value === key ? fallback : value; };
 
   const tabs = [
-    { key: 'personal', label: t('pages.settings.tabPersonal') || 'Persönlich' },
-    { key: 'workflow', label: t('pages.settings.tabWorkflow') || 'Arbeitsweise' },
+    { key: 'catalogue', label: 'Einstellungen finden' },
+    { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
     ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
@@ -62,182 +63,8 @@ export default function Settings() {
       </div>
 
       <div className="settings-grid">
-        {/* Personal tab: Appearance + Language */}
-        {settingsTab === 'personal' && (
-          <>
-            <div className="panel">
-              <div className="panel-header">{t('pages.settings.appearance')}</div>
-              <div className="panel-body settings-section">
-                <div className="settings-row">
-                  <label>{t('pages.settings.theme')}</label>
-                  <div className="settings-control">
-                    <button
-                      className={`btn btn-sm ${prefs.theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => prefs.theme !== 'light' && toggleTheme()}
-                    >{t('pages.settings.light')}</button>
-                    <button
-                      className={`btn btn-sm ${prefs.theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => prefs.theme !== 'dark' && toggleTheme()}
-                    >{t('pages.settings.dark')}</button>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.sidebar')}</label>
-                  <div className="settings-control">
-                    <button className="btn btn-sm btn-secondary" onClick={toggleSidebar}>
-                      {prefs.sidebar_collapsed ? t('pages.settings.show') : t('pages.settings.hide')}
-                    </button>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>Tutorial</label>
-                  <div className="settings-control">
-                    <button className="btn btn-sm btn-secondary" onClick={() => startTour(0)}>Tour starten</button>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.language')}</label>
-                  <div className="settings-control">
-                    {['de-DE', 'en-US', 'es-ES'].map(loc => (
-                      <button
-                        key={loc}
-                        className={`btn btn-sm ${locale === loc ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setLocale(loc)}
-                      >{loc.slice(0, 2).toUpperCase()}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Workflow tab: Tables, Notifications, OCR */}
-        {settingsTab === 'workflow' && (
-          <>
-            <div className="panel">
-              <div className="panel-header">{t('pages.settings.tables')}</div>
-              <div className="panel-body settings-section">
-                <div className="settings-row">
-                  <label>{t('pages.settings.itemsPerPage')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.items_per_page || 25}
-                      onChange={e => updatePrefs({ items_per_page: Number(e.target.value) })}
-                      className="page-size-select"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.dateFormat')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.date_format || 'DD.MM.YYYY'}
-                      onChange={e => updatePrefs({ date_format: e.target.value })}
-                      className="page-size-select"
-                    >
-                      <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.currency')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.currency || 'EUR'}
-                      onChange={e => updatePrefs({ currency: e.target.value })}
-                      className="page-size-select"
-                    >
-                      <option value="EUR">{t('pages.settings.eurLabel')}</option>
-                      <option value="CHF">{t('pages.settings.chfLabel')}</option>
-                      <option value="USD">{t('pages.settings.usdLabel')}</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{tr('settings.defaultDueDay', 'Standard-Fälligkeitstag')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.default_due_day || 1}
-                      onChange={e => updatePrefs({ default_due_day: Number(e.target.value) })}
-                      className="page-size-select"
-                    >
-                      {[1, 3, 5, 10, 15].map(d => (
-                        <option key={d} value={d}>{d}.</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">{t('pages.settings.notificationsSection')}</div>
-              <div className="panel-body settings-section">
-                <div className="settings-row">
-                  <label>{t('pages.settings.emailNotifications')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.email_notifications || 'important'}
-                      onChange={e => updatePrefs({ email_notifications: e.target.value })}
-                      className="page-size-select"
-                    >
-                      <option value="all">{t('pages.settings.emailAll')}</option>
-                      <option value="important">{t('pages.settings.emailImportant')}</option>
-                      <option value="none">{t('pages.settings.emailNone')}</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.reminders')}</label>
-                  <div className="settings-control">
-                    <select
-                      value={prefs.reminder_days || '7'}
-                      onChange={e => updatePrefs({ reminder_days: e.target.value })}
-                      className="page-size-select"
-                    >
-                      <option value="3">{t('pages.settings.days3')}</option>
-                      <option value="7">{t('pages.settings.days7')}</option>
-                      <option value="14">{t('pages.settings.days14')}</option>
-                      <option value="30">{t('pages.settings.days30')}</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="panel-header">{t('pages.settings.docsOcr')}</div>
-              <div className="panel-body settings-section">
-                <div className="settings-row">
-                  <label>{t('pages.settings.autoOcr')}</label>
-                  <div className="settings-control">
-                    <span className="text-muted">{t('pages.settings.ocrActive')}</span>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.ocrLanguages')}</label>
-                  <div className="settings-control">
-                    <span className="text-muted">{t('pages.settings.ocrLangs')}</span>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <label>{t('pages.settings.fileStorage')}</label>
-                  <div className="settings-control">
-                    <span className="text-muted">{t('pages.settings.fileStorageLocal')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+        {settingsTab === 'catalogue' && <><SettingsCatalogue /><button className="btn btn-secondary" onClick={() => tutorial?.start(0)}>Bedienungstour starten</button></>}
+        {settingsTab === 'security' && <SecuritySection />}
 
         {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import useEffectiveSettings from '../../hooks/useEffectiveSettings';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEntities, useDataStore } from '../../contexts/DataStoreContext';
 import { formatDate } from '../../utils/format';
@@ -12,6 +13,7 @@ import UndoNotice from './UndoNotice';
 import DeferralControl from './DeferralControl';
 import WorkSummary from './WorkSummary';
 import ConversationDialog from './ConversationDialog';
+import NotificationInbox from '../../components/NotificationInbox';
 import StatusBadge from '../../components/StatusBadge';
 import NamedViews from '../../components/NamedViews';
 import './workCenter.css';
@@ -24,6 +26,7 @@ const today = () => { const date = new Date(); return `${date.getFullYear()}-${S
 export default function WorkCenter() {
   const [params, setParams] = useSearchParams();
   const auth = useAuth();
+  const { prefs, error: settingsError } = useEffectiveSettings(params.get('property_id'));
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
   const [change, setChange] = useState(null);
@@ -40,6 +43,8 @@ export default function WorkCenter() {
   return <div className="page work-center">
     <header className="work-center-header"><div><h1>Arbeitszentrale</h1><p>Offene Vorgänge, persönliche Wiedervorlagen und Ihre zuletzt verwendeten Akten.</p></div>
       <Link className="btn btn-secondary" to="/review">Prüfliste öffnen</Link></header>
+    <details><summary>Persönliche Benachrichtigungen und Archiv</summary><NotificationInbox compact /></details>
+    {settingsError && <p role="alert">{settingsError}</p>}
     <EntityShelf />
     <WorkSummary query={summaryQuery.toString()} revision={summaryRevision} />
     <section aria-label="Offene Vorgänge">
@@ -52,6 +57,10 @@ export default function WorkCenter() {
         </select></label>
         <label>Fällig bis<input type="date" value={params.get('due_before') || ''} onChange={event => filter('due_before', event.target.value)} /></label>
         <button type="button" className="btn btn-secondary" onClick={() => filter('due_before', today())}>Heute und überfällig</button>
+        <button type="button" className="btn btn-secondary" disabled={!prefs} onClick={() => {
+          const horizon = new Date(); horizon.setDate(horizon.getDate() + Number(prefs?.reminder_days || 0));
+          filter('due_before', `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`);
+        }}>Mein Erinnerungsvorlauf ({prefs?.reminder_days || 0} Tage)</button>
         <label>Wiedervorlagen<select value={params.get('deferred') || ''} onChange={event => filter('deferred', event.target.value)}>
           <option value="">Alle Vorgänge</option><option value="due">Wiedervorlage erreicht</option><option value="active">Jetzt bearbeiten (ohne zurückgestellte)</option>
         </select></label>

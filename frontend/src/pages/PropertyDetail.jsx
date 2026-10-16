@@ -1,3 +1,5 @@
+import PhotoDropZone from '../components/PhotoDropZone';
+import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -183,7 +185,7 @@ function PropertyDossier({ id }) {
           ← {t('pages.propertyOverview.back') || 'Zurück'}
         </Link>
         <div className="detail-title">
-          <h1>{property.name}</h1>
+          <NotificationArrival record={property} ready={!loading && !error} /><PhotoDropZone entityType="property" entityId={id} /><h1>{property.name}</h1>
           <span className="text-muted">
             {[property.address_line, property.postal_code, property.city].filter(Boolean).join(', ') || t('pages.propertyDetail.noAddress') || 'Keine Adresse'}
           </span>

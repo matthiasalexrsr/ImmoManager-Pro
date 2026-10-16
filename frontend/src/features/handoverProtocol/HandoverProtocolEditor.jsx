@@ -1,3 +1,4 @@
+import NotificationArrival from '../../components/NotificationArrival';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Download, FileText, Plus, Trash2, X } from 'lucide-react';
@@ -360,6 +361,7 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
             <CheckCircle2 size={18} aria-hidden="true" /><span>{notice}</span></div>}
 
           {detail && form && <>
+            <NotificationArrival record={new URLSearchParams(window.location.search).get('source_id') ? undefined : detail.protocol} rows={detail.meter_readings} ready={!loading && !error} />
             <section className="handover__summary" aria-label={say('general')}>
               <div><span>{say('status')}</span><strong>{detail.state.superseded ? say('state_superseded') : say(`state_${state}`)}</strong></div>
               <div><span>{say('tenant')}</span><strong>{detail.source.tenant.full_name}</strong></div>

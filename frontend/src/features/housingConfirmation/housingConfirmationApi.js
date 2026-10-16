@@ -38,6 +38,8 @@ export function mapHousingSource(value, contractId) {
       housing_provider_name: value.suggestions.housing_provider_name ?? null,
       housing_provider_address: value.suggestions.housing_provider_address ?? null,
       owner_name: value.suggestions.owner_name ?? null,
+      issuer_name: value.suggestions.issuer_name ?? null,
+      issuer_role: value.suggestions.issuer_role ?? null,
       dwelling_address: value.suggestions.apartment_address ?? null,
       dwelling_label: value.suggestions.apartment_label ?? null,
       main_tenant_name: Array.isArray(value.suggestions.resident_names)
