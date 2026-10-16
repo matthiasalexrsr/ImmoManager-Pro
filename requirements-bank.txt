@@ -1,4 +1,6 @@
-# Optional read-only FinTS transport. Coordinator installs in an isolated environment.
-# Official release 2026-10-09; LGPL-3.0-or-later; Python >=3.11.
-# Exact transitive constraints must be resolved/locked and checked by coordinator before installation.
+# Optional read-only bank runtime; installed in the full development/CI environment.
+# FinTS 5.0.1, LGPL-3.0-or-later. No payment API is exposed.
+# pip install -r requirements-bank.txt
+-c constraints.txt
+-c constraints-bank.txt
 fints==5.0.1
