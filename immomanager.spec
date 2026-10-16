@@ -13,6 +13,7 @@ Result: dist/ImmoManager-Pro/ directory containing the executable and all depend
 """
 import os
 import sys
+from importlib.util import find_spec
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
@@ -87,6 +88,12 @@ _THIRD_PARTY_PACKAGES = [
     'httpx',
     'httpcore',
 ]
+
+# Optional engines use runtime imports and native libraries that static import
+# analysis cannot infer. Include only installed, explicitly chosen components.
+# Their own upstream PyInstaller hooks collect native data/binaries.
+_THIRD_PARTY_PACKAGES += [name for name in ('pymupdf', 'fints', 'mt940', 'sepaxml', 'xmlschema', 'bleach')
+                          if find_spec(name) is not None]
 
 collected_hiddenimports = []
 # All backend modules (services, routers, the test version …): imports inside functions are

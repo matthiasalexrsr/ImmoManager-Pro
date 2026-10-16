@@ -170,7 +170,7 @@ def test_forecast_independent_3_6_12_month_oracles(estate, months, expected):
     assert finance_reports.compute(store, d.model_copy(update={"vacant_unit_ids": [estate[2].id]}))["closing_balance"] == "1000.00"
 
 
-def test_saved_definition_owner_isolation_exports_and_replay(estate):
+def test_saved_definition_owner_isolation_exports_and_replay(estate, tmp_path):
     user = auth.register_user("finance-owner", "f@example.com", "Finanzen", "Secret123", "eigentuemer")
     client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(user.id)})
     definition = {"kind": "liquidity-v2", "as_of": "2026-01-15", "months": 3}
@@ -191,9 +191,7 @@ def test_saved_definition_owner_isolation_exports_and_replay(estate):
     with pdfplumber.open(BytesIO(pdf.content)) as document:
         text = "\n".join(page.extract_text() or "" for page in document.pages)
     assert json_report["definition_hash"] in "".join(text.split()) and "1200.00" in text
-    import os
-    from pathlib import Path
-    (Path(os.environ["DATA_DIR"]) / "finance-v2-sample.pdf").write_bytes(pdf.content)
+    (tmp_path / "finance-v2-sample.pdf").write_bytes(pdf.content)
     other = auth.register_user("finance-other", "other@example.com", "Andere", "Secret123", "eigentuemer")
     assert TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(other.id)}).get(
         "/api/v1/reports/v2/saved/" + record["id"]).status_code == 404

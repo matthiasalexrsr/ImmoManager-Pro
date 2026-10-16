@@ -66,7 +66,8 @@ def test_native_private_connection_dump_restore_probe_and_fresh_target(tmp_path:
         archive = sources.root / event["archive"]
         assert full_backup.verify_archive(archive, expected_sha256=event["sha256"])["ok"]
         probe = full_backup.restore_probe(sources=sources)
-        assert probe["ok"] and not probe["warnings"], probe["warnings"]
+        assert probe["ok"] and not probe["warnings"], probe
+        assert probe['checks']['attachments']['checked'] is True
         assert probe["checks"]["full_restore"]
         assert probe["checks"]["private_connections"]["present"]
         assert probe["checks"]["private_connections"]["verified_rows"] >= 1

@@ -232,7 +232,7 @@ def test_records_with_originals_keep_their_binding_and_cannot_be_deleted(client,
     assert _read(document_id, owner.id) == pdf_bytes(400)
 
 
-def test_a_snapshot_carries_originals_with_their_bytes(owner):
+def test_a_snapshot_carries_originals_with_their_bytes(owner, monkeypatch):
     lease = lease_with_document(store)
     content = pdf_bytes(CHUNK_BYTES + 77)
     _archive(lease, owner.id, content)
@@ -243,7 +243,13 @@ def test_a_snapshot_carries_originals_with_their_bytes(owner):
     copy = InMemoryStore()
     result = import_snapshot(copy, snapshot, replace=False)
     assert result["imported"]["document_originals"] == 1
-    assert _read(lease["document"].id, owner.id, target=copy) == content
+    account = auth.get_user_by_id(owner.id)
+    assert account is not None
+    accounts = auth.InMemoryUserStore()
+    accounts.create(dict(account))
+    with monkeypatch.context() as restored:
+        restored.setattr(auth, '_user_store', accounts)
+        assert _read(lease["document"].id, owner.id, target=copy) == content
     # importing the same file again changes nothing
     again = import_snapshot(copy, snapshot, replace=False)
     assert again["skipped_existing"]["document_originals"] == 1

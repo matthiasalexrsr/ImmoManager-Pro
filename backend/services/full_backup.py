@@ -1274,6 +1274,17 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
                 checks["private_connections"] = _private_connection_proof(connection, private_keys)
                 checks['communication'] = checks['private_connections']['communication']
                 checks['communication_verified'] = True
+                # A readable pg_dump does not prove that its referenced files
+                # survived extraction. Rebuild the inventory from the restored
+                # native database, using the same rules as SQLite and backup.
+                from .file_storage import validate_key
+                from .portable_runtime import inventory
+                references, key_ids = inventory(connection)
+                for key in references:
+                    if not (dump.parent / 'uploads' / validate_key(key)).is_file():
+                        raise BackupError('Referenziertes Original fehlt im Archiv')
+                checks['attachments'] = {'checked': True, 'references': len(references),
+                                         'key_ids': sorted(key_ids)}
         finally:
             engine.dispose()
         _compare({"revision": revision, "row_counts": counts}, database)

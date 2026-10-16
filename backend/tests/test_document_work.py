@@ -422,7 +422,7 @@ def test_failed_optional_conversion_is_durable_and_retry_has_no_output(prepared,
     assert retried["state"] == "failed" and len(store.list_documents()) == 1
 
 
-def test_snapshot_restores_native_archive_and_private_recovery_to_fresh_store(prepared, owner):
+def test_snapshot_restores_native_archive_and_private_recovery_to_fresh_store(prepared, owner, monkeypatch):
     from backend.storage import InMemoryStore
     source, _ = archived(prepared, owner)
     opened = service.open_session(store, prepared["document"].id, command(source, OpenSession, mode="docx"), owner.id)
@@ -431,9 +431,17 @@ def test_snapshot_restores_native_archive_and_private_recovery_to_fresh_store(pr
     snapshot = export_snapshot(store)
     fresh = InMemoryStore()
     import_snapshot(fresh, snapshot, replace=False)
-    assert service.download(fresh, prepared["document"].id, source["version"]["id"], owner.id)[0] == prepared["content"]
-    recovered = service.read_session(fresh, prepared["document"].id, opened["session_id"], owner.id)
-    assert base64.b64decode(recovered["draft_base64"]) == content
+    # This is a separate restored memory installation. Its account backend
+    # must match its business backend, including when the source used SQL.
+    accounts = auth.InMemoryUserStore()
+    account = auth.get_user_by_id(owner.id)
+    assert account is not None
+    accounts.create(dict(account))
+    with monkeypatch.context() as restored:
+        restored.setattr(auth, "_user_store", accounts)
+        assert service.download(fresh, prepared["document"].id, source["version"]["id"], owner.id)[0] == prepared["content"]
+        recovered = service.read_session(fresh, prepared["document"].id, opened["session_id"], owner.id)
+        assert base64.b64decode(recovered["draft_base64"]) == content
 
 
 def test_two_independent_sql_connections_publish_only_one_winning_editor(prepared, owner):

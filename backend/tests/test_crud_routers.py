@@ -297,11 +297,18 @@ def _list_deposits(**kw):
 
 
 def _list_notifications(**kw):
+    from backend import auth
+    actor = auth.get_user_by_username('crud-notice-owner')
+    if actor is None:
+        auth.register_user('crud-notice-owner', 'crud-notice@example.test', 'Hinweise', 'Secret123', 'eigentuemer')
+        actor = auth.get_user_by_username('crud-notice-owner')
+    assert actor is not None
     return notifications.list_notifications(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         status_filter=kw.get("status_filter"),
         notification_type=kw.get("notification_type"),
         severity=kw.get("severity"),
+        actor=auth._to_user_read(actor),
     )
 
 
@@ -2811,14 +2818,15 @@ class TestNotifications:
         n = notifications.create_notification(self._make())
         assert n.status == "unread"
         assert n.read_at is None
-        read = notifications.mark_notification_read(n.id)
-        assert read.status == "read"
-        assert read.read_at is not None
+        with pytest.raises(HTTPException) as rejected:
+            notifications.mark_notification_read(n.id)
+        assert rejected.value.status_code == 409
+        assert store.get_notification(n.id).status == 'unread'
 
     def test_mark_read_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             notifications.mark_notification_read("nonexistent")
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.status_code == 409
 
     def test_delete_notification(self) -> None:
         n = notifications.create_notification(self._make())
@@ -2833,9 +2841,10 @@ class TestNotifications:
     def test_filter_by_status(self) -> None:
         n = notifications.create_notification(self._make(title="A"))
         notifications.create_notification(self._make(title="B"))
-        notifications.mark_notification_read(n.id)
-        assert len(_list_notifications(status_filter="unread")) == 1
-        assert len(_list_notifications(status_filter="read")) == 1
+        # A legacy global status is not a personal read receipt.
+        store._patch_entity('notification', n.id, NotificationPatch(status='read'))
+        assert len(_list_notifications(status_filter="unread")) == 2
+        assert len(_list_notifications(status_filter="read")) == 0
 
     def test_filter_by_type(self) -> None:
         notifications.create_notification(self._make(notification_type="overdue_payment"))
@@ -2849,13 +2858,16 @@ class TestNotifications:
 
     def test_patch_notification(self) -> None:
         n = notifications.create_notification(self._make())
-        patched = notifications.patch_notification(n.id, NotificationPatch(status="archived"))
-        assert patched.status == "archived"
-        assert patched.title == "Test"
+        patched = notifications.patch_notification(n.id, NotificationPatch(title='Neuer Titel'))
+        assert patched.status == "unread"
+        assert patched.title == "Neuer Titel"
+        with pytest.raises(HTTPException) as rejected:
+            notifications.patch_notification(n.id, NotificationPatch(status='archived'))
+        assert rejected.value.status_code == 409
 
     def test_patch_notification_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
-            notifications.patch_notification("nonexistent", NotificationPatch(status="archived"))
+            notifications.patch_notification("nonexistent", NotificationPatch(title='Neuer Titel'))
         assert exc_info.value.status_code == 404
 
 

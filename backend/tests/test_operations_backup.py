@@ -292,7 +292,12 @@ def test_restore_probe_opens_checks_and_removes_the_copy(installation):
     event = full_backup.restore_probe(sources=installation.sources)
     checks = event["checks"]
     assert event["ok"] and checks["row_counts_match"] and checks["revision"] == schema_state.head_revision()
-    assert checks["uploads"] == 2 and checks["secrets"] == {"sealed_values": 1, "decrypted": 1, "warning": None}
+    assert checks["uploads"] == 2
+    assert {key: checks['secrets'][key] for key in ('sealed_values', 'decrypted', 'warning')} == {
+        "sealed_values": 1, "decrypted": 1, "warning": None}
+    assert checks['secrets']['bank_originals'] == 0
+    assert checks['secrets']['communication'] == {'blocks': 0, 'items': 0, 'originals': 0}
+    assert checks['secrets']['tax_receipts_verified'] == 0
     assert checks["probe_dir_removed"] and not list(installation.sources.root.glob(".probe-*"))
     assert event["warnings"] == []
     logged = full_backup.read_events(installation.sources.root)
@@ -787,18 +792,19 @@ def test_the_overview_function_refuses_a_restricted_scope_directly():
     assert refused.value.status_code == 403
 
 
-def test_manual_backup_and_probe_through_the_api(api):
+def test_manual_backup_and_probe_through_the_api(api, monkeypatch):
     from backend import dependencies
 
     if dependencies._scoped_session is None:
         assert api.client.post("/api/v1/admin/operations/backup", headers=api.owner).status_code == 409
         return
     # SQL mode: database, uploads, settings and key of the configured data directory
+    monkeypatch.setattr(settings, 'backup_passphrase', 'synthetic-portable-runtime-passphrase')
     backup = api.client.post("/api/v1/admin/operations/backup", headers=api.owner)
     assert backup.status_code == 200, backup.text
     probe = api.client.post("/api/v1/admin/operations/restore-probe", headers=api.owner)
     assert probe.status_code == 200, probe.text
-    assert probe.json()["ok"]
+    assert probe.json()["ok"], probe.json()
     overview = api.client.get("/api/v1/admin/operations", headers=api.owner).json()
     assert overview["backup"]["last_success"]["archive"] == backup.json()["archive"]
     assert overview["restore_probe"]["last_success"]["archive"] == backup.json()["archive"]

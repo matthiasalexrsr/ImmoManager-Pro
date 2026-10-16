@@ -41,7 +41,14 @@ def isolated_private_memory_families(monkeypatch):
     Give each test its own journal without changing production reset/restore
     guards. SQL tests already own their database and reset all mapped tables.
     """
-    from backend.dependencies import store
+    from backend import dependencies
+    store = dependencies.store
 
     if not hasattr(store, 'db'):
         monkeypatch.setitem(store.__dict__, '_integration_connections', {})
+    yield
+    # Direct service/router tests can leave a read-only legacy caller Session.
+    # They do not pass through request middleware. Close it at the test boundary
+    # so connection-return tests measure their own requests, not a prior caller.
+    # Assertions inside those tests still run before this cleanup.
+    dependencies.cleanup_session()

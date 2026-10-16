@@ -650,6 +650,10 @@ class TestNotificationLifecycle:
     """POST notification -> GET -> mark read -> verify status change."""
 
     def test_notification_create_read_lifecycle(self, client, auth_headers):
+        from uuid import uuid4
+        task_response = client.post('/api/v1/tasks', headers=auth_headers, json={'title': 'Hinweisquelle'})
+        assert task_response.status_code == 201
+        task_id = task_response.json()['id']
         # Step 1: Create a notification
         create_resp = client.post(
             "/api/v1/notifications",
@@ -659,6 +663,7 @@ class TestNotificationLifecycle:
                 "content": "Willkommen bei ImmoManager Pro!",
                 "severity": "info",
                 "status": "unread",
+                'entity_type': 'task', 'entity_id': task_id,
             },
             headers=auth_headers,
         )
@@ -676,15 +681,22 @@ class TestNotificationLifecycle:
         assert get_resp.status_code == 200
         assert get_resp.json()["title"] == "Willkommen"
 
-        # Step 3: Mark as read via POST /{id}/read
+        # The old global status command cannot consume another user's inbox.
         read_resp = client.post(
             f"/api/v1/notifications/{notif_id}/read",
             headers=auth_headers,
         )
-        assert read_resp.status_code == 200
-        read_notif = read_resp.json()
-        assert read_notif["status"] == "read"
-        assert read_notif["read_at"] is not None
+        assert read_resp.status_code == 409
+        opened = client.get(f'/api/v1/notifications/{notif_id}/source', headers=auth_headers)
+        assert opened.status_code == 200
+        source = opened.json()['source']
+        assert source['entity_id'] == task_id
+        assert client.get('/api/v1/tasks/' + task_id, headers=auth_headers).status_code == 200
+        body = {'idempotency_key': str(uuid4()), 'base_revision': 0, 'action': 'landed',
+                'source_kind': source['kind'], 'source_id': source['entity_id'], 'source_revision': source['revision']}
+        received = client.post(f'/api/v1/notifications/{notif_id}/receipt', headers=auth_headers, json=body)
+        assert received.status_code == 200, received.text
+        assert client.post(f'/api/v1/notifications/{notif_id}/receipt', headers=auth_headers, json=body).json() == received.json()
 
         # Step 4: Verify via GET that the status persisted
         verify_resp = client.get(
@@ -692,7 +704,10 @@ class TestNotificationLifecycle:
             headers=auth_headers,
         )
         assert verify_resp.status_code == 200
-        assert verify_resp.json()["status"] == "read"
+        assert verify_resp.json()["status"] == "unread"  # shared source is retained
+        archived = client.get('/api/v1/notifications/inbox?status=archived', headers=auth_headers).json()['items']
+        assert [row['id'] for row in archived] == [notif_id]
+        assert archived[0]['read_at'] and archived[0]['archived_at']
 
         # Step 5: Filter by status=unread should return empty now
         unread_resp = client.get(

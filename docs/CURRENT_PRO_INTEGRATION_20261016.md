@@ -67,6 +67,11 @@ Der lokale DOCX-Baustein liegt unter `optional/document-editor`, sein Lockfile b
 - Neue Kanalansichten laden bei Bedarf und behandeln unvollständige Antworten als Fehler, ohne die normale Nachrichtenansicht zum Absturz zu bringen.
 - PDF-Dialoghöhe, eindeutige Werkzeugnamen und tatsächlicher Seitenaufbau werden im Browser geprüft. Der DOCX-Toolbar wird ausdrücklich konfiguriert und nach dem Speichern weiter geprüft.
 - Nach erfolgreichem Formularspeichern wird die Browser-Verlassen-Warnung unmittelbar entfernt; fehlgeschlagene Speicherungen behalten den Schutz.
+- Ungestempelte aktuelle ORM-Datenbanken werden nur am ausdrücklich geprüften Head übernommen. Fehlende historische Zugriffs-/Jobtabellen durchlaufen weiterhin die bisherigen Übernahmen und Datenrückfüllungen; Schutztrigger werden auch an bereits vorhandenen Tabellen installiert. Ein reines Stempeln darf historische Benutzerrechte oder Miethistorien nicht überspringen.
+- Eine vollständige PostgreSQL-Wiederherstellungsprobe inventarisiert die Datei-/Schlüsselreferenzen aus der tatsächlich wiederhergestellten Datenbank und prüft die ausgepackten Originaldateien. Ein lesbarer Dump allein genügt nicht für den Erfolgsstatus.
+- Alte Tests erwarten nun die vorgesehenen Sicherheitsverträge: bestätigte Bankvorschau, persönliche Lesebelege, gesperrte Originalüberschreibung, fremde S3-Buckets und vollständig konfigurierte Kanalzugänge. Der Test für Rechnungsmanipulation prüft zusätzlich eine absichtliche Dateiveränderung außerhalb der Anwendung. Die Prüfungen wurden nicht durch Lockerung dieser Schutzregeln passend gemacht.
+- Direkt aufgerufene Testdienste geben ihre klassische SQL-Lesesitzung an der Testgrenze zurück; Verbindungstests prüfen weiterhin vor diesem Aufräumen, dass ihre eigenen HTTP-Anfragen keine Verbindung behalten. In eine neue Speicherdatenbank zurückgespielte Dokumenttests verwenden dort ein passendes, getrenntes Benutzerbackend.
+- FinTS ist Teil der vollständigen Entwicklungs-/CI-Umgebung. Windows-Bundlewerkzeuge sind festgelegt; installierte native Dokument-/Bankmodule werden ausdrücklich in die Importanalyse aufgenommen.
 
 ## Abnahme und ehrliche Grenzen
 

@@ -43,7 +43,7 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
             saved = send_message(source, thread.id, command, owner.id)
             assert message_page(source, thread.id, owner.id)["total"] == 1
         box = SecretBox(data / "secrets" / "keyring.json")
-        sealed = box.seal("synthetic recoverable evidence", "qa-message-recovery")
+        sealed = box.seal("synthetic recoverable evidence", "integrations/qa-extension/proof")
         state = data / "integrations.json"
         state.write_text(json.dumps({"enabled": {}, "config": {"qa-extension": {"proof": sealed}}}), encoding="utf-8")
         (data / ".env").write_text("JOB_SCHEDULER_ENABLED=false\nBACKUP_SCHEDULE_ENABLED=false\n", encoding="utf-8")
@@ -61,7 +61,7 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
         assert hashlib.sha256((target / "uploads" / "original.bin").read_bytes()).digest() == hashlib.sha256(original).digest()
         recovered_box = SecretBox(target / "secrets" / "keyring.json")
         recovered_state = json.loads((target / "integrations.json").read_text(encoding="utf-8"))
-        assert recovered_box.open(recovered_state["config"]["qa-extension"]["proof"], "qa-message-recovery") == "synthetic recoverable evidence"
+        assert recovered_box.open(recovered_state["config"]["qa-extension"]["proof"], "integrations/qa-extension/proof") == "synthetic recoverable evidence"
         # Remove the original location before re-opening the restored database.
         # The caller cannot accidentally pass this proof using its original DB.
         engine.dispose()

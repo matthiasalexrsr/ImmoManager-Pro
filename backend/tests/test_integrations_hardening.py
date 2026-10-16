@@ -72,7 +72,6 @@ def test_email_config_rejects_bad_types_without_mutation(updates):
 @pytest.mark.parametrize("action", [42, "destroy"])
 def test_invalid_action_is_failed_result_and_history(action):
     manager = manager_for(ListingPortalProvider())
-    manager.update_config("listing-portals", {"default_portal": "Immowelt"})
     manager.set_enabled("listing-portals", True)
     result = manager.run("listing-portals", {"action": action})
     assert result["success"] is False
@@ -172,8 +171,18 @@ def test_loaded_empty_nontext_config_is_invalid_and_cannot_start_smtp(key, smtp)
     assert smtp == []
 
 
+class ObjectInputProvider:
+    """Independent provider fixture for the framework's object input contract."""
+    manifest = IntegrationManifest('object-input', 'Object input', 'test', 'Type validation',
+        actions=[{'id': 'preview', 'inputs': [{'key': 'listing', 'type': 'object', 'required': True}]}],
+        default_action='preview')
+    def is_configured(self, config): return True
+    def health(self, config): return {'status': 'local'}
+    def run(self, payload, config): raise AssertionError('Invalid input reached the provider')
+
+
 @pytest.mark.parametrize("provider,payload,key,kind", [
-    (ListingPortalProvider(), {"action": "publish", "listing": ""}, "listing", "object"),
+    (ObjectInputProvider(), {"action": "preview", "listing": ""}, "listing", "object"),
     (huggingface.HuggingFaceProvider(), {"action": "summarize", "messages": ""}, "messages", "array"),
 ])
 def test_empty_nontext_action_input_rejected_before_execution(provider, payload, key, kind, monkeypatch):
@@ -182,8 +191,6 @@ def test_empty_nontext_action_input_rejected_before_execution(provider, payload,
 
     monkeypatch.setattr(provider, "run", unexpected_execution)
     manager = manager_for(provider)
-    if provider.manifest.integration_id == "listing-portals":
-        manager.update_config("listing-portals", {"default_portal": "Immowelt"})
     manager.set_enabled(provider.manifest.integration_id, True)
     result = manager.run(provider.manifest.integration_id, payload)
 
@@ -264,12 +271,12 @@ def test_json_corruption_is_reported_without_replacing_file(tmp_path):
     assert path.read_text(encoding="utf-8") == '{"incomplete":'
 
 
-def test_planned_portals_are_not_healthy():
+def test_available_but_unconfigured_portals_do_not_claim_a_checked_transport():
     manager = manager_for(ListingPortalProvider())
-    manager.update_config("listing-portals", {"default_portal": "Immowelt"})
     result = manager.get_integration("listing-portals")
-    assert result["planned"] is True
-    assert result["health"]["status"] == "not_implemented"
+    assert result['configured'] is False
+    assert result["health"]["status"] == "not_configured"
+    assert result['health']['transport_checked'] is False
 
 
 def test_hf_failed_sentinel_is_not_counted_as_loaded(monkeypatch):

@@ -270,7 +270,13 @@ def _answers(client, headers):
     for path in _read_endpoints():
         response = client.get(path, headers=headers)
         if response.status_code < 500 and "json" in response.headers.get("content-type", ""):
-            answers[path] = response.json()
+            data = response.json()
+            if path == '/api/v1/notifications/inbox' and response.status_code == 200:
+                # Optimistic concurrency tokens bind to this actor/grant set.
+                # Compare all counts/items, not the deliberately different MAC.
+                data['snapshot'] = 'actor-specific'
+                data['read_all_preview']['boundary'] = 'actor-specific'
+            answers[path] = data
     return answers
 
 
@@ -296,7 +302,12 @@ def test_figures_are_those_of_an_installation_without_the_other_portfolio(client
     alone = _answers(client, owner)
     steady = _answers(client, owner)
 
-    differing = [path for path in restricted
+    # Configuration visibility and available actions deliberately depend on
+    # the actor. They are still covered by the marker-leak check above, but
+    # are not financial figures that must equal the owner's reduced estate.
+    actor_metadata = {'/api/v1/integration-connections', '/api/v1/integration-connections/catalog',
+                      '/api/v1/messages/communication', '/api/v1/teha/connections'}
+    differing = [path for path in restricted if path not in actor_metadata
                  if path in alone and alone[path] == steady[path] and restricted[path] != alone[path]]
     for path in differing:
         a, b = restricted[path], alone[path]

@@ -118,6 +118,23 @@ try {
       return { matched: hit === node || node.contains(hit), actualClass: hit?.className?.baseVal ?? hit?.className };
     });
     assert.ok(report.boldHit.matched, 'Formatting control must receive pointer input after autosave');
+    // Exercise the real toolbar, then wait for Vue/browser paint before the
+    // visual oracle. DOM geometry alone can precede the toolbar's first paint.
+    const activeBefore = await boldControl.locator('.sd-toolbar-button').evaluate(node => node.classList.contains('sd-active'));
+    await boldControl.click();
+    await expect.poll(() => boldControl.locator('.sd-toolbar-button').evaluate(node => node.classList.contains('sd-active'))).toBe(!activeBefore);
+    await boldControl.click();
+    await expect.poll(() => boldControl.locator('.sd-toolbar-button').evaluate(node => node.classList.contains('sd-active'))).toBe(activeBefore);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    report.boldPaint = await boldControl.evaluate(node => {
+      const details = item => { const c = getComputedStyle(item); return { tag: item.tagName,
+        class: typeof item.className === 'string' ? item.className : item.className?.baseVal,
+        rect: item.getBoundingClientRect().toJSON(), color: c.color, fill: c.fill, opacity: c.opacity,
+        visibility: c.visibility, display: c.display, clipPath: c.clipPath, overflow: c.overflow,
+        fontSize: c.fontSize, background: c.backgroundColor, transform: c.transform }; };
+      const parents = []; for (let p = node; p; p = p.parentElement) parents.push(details(p));
+      return { html: node.outerHTML, parents, children: [...node.querySelectorAll('*')].map(details) };
+    });
     const screenshot = path.join(output, 'docx-long-1440.png');
     await page.screenshot({ path: screenshot, fullPage: true }); report.screenshots.push(screenshot);
     await dialog.getByRole('button', { name: 'Neue Fassung speichern', exact: true }).click();

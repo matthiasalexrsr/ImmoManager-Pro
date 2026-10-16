@@ -260,8 +260,14 @@ def test_receipt_records_original_and_refuses_a_duplicate_key_without_reason(own
         "supplier": "Dach Müller", "invoice_number": "RE 42", "gross_amount": 1, "invoice_date": TODAY.isoformat()}))
     assert {d["invoice_id"] for d in check["duplicates"]} == {first["id"], twin["id"]}
 
-    # the original changed on disk: the review says so
-    get_file_storage().save(key, BytesIO(b"%PDF-1.4 manipuliert"))
+    # The application refuses overwrites. Simulate an out-of-band disk change
+    # separately: the review must still detect corruption outside its control.
+    with pytest.raises(ValueError, match='Originalbytes'):
+        get_file_storage().save(key, BytesIO(b"%PDF-1.4 manipuliert"))
+    from backend.services.file_storage import LocalStorage
+    storage = get_file_storage()
+    assert isinstance(storage, LocalStorage)
+    storage._path(key).write_bytes(b"%PDF-1.4 manipuliert")
     view = _view(owner, first["id"])
     assert view["document"]["integrity"] == "changed" and "document_changed" in {f["code"] for f in view["findings"]}
 
