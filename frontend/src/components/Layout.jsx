@@ -5,6 +5,7 @@ import './Shell.css';
 import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
+import QuickAccess from '../features/workCenter/QuickAccess';
 import NotificationBell from './NotificationBell';
 import { TutorialProvider, useTutorial } from './Tutorial';
 import { PartyWorkspaceProvider } from '../features/partyWorkspace/PartyWorkspace';
@@ -260,7 +261,7 @@ function LayoutFrame() {
             </div>
           </div>
           <SearchBar />
-          <div className="top-bar-utilities"><TestVersionBadge />
+          <div className="top-bar-utilities"><QuickAccess /><TestVersionBadge />
             <button type="button" className="top-bar-icon-btn top-bar-shortcuts" onClick={() => setShowShortcuts(true)} title={`${words.shortcuts} (?)`} aria-label={words.shortcuts}><Keyboard size={18} aria-hidden="true" /></button>
             <TutorialButton /><NotificationBell /></div>
         </div>

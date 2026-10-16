@@ -3,6 +3,7 @@ import { getFormatLocale } from './format';
 
 const DE = {
   residential: 'Wohnen', commercial: 'Gewerbe', mixed: 'Gemischt', parking: 'Stellplatz', garage: 'Garage',
+  flat: 'Wohnung', apartment: 'Wohnung',
   condominium: 'Eigentumswohnung', single_family: 'Einfamilienhaus', multi_family: 'Mehrfamilienhaus',
   office: 'Büro', storage: 'Lager', land: 'Grundstück',
   income: 'Einnahme', expense: 'Ausgabe',

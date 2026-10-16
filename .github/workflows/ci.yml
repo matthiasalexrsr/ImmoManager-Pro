@@ -68,6 +68,7 @@ jobs:
           python scripts/run_pro_matrix.py --backend sql --label document-tools backend/tests/test_document_work.py backend/tests/test_document_work_migration.py tools/document_pdf_engine_cases.py tools/document_ocr_engine_cases.py
           python scripts/run_document_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/document-browser
           python scripts/run_daily_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/daily-browser
+          python scripts/run_daily_browser_qa.py --suite qol --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/qol-browser
           python -c "import subprocess,sys; from pathlib import Path; files=list(Path('artifacts/document-browser').rglob('native-editor-roundtrip.docx')); assert len(files)==1; p=files[0]; subprocess.run([sys.executable,'scripts/check_document_editor_roundtrip.py',str(p.parents[1]/'fixtures/Langdokument.docx'),str(p)],check=True)"
       - name: Preserve document evidence
         if: always()
@@ -77,6 +78,7 @@ jobs:
           path: |
             artifacts/document-browser
             artifacts/daily-browser
+            artifacts/qol-browser
             artifacts/pro-tests
 
   backend:

@@ -7,6 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
 import { formatDate, formatMoney } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
+import { currentContractsOn, localDay, occupancyOn } from '../utils/occupancy';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import { useCanWrite } from '../contexts/AuthContext';
 import NewForMenu from '../components/NewForMenu';
@@ -33,6 +34,7 @@ export default function UnitOverview() {
   const [revision, setRevision] = useState(0);
   const [activityRevision, setActivityRevision] = useState(0);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const canContract = useCanWrite('/contracts');
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function UnitOverview() {
         api.list(`/insurances?unit_id=${encodeURIComponent(id)}`, options),
       ]);
       const unitContracts = c.filter(ct => ct.unit_id === id);
-      const active = unitContracts.find(ct => ct.status === 'active');
+      const active = currentContractsOn(unitContracts)[0];
       const person = active?.tenant_id ? await api.get(`/tenants/${encodeURIComponent(active.tenant_id)}`, options) : null;
       if (cancelled) return;
       setUnit(u); setProperty(p); setContracts(unitContracts); setTenant(person); setInsurances(ins);
@@ -63,7 +65,7 @@ export default function UnitOverview() {
   if (error) return <div className="page"><div role="alert" className="alert alert-error">{error}</div><button className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button></div>;
   if (!unit) return <div className="page"><p>{t('pages.unitOverview.notFound') || 'Einheit nicht gefunden'}</p></div>;
 
-  const activeContract = contracts.find(c => c.status === 'active');
+  const activeContract = currentContractsOn(contracts)[0];
   const prefill = { property_id: unit.property_id, unit_id: unit.id };
   const newContract = newEntryLink('/contracts', prefill);
 
@@ -73,7 +75,7 @@ export default function UnitOverview() {
         <div>
           <NotificationArrival record={unit} ready={!loading && !error} /><h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
           {property && <p className="text-muted"><Link to={`/properties/${encodeURIComponent(unit.property_id)}`}>{property.name}</Link> — {property.address_line}</p>}
-          <StatusBadge status={unit.status} />
+          <StatusBadge status={occupancyOn(unit, contracts, localDay()).status} />
         </div>
         <div className="dossier-navigation">
           {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
@@ -84,7 +86,10 @@ export default function UnitOverview() {
         </div>
       </div>
 
-      <PhotoDropZone entityType="unit" entityId={id} />
+      <details className="panel dossier-media" open={photosOpen} onToggle={event => setPhotosOpen(event.currentTarget.open)}>
+        <summary className="panel-header">Fotos der Einheit</summary>
+        {photosOpen && <div className="panel-body"><PhotoDropZone entityType="unit" entityId={id} /></div>}
+      </details>
       <details className="panel" open={timelineOpen} onToggle={event => setTimelineOpen(event.currentTarget.open)}>
         <summary className="panel-header">Aktivitäten</summary>
         {timelineOpen && <div className="panel-body"><EntityTimeline entityType="unit" entityId={unit.id} revision={activityRevision} /></div>}

@@ -18,6 +18,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--playwright', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/daily-browser')
+    parser.add_argument('--suite', choices=('daily', 'qol'), default='daily')
     options = parser.parse_args()
     module = options.playwright.resolve(strict=True)
     destination = options.output.resolve()
@@ -30,7 +31,7 @@ def main() -> int:
     if server.port in (8000, 8765):
         raise RuntimeError('Forbidden live-installation port')
     users = {}
-    result = {'synthetic_only': True, 'port': server.port, 'exit_code': None,
+    result = {'synthetic_only': True, 'suite': options.suite, 'port': server.port, 'exit_code': None,
               'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}
     print('RESULT_DIR=' + str(output), flush=True)
     try:
@@ -40,7 +41,7 @@ def main() -> int:
             'QA_ALLOW_TEST_WRITES': '1', 'QA_PASSWORD': PASSWORD, 'QA_OUTPUT': str(output / 'checks'),
             'QA_PLAYWRIGHT_PATH': str(module)}
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
-            process, job = start_owned(['node', str(ROOT / 'scripts/daily_browser_qa.mjs')],
+            process, job = start_owned(['node', str(ROOT / 'scripts' / f'{options.suite}_browser_qa.mjs')],
                 cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT)
             try:
                 result['exit_code'] = process.wait(timeout=300)

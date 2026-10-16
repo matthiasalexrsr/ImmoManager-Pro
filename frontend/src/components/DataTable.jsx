@@ -7,7 +7,7 @@ import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import BulkBar from './BulkBar';
 import EntityLink from './EntityLink';
-import { formatDate, formatMoney, plainLabel } from '../utils/format';
+import { formatDate, formatMoney, formatNumber, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
 import { readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
@@ -77,6 +77,17 @@ function centsTotal(rows, key) {
     const n = Number(row[key]);
     return Number.isFinite(n) ? total + Math.round(n * 100) : total;
   }, 0);
+}
+
+// sum: true retains cent-based money totals. Physical quantities opt into
+// sum: 'number' and can supply formatTotal (e.g. m²), without cent rounding.
+function sumValue(rows, col) {
+  if (col.sum !== 'number') return centsTotal(rows, col.key) / 100;
+  const values = rows.map(row => row[col.key]).filter(value => value != null && value !== '' && Number.isFinite(Number(value)));
+  return values.length ? values.reduce((total, value) => total + Number(value), 0) : null;
+}
+function sumLabel(col, value) {
+  return col.sum === 'number' ? (col.formatTotal ? col.formatTotal(value) : formatNumber(value, 2)) : formatMoney(value);
 }
 
 function cellClass(col) {
@@ -308,12 +319,12 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
   const pageData = serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
-  // sum: true on a money column adds a total of every row the filters show (all pages)
+  // Totals include every filtered row, independently of the visible page.
   const sumColumns = visibleColumns.filter(col => col.sum);
   const showTotals = !serverPaged && sumColumns.length > 0 && sorted.length > 0;
-  const totals = useMemo(() => Object.fromEntries(sumColumns.map(col => [col.key, centsTotal(sorted, col.key)])),
+  const totals = useMemo(() => Object.fromEntries(sumColumns.map(col => [col.key, sumValue(sorted, col)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sorted, sumColumns.map(col => col.key).join('|')]);
+    [sorted, sumColumns.map(col => `${col.key}:${col.sum}`).join('|')]);
   const startRow = sorted.length === 0 ? 0 : safePage * pageSize + 1;
   const endRow = Math.min((safePage + 1) * pageSize, sorted.length);
 
@@ -504,7 +515,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
       {selectable && (selectedRows.length > 0 || bulkReport || bulkRunning) && (
         <BulkBar rows={selectedRows} report={bulkReport} setReport={setBulkReport} onRunningChange={setBulkRunning}
-          sums={columns.filter(col => col.sum).map(col => ({ label: plainLabel(col.label), value: formatMoney(centsTotal(selectedRows, col.key) / 100) }))} total={sorted.length} allSelected={selectedRows.length >= sorted.length}
+          sums={columns.filter(col => col.sum).map(col => ({ label: plainLabel(col.label), value: sumLabel(col, sumValue(selectedRows, col)) }))} total={sorted.length} allSelected={selectedRows.length >= sorted.length}
           actions={bulkActions} words={bulkWords}
           onSelectAll={() => setSelectedIds(new Set(sorted.map(row => row.id)))}
           onClear={() => setSelectedIds(new Set())}
@@ -646,7 +657,12 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               </td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={() => { markRow(row); onRowClick?.(row); }} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
+                <tr key={row.id} onClick={event => {
+                  markRow(row);
+                  // A link/button inside the row owns its action. Calling both
+                  // would navigate twice and make Back reopen the same record.
+                  if (!event.target?.closest?.('a, button, input, select, textarea, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])')) onRowClick?.(row);
+                }} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
                   className={[onRowClick ? 'clickable-row' : '', selectedIds.has(row.id) ? 'row-selected' : '', rowMark === String(row.id) ? 'workspace-row-mark' : ''].filter(Boolean).join(' ') || undefined}
                   style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {selectable && <td className="td-select" onClick={e => e.stopPropagation()}>
@@ -688,7 +704,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                 {selectable && <td />}
                 {visibleColumns.map((col, index) => (
                   <td key={col.key} className={cellClass(col)}>
-                    {col.sum ? formatMoney(totals[col.key] / 100)
+                    {col.sum ? sumLabel(col, totals[col.key])
                       : index === 0 ? tr('comp.dataTable.total', 'Summe ({{count}})').replace('{{count}}', sorted.length) : null}
                   </td>
                 ))}

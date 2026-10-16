@@ -8,6 +8,7 @@ import { api } from '../../api';
 import { useCanWrite } from '../../contexts/AuthContext';
 import { useDataStore } from '../../contexts/DataStoreContext';
 import { formatDate, formatMoney } from '../../utils/format';
+import { contractPhase, localDay } from '../../utils/occupancy';
 import FileViewer from '../../components/FileViewer';
 import HousingConfirmationDialog from '../housingConfirmation/HousingConfirmationDialog';
 import HandoverProtocolsDialog from '../handoverProtocol/HandoverProtocolsDialog';
@@ -90,14 +91,10 @@ function ContractCard({ contract, onDocuments, onHousing, onHandover, onDeposit 
 
 function ContractGroups({ contracts, onDocuments, onHousing, onHandover, onDeposit }) {
   const { text } = usePartyText();
-  const today = new Date();
-  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const day = localDay();
   const groups = { current: [], upcoming: [], history: [], drafts: [] };
   for (const contract of contracts) {
-    if (contract.status === 'draft') groups.drafts.push(contract);
-    else if (contract.status === 'expired' || contract.status === 'terminated' || (contract.end_date && contract.end_date < day)) groups.history.push(contract);
-    else if (contract.start_date > day) groups.upcoming.push(contract);
-    else groups.current.push(contract);
+    groups[contractPhase(contract, day)].push(contract);
   }
   return <section className="party-section"><div className="party-section-heading"><h3>{text.contracts}</h3><span className="party-count">{contracts.length}</span></div>{!contracts.length ? <p className="party-muted">{text.noContracts}</p> : Object.entries(groups).filter(([, items]) => items.length > 0).map(([key, items]) => <div key={key} className="party-contract-group"><h4 className="party-subheading">{text[key]}</h4>{[...items].sort((a, b) => String(b.start_date).localeCompare(String(a.start_date))).map(contract => <ContractCard key={contract.id} contract={contract} onDocuments={onDocuments} onHousing={onHousing} onHandover={onHandover} onDeposit={onDeposit} />)}</div>)}</section>;
 }

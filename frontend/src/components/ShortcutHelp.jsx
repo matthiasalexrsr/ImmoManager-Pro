@@ -6,6 +6,7 @@ const SHORTCUTS = [
   { keys: ['Strg', 'K'], alt: ['/'], key: 'shortcutHelp.search', fallback: 'Suche öffnen (Seiten, Aktionen, Datensätze)' },
   { keys: ['Enter'], key: 'shortcutHelp.firstHit', fallback: 'In der Suche: ersten Eintrag öffnen' },
   { keys: ['Alt', 'N'], key: 'shortcutHelp.newEntry', fallback: 'Neuen Eintrag in der Liste dieser Seite anlegen' },
+  { keys: ['Alt', 'O'], key: 'shortcutHelp.openFile', fallback: 'Gemerkte und zuletzt geöffnete Akten öffnen' },
   { keys: ['Strg', 'Enter'], key: 'shortcutHelp.save', fallback: 'Formular speichern' },
   { keys: ['Esc'], key: 'shortcutHelp.close', fallback: 'Dialog oder Suche schließen' },
   { keys: ['?'], key: 'shortcutHelp.help', fallback: 'Diese Übersicht anzeigen' },

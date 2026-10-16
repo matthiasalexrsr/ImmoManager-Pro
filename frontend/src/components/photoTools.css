@@ -1,0 +1,9 @@
+.photo-drop-zone-container { min-width: 0; }
+.photo-drop-zone-container .photo-drop-zone { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .65rem; padding: 1.25rem; border: 1px dashed var(--color-border); border-radius: .65rem; background: var(--color-bg); text-align: center; }
+.photo-drop-zone > span { color: var(--color-text-muted); font-size: .85rem; }
+.photo-drop-zone .btn { display: inline-flex; gap: .4rem; align-items: center; }
+.photo-preview-button { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.photo-preview-button img { display: block; }
+.photo-tools-error, .photo-tools-status { overflow-wrap: anywhere; }
+.photo-tools-status { color: var(--color-text-secondary); font-size: .85rem; }
+.photo-drop-zone-container button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }

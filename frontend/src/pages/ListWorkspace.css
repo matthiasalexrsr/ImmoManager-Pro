@@ -33,3 +33,4 @@
   .list-workspace .list-summary .kpi-value { font-size: 24px; }
   .list-workspace .list-view-filters .btn { padding: 8px 10px; }
 }
+.list-additional-contracts { border: 0; background: transparent; padding: .2rem 0; text-align: left; font: inherit; cursor: pointer; }

@@ -1,7 +1,7 @@
 import PhotoDropZone from '../components/PhotoDropZone';
 import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -19,6 +19,8 @@ import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import { propertyFields } from '../features/properties/propertyFields';
 import EntityActions from '../features/workCenter/EntityActions';
 import EntityTimeline from '../features/workCenter/EntityTimeline';
+import DossierTabs from '../components/DossierTabs';
+import { currentContractsOn, localDay, occupancyMapOn } from '../utils/occupancy';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -26,6 +28,7 @@ const NEW_FOR_PROPERTY = [
   ['/units', 'Einheit'], ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'],
   ['/bookings', 'Buchung'], ['/invoices', 'Rechnung'], ['/tasks', 'Aufgabe'],
 ];
+const TAB_KEYS = ['overview', 'units', 'contracts', 'finance', 'documents', 'maintenance', 'timeline'];
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -49,20 +52,36 @@ export default function PropertyDetail() {
 function PropertyDossier({ id }) {
   const { t } = useTranslation();
   const [property, setProperty] = useState(null);
-  const [units, setUnits] = useState([]);
+  const [unitRows, setUnits] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('overview');
+  const [params, setParams] = useSearchParams();
+  const tab = TAB_KEYS.includes(params.get('tab')) ? params.get('tab') : 'overview';
+  const setTab = (value, filters = {}) => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (value === 'overview') next.delete('tab'); else next.set('tab', value);
+    Object.entries(filters).forEach(([key, filter]) => next.set(key, filter));
+    return next;
+  }, { replace: true });
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const [viewerFile, setViewerFile] = useState(null);
   const [tenants, setTenants] = useState([]);
+  const [tenantError, setTenantError] = useState(null);
   const [editing, setEditing] = useState(null);       // the portfolios for the edit form, once loaded
   const [activityRevision, setActivityRevision] = useState(0);
-  const [contractView, setContractView] = useState('all');
-  const [maintenanceView, setMaintenanceView] = useState('all');
+  const contractView = params.get('contracts') === 'active' ? 'active' : 'all';
+  const maintenanceView = params.get('maintenance') === 'open' ? 'open' : 'all';
+  const setView = (key, value) => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (value === 'all') next.delete(key); else next.set(key, value);
+    return next;
+  }, { replace: true });
+  const setContractView = value => setView('contracts', value);
+  const setMaintenanceView = value => setView('maintenance', value);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const rentSources = useRef(null);
   const focusRentSources = () => { rentSources.current?.focus(); rentSources.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); };
   const canEdit = useCanWrite('/properties');
@@ -77,13 +96,17 @@ function PropertyDossier({ id }) {
     const propertyId = encodeURIComponent(id);
     setLoading(true);
     setError(null);
+    setTenantError(null);
     Promise.all([
       api.get(`/properties/${propertyId}`, options),
       api.list(`/units?property_id=${propertyId}`, options),
       api.list(`/contracts?property_id=${propertyId}`, options),
       api.list(`/documents?property_id=${propertyId}`, options),
       api.list(`/maintenance?property_id=${propertyId}`, options),
-      api.list('/tenants', options).catch(() => []),
+      api.list('/tenants', options).catch(failure => {
+        if (!cancelled) setTenantError(failure.message || 'Parteiennamen konnten nicht geladen werden.');
+        return [];
+      }),
     ]).then(([prop, propUnits, propContracts, propDocs, propMaint, allTenants]) => {
       if (cancelled) return;
       if (!prop) throw new Error('Immobilie nicht gefunden');
@@ -98,6 +121,9 @@ function PropertyDossier({ id }) {
     return () => { cancelled = true; controller.abort(); };
   }, [id, revision]);
 
+  const occupancy = occupancyMapOn(unitRows, contracts, localDay());
+  const units = unitRows.map(unit => ({ ...unit, status: occupancy[unit.id].status }));
+
   if (loading) return <div className="page-loading" role="status">{t('ui.table.loading') || 'Immobilienakte wird geladen…'}</div>;
   if (error) return <div className="page property-dossier">
     <div role="alert" className="alert alert-error">{error}</div>
@@ -108,12 +134,14 @@ function PropertyDossier({ id }) {
   </div>;
   if (!property) return <div className="page"><div className="alert alert-error">{t('pages.propertyOverview.notFound') || 'Immobilie nicht gefunden'}</div></div>;
 
-  const totalArea = units.reduce((s, u) => s + (u.area_sqm || 0), 0);
+  const withArea = units.filter(unit => unit.area_sqm != null && Number.isFinite(Number(unit.area_sqm)));
+  const totalArea = withArea.length ? withArea.reduce((sum, unit) => sum + Number(unit.area_sqm), 0) : null;
   const totalColdRent = units.reduce((s, u) => s + (u.cold_rent || 0), 0);
   const occupiedCount = units.filter(u => u.status === 'occupied').length;
   const vacantCount = units.filter(u => u.status === 'vacant').length;
-  const rentPerSqm = totalArea > 0 ? totalColdRent / totalArea : 0;
-  const activeContracts = contracts.filter(c => c.status === 'active').length;
+  const rentPerSqm = withArea.length === units.length && totalArea > 0 ? totalColdRent / totalArea : null;
+  const currentContracts = currentContractsOn(contracts);
+  const activeContracts = currentContracts.length;
   const openMaintenance = maintenance.filter(m => m.status === 'open' || m.status === 'in_progress').length;
 
   const unitLabel = t('units.list.title') || 'Einheiten';
@@ -134,7 +162,7 @@ function PropertyDossier({ id }) {
     { key: 'label', label: t('units.list.columns.label') || 'Bezeichnung', filterType: 'text',
       render: (value, unit) => <Link to={`/units/${encodeURIComponent(unit.id)}`}>{value || unit.unit_number || 'Einheit öffnen'}</Link> },
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', sum: true, align: 'right',
+    { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', sum: 'number', formatTotal: formatArea, align: 'right',
       render: v => formatArea(v) },
     { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', sum: true, align: 'right',
       render: v => v != null ? fmt(v) : '—' },
@@ -185,7 +213,7 @@ function PropertyDossier({ id }) {
           ← {t('pages.propertyOverview.back') || 'Zurück'}
         </Link>
         <div className="detail-title">
-          <NotificationArrival record={property} ready={!loading && !error} /><PhotoDropZone entityType="property" entityId={id} /><h1>{property.name}</h1>
+          <NotificationArrival record={property} ready={!loading && !error} /><p className="dossier-eyebrow">Immobilienakte</p><h1>{property.name}</h1>
           <span className="text-muted">
             {[property.address_line, property.postal_code, property.city].filter(Boolean).join(', ') || t('pages.propertyDetail.noAddress') || 'Keine Adresse'}
           </span>
@@ -223,35 +251,26 @@ function PropertyDossier({ id }) {
             {vacantCount > 0 && <span className="text-red"> ({vacantCount} {t('units.status.vacant') || 'leer'})</span>}
           </div>
         </button>
-        <button type="button" className="stat-card dossier-kpi-button" onClick={() => { setContractView('active'); setTab('contracts'); }}>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('contracts', { contracts: 'active' })}>
           <div className="stat-label">{t('pages.propertyOverview.activeContracts') || 'Aktive Verträge'}</div>
           <div className="stat-value">{activeContracts}</div>
         </button>
-        <button type="button" className="stat-card dossier-kpi-button" onClick={() => { setMaintenanceView('open'); setTab('maintenance'); }}>
+        <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('maintenance', { maintenance: 'open' })}>
           <div className="stat-label">{t('pages.dashboard.openMaintenance') || 'Offene Wartung'}</div>
           <div className={`stat-value ${openMaintenance > 0 ? 'text-red' : ''}`}>{openMaintenance}</div>
         </button>
       </div>
       <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheiten. Tatsächliche Vertragsmieten und Zahlungseingänge können abweichen.</p>
+      {withArea.length < units.length && <p className="text-muted dossier-rent-note">Für {units.length - withArea.length} von {units.length} Einheiten fehlt die Fläche. Die Kennzahl €/m² erscheint nach vollständiger Erfassung.</p>}
 
       {/* Tabs */}
-      <div className="detail-tabs">
-        {TABS.map(tb => (
-          <button
-            key={tb.key}
-            className={`detail-tab ${tab === tb.key ? 'active' : ''}`}
-            onClick={() => setTab(tb.key)}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <div className="detail-tab-content">
+      <DossierTabs tabs={TABS} value={tab} onChange={setTab} label="Bereiche der Immobilienakte">
         {tab === 'timeline' && <EntityTimeline entityType="property" entityId={id} revision={activityRevision} />}
         {tab === 'overview' && (
-          <div className="detail-overview-grid">
+          <><details className="panel dossier-media" open={photosOpen} onToggle={event => setPhotosOpen(event.currentTarget.open)}>
+            <summary className="panel-header">Fotos der Immobilie</summary>
+            {photosOpen && <div className="panel-body"><PhotoDropZone entityType="property" entityId={id} /></div>}
+          </details><div className="detail-overview-grid">
             <div className="panel">
               <div className="panel-header">{t('pages.propertyDetail.propertyDetails') || 'Immobiliendetails'}</div>
               <div className="panel-body">
@@ -299,7 +318,7 @@ function PropertyDossier({ id }) {
                 )}
               </div>
             </div>
-          </div>
+          </div></>
         )}
 
         {tab === 'units' && (
@@ -309,9 +328,10 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'contracts' && (
-          <><div className="filter-chips"><button type="button" className="btn btn-sm btn-secondary" aria-pressed={contractView === 'all'} onClick={() => setContractView('all')}>Alle Verträge</button>
+          <>{tenantError && <div role="alert" className="alert alert-error">Parteiennamen konnten nicht geladen werden. {tenantError} <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button></div>}
+          <div className="filter-chips"><button type="button" className="btn btn-sm btn-secondary" aria-pressed={contractView === 'all'} onClick={() => setContractView('all')}>Alle Verträge</button>
             <button type="button" className="btn btn-sm btn-secondary" aria-pressed={contractView === 'active'} onClick={() => setContractView('active')}>Aktive Verträge</button></div>
-          <DataTable title="Mieter & Verträge" columns={CONTRACT_COLUMNS} data={contractView === 'active' ? contractRows.filter(row => row.status === 'active') : contractRows} settingsKey="property-contracts"
+          <DataTable title="Mieter & Verträge" columns={CONTRACT_COLUMNS} data={contractView === 'active' ? contractRows.filter(row => currentContracts.some(contract => contract.id === row.id)) : contractRows} settingsKey="property-contracts"
             viewConfig={{ column_filters: { workflow_filter: contractView } }} viewAnchor={{ kind: 'property', id }}
             onApplyView={config => setContractView(config.column_filters?.workflow_filter === 'active' ? 'active' : 'all')}
             onAdd={startNew('/contracts')} addLabel="Vertrag anlegen" writeArea="/contracts" /></>
@@ -398,7 +418,7 @@ function PropertyDossier({ id }) {
             settingsKey="property-maintenance" onAdd={startNew('/maintenance')} addLabel="Wartungsfall anlegen" writeArea="/maintenance"
             onRowClick={item => navigate(`/maintenance/${encodeURIComponent(item.id)}`)} /></>
         )}
-      </div>
+      </DossierTabs>
       {editing && <FormModal title="Immobilie bearbeiten" fields={propertyFields(t, editing.portfolios)}
         initial={property} onSave={saveProperty} onClose={() => setEditing(null)} />}
       {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}

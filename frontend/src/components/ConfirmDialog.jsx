@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useId } from 'react';
 import { useTranslation } from '../i18n';
+import { useModalDialog } from '../features/partyWorkspace/useModalDialog';
 
 const ConfirmContext = createContext(null);
 
@@ -10,23 +11,31 @@ export function useConfirm() {
 
 export function ConfirmProvider({ children }) {
   const [state, setState] = useState(null);
-  const resolveRef = useRef(null);
+  const queue = useRef([]);
+  const sequence = useRef(0);
 
   const confirm = useCallback((message) => {
     return new Promise((resolve) => {
-      resolveRef.current = resolve;
-      setState({ message });
+      const entry = { message, resolve, id: ++sequence.current };
+      queue.current.push(entry);
+      if (queue.current.length === 1) setState(entry);
     });
   }, []);
 
-  const handleConfirm = useCallback(() => {
-    resolveRef.current?.(true);
-    setState(null);
+  const settle = useCallback((id, answer) => {
+    if (queue.current[0]?.id !== id) return;
+    const current = queue.current.shift();
+    current?.resolve(answer);
+    setState(queue.current[0] || null);
   }, []);
-
-  const handleCancel = useCallback(() => {
-    resolveRef.current?.(false);
-    setState(null);
+  useEffect(() => {
+    const pending = queue.current;
+    const cancelAll = () => { pending.splice(0).forEach(entry => entry.resolve(false)); setState(null); };
+    window.addEventListener('workspace-logout', cancelAll);
+    return () => {
+      window.removeEventListener('workspace-logout', cancelAll);
+      pending.splice(0).forEach(entry => entry.resolve(false));
+    };
   }, []);
 
   return (
@@ -34,9 +43,10 @@ export function ConfirmProvider({ children }) {
       {children}
       {state && (
         <ConfirmDialog
+          key={state.id}
           message={state.message}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
+          onConfirm={() => settle(state.id, true)}
+          onCancel={() => settle(state.id, false)}
         />
       )}
     </ConfirmContext.Provider>
@@ -45,34 +55,24 @@ export function ConfirmProvider({ children }) {
 
 function ConfirmDialog({ message, onConfirm, onCancel }) {
   const { t } = useTranslation();
-  const confirmRef = useRef(null);
-
-  useEffect(() => {
-    confirmRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onCancel]);
+  const ref = useRef(null);
+  const id = useId();
+  useModalDialog(ref, onCancel);
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal confirm-dialog" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 280 }} onClick={onCancel}>
+      <div className="modal confirm-dialog" role="dialog" aria-modal="true" aria-labelledby={id} aria-describedby={`${id}-message`} tabIndex={-1} ref={ref} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{t('modals.confirmDelete.title') || 'Bestätigung'}</h2>
+          <h2 id={id}>{t('modals.confirmDelete.title') || 'Bestätigung'}</h2>
         </div>
         <div className="modal-body">
-          <p>{message}</p>
+          <p id={`${id}-message`}>{message}</p>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onCancel}>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>
             {t('modals.confirmDelete.cancel') || 'Abbrechen'}
           </button>
-          <button className="btn btn-danger" ref={confirmRef} onClick={onConfirm}>
+          <button type="button" className="btn btn-danger" onClick={onConfirm}>
             {t('modals.confirmDelete.confirm') || 'Bestätigen'}
           </button>
         </div>

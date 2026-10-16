@@ -5,6 +5,9 @@ import { PlusIcon, TrashIcon } from './Icons';
 import { useConfirm } from './ConfirmDialog';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { prepareUploadAccess } from '../utils/uploadAccess';
+import { useCanWrite } from '../contexts/AuthContext';
+import FileViewer from './FileViewer';
+import './photoTools.css';
 
 // onChange (optional) runs after a photo was added or removed, e.g. to refresh a record that lists them.
 export default function PhotoDropZone({ entityType, entityId, onChange }) {
@@ -17,12 +20,17 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
   const [photos, setPhotos] = useState([]);
   const [loadedPhotos, setLoadedPhotos] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [progress, setProgress] = useState('');
+  const [viewer, setViewer] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [photoRevision, setPhotoRevision] = useState(0);
   const fileRef = useRef(null);
   const requestRef = useRef(null);
   const mounted = useRef(false);
+  const busy = useRef(false);
+  const canEdit = useCanWrite('/photos');
 
   const loadPhotos = useCallback(async () => {
     if (!mounted.current) return;
@@ -49,40 +57,65 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
     return () => { mounted.current = false; requestRef.current?.abort(); };
   }, [loadPhotos]);
 
-  const uploadFile = async (file) => {
-    setUploading(true);
+  const uploadFiles = async files => {
+    if (busy.current || !canEdit || !files.length) return;
+    busy.current = true; setUploading(true); setActionError(null);
+    const errors = [];
+    let saved = 0;
     try {
       const current = api.captureSession();
-      const formData = new FormData();
-      formData.append('file', file);
-      await api.upload(`/photos/upload?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`, formData);
-      current();
+      for (const [index, file] of files.entries()) {
+        if (!mounted.current) break;
+        current();
+        setProgress(`Foto ${index + 1} von ${files.length} wird gespeichert…`);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          await api.upload(`/photos/upload?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`, formData);
+          current();
+          saved += 1;
+        } catch (error) {
+          current();
+          errors.push(`${file.name}: ${error.message || 'Speichern fehlgeschlagen.'}`);
+        }
+      }
       if (!mounted.current) return;
-      loadPhotos();
-      onChange?.();
-    } catch (err) {
-      console.warn('[PhotoDropZone] upload:', err.message);
+      setProgress(`${saved} von ${files.length} ${files.length === 1 ? 'Foto gespeichert' : 'Fotos gespeichert'}.`);
+      if (errors.length) setActionError(`${errors.join(' · ')} Aktualisieren Sie die Fotoliste vor einem erneuten Upload, um doppelte Fotos zu vermeiden.`);
+      await loadPhotos();
+      if (mounted.current && saved) onChange?.();
+    } catch (error) {
+      if (mounted.current) setActionError(error.message || 'Der Upload wurde unterbrochen. Bitte Fotoliste aktualisieren.');
     } finally {
+      busy.current = false;
       if (mounted.current) setUploading(false);
     }
   };
 
-  const handleDrop = useCallback((e) => {
+  const handleDrop = e => {
     e.preventDefault();
     setDragActive(false);
     const files = Array.from(e.dataTransfer?.files || []);
-    files.filter(f => f.type.startsWith('image/')).forEach(uploadFile);
-  }, [entityType, entityId]); // eslint-disable-line react-hooks/exhaustive-deps
+    uploadFiles(files);
+  };
 
   const handleDelete = async (photoId) => {
-    if (!await confirm('Foto wirklich löschen?')) return;
+    if (busy.current || !canEdit) return;
+    busy.current = true;
     try {
+      if (!await confirm('Foto wirklich löschen?')) return;
+      if (!mounted.current) return;
+      setUploading(true); setActionError(null); setProgress('Foto wird gelöscht…');
+      const current = api.captureSession();
       await api.del(`/photos/${photoId}`);
-      loadPhotos();
-      onChange?.();
+      current();
+      if (!mounted.current) return;
+      setProgress('Foto gelöscht.');
+      await loadPhotos();
+      if (mounted.current) onChange?.();
     } catch (err) {
-      console.warn('[PhotoDropZone] delete:', err.message);
-    }
+      if (mounted.current) { setActionError(err.message || 'Das Foto konnte nicht gelöscht werden.'); setProgress(''); }
+    } finally { busy.current = false; if (mounted.current) setUploading(false); }
   };
 
   if (!entityId) return null;
@@ -90,38 +123,42 @@ function PhotoDropZoneSession({ entityType, entityId, onChange }) {
   return (
     <div className="photo-drop-zone-container">
       <NotificationArrival rows={photos.filter(photo => loadedPhotos[photo.id])} ready={!loadError && photoRevision > 0} />
-      <div
-        className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+      {canEdit && <div className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
+        onDragOver={e => { e.preventDefault(); if (!uploading) setDragActive(true); }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
-        onClick={() => fileRef.current?.click()}
       >
         <input
           ref={fileRef}
           type="file"
           accept="image/*"
           multiple
+          aria-label="Fotos auswählen"
+          disabled={uploading}
           style={{ display: 'none' }}
-          onChange={e => Array.from(e.target.files).forEach(uploadFile)}
+          onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; uploadFiles(files); }}
         />
-        <PlusIcon size={24} />
-        <span>{uploading ? 'Wird hochgeladen...' : 'Fotos hierher ziehen oder klicken (automatisch speichern)'}</span>
-      </div>
+        <button type="button" className="btn btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}><PlusIcon size={18} aria-hidden="true" />Fotos hinzufügen</button>
+        <span>Oder Bilder hierher ziehen. Sie werden direkt gespeichert.</span>
+      </div>}
+      {progress && <p className="photo-tools-status" role="status">{progress}</p>}
+      {actionError && <div className="alert alert-error photo-tools-error" role="alert"><p>{actionError}</p><button type="button" className="btn btn-sm btn-secondary" disabled={uploading} onClick={loadPhotos}>Fotoliste aktualisieren</button></div>}
       {loadError && <div role="alert"><p>{loadError}</p><button type="button" className="btn btn-secondary" onClick={loadPhotos}>Erneut versuchen</button></div>}
       {photos.length > 0 && (
         <div className="photo-grid">
           {photos.map(p => (
             <div key={`${photoRevision}:${p.id}`} className="photo-thumb">
-              {resolveFileUrl(p.file_url) ? <img src={resolveFileUrl(p.file_url)} alt={p.caption || 'Foto'} onLoad={() => setLoadedPhotos(current => ({ ...current, [p.id]: true }))} onError={() => setLoadError('Ein Foto konnte nicht geladen werden. Bitte erneut versuchen.')} /> : <span>Kein gültiger Dateiverweis</span>}
+              {resolveFileUrl(p.file_url) ? <button type="button" className="photo-preview-button" aria-label={`Foto ansehen: ${p.caption || 'Foto'}`} onClick={() => setViewer(p)}><img src={resolveFileUrl(p.file_url)} alt={p.caption || 'Foto'} onLoad={() => setLoadedPhotos(current => ({ ...current, [p.id]: true }))} onError={() => setLoadError('Ein Foto konnte nicht geladen werden. Bitte erneut versuchen.')} /></button> : <span>Kein gültiger Dateiverweis</span>}
               {p.caption && <span className="photo-caption">{p.caption}</span>}
-              <button className="photo-delete-btn" onClick={() => handleDelete(p.id)} title="Löschen">
+              {canEdit && <button type="button" className="photo-delete-btn" disabled={uploading} onClick={() => handleDelete(p.id)} aria-label={`Foto löschen: ${p.caption || 'Foto'}`} title="Löschen">
                 <TrashIcon size={14} />
-              </button>
+              </button>}
             </div>
           ))}
         </div>
       )}
+      {!canEdit && !loadError && photoRevision > 0 && !photos.length && <p className="text-muted">Keine Fotos hinterlegt.</p>}
+      {viewer && <FileViewer fileUrl={viewer.file_url} title={viewer.caption || 'Foto'} onClose={() => setViewer(null)} />}
     </div>
   );
 }

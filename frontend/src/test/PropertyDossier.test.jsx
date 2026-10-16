@@ -63,8 +63,11 @@ function NewFormTarget() {
 
 function RoutesUnderTest() {
   const navigate = useNavigate();
+  const location = useLocation();
   return <>
+    <output data-testid="location">{location.pathname + location.search}</output>
     <button onClick={() => navigate('/properties/p2')}>Anderes Objekt</button>
+    <button onClick={() => navigate(-1)}>Browser zurück</button>
     <Routes>
       <Route path="/properties/:id" element={<PropertyDetail />} />
       <Route path="/units/:id" element={<UnitOverview />} />
@@ -153,13 +156,40 @@ describe('property dossier loading', () => {
 });
 
 describe('property dossier actions', () => {
+  it('shows missing area as unknown instead of zero or a misleading price per square metre', async () => {
+    const base = api.list.getMockImplementation();
+    api.list.mockImplementation(path => path.startsWith('/units?') ? Promise.resolve([{ ...units.p1[0], area_sqm: null }]) : base(path));
+    show();
+    await screen.findByRole('heading', { name: 'Haus Alpha' });
+    expect(screen.getByRole('button', { name: /Plan-Kaltmiete €\/m²/ })).toHaveTextContent('—');
+    expect(screen.getByText(/Für 1 von 1 Einheiten fehlt die Fläche/)).toBeInTheDocument();
+    expect(screen.queryByText('0 m²')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Einheiten (1)' }));
+    const total = screen.getByRole('row', { name: /Summe/ });
+    expect(within(total).getAllByRole('cell')[2]).toHaveTextContent('—');
+  });
+  it('reopens a linked tab after reload, preserves unrelated parameters and supports roving keyboard tabs', async () => {
+    show('/properties/p1?tab=documents&notice_id=receipt');
+    const documents = await screen.findByRole('tab', { name: 'Dokumente (4)' });
+    expect(documents).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', documents.id);
+    documents.focus();
+    fireEvent.keyDown(documents, { key: 'ArrowLeft' });
+    const finance = screen.getByRole('tab', { name: 'Finanzen' });
+    expect(finance).toHaveFocus(); expect(finance).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location')).toHaveTextContent('tab=finance');
+    expect(screen.getByTestId('location')).toHaveTextContent('notice_id=receipt');
+    fireEvent.keyDown(finance, { key: 'Home' });
+    expect(screen.getByRole('tab', { name: 'Übersicht' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('location')).not.toHaveTextContent('tab=');
+  });
   it('opens a unit from each view and returns to its actual property', async () => {
     show();
     await screen.findByRole('heading', { name: 'Haus Alpha' });
     expect(screen.getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');
-    fireEvent.click(screen.getByRole('button', { name: 'Einheiten (1)' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Einheiten (1)' }));
     expect(screen.getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');
-    fireEvent.click(screen.getByRole('button', { name: 'Finanzen' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Finanzen' }));
     expect(screen.getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');
     expect(screen.getByText(/Stammdaten.*Einheiten/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Wohnung Alpha' }));
@@ -168,6 +198,15 @@ describe('property dossier actions', () => {
     expect(back).toHaveAttribute('href', '/properties/p1');
     fireEvent.click(back);
     expect(await screen.findByRole('heading', { name: 'Haus Alpha' })).toBeInTheDocument();
+  });
+
+  it('adds only one history entry when a unit link is inside a clickable table row', async () => {
+    show('/properties/p1?tab=units');
+    fireEvent.click(await screen.findByRole('link', { name: 'Wohnung Alpha', exact: true }));
+    await screen.findByRole('heading', { name: 'Wohnung Alpha', exact: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browser zurück' }));
+    await screen.findByRole('heading', { name: 'Haus Alpha', exact: true });
+    expect(screen.getByRole('tab', { name: 'Einheiten (1)' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('opens the selected document with the shared viewer and restores keyboard focus', async () => {
@@ -189,7 +228,7 @@ describe('property dossier actions', () => {
     access.canWrite = false;
     show();
     await screen.findByRole('heading', { name: 'Haus Alpha' });
-    fireEvent.click(screen.getByRole('button', { name: 'Dokumente (4)' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Dokumente (4)' }));
     const pdfRow = screen.getByText('Energieausweis Alpha').closest('tr');
     expect(within(pdfRow).getByText('Energieausweis')).toBeInTheDocument();
     expect(within(pdfRow).getByText('15.09.2026')).toBeInTheDocument();
@@ -234,6 +273,20 @@ describe('property page as the place to act on a property', () => {
     });
   };
 
+  it('persists a KPI subset and its tab in a single navigation, and restores the subset on direct entry', async () => {
+    withContract();
+    const view = show();
+    fireEvent.click(await screen.findByRole('button', { name: /Aktive Verträge\s*1/ }));
+    const url = screen.getByTestId('location').textContent;
+    expect(new URLSearchParams(url.split('?')[1]).get('tab')).toBe('contracts');
+    expect(new URLSearchParams(url.split('?')[1]).get('contracts')).toBe('active');
+    view.unmount();
+    show(url);
+    expect(await screen.findByRole('tab', { name: 'Mieter & Verträge (1)' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: 'Aktive Verträge' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('MV-7')).toBeInTheDocument();
+  });
+
   it('opens exactly the active contracts and open maintenance behind their counts', async () => {
     const base = api.list.getMockImplementation();
     api.list.mockImplementation(path => {
@@ -250,7 +303,7 @@ describe('property page as the place to act on a property', () => {
     fireEvent.click(screen.getByRole('button', { name: /Offene Wartung\s*1/ }));
     expect(screen.getByText('Heizung offen')).toBeInTheDocument();
     expect(screen.queryByText('Dach erledigt')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Finanzen' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Finanzen' }));
     fireEvent.click(screen.getByRole('button', { name: /Jährliche Plan-Kaltmiete/ }));
     expect(screen.getByRole('region', { name: 'Planmieten nach Einheit' })).toHaveFocus();
     expect(screen.getByRole('link', { name: 'Buchungen dieser Immobilie' })).toHaveAttribute('href', '/bookings?property_id=p1');
@@ -259,7 +312,7 @@ describe('property page as the place to act on a property', () => {
   it('lists who lives in the property with links to the party and the unit', async () => {
     withContract();
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Mieter & Verträge (1)' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Mieter & Verträge (1)' }));
     const row = screen.getByRole('row', { name: /MV-7/ });
     expect(within(row).getByText('Lena Langzeit')).toBeInTheDocument();
     expect(within(row).getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');

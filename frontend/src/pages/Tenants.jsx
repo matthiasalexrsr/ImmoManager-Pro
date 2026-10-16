@@ -13,6 +13,7 @@ import { DocumentIcon, PlusIcon } from '../components/Icons';
 import { Archive, ArchiveRestore } from 'lucide-react';
 import './ListWorkspace.css';
 import KpiAction from '../components/KpiAction';
+import { currentContractsOn } from '../utils/occupancy';
 
 const PAYMENT_LABELS = { bank_transfer: 'Überweisung', sepa_direct_debit: 'SEPA-Lastschrift', cash: 'Bar' };
 
@@ -85,24 +86,28 @@ export default function Tenants() {
   // Map tenant → active contract info
   const tenantContractMap = useMemo(() => {
     const map = {};
-    for (const c of contracts) {
-      if (c.status === 'active' && c.tenant_id) {
-        map[c.tenant_id] = c;
-      }
+    for (const c of currentContractsOn(contracts)) {
+      if (!c.tenant_id) continue;
+      (map[c.tenant_id] ||= []).push(c);
     }
+    for (const rows of Object.values(map)) rows.sort((a, b) => String(a.contract_number || a.id).localeCompare(String(b.contract_number || b.id), 'de'));
     return map;
   }, [contracts]);
 
   const enriched = tenants.map(tn => {
-    const activeContract = tenantContractMap[tn.id];
+    const current = tenantContractMap[tn.id] || [];
+    const activeContract = current[0];
     return {
       ...tn,
-      property_name: activeContract ? (propMap[activeContract.property_id] || '—') : '—',
-      unit_label: activeContract ? (unitMap[activeContract.unit_id] || '—') : '—',
+      property_name: activeContract ? [...new Set(current.map(contract => propMap[contract.property_id] || '—'))].join(' · ') : '—',
+      unit_label: activeContract ? current.map(contract => unitMap[contract.unit_id] || '—').join(' · ') : '—',
+      primary_unit_label: activeContract ? (unitMap[activeContract.unit_id] || '—') : '—',
+      primary_property_name: activeContract ? (propMap[activeContract.property_id] || '—') : '—',
       // where the current contract is, for the links in the list (not tenant fields)
       link_unit_id: activeContract?.unit_id || null,
       link_property_id: activeContract?.property_id || null,
       contract_status: activeContract ? activeContract.status : 'kein Vertrag',
+      current_contracts: current,
       has_sepa: tn.sepa_mandate ? '✓' : '—',
       payment_label: PAYMENT_LABELS[tn.payment_method] || tn.payment_method || '—',
     };
@@ -112,7 +117,7 @@ export default function Tenants() {
     if (filter === 'all') return enriched;
     if (filter === 'active') return enriched.filter(t => !t.archived);
     if (filter === 'archived') return enriched.filter(t => t.archived);
-    if (filter === 'with_contract') return enriched.filter(t => !t.archived && t.contract_status === 'active');
+    if (filter === 'with_contract') return enriched.filter(t => !t.archived && t.current_contracts.length > 0);
     if (filter === 'with_sepa') return enriched.filter(t => !t.archived && t.sepa_mandate);
     if (filter === 'no_sepa') return enriched.filter(t => !t.archived && !t.sepa_mandate);
     if (filter === 'no_email') return enriched.filter(t => !t.archived && !t.email);
@@ -123,7 +128,7 @@ export default function Tenants() {
   const activeTenants = enriched.filter(t => !t.archived);
   const archivedCount = enriched.filter(t => t.archived).length;
   const withSepa = activeTenants.filter(t => t.sepa_mandate).length;
-  const withContract = activeTenants.filter(t => t.contract_status === 'active').length;
+  const withContract = activeTenants.filter(t => t.current_contracts.length > 0).length;
   const noEmail = activeTenants.filter(t => !t.email).length;
 
   const columns = [
@@ -138,11 +143,15 @@ export default function Tenants() {
       ) },
     { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text',
+      render: (value, row) => <span className="cell-stack"><span>{row.link_unit_id ? <Link to={`/units/${encodeURIComponent(row.link_unit_id)}`}>{row.primary_unit_label}</Link> : value}</span>
+        {row.link_property_id && <Link className="td-sub" to={`/properties/${encodeURIComponent(row.link_property_id)}`}>{row.primary_property_name}</Link>}
+        {row.current_contracts.length > 1 && <button type="button" className="list-secondary-link list-additional-contracts" onClick={() => openParty(row.id)}
+          aria-label={`Alle ${row.current_contracts.length} laufenden Verträge von ${row.full_name} ansehen`}>+ {row.current_contracts.length - 1} weitere</button>}</span>,
       link: { kind: 'unit', idKey: 'link_unit_id' }, subLink: { kind: 'property', idKey: 'link_property_id' } },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
       render: v => v === 'kein Vertrag' ? <span className="badge badge-gray">Kein aktiver Vertrag</span> : <StatusBadge status={v} /> },
-    { key: 'email', label: 'E-Mail', filterType: 'text' },
-    { key: 'phone', label: 'Telefon' },
+    { key: 'email', label: 'E-Mail', filterType: 'text', render: value => value ? <a href={`mailto:${value}`}>{value}</a> : '—' },
+    { key: 'phone', label: 'Telefon', render: value => value ? <a href={`tel:${value.replace(/[^+\d]/g, '')}`}>{value}</a> : '—' },
     { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
     { key: 'payment_label', hidden: true, label: 'Zahlungsart', filterType: 'select' },
     { key: 'has_sepa', hidden: true, label: 'SEPA', filterType: 'select' },

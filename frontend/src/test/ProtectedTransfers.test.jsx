@@ -10,7 +10,7 @@ import AutotestSection from '../pages/settings/AutotestSection';
 
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), captureSession: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key }) }));
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => null }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => null, useCanWrite: () => true }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ error: vi.fn() }) }));
 const fixtures = ['service', 'maintenance'];
 const renderDocuments = async type => {
