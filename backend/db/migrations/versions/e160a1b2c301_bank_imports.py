@@ -83,4 +83,12 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError("Bankoriginale und Quellverknüpfungen dürfen nicht durch Downgrade gelöscht werden")
+    from backend.db.migrations.retained import require_empty
+    connection = op.get_bind()
+    names = require_empty(connection, ('bank_source_links', 'bank_imports', 'bank_fints_sessions'),
+                          'Bankoriginale und Quellverknüpfungen dürfen nicht durch Downgrade gelöscht werden')
+    for name in names:
+        op.drop_table(name)
+    if connection.dialect.name == 'postgresql':
+        for name in ('protect_bank_link', 'protect_bank_original'):
+            connection.exec_driver_sql(f'DROP FUNCTION IF EXISTS {name}()')

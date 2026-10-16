@@ -9,7 +9,7 @@ const MAX_PIXELS = 16_777_216;
 const MAX_DIMENSION = 8192;
 const LOAD_TIMEOUT = 30_000;
 
-export default function PdfPreview({ url, title }) {
+export default function PdfPreview({ url, title, renderOverlay }) {
   const { text } = usePartyText();
   const [pdf, setPdf] = useState(null);
   const [error, setError] = useState(null);
@@ -21,6 +21,7 @@ export default function PdfPreview({ url, title }) {
   const [drawing, setDrawing] = useState(false);
   const [pageText, setPageText] = useState(null);
   const [showText, setShowText] = useState(false);
+  const [surface, setSurface] = useState(null);
   const viewportRef = useRef(null);
   const canvasHostRef = useRef(null);
 
@@ -93,6 +94,7 @@ export default function PdfPreview({ url, title }) {
     let page;
     let renderTask;
     setDrawing(true);
+    setSurface(null);
     setPageText(null);
     setError(null);
     host.replaceChildren();
@@ -128,6 +130,8 @@ export default function PdfPreview({ url, title }) {
         await renderTask.promise;
         if (!active) return;
         canvas.style.visibility = 'visible';
+        setSurface({ viewport: css, view: page.view, page: pageNumber - 1, rotation: page.rotate,
+          width: css.width, height: css.height });
         canvas.setAttribute('role', 'img');
         canvas.setAttribute('aria-label', `${title} – ${text.pdfPage} ${pageNumber} ${text.pdfOf} ${pdf.numPages}`);
         setDrawing(false);
@@ -172,7 +176,10 @@ export default function PdfPreview({ url, title }) {
     {!error && (!pdf || drawing) && <p className="pdf-preview-message" role="status">{text.pdfLoading}</p>}
     {error && <div className="pdf-preview-message" role="alert"><p>{errors[error]}</p><p>{text.pdfOriginalHelp}</p><button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>{text.retry}</button></div>}
     <div className="pdf-preview-viewport" ref={viewportRef}>
-      <div ref={canvasHostRef} hidden={showText || Boolean(error)} />
+      <div style={{ position: 'relative', display: 'inline-block' }} hidden={showText || Boolean(error)}>
+        <div ref={canvasHostRef} />
+        {surface && !drawing && renderOverlay?.(surface)}
+      </div>
       {showText && !error && <pre className="pdf-preview-text">{pageText === null ? text.pdfLoading : pageText || text.pdfNoText}</pre>}
     </div>
   </section>;

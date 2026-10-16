@@ -16,12 +16,12 @@ def recover(jobs):
     if hasattr(store, 'db'):
         from sqlalchemy.orm import Session
         with Session(bind=store.db.get_bind()) as session:
-            rows = list(session.scalars(select(Item).where(Item.kind == 'outbound',
+            rows = list(session.scalars(select(Item).where(Item.kind.in_(('outbound', 'notification')),
                 Item.state.in_(('ready', 'claimed')),
                 or_(Item.lease_until.is_(None), Item.lease_until <= dbs.now())).order_by(Item.updated_at, Item.id).limit(100)))
     else:
         state = store.__dict__.get('_integration_connections', {}).get(Item.__tablename__, {})
-        rows = sorted((row for row in state.values() if row.kind == 'outbound' and row.state in ('ready', 'claimed', 'data_pending')),
+        rows = sorted((row for row in state.values() if row.kind in ('outbound', 'notification') and row.state in ('ready', 'claimed', 'data_pending')),
                       key=lambda row: (row.updated_at, row.id))[:100]
     for row in rows:
         if row.lease_until and row.lease_until > dbs.now():
@@ -85,11 +85,11 @@ def reap(store):
         if hasattr(store, 'db'):
             from sqlalchemy.orm import Session
             with Session(bind=store.db.get_bind()) as session:
-                identifiers = list(session.scalars(select(Item.id).where(Item.kind == 'outbound',
+                identifiers = list(session.scalars(select(Item.id).where(Item.kind.in_(('outbound', 'notification')),
                     Item.state == 'data_pending', Item.lease_until <= dbs.now()).order_by(Item.id).limit(100)))
         else:
             rows = store.__dict__.get('_integration_connections', {}).get(Item.__tablename__, {})
-            identifiers = sorted(row.id for row in rows.values() if row.kind == 'outbound' and row.state == 'data_pending'
+            identifiers = sorted(row.id for row in rows.values() if row.kind in ('outbound', 'notification') and row.state == 'data_pending'
                                  and row.lease_until and row.lease_until <= dbs.now())[:100]
         for identifier in identifiers:
             metadata_state(store, identifier, 'unknown', ('data_pending',))

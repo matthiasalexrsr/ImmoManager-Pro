@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n';
 import { api } from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatBytes, formatDateTime } from '../../utils/format';
+import PlatformSection from './PlatformSection';
 
 // Operations overview: full backups, restore probes, secrets at rest (GET /admin/operations).
 
@@ -119,6 +120,7 @@ export default function OperationsSection() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [message, setMessage] = useState(null);
+  const [showPlatform, setShowPlatform] = useState(false);
 
   const load = useCallback(() => {
     api.get('/admin/operations')
@@ -145,7 +147,8 @@ export default function OperationsSection() {
     setMessage(null);
     try {
       const result = await api.post(kind === 'backup' ? '/admin/operations/backup' : '/admin/operations/restore-probe');
-      setMessage({ ok: true, text: kind === 'backup'
+      setMessage({ ok: result?.ok !== false, text: result?.ok === false
+        ? 'Archiv lesbar, aber Wiederherstellbarkeit nicht vollständig bestätigt. Bitte Prüfdetails und Geheimnissicherung prüfen.' : kind === 'backup'
         ? t('settings.operations.backupDone', { name: result?.archive || '' })
         : t('settings.operations.probeDone', { name: result?.archive || '' }) });
     } catch (err) {
@@ -165,6 +168,11 @@ export default function OperationsSection() {
     <div className="panel" data-testid="operations-section">
       <div className="panel-header">{t('settings.operations.title')}</div>
       <div className="panel-body settings-section">
+        {isOwner && <div style={{ padding: '1rem' }}>
+          <button type="button" className="btn btn-secondary" aria-expanded={showPlatform}
+            onClick={() => setShowPlatform(value => !value)}>Speicher und Plugins {showPlatform ? 'schließen' : 'anzeigen'}</button>
+          {showPlatform && <PlatformSection />}
+        </div>}
         <p className="text-muted" style={{ margin: 0, padding: '0.75rem 1.1rem 0.25rem' }}>{t('settings.operations.intro')}</p>
         {error && <div role="alert" style={{ color: 'var(--danger)', padding: '0.5rem 1.1rem' }}>{error}</div>}
         {data && (

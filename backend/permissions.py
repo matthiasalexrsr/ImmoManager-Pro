@@ -50,7 +50,7 @@ TECHNICAL = ("/maintenance", "/meters", "/handover-protocols", *INVOICE_FACTUAL)
 DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
                                       "buchhaltung": INVOICE_FACTUAL}
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
-              "/updates/restart", "/admin/operations/second-target")
+              "/updates/restart", "/admin/operations/second-target", "/admin/operations/plugins")
 
 WRITE_AREAS: dict[str, tuple[str, ...] | None] = {
     "eigentuemer": None,          # None: everything

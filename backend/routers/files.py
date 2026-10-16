@@ -9,7 +9,7 @@ import uuid
 from io import BytesIO
 from urllib.parse import unquote, urlparse
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
@@ -88,6 +88,10 @@ def _file_url_to_key(file_url: str) -> str:
             return ""
         return _normalize_storage_key(path.split(marker, 1)[1])
     if parsed.scheme == "s3":
+        from ..services.file_storage import S3Storage
+        storage = get_file_storage()
+        if not isinstance(storage, S3Storage) or parsed.netloc != storage.bucket:
+            return ""
         bucket = parsed.netloc.strip("/")
         path = (parsed.path or "").lstrip("/")
         if bucket and path:
@@ -160,8 +164,8 @@ async def upload_file(
     ext = _safe_extension(file.filename)
     key = f"{safe_folder}/{uuid.uuid4().hex}.{ext}"
     # a restricted account's draft belongs to its portfolios until a record takes it over
-    await run_in_threadpool(register_upload, key)
     storage.save(key, BytesIO(contents), content_type=file.content_type or "application/octet-stream")
+    await run_in_threadpool(register_upload, key)
     file_url = storage.get_url(key)
 
     result = {
@@ -221,7 +225,7 @@ def process_ocr(file_url: str = Query(..., description="Public file URL")) -> di
 
 
 @router.get("/download")
-def download_file(key: str = Query(...), actor: UserRead = Depends(require_auth)) -> Response:
+def download_file(request: Request, key: str = Query(...), actor: UserRead = Depends(require_auth)) -> Response:
     """Download a file by its storage key."""
     storage = get_file_storage()
     safe_key = _normalize_storage_key(key)
@@ -240,7 +244,10 @@ def download_file(key: str = Query(...), actor: UserRead = Depends(require_auth)
         data = read_archived_pdf(store, safe_key, actor.id)
     else:
         require_file_access(safe_key)
-        data = storage.get(safe_key)
+        from ..dependencies import store
+        from ..services.document_work import archived_upload
+        archived = archived_upload(store, safe_key, actor.id)
+        data = archived[0] if archived is not None else storage.get(safe_key)
     if data is None:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
 
@@ -271,7 +278,8 @@ def download_file(key: str = Query(...), actor: UserRead = Depends(require_auth)
         "Content-Disposition": f'attachment; filename="{filename}"',
         "X-Content-Type-Options": "nosniff",
     }
-    return Response(content=data, media_type=ct, headers=headers)
+    from ..services.private_file_response import private_bytes
+    return private_bytes(data, media_type=ct, headers=headers, range_header=request.headers.get("range"))
 
 
 @router.get("/ocr-text")
@@ -335,10 +343,20 @@ def analyze_file(
 
     result = analyze_document(ocr_text, use_ai=use_ai)
 
+    import hashlib
+    original = storage.get(file_key)
+    if original is None:
+        raise HTTPException(409, "Analysequelle fehlt. Vorschläge wurden nicht freigegeben.")
+
     return {
         "analyzed": True,
         "message": "Analyse abgeschlossen",
         "result": {
+            "origin": {"method": "ai" if result.ai_model else "regex", "model": result.ai_model},
+            "source": {"storage_key": file_key, "sha256": hashlib.sha256(original).hexdigest(),
+                       "text_sha256": hashlib.sha256(ocr_text.encode("utf-8")).hexdigest()},
+            "confirmation": {"required": True, "confirmed": False},
+            "financial_writes": False,
             "document_type": result.document_type,
             "document_type_confidence": result.document_type_confidence,
             "summary": result.summary,

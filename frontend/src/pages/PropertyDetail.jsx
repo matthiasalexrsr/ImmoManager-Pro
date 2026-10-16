@@ -192,6 +192,7 @@ function PropertyDossier({ id }) {
         </div>
         <StatusBadge status={property.status} />
         <div className="dossier-actions">
+          <Link className="btn btn-secondary btn-sm" to={`/teha?property_id=${encodeURIComponent(id)}`}>TEHA Kundenportal</Link>
           {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
           <EntityActions entityType="property" entityId={id} entityRevision={property.updated_at} title={property.name}

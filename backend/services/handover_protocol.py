@@ -806,6 +806,8 @@ def delete_photo(store, protocol_id: str, photo_id: str, actor_id: str) -> None:
 def delete_protocol(store, protocol_id: str, actor_id: str) -> None:
     """Delete a draft with its parts (and photo files no other protocol uses); a finalized one stays."""
     with archive.work(store, actor_id, write_areas=EDIT_AREAS) as unit:
+        from .document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(unit.store, protocol_id, deleting=True)
         protocol = _protocol(unit, protocol_id)
         _parents(unit, protocol.contract_id, lock=True, protocol_id=protocol.id)
         _require_draft(_protocol(unit, protocol_id))

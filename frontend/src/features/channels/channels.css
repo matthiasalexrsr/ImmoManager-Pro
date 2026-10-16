@@ -1,0 +1,8 @@
+﻿.channel-panel { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border-color, #ddd); border-radius: .5rem; min-width: 0; }
+.channel-panel label { display: grid; gap: .25rem; margin-block: .6rem; }
+.channel-panel input, .channel-panel select, .channel-panel textarea { max-width: 100%; min-width: 0; width: 100%; box-sizing: border-box; }
+.channel-panel input[type=checkbox] { width: auto; justify-self: start; }
+.channel-panel button { margin: .3rem .3rem .3rem 0; white-space: normal; }
+.channel-panel article { border-top: 1px solid var(--border-color, #ddd); margin-top: 1rem; padding-top: .5rem; }
+.channel-hash { overflow-wrap: anywhere; font-size: .85em; }
+.channel-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); gap: .6rem; }

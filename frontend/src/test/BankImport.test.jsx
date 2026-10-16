@@ -14,6 +14,50 @@ const preview = { id: 'import-1', account_id: 'a1', filename: 'Original.csv', fo
 beforeEach(() => vi.clearAllMocks());
 
 describe('Bankimport', () => {
+  const savedProfile = { format: 'csv', revision: 4, options: { encoding: 'cp1252', delimiter: ';', decimal: ',', date_format: '%d.%m.%Y', columns: { date: 'Buchungstag', amount: 'Umsatz', text: 'Verwendungszweck' } } };
+  const openImport = () => {
+    const panel = screen.getByText('Bankdatei importieren und Übernahmebeleg öffnen').parentElement;
+    panel.open = true;
+    fireEvent(panel, new Event('toggle', { bubbles: false }));
+  };
+
+  it('uses the effective saved profile for new imports', async () => {
+    api.get.mockImplementation(path => Promise.resolve(path.endsWith('/bank-import-profile') ? savedProfile : preview));
+    render(<BankImport accounts={[]} onImported={() => {}} />);
+    openImport();
+    await waitFor(() => expect(screen.getByLabelText('Datumsspalte')).toHaveValue('Buchungstag'));
+    expect(screen.getByLabelText('Dezimalzeichen')).toHaveValue(',');
+    expect(screen.getByLabelText('Kodierung')).toHaveValue('cp1252');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('never overwrites edits with a late default and lets the user explicitly apply it', async () => {
+    let finishProfile;
+    api.get.mockImplementation(() => new Promise(resolve => { finishProfile = resolve; }));
+    render(<BankImport accounts={[]} onImported={() => {}} />);
+    openImport();
+    fireEvent.change(screen.getByLabelText('Betragsspalte'), { target: { value: 'Meine Spalte' } });
+    finishProfile(savedProfile);
+    await screen.findByText('Gespeicherte Formatvorlage anwenden');
+    expect(screen.getByLabelText('Betragsspalte')).toHaveValue('Meine Spalte');
+    fireEvent.click(screen.getByText('Gespeicherte Formatvorlage anwenden'));
+    expect(screen.getByLabelText('Betragsspalte')).toHaveValue('Umsatz');
+  });
+
+  it('keeps the mapping of a reopened import when the saved default arrives later', async () => {
+    let finishProfile;
+    api.get.mockImplementation(path => path.endsWith('/bank-import-profile')
+      ? new Promise(resolve => { finishProfile = resolve; }) : Promise.resolve({ ...preview, options: { columns: { date: 'Originaldatum', amount: 'Originalbetrag', text: 'Originaltext' } } }));
+    render(<BankImport accounts={[]} onImported={() => {}} />);
+    openImport();
+    fireEvent.change(screen.getByLabelText('Gespeicherte Importkennung'), { target: { value: 'import-1' } });
+    fireEvent.click(screen.getByText('Vorgang wieder öffnen'));
+    await screen.findByText('Miete');
+    finishProfile(savedProfile);
+    await screen.findByText('Gespeicherte Formatvorlage anwenden');
+    expect(screen.getByLabelText('Datumsspalte')).toHaveValue('Originaldatum');
+  });
+
   it('recognizes only its exact authenticated original route', () => {
     const id = 'a1234567-1234-4123-8123-123456789abc';
     expect(bankOriginalPath(`/api/v1/bank-imports/${id}/original`)).toBe(`/bank-imports/${id}/original`);

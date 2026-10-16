@@ -1,0 +1,17 @@
+.teha-workspace { max-width: 1150px; margin: auto; }
+.teha-workspace fieldset { border: 0; padding: 0; min-width: 0; }
+.teha-workspace h2 { font-size: 1.15rem; }
+.teha-panel { border: 1px solid var(--border-color, #cbd5e1); border-radius: 8px; padding: 1rem; margin: 1rem 0; min-width: 0; }
+.teha-workspace label { display: grid; gap: .4rem; margin: .7rem 0; }
+.teha-workspace input, .teha-workspace select { width: 100%; max-width: 36rem; padding: .5rem; }
+.teha-actions { display: flex; gap: .7rem; flex-wrap: wrap; align-items: center; margin-top: .6rem; }
+.teha-workspace button { padding: .45rem .7rem; margin: .2rem; max-width: 100%; white-space: normal; }
+.teha-list { padding: 0; list-style: none; }
+.teha-list li { padding: .7rem 0; border-bottom: 1px solid var(--border-color, #cbd5e1); overflow-wrap: anywhere; }
+.teha-list li span, .teha-list li small { display: block; }
+.teha-workspace code { overflow-wrap: anywhere; }
+.teha-workspace pre { overflow: auto; max-height: 25rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.teha-target { padding: .5rem; border: 1px solid var(--border-color, #cbd5e1); margin: .5rem 0; }
+.teha-workspace summary { cursor: pointer; }
+.teha-workspace :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+@media (max-width: 400px) { .teha-panel { padding: .65rem; } .teha-actions > * { width: 100%; } }

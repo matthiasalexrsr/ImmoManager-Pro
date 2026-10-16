@@ -45,6 +45,7 @@ const DunningCase = lazy(() => import('./pages/DunningCase'));
 const TaxExports = lazy(() => import('./pages/TaxExports'));
 const Integrations = lazy(() => import('./pages/Integrations'));
 const IntegrationConnections = lazy(() => import('./pages/IntegrationConnections'));
+const Teha = lazy(() => import('./pages/Teha'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Leads = lazy(() => import('./pages/Leads'));
 const Listings = lazy(() => import('./pages/Listings'));
@@ -192,6 +193,7 @@ export default function App() {
           <Route path="tax-exports" element={<TaxExports />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="integration-connections" element={<IntegrationConnections />} />
+          <Route path="teha" element={<Teha />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="leads" element={<Leads />} />
           <Route path="listings" element={<Listings />} />

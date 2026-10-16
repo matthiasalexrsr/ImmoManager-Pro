@@ -101,12 +101,19 @@ class Sources:
     pg_bin_dir: str = ""
     probe_postgres_url: str = ""
     env_secret_keys: str = ""
+    runtime_manifest: dict | None = None
+    runtime_bytes: bytes | None = None
+    file_storage: Any = None
+    plugin_dirs: list[str] = field(default_factory=list)
 
     @classmethod
     def from_settings(cls) -> Sources:
         data_dir = get_data_dir()
         state = settings.integration_state_file or str(data_dir / "integrations.json")
         second, _ = configured_second_target(data_dir)
+        from .file_storage import get_file_storage
+        from .portable_runtime import capture
+        runtime_manifest, runtime_bytes = capture(settings)
         return cls(
             database_url=settings.database_url, data_dir=data_dir, uploads_dir=get_uploads_dir(),
             root=get_backup_dir() / "full", integration_state=Path(state).expanduser(),
@@ -115,6 +122,9 @@ class Sources:
             keep_daily=settings.backup_keep_daily, keep_monthly=settings.backup_keep_monthly,
             keep_pre_upgrade=settings.backup_keep_pre_upgrade, pg_bin_dir=settings.pg_bin_dir,
             probe_postgres_url=settings.restore_probe_postgres_url, env_secret_keys=settings.secret_keys,
+            runtime_manifest={**runtime_manifest, "status": "sealed" if settings.backup_passphrase else "passphrase_required"},
+            runtime_bytes=runtime_bytes if settings.backup_passphrase else None, file_storage=get_file_storage(),
+            plugin_dirs=settings.plugin_dirs,
         )
 
     @property
@@ -375,12 +385,15 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
 
                 from .tax_archive_validation import needed_key_ids
                 tax_keys = sorted(needed_key_ids(connection))
+                from .portable_runtime import inventory
+                references, database_key_ids = inventory(connection)
                 _run([tool, "--format=custom", "--no-owner", "--no-privileges", f"--snapshot={snapshot}",
                       f"--file={target}", "--dbname", conninfo], env)
     finally:
         engine.dispose()
     return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
-            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys, "communication_key_ids": communication_keys}
+            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys, "communication_key_ids": communication_keys,
+            "references": references, "key_ids": database_key_ids}
 
 
 class _Lock:
@@ -552,11 +565,13 @@ def _iter_uploads(directory: Path) -> Iterator[tuple[Path, str]]:
     if not directory.is_dir():
         return
     for current, dirs, files in os.walk(directory, followlinks=False):
+        if any((Path(current) / name).is_symlink() for name in dirs):
+            raise BackupError("Symbolischer Anhangordner kann nicht vollständig gesichert werden")
         dirs.sort()
         for name in sorted(files):
             path = Path(current) / name
             if path.is_symlink() or not path.is_file():
-                continue
+                raise BackupError("Anhang ist keine reguläre Datei und wurde nicht gesichert")
             relative = path.relative_to(directory).as_posix()
             yield path, f"uploads/{relative}"
 
@@ -665,6 +680,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
         env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
+        from .backup_extensions import extensions
+        from .portable_runtime import RUNTIME, inventory
+        references, database_keys = inventory(db_copy) if dialect == "sqlite" else (facts["references"], facts["key_ids"])
+
         needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])) | set(facts.get('communication_key_ids', [])))
         if dialect == "sqlite":
             from .tax_archive_validation import needed_key_ids
@@ -676,26 +695,63 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
                 tax_engine.dispose()
         else:
             needed = sorted(set(needed) | set(facts.get("tax_needed_key_ids", [])))
+        needed = sorted(set(needed) | set(database_keys))
         included_ids = set(_env_key_ids(env_bytes))
+        if sources.runtime_bytes:
+            runtime_keys = json.loads(sources.runtime_bytes).get("secret_keys", "")
+            included_ids.update(key.id for key in secret_box.parse_env_keys(runtime_keys))
+        if sources.env_secret_keys:
+            included_ids.update(key.id for key in secret_box.parse_env_keys(sources.env_secret_keys))
         if keyring_bytes:
             included_ids |= {key.id for key in secret_box.keys_from_bytes(keyring_bytes)}
         included = sorted(included_ids)
         missing = sorted(set(needed) - included_ids)
+        if missing:
+            raise BackupError("Vollsicherung unvollständig: benötigte Entschlüsselungsschlüssel fehlen")
+        from .plugin_packages import inventory as plugin_inventory
+        packages = plugin_inventory(sources.plugin_dirs)
 
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
             writer = _Writer(zf, pulse)
             writer.add_file(db_copy, db_entry, "database")
+            for declaration, package_files in packages:
+                for relative, path in package_files:
+                    writer.add_file(path, "plugins/" + declaration["name"] + "/" + relative, "plugin")
             upload_count = upload_bytes = 0
+            uploaded = set()
             for path, arcname in _iter_uploads(sources.uploads_dir):
+                # Selected remote storage is authoritative for referenced remote originals.
+                from .file_storage import S3Storage
+                if isinstance(sources.file_storage, S3Storage) and arcname[len("uploads/"):] in references:
+                    continue
                 writer.add_file(path, arcname, "upload")
+                uploaded.add(arcname[len("uploads/"):])
                 upload_count += 1
                 upload_bytes += writer.files[-1]["size"]
+            for key in sorted(references - uploaded):
+                if sources.file_storage is None:
+                    raise BackupError("Vollsicherung unvollständig: referenziertes Original fehlt")
+                content = sources.file_storage.get(key)
+                if content is None:
+                    raise BackupError("Vollsicherung unvollständig: referenziertes Original fehlt")
+                writer.add_bytes(content, "uploads/" + key, "upload")
+                upload_count += 1
+                upload_bytes += len(content)
             if state_bytes is not None:
                 writer.add_bytes(state_bytes, INTEGRATIONS, "config")
             if journal_copy is not None:
                 writer.add_file(journal_copy, JOURNAL, "config")
             protected: list[dict[str, Any]] = []
             plain = {KEYRING: keyring_bytes, ENV: env_bytes}
+            if sources.runtime_bytes:
+                if not sources.passphrase:
+                    raise BackupError("Portabler Runtime-Export benötigt eine Backup-Passphrase")
+                plain[RUNTIME] = sources.runtime_bytes
+            elif sources.env_secret_keys:
+                # Explicit Sources callers still need their external keys in the sealed bundle.
+                if not sources.passphrase:
+                    raise BackupError("Externe Schlüssel benötigen eine Backup-Passphrase")
+                plain[RUNTIME] = json.dumps({"secret_keys": sources.env_secret_keys}).encode("utf-8")
             if sources.passphrase:
                 bundle = {arc: base64.b64encode(data).decode("ascii") for arc, data in plain.items() if data}
                 protected = [{"path": arc, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
@@ -717,6 +773,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
                              "row_counts": facts["row_counts"], "integrity": facts["integrity"],
                              **({"server_version": facts["server_version"]} if "server_version" in facts else {})},
                 "uploads": {"files": upload_count, "bytes": upload_bytes},
+                "runtime": sources.runtime_manifest,
+                "attachments": {"checked": True, "references": sorted(references)},
+                "extensions": {ext.name: ext.version for ext in extensions()},
+                "plugin_packages": [declaration for declaration, _ in packages],
                 "secrets": {"protection": "passphrase" if sources.passphrase else "none",
                             "protected_files": protected, "needed_key_ids": needed, "included_key_ids": included,
                             "missing_key_ids": missing},
@@ -740,6 +800,8 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         "event": "backup", "ok": True, "trigger": trigger, "archive": name, "size": final.stat().st_size,
         "sha256": digest, "revision": facts["revision"], "dialect": dialect, "uploads": upload_count,
         "secrets_protection": "passphrase" if sources.passphrase else "none", "missing_key_ids": missing,
+        "readiness": "portable_data" if sources.runtime_bytes and dialect == "sqlite" else "archive_verified",
+        "self_contained_runtime": bool(sources.runtime_bytes),
         "rows": sum(facts["row_counts"].values()),
     }
     if sources.second_target is not None:
@@ -869,23 +931,31 @@ def _secret_files(manifest: dict[str, Any], extracted: Path, passphrase: str) ->
     if manifest["secrets"]["protection"] == "passphrase":
         sealed = extracted / SEALED
         if not sealed.is_file():
+            if manifest["secrets"].get("protected_files"):
+                raise BackupError("Geschütztes Geheimnisbundle fehlt")
             return {}, None
         if not passphrase:
             return {}, "Schlüsselsicherung ist mit Passphrase geschützt; ohne Passphrase nicht geprüft."
         bundle = json.loads(secret_box.open_with_passphrase(sealed.read_bytes(), passphrase))
-        files = {arc: base64.b64decode(data) for arc, data in bundle.items()}
+        from .portable_runtime import RUNTIME
+        if set(bundle) - {KEYRING, ENV, RUNTIME}:
+            raise BackupError("Unbekannte Datei im Geheimnisbundle")
+        files = {arc: base64.b64decode(data, validate=True) for arc, data in bundle.items()}
         for entry in manifest["secrets"]["protected_files"]:
             if hashlib.sha256(files.get(entry["path"], b"")).hexdigest() != entry["sha256"]:
                 raise BackupError(f"Geschützte Datei weicht ab: {entry['path']}")
         return files, None
+    from .portable_runtime import RUNTIME
+
     files = {}
-    for arc in (KEYRING, ENV):
+    for arc in (KEYRING, ENV, RUNTIME):
         if (extracted / arc).is_file():
             files[arc] = (extracted / arc).read_bytes()
     return files, None
 
 
-def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, env_secret_keys: str) -> dict:
+def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, env_secret_keys: str,
+                   extra_key_ids=()) -> dict:
     files, warning = _secret_files(manifest, extracted, passphrase)
     state_path = extracted / INTEGRATIONS
     tokens = []
@@ -906,14 +976,17 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
     if warning:
         return result
     keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
+    from .portable_runtime import RUNTIME
+    if RUNTIME in files:
+        keys += secret_box.parse_env_keys(json.loads(files[RUNTIME]).get("secret_keys", ""))
     env_text = files.get(ENV, b"").decode("utf-8", "replace")
     for line in env_text.splitlines():
         name, _, value = line.strip().partition("=")
         if name.strip() == "SECRET_KEYS":
             keys += secret_box.parse_env_keys(value.strip().strip('"').strip("'"))
-    if not keys and env_secret_keys:
-        keys = secret_box.parse_env_keys(env_secret_keys)
-        result["warning"] = "Schlüssel nur aus der Umgebung (SECRET_KEYS), nicht aus dem Backup geprüft."
+    missing = (set(manifest["secrets"].get("needed_key_ids", [])) | set(extra_key_ids)) - {key.id for key in keys}
+    if missing:
+        raise BackupError("Benötigte Entschlüsselungsschlüssel fehlen im Archiv")
     for context, token in tokens:
         secret_box.open_with(keys, token, context)
         result["decrypted"] += 1
@@ -948,6 +1021,9 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
 def _archived_connection_keys(files: dict[str, bytes]) -> list[secret_box.Key]:
     """Only keys actually bundled in the archive, never ambient process secrets."""
     keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
+    from .portable_runtime import RUNTIME
+    if RUNTIME in files:
+        keys.extend(secret_box.parse_env_keys(json.loads(files[RUNTIME]).get("secret_keys", "")))
     for line in files.get(ENV, b"").decode("utf-8", "replace").splitlines():
         field, _, value = line.strip().partition("=")
         if field.strip() == "SECRET_KEYS":
@@ -986,7 +1062,27 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     tax_proof = verify_tax_archive(connection, lambda token, context: secret_box.open_with(keys, token, context))
     from .communication_backup import verify as verify_communication
     communication_proof = verify_communication(connection, keys, tables)
+    # TEHA snapshots and publication receipts are private, immutable evidence.
+    # Verify them with *archived* keys before the restored data is published.
+    from types import SimpleNamespace
+
+    from .teha_restore import verify_teha_restore
+
+    try:
+        teha_proof = verify_teha_restore(connection, SimpleNamespace(
+            open=lambda token, context: secret_box.open_with(keys, token, context)))
+    except Exception:
+        raise BackupError("Geschützte TEHA-Quellen und Originalnachweise konnten nicht vollständig geprüft werden.") from None
+    from .channel_restore import verify_channel_restore
+
+    try:
+        channel_proof = verify_channel_restore(connection, SimpleNamespace(
+            open=lambda token, context: secret_box.open_with(keys, token, context)))
+    except Exception:
+        raise BackupError("Geschützte Kanalquellen und Originalnachweise konnten nicht vollständig geprüft werden.") from None
     return {
+        "channels": channel_proof,
+        "teha": teha_proof,
         "communication": communication_proof,
         "bank_originals": bank_proof, "tax_receipts_verified": tax_proof,
         "present": proof["present"], "verified_rows": proof["rows"],
@@ -1014,6 +1110,39 @@ def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, norma
             return _private_connection_proof(connection, keys)
     finally:
         engine.dispose()
+
+
+def _check_attachments(manifest: dict, extracted: Path) -> dict:
+    from .backup_extensions import extensions
+    from .file_storage import validate_key
+    from .portable_runtime import inventory
+    declared = manifest.get("extensions", {})
+    registered = {extension.name: extension for extension in extensions()}
+    from .plugin_packages import package
+    for declaration in manifest.get("plugin_packages", []):
+        name = validate_key(declaration["name"])
+        if "/" in name:
+            raise BackupError("Ungültiger Pluginpaketname im Archiv")
+        actual, _ = package(extracted / "plugins" / name)
+        if actual != declaration:
+            raise BackupError("Pluginpaket stimmt nicht mit dem Archivmanifest überein")
+    for name, version in declared.items():
+        if name not in registered or registered[name].version != version:
+            raise BackupError("Benötigte Backup-Erweiterung fehlt oder ist inkompatibel: " + name)
+    references = set(manifest.get("attachments", {}).get("references", []))
+    key_ids: set[str] = set()
+    if manifest["database"]["dialect"] == "sqlite":
+        current, key_ids = inventory(extracted / DB_SQLITE)
+        references.update(current)
+    for key in references:
+        path = extracted / "uploads" / validate_key(key)
+        if not path.is_file():
+            raise BackupError("Referenziertes Original fehlt im Archiv")
+    for extension in registered.values():
+        if extension.name in declared:
+            extension.validate(extracted / manifest["database"]["path"], extracted)
+    return {"checked": manifest["database"]["dialect"] == "sqlite", "references": len(references),
+            "key_ids": sorted(key_ids)}
 
 
 # --- restore probe ------------------------------------------------------------------------
@@ -1052,6 +1181,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
     try:
         manifest = _extract(archive, probe_dir, pulse)
         checks["files_restored"] = len(manifest["files"])
+        checks["attachments"] = _check_attachments(manifest, probe_dir)
         database = manifest["database"]
         secret_files, secret_warning = _secret_files(manifest, probe_dir, passphrase)
         # A warning can remain for unrelated runtime secrets, but private SQL
@@ -1081,7 +1211,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
         checks["row_counts_match"] = True
         checks["rows"] = sum(database["row_counts"].values())
         checks["uploads"] = manifest["uploads"]["files"]
-        secrets_check = _check_secrets(manifest, probe_dir, passphrase, sources.env_secret_keys)
+        secrets_check = _check_secrets(manifest, probe_dir, passphrase, "", checks["attachments"]["key_ids"])
         checks["secrets"] = secrets_check
         if secrets_check.get("warning"):
             warnings.append(secrets_check["warning"])
@@ -1091,7 +1221,13 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
     finally:
         shutil.rmtree(probe_dir, ignore_errors=True)
     checks["probe_dir_removed"] = not probe_dir.exists()
-    return {"event": "restore_probe", "ok": True, "archive": archive.name, "sha256": report["sha256"],
+    runtime_ready = not manifest.get("runtime") or manifest["runtime"].get("status") != "passphrase_required"
+    ready = not missing and not secrets_check.get("warning") and checks["attachments"]["checked"] and runtime_ready
+    if not runtime_ready:
+        warnings.append("Effektive Runtime-Konfiguration fehlt: Backup-Passphrase für portablen Export einrichten.")
+    return {"event": "restore_probe", "ok": ready,
+            "readiness": "data_verified" if ready else "archive_only",
+            "application_gate": "not_run", "archive": archive.name, "sha256": report["sha256"],
             "checks": checks, "warnings": warnings}
 
 
@@ -1156,6 +1292,8 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
 
 def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target_url: str = "") -> dict[str, Any]:
     """Verify, then lay the archive out as a fresh data directory (plus pg_restore when asked)."""
+    target = target.resolve()
+    final_target = target
     report = verify_archive(path)
     if not report["ok"]:
         raise BackupError("Archivprüfung fehlgeschlagen: " + "; ".join(report["problems"][:5]))
@@ -1170,12 +1308,11 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             raise BackupError("Schlüsselsicherung ist mit Passphrase geschützt: Passphrase angeben "
                               "(--passphrase-env).")
         archived_keys = _archived_connection_keys(files)
-        bank_counts = manifest["database"]["row_counts"]
-        if bank_counts.get("bank_imports", 0) or bank_counts.get("bank_fints_sessions", 0):
-            # Verify bank originals from the EXTRACTED archive and its archived
-            # keys before touching the final target. The connection verifier
-            # independently protects all integration action evidence.
-            _check_secrets(manifest, staging, passphrase, "")
+        attachments = _check_attachments(manifest, staging)
+        secret_check = _check_secrets(manifest, staging, passphrase, "", attachments["key_ids"])
+        if secret_check.get("warning") or manifest["secrets"].get("missing_key_ids"):
+            raise BackupError("Geheimnisse sind nicht unabhängig wiederherstellbar")
+        target = staging / "installation"
         target.mkdir(parents=True, exist_ok=True)
         database = manifest["database"]
         steps = []
@@ -1202,6 +1339,8 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
                 steps.append("PostgreSQL: pg_restore --no-owner --dbname <leere Zieldatenbank> postgres.dump")
         if (staging / "uploads").is_dir():
             os.replace(staging / "uploads", target / "uploads")
+        if (staging / "plugins").is_dir():
+            os.replace(staging / "plugins", target / "plugins")
         if (staging / INTEGRATIONS).is_file():
             os.replace(staging / INTEGRATIONS, target / "integrations.json")
         if (staging / JOURNAL).is_file():
@@ -1213,11 +1352,26 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             secret_box.write_private_file(target / ".env", _relocated_env(files[ENV], database["dialect"]))
             steps.append(".env übernommen ohne Pfadangaben (DATA_DIR usw. werden neu gesetzt); Original in "
                          ".env.from-backup.")
+        from .portable_runtime import RUNTIME, relocated
+        if RUNTIME in files:
+            secret_box.write_private_file(target / ".env", relocated(files[RUNTIME]))
+            if manifest.get("plugin_packages"):
+                with (target / ".env").open("a", encoding="utf-8") as env_handle:
+                    env_handle.write("PLUGIN_DIRS=" + json.dumps(json.dumps([str(final_target / "plugins")])) + "\n")
+            secret_box.write_private_file(target / "runtime.from-backup.json", files[RUNTIME])
+        if manifest.get("runtime"):
+            (target / "runtime-manifest.json").write_text(json.dumps(manifest["runtime"], indent=2), encoding="utf-8")
+        if final_target.exists():
+            final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
+        os.replace(target, final_target)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+    target = final_target
     steps.append(f"Programm stoppen, DATA_DIR auf {target} zeigen lassen (oder Verzeichnis tauschen), dann "
                  "python -m backend.upgrade und starten.")
     return {"restored_to": str(target), "revision": database["revision"], "dialect": database["dialect"],
+            "readiness": "data_verified" if attachments["checked"] else "archive_only",
+            "application_gate": "not_run",
             "uploads": manifest["uploads"]["files"], "steps": steps}
 
 

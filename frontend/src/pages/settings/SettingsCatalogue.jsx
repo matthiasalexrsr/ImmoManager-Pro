@@ -17,7 +17,9 @@ function SettingField({ item, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(Boolean(recovery));
   const pending = useRef(recovery?.command || null);
+  const mounted = useRef(true);
   const prefs = usePreferences();
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (dirty) { try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ } }
   }, [dirty, value, storage]);
@@ -30,17 +32,28 @@ function SettingField({ item, onSaved }) {
   };
   const save = async (reset = false) => {
     if (busy) return;
-    const parsed = typeof item.value === 'boolean' ? value === true || value === 'true' : typeof item.value === 'number' ? Number(value) : value;
+    const chosen = reset ? item.value : value;
+    const parsed = typeof item.value === 'boolean' ? chosen === true || chosen === 'true' : typeof item.value === 'number' ? Number(chosen) : chosen;
     if (pending.current?.values[item.key] !== parsed || Boolean(pending.current?.reset) !== reset) pending.current = { values: { [item.key]: parsed }, scope: item.scope,
       base_revision: expected.current, reset, idempotency_key: crypto.randomUUID() };
     try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
     setBusy(true); setError(null); const same = api.captureSession();
+    const sent = pending.current;
+    let sentRecovery = null;
+    try { sentRecovery = sessionStorage.getItem(storage); } catch { /* optional recovery */ }
     try {
-      await api.put('/auth/users/me/settings', pending.current); same(); pending.current = null; sessionStorage.removeItem(storage); setDirty(false); onSaved(); prefs?.reload?.();
-    } catch (failure) { setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.'); }
-    finally { setBusy(false); }
+      await api.put('/auth/users/me/settings', sent); same();
+      // A late answer from an unmounted card must not erase a newer draft of
+      // this same setting created after remount/filter/navigation.
+      try {
+        if (sentRecovery !== null && sessionStorage.getItem(storage) === sentRecovery) sessionStorage.removeItem(storage);
+      } catch { /* optional recovery */ }
+      if (!mounted.current) return;
+      pending.current = null; setDirty(false); onSaved(); prefs?.reload?.();
+    } catch (failure) { if (mounted.current) setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.'); }
+    finally { if (mounted.current) setBusy(false); }
   };
-  const choiceLabels = { symbol: 'W?hrungssymbol (Quellw?hrung)', code: 'ISO-W?hrungscode (Quellw?hrung)', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Uebersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persoenlicher Eingang' };
+  const choiceLabels = { symbol: 'Währungssymbol (Quellwährung)', code: 'ISO-Währungscode (Quellwährung)', '\t': 'Tabulator', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Übersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persönlicher Eingang' };
   const id = `setting-${item.scope}-${item.key}`;
   return <article className="setting-card">
     <label htmlFor={id}><strong>{item.label}</strong></label>
@@ -78,12 +91,15 @@ export default function SettingsCatalogue() {
     }).catch(failure => { if (live) setError(failure.message); });
     return () => { live = false; };
   }, [property, attempt]);
-  const found = items.filter(item => `${item.label} ${item.group} ${item.origin} ${item.key}`.toLocaleLowerCase('de').includes(search.toLocaleLowerCase('de')));
+  const normalize = value => String(value).normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de').replaceAll('ß', 'ss');
+  const words = normalize(search).trim().split(/\s+/).filter(Boolean);
+  const matches = value => words.every(word => normalize(value).includes(word));
+  const found = items.filter(item => matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
   const links = [
     ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
     ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
     ...(auth?.isAdmin ? [['Integrationen und Zugangsdaten', '/integrations'], ['Benutzer, Rollen und Objektzugriff', '/settings?section=users'], ['Sicherung, Wiederherstellung, Backupzeit, Aufbewahrung, Jobs und Betrieb', '/settings?section=system'], ['Updates und Erweiterungen', '/settings?section=system']] : []),
-  ].filter(([label]) => label.toLocaleLowerCase('de').includes(search.toLocaleLowerCase('de')));
+  ].filter(([label]) => matches(label));
   return <section className="settings-catalogue"><h2>Einstellungen finden</h2>
     <label htmlFor="settings-search">Suche nach Einstellung oder Bereich</label><input id="settings-search" type="search" value={search} onChange={e => setSearch(e.target.value)} />
     <label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>

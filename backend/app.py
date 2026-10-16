@@ -28,7 +28,7 @@ from .middleware import (
     RequestLoggingMiddleware,
 )
 from .paths import ensure_runtime_dirs, get_uploads_dir
-from .plugins import get_plugins, load_plugins
+from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
 from .routing import build_api_v1, get_i18n_router
 from .services.portfolio_http import PortfolioScopeMiddleware
 from .services.upload_policy import UploadStaticFiles
@@ -120,13 +120,7 @@ async def lifespan(app: FastAPI):
     # Load plugins
     if settings.plugin_dirs:
         loaded = load_plugins(settings.plugin_dirs)
-        for plugin in loaded:
-            try:
-                plugin.register_routes(app, f"/api/v1/plugins/{plugin.name}")
-                plugin.on_startup()
-                logger.info("Plugin loaded: %s v%s", plugin.name, plugin.version)
-            except Exception:
-                logger.exception("Failed to start plugin: %s", plugin.name)
+        start_plugins(app, loaded)
 
     # --- Production safety checks ---
     _validate_startup_config()
@@ -148,7 +142,7 @@ async def lifespan(app: FastAPI):
     try:
         from .dependencies import cleanup_session, store
         from .services.payment_allocations import allocate_unassigned
-        result = allocate_unassigned(store)
+        result: dict[str, Any] = {"allocated": 0, "unassigned": []} if settings.immo_restore_probe else allocate_unassigned(store)
         if result["allocated"] or result["unassigned"]:
             logger.info("Payment allocation: %d bookings allocated, %d need a decision",
                         result["allocated"], len(result["unassigned"]))
@@ -184,11 +178,7 @@ async def lifespan(app: FastAPI):
         scheduler_task.cancel()
 
     # Shutdown plugins
-    for plugin in get_plugins():
-        try:
-            plugin.on_shutdown()
-        except Exception:
-            logger.exception("Error shutting down plugin: %s", plugin.name)
+    stop_plugins(app, get_plugins())
 
     logger.info("ImmoManager Pro shutting down")
 

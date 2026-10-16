@@ -77,7 +77,7 @@ def record_audit(unit, command_key, action, identifier, before, after):
     if unit.db is None:
         if not isinstance(audit_service._audit_store, audit_service.InMemoryAuditStore):
             raise HTTPException(503, 'Auditjournal passt nicht zum aktiven Speicher.')
-        unit.append(audit_service._audit_store._logs, AuditLogEntry(**audit))
+        unit.append(audit_service._audit_store._logs, AuditLogEntry(**audit), lock=audit_service._audit_store._lock)
     else:
         from ..db.orm_models import AuditLogORM
         unit.db.add(AuditLogORM(**audit))
@@ -279,7 +279,7 @@ def _update(store, actor_id, values, base_revision=None, idempotency_key=None, s
                 from ..models import AuditLogEntry
                 if not isinstance(audit_service._audit_store, audit_service.InMemoryAuditStore):
                     raise HTTPException(503, "Auditjournal passt nicht zum aktiven Speicher.")
-                unit.append(audit_service._audit_store._logs, AuditLogEntry(**audit))
+                unit.append(audit_service._audit_store._logs, AuditLogEntry(**audit), lock=audit_service._audit_store._lock)
             else:
                 from ..db.orm_models import AuditLogORM
                 unit.db.add(AuditLogORM(**audit))

@@ -1,3 +1,4 @@
+import ChannelPanel from '../features/channels/ChannelPanel';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -14,6 +15,7 @@ import { documentTypeLabel } from '../utils/documentType';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 import KpiAction from '../components/KpiAction';
+import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -54,6 +56,11 @@ function DocumentsWorkspace() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [viewerFile, setViewerFile] = useState(null);
+  const [postDocument, setPostDocument] = useState(null);
+  const toolId = searchParams.get('tool_id');
+  const closeTools = useCallback(() => setSearchParams(previous => {
+    const next = new URLSearchParams(previous); next.delete('tool_id'); return next;
+  }), [setSearchParams]);
   const [aktenwerkOpen, setAktenwerkOpen] = useState(false);
   const aktenwerkReady = useAktenwerkReady();
   const [uploadedUrl, setUploadedUrl] = useState('');
@@ -350,6 +357,7 @@ function DocumentsWorkspace() {
   return (
     <div className="page documents-page">
       <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
+      <a className="btn btn-secondary" href="/teha">TEHA-Empfang und Originalhistorie</a>
       <div className="toolbar" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>
@@ -506,7 +514,10 @@ function DocumentsWorkspace() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row)}
-        rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <span aria-hidden="true">↗</span>, onClick: () => setViewerFile(row) }] : []}
+        rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <span aria-hidden="true">↗</span>, onClick: () => setViewerFile(row) }, { label: 'Brief und Frankatur', onClick: () => setPostDocument(row) },
+          { label: 'Dokumentwerkzeuge', onClick: () => setSearchParams(previous => {
+            const next = new URLSearchParams(previous); next.set('tool_id', row.id); return next;
+          }) }] : []}
         rowName={row => row.title || row.id}
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : []}
       />}
@@ -526,6 +537,11 @@ function DocumentsWorkspace() {
         />
       )}
       {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
+      {postDocument && <section className="panel" aria-label="Brief und Frankatur">
+        <button type="button" className="btn btn-secondary" onClick={() => setPostDocument(null)}>Briefvorbereitung schließen</button>
+        <ChannelPanel key={postDocument.id} sourceId={postDocument.id} mode="post" />
+      </section>}
+      {toolId && <DocumentWorkbench key={toolId} documentId={toolId} onClose={closeTools} />}
     </div>
   );
 }

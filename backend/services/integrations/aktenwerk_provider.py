@@ -25,6 +25,7 @@ class AktenwerkProvider:
             config_fields=[
                 {"key": "base_url", "label": "Adresse von Aktenwerk", "type": "string", "required": True, "single_line": True},
                 {"key": "api_token", "label": "API-Token", "type": "string", "secret": True},
+                {"key": "receipt_status_supported", "label": "Gegenstelle unterstützt Exchange-ID-/SHA-Statusvertrag", "type": "boolean", "default": False},
                 {"key": "timeout", "label": "Timeout (Sekunden)", "type": "number", "min": 1, "max": 300, "default": 30},
                 {"key": "verify_tls", "label": "TLS-Zertifikat prüfen", "type": "boolean", "default": True},
             ],

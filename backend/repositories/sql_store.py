@@ -781,9 +781,13 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         return self.tenant.get_handover_protocol(protocol_id)
 
     def update_handover_protocol(self, protocol_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
+        from ..services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(self, protocol_id, data.model_dump())
         return self.tenant.update_handover_protocol(protocol_id, data)
 
     def delete_handover_protocol(self, protocol_id: str) -> None:
+        from ..services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(self, protocol_id, deleting=True)
         self.tenant.delete_handover_protocol(protocol_id)
 
     # --- Meter Readings ---

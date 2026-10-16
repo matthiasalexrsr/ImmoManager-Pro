@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 from .audit import log_action
 from .config import settings
 from .dependencies import begin_request_scope, end_request_scope
-from .logging_config import request_id_var
+from .logging_config import request_id_var, safe_query
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
             }
-            query = str(request.url.query) if request.url.query else None
+            query = safe_query(str(request.url.query)) if request.url.query else None
             if query:
                 extra["query"] = query
             client = request.client

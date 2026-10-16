@@ -6,11 +6,15 @@ All environment variables are consolidated here. Import `settings` to use them.
 import enum
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+SETTING_ORIGINS: dict[str, str] = {}
+SETTING_ORIGIN_FILES: dict[str, str] = {}
 
 
 def _get_version() -> str:
@@ -61,10 +65,31 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", str(Path(os.environ["DATA_DIR"]) / ".env")) if os.environ.get("DATA_DIR") else ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings):
+        def tracked(source, origin):
+            def read():
+                values = source()
+                for name in values:
+                    if name not in SETTING_ORIGINS:
+                        SETTING_ORIGINS[name] = origin
+                        if origin == "dotenv_file":
+                            from dotenv import dotenv_values
+                            files = source.env_file
+                            files = [files] if isinstance(files, (str, Path)) else files or []
+                            for path in files:
+                                if name.lower() in {key.lower() for key in dotenv_values(path)}:
+                                    SETTING_ORIGIN_FILES[name] = str(Path(path).resolve())
+                return values
+            return read
+        return tuple(tracked(source, origin) for source, origin in (
+            (init_settings, "explicit"), (env_settings, "process_env"),
+            (dotenv_settings, "dotenv_file"), (file_secret_settings, "secret_file")))
 
     # --- Environment profile ---
     # Set to "production" to enable strict safety checks at startup.
@@ -116,6 +141,14 @@ class Settings(BaseSettings):
 
     # --- Plugins ---
     plugin_dirs: Annotated[list[str], NoDecode] = []
+    immo_restore_probe: bool = False
+
+    file_storage_backend: Literal["local", "s3"] = "local"
+    s3_endpoint_url: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "immomanager"
+    s3_region: str = "eu-central-1"
 
     # --- Scheduled jobs ---
     # Every process ticks; durable runs and leases keep one worker per job.

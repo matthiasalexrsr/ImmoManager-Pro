@@ -20,7 +20,18 @@ class ScaleServer(Server):
     def env(self):
         temporary = self.dir / "tmp"
         temporary.mkdir(exist_ok=True)
-        return {**super().env(), "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false",
+        inherited = super().env()
+        # Keep explicit fixture values and OS essentials; never inherit provider credentials.
+        explicit = {"PYTHONPATH", "PYTHONUTF8", "PYTHONIOENCODING", "DATA_DIR", "DATABASE_URL", "UPLOADS_DIR",
+                    "BACKUP_DIR", "INTEGRATION_STATE_FILE", "LOG_FILE", "AI_CACHE_DIR", "JWT_SECRET_KEY", "ENVIRONMENT",
+                    "IMMO_TESTVERSION", "RATE_LIMIT_ENABLED", "AUTO_SEED_DEMO_DATA", "AUTO_MIGRATE",
+                    "SQLITE_PERSISTENT_STORE", "ALLOW_INMEMORY_FALLBACK", "PLUGIN_DIRS", "AI_ENABLED",
+                    "TASK_QUEUE_BACKEND", "JOB_SCHEDULER_ENABLED", "BACKUP_SCHEDULE_ENABLED", "CORS_ORIGINS"}
+        os_keys = {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "LANG"}
+        return {**{key: value for key, value in inherited.items() if key in explicit or key.upper() in os_keys},
+                "FILE_STORAGE_BACKEND": "local", "SECRET_KEYS": "",
+                "SECRET_KEY_FILE": str(self.dir / "secrets/keyring.json"),
+                "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false",
                 "AI_ENABLED": "false", "PLUGIN_DIRS": "[]", "TASK_QUEUE_BACKEND": "sync",
                 "TMP": str(temporary), "TEMP": str(temporary), "TMPDIR": str(temporary)}
 

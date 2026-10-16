@@ -38,7 +38,8 @@ describe('Aktenwerk selection and transfer results', () => {
       .mockRejectedValueOnce(new Error('Verbindung unterbrochen'));
     const outcome = await sendAll(ids, send);
     expect(send).toHaveBeenCalledTimes(2);
-    expect(outcome).toMatchObject({ sent: SEND_BATCH, failed: SEND_BATCH + 1 });
+    expect(outcome).toMatchObject({ sent: SEND_BATCH, unknown: SEND_BATCH, failed: 1 });
+    expect(outcome.results[SEND_BATCH].status).toBe('unknown');
     expect(outcome.results[SEND_BATCH].reason).toMatch(/unbestätigt/);
     expect(outcome.results.at(-1).reason).toMatch(/nicht gesendet/);
   });
@@ -51,5 +52,52 @@ describe('Aktenwerk selection and transfer results', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'An Aktenwerk übergeben (1)' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Versand nicht automatisch wiederholen.');
     expect(screen.getByText('1 an Aktenwerk übergeben')).toBeInTheDocument();
+  });
+});
+
+describe('Aktenwerk unconfirmed responses', () => {
+  it('displays missing remote hash confirmation as unresolved, never as a success', async () => {
+    api.get.mockResolvedValue({ entries: [entry] });
+    api.post.mockResolvedValue({
+      sent: 0, failed: 1, unknown: 0,
+      results: [{ exchange_id: entry.exchange_id, status: 'conflict',
+        reason: 'Gegenstelle hat Dokument-ID und SHA-256 nicht bestätigt.' }],
+    });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'An Aktenwerk übergeben (1)' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('SHA-256');
+    expect(screen.getByRole('alert')).toHaveTextContent('Nichts übergeben');
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves an ambiguous remote acceptance without counting it as failed or sent', async () => {
+    const result = await sendAll([entry.exchange_id], async ids => ({
+      sent: 0, failed: 0, unknown: 1, results: ids.map(exchange_id => ({
+        exchange_id, status: 'unknown', reason: 'Bitte bei Aktenwerk abgleichen.',
+      })),
+    }));
+    expect(result).toMatchObject({ sent: 0, failed: 0, unknown: 1 });
+    expect(result.message).toMatch(/Ausgang unklar/);
+  });
+});
+
+describe('Aktenwerk response completeness', () => {
+  it.each([
+    { sent: 1, failed: 0, results: [] },
+    { sent: 1, failed: 0, results: [{ exchange_id: 'immomanager:document:other', status: 'sent' }] },
+    { sent: 1, failed: 0, results: [{ exchange_id: entry.exchange_id, status: 'failed' }] },
+    { sent: 2, failed: 0, results: [
+      { exchange_id: entry.exchange_id, status: 'sent' },
+      { exchange_id: entry.exchange_id, status: 'sent' },
+    ] },
+  ])('treats incomplete, foreign or contradictory transfer receipts as unresolved', async reply => {
+    const send = vi.fn().mockResolvedValue(reply);
+    const result = await sendAll([entry.exchange_id], send);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ sent: 0, failed: 0, unknown: 1 });
+    expect(result.results).toEqual([expect.objectContaining({
+      exchange_id: entry.exchange_id, status: 'unknown',
+    })]);
+    expect(result.message).toMatch(/Ausgang unklar/);
   });
 });

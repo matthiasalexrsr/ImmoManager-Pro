@@ -44,7 +44,9 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 6: dunning cases, letters, outbox, replies, blocks, disputes, settings (likewise)
 # 7: deposit file: instalments, payments, interest rates, settlements (likewise)
 # 8: shared conversation notes, reversible commands and document intake (likewise)
-SNAPSHOT_FORMAT_VERSION = 9  # canonical receivable settlement links; private saved definitions are full-backup only
+# 9: canonical receivable settlement links; private saved reports are full-backup only
+# 10: document recovery/evidence records, joined with the canonical finance contract
+SNAPSHOT_FORMAT_VERSION = 10
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}
@@ -70,6 +72,28 @@ def _require_full_bank_backup(store: Any) -> None:
         present = bool(store.__dict__.get('_integration_connections', {}).get('bank_imports'))
     if present:
         raise SnapshotError(['Dieser Bestand enthält geschützte Bankoriginale. Bitte die vollständige Sicherung mit Datenbank und Schlüsselring verwenden; JSON kann diese Quellen nicht verlustfrei wiederherstellen.'])
+    _require_full_private_backup(store)
+
+
+def _require_full_private_backup(store: Any) -> None:
+    """A partial business snapshot cannot replace private workflow evidence."""
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_')
+    if hasattr(store, 'db'):
+        from sqlalchemy import inspect
+
+        from ..db.orm_models import Base
+
+        existing = set(inspect(store.db.connection()).get_table_names())
+        tables = [table for name, table in Base.metadata.tables.items()
+                  if name in existing and name.startswith(prefixes)]
+        present = any(store.db.scalar(select(1).select_from(table).limit(1)) is not None for table in tables)
+    else:
+        families = store.__dict__.get('_integration_connections', {})
+        present = any(rows for name, rows in families.items() if name.startswith(prefixes))
+    if present:
+        raise SnapshotError(['Dieser Bestand enthält geschützte Schnittstellen-, Kommunikations- oder Dokumentnachweise. '
+                             'Bitte die vollständige Sicherung mit Datenbank, Originaldateien und Schlüsselring verwenden; '
+                             'ein JSON-Teilbestand kann diese Quellen nicht verlustfrei sichern oder ersetzen.'])
 
 def _tax_snapshot_guard(store):
     from .annual_tax_storage import guard_destructive_reset

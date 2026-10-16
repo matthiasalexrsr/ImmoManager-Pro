@@ -160,9 +160,11 @@ def aktenwerk_on(monkeypatch):
         received.append(request)
         if request.url.path.endswith("/health"):
             return httpx.Response(200, json={"status": "ok"})
+        exchange_id, sep, digest = request.headers["Idempotency-Key"].rpartition(":")
+        assert sep and len(digest) == 64
         if b"rechnung" in request.content and len(received) > 2:
-            return httpx.Response(409, json={"id": "aw-already"})
-        return httpx.Response(201, json={"id": f"aw-{len(received)}"})
+            return httpx.Response(409, json={"id": "aw-already", "exchange_id": exchange_id, "sha256": digest})
+        return httpx.Response(201, json={"id": f"aw-{len(received)}", "exchange_id": exchange_id, "sha256": digest})
 
     real_client = httpx.Client
     monkeypatch.setattr(httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(handler)))
@@ -176,7 +178,8 @@ def test_send_hands_documents_over_with_token_idempotency_and_metadata(owner, es
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["sent"] == 2 and body["failed"] == 2
-    assert body["message"] == "2 an Aktenwerk übergeben, 2 fehlgeschlagen"
+    assert body["message"] == "2 an Aktenwerk bestätigt, 2 abgelehnt/fehlgeschlagen"
+    assert body["unknown"] == 0
     statuses = {r["exchange_id"]: r["status"] for r in body["results"]}
     assert statuses[ids[0]] == "sent" and statuses[ids[1]] == "sent"
     assert statuses[ids[2]] == "failed" and statuses[ids[3]] == "failed"
@@ -356,3 +359,88 @@ def test_every_account_learns_only_whether_a_transfer_can_start(estate, aktenwer
 ])
 def test_document_types_map_to_kinds(document_type, kind):
     assert exchange.document_kind(document_type) == kind
+
+@pytest.mark.parametrize(("status", "receipt_kind", "expected"), [
+    (201, "verified", "sent"),
+    (200, "verified", "sent"),
+    (409, "verified", "already_present"),
+    (409, "bare", "conflict"),
+    (409, "wrong_hash", "conflict"),
+    (409, "wrong_exchange", "conflict"),
+    (409, "missing_remote_id", "conflict"),
+    (201, "bare", "unknown"),
+    (201, "wrong_hash", "unknown"),
+    (201, "wrong_exchange", "unknown"),
+    (202, "verified", "unknown"),
+    (500, "verified", "unknown"),
+    (401, "bare", "failed"),
+])
+def test_transfer_requires_verified_counterpart_receipt(owner, estate, monkeypatch, status, receipt_kind, expected):
+    monkeypatch.setitem(integration_manager._enabled, "aktenwerk", True)
+    monkeypatch.setitem(integration_manager._config, "aktenwerk",
+                        {"base_url": "https://aktenwerk.example.test", "api_token": "private-example", "timeout": 5})
+    sent_requests = []
+    original_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_requests.append(request)
+        exchange_id, sep, sha256 = request.headers["Idempotency-Key"].rpartition(":")
+        assert sep and len(sha256) == 64
+        body = {"id": "verified-id"}
+        if receipt_kind != "bare":
+            body["exchange_id"] = "immomanager:document:foreign" if receipt_kind == "wrong_exchange" else exchange_id
+            body["sha256"] = "0" * 64 if receipt_kind == "wrong_hash" else sha256
+        if receipt_kind == "missing_remote_id":
+            body.pop("id")
+        return httpx.Response(status, json=body)
+
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: original_client(transport=httpx.MockTransport(handler)))
+    document_id = f"immomanager:document:{estate['document'].id}"
+    response = owner.post(f"{API}/aktenwerk/send", json={"exchange_ids": [document_id]})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["results"][0]["status"] == expected
+    assert result["sent"] == int(expected in ("sent", "already_present"))
+    assert result["unknown"] == int(expected == "unknown")
+    assert result["failed"] == int(expected in ("failed", "conflict"))
+    assert len(sent_requests) == 1
+    if expected in ("sent", "already_present"):
+        assert result["results"][0]["aktenwerk_id"] == "verified-id"
+    else:
+        assert "aktenwerk_id" not in result["results"][0]
+        assert result["results"][0]["reason"]
+    assert "private-example" not in json.dumps(integration_manager.list_history("aktenwerk", limit=1))
+
+
+def test_transfer_lost_response_after_post_stays_unknown_and_is_not_retried(owner, estate, monkeypatch):
+    monkeypatch.setitem(integration_manager._enabled, "aktenwerk", True)
+    monkeypatch.setitem(integration_manager._config, "aktenwerk",
+                        {"base_url": "https://aktenwerk.example.test", "api_token": "private-example"})
+    original_client = httpx.Client
+    sent_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent_requests.append(request)
+        raise httpx.ReadTimeout("opaque synthetic timeout")
+
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: original_client(transport=httpx.MockTransport(handler)))
+    document_id = f"immomanager:document:{estate['document'].id}"
+    result = owner.post(f"{API}/aktenwerk/send", json={"exchange_ids": [document_id]})
+    assert result.status_code == 200, result.text
+    assert (result.json()["sent"], result.json()["unknown"], result.json()["failed"]) == (0, 1, 0)
+    assert result.json()["results"][0]["status"] == "unknown"
+    assert "opaque synthetic timeout" not in result.text
+    assert len(sent_requests) == 1
+
+@pytest.mark.parametrize(("input_amount", "expected"), [
+    ("1.005", "1.01"), ("-1.005", "-1.01"), ("0.004", "0.00"),
+    ("999999999999999.995", "1000000000000000.00"), (119, "119.00"),
+])
+def test_exchange_money_uses_decimal_half_up_without_float_cent_drift(input_amount, expected):
+    assert exchange._money(input_amount) == expected
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_exchange_rejects_non_finite_amounts(value):
+    with pytest.raises(ValueError):
+        exchange._money(value)

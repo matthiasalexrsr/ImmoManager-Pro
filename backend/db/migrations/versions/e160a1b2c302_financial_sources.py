@@ -69,4 +69,13 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError("Finanznachweise werden nicht gelöscht. Gesicherten Programm-/Datenstand wiederherstellen.")
+    from backend.db.migrations.retained import require_empty
+    connection = op.get_bind()
+    names = require_empty(connection, ('receivable_settlements', 'saved_finance_reports'),
+                          'Finanznachweise werden nicht gelöscht. Gesicherten Programm-/Datenstand wiederherstellen.')
+    if connection.exec_driver_sql('SELECT 1 FROM invoices WHERE performance_start IS NOT NULL OR performance_end IS NOT NULL LIMIT 1').first():
+        raise RuntimeError('Erfasste Leistungszeiträume bleiben erhalten. Vollbackup wiederherstellen.')
+    for name in names:
+        op.drop_table(name)
+    for name in ('performance_end', 'performance_start'):
+        op.drop_column('invoices', name)

@@ -63,7 +63,9 @@ def configuration_contract(store, actor_id):
                 'plugins': [plugin.to_dict() for plugin in get_plugins()],
                 'plugin_policy': 'Geladene Pythonplugins laufen mit Prozessrechten. Hier werden weder Installation noch Upgrade ausgelöst.',
                 'hooks': ['setting_consumers.bank_import_profile', 'setting_consumers.selected_connection',
-                          'setting_consumers.preview/apply', 'settings_catalogue.email_selection']}
+                          'setting_consumers.preview/apply', 'settings_catalogue.email_selection',
+                          'notification_email.preview / Communication.check_outbound'],
+                'notification_email_policy': 'Persönliche Hinweise: Vorschau und einzelne ausdrückliche Freigabe im bestehenden E-Mail-Ausgang; keine automatische Planung beim Ändern einer Einstellung. Aktuelle Kanalwahl, Ruhezeiten, Empfängeradresse und Quellrechte werden vor DATA erneut geprüft.'}
 
 
 def _preview(unit, context, property_id):

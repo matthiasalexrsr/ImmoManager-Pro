@@ -1,3 +1,4 @@
+import ChannelPanel from '../features/channels/ChannelPanel';
 import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../api';
@@ -15,6 +16,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 export default function Messages() {
   const [params] = useSearchParams();
   const [threads, setThreads] = useState([]);
+  const [channelThread, setChannelThread] = useState(null);
   const recordThread = useCallback(thread => {
     setThreads(current => current.map(item => item.id === thread.id ? thread : item));
   }, []);
@@ -203,6 +205,9 @@ export default function Messages() {
               <>
                 <div className="message-detail-header">
                   <h2>{selectedThread.subject}</h2>
+                  <button type="button" className="btn btn-secondary" aria-expanded={channelThread === selectedThread.id}
+                    onClick={() => setChannelThread(previous => previous === selectedThread.id ? null : selectedThread.id)}>WhatsApp-Vorgänge anzeigen</button>
+                  {channelThread === selectedThread.id && <ChannelPanel key={selectedThread.id} sourceId={selectedThread.id} mode="whatsapp" />}
                   {!focusMessage && <NotificationArrival record={selectedThread} ready={threadPage.status === 'ready'} />}
                   {arrivedMessage && selectedThread.id === focusThread && <section aria-label="Nachricht aus dem Hinweis">
                     <h3>Ausgewählte Nachricht</h3><p>{arrivedMessage.body}</p><small>{arrivedMessage.sender_name} · {arrivedMessage.sent_at}</small>

@@ -40,6 +40,43 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+  document-tools:
+    name: Native document engines and browser workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Install pinned local document tools
+        run: |
+          python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
+          sudo apt-get update
+          sudo apt-get install --yes tesseract-ocr-deu tesseract-ocr-eng
+          python -c "import glob, os; from pathlib import Path; paths=[p for p in glob.glob('/usr/share/tesseract-ocr/*/tessdata') if Path(p,'deu.traineddata').is_file() and Path(p,'eng.traineddata').is_file()]; assert len(paths)==1; print('TESSDATA_PREFIX='+paths[0], file=open(os.environ['GITHUB_ENV'],'a'))"
+          npm ci --prefix optional/document-editor
+          npm run build --prefix optional/document-editor
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+          npm install --prefix "$RUNNER_TEMP/document-browser" playwright@1.62.1
+          "$RUNNER_TEMP/document-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Exercise actual native engines and isolated application
+        run: |
+          python scripts/run_pro_matrix.py --backend sql --label document-tools backend/tests/test_document_work.py backend/tests/test_document_work_migration.py tools/document_pdf_engine_cases.py tools/document_ocr_engine_cases.py
+          python scripts/run_document_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/document-browser
+          python -c "import subprocess,sys; from pathlib import Path; files=list(Path('artifacts/document-browser').rglob('native-editor-roundtrip.docx')); assert len(files)==1; p=files[0]; subprocess.run([sys.executable,'scripts/check_document_editor_roundtrip.py',str(p.parents[1]/'fixtures/Langdokument.docx'),str(p)],check=True)"
+      - name: Preserve document evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-tools
+          path: |
+            artifacts/document-browser
+            artifacts/pro-tests
+
   backend:
     name: Backend ${{ matrix.store-backend }} (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -137,12 +174,13 @@ jobs:
   deploy-readiness:
     name: Deployment readiness
     runs-on: ubuntu-latest
-    needs: [frontend, backend, postgres, e2e-smoke]
+    needs: [frontend, document-tools, backend, postgres, e2e-smoke]
     if: ${{ always() }}
     steps:
       - name: Gate on pipeline status
         run: |
           if [ "${{ needs.frontend.result }}" != "success" ] || \
+             [ "${{ needs.document-tools.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
              [ "${{ needs.postgres.result }}" != "success" ] || \
              [ "${{ needs.e2e-smoke.result }}" != "success" ]; then

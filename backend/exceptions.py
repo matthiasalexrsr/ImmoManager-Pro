@@ -26,7 +26,8 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .logging_config import request_id_var
+from .logging_config import request_id_var, safe_query
+from .services.file_storage import StorageUnavailable
 from .storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def _request_context(request: Request) -> dict:
         "request_id": request_id_var.get() or "-",
     }
     if request.url.query:
-        ctx["query"] = str(request.url.query)
+        ctx["query"] = safe_query(str(request.url.query))
     if hasattr(request.state, "user"):
         user = request.state.user
         ctx["user_id"] = getattr(user, "id", None)
@@ -246,6 +247,13 @@ def register_exception_handlers(app: FastAPI) -> None:
             code.value, msg, ctx,
         )
         return _error_response(exc.status_code, code, msg)
+
+    @app.exception_handler(StorageUnavailable)
+    async def storage_unavailable_handler(request: Request, exc: StorageUnavailable):
+        response = _error_response(503, ErrorCode.SERVICE_UNAVAILABLE,
+                                   "Originalspeicher nicht erreichbar. Bitte erneut versuchen.")
+        response.headers["Retry-After"] = "5"
+        return response
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):

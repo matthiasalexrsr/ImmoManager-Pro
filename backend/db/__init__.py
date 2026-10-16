@@ -2,11 +2,13 @@ from . import (
     access_models,  # noqa: F401  (portfolio grants)
     bank_models,  # noqa: F401 (bank source originals and ledger links)
     business_qol_models,  # noqa: F401  (conversation notes, undo, document processing)
+    channel_models,  # noqa: F401 (external channel claims, originals and webhooks)
     communication_models,  # noqa: F401 (durable communication and original MIME)
     daily_models,  # noqa: F401 (personal notification receipts and commands)
     datev_models,  # noqa: F401
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)
+    document_work_models,  # noqa: F401 (document sessions, exports and evidence links)
     dunning_models,  # noqa: F401  (dunning: cases, letters, outbox, replies)
     finance_models,  # noqa: F401 (existing-money settlement links and report definitions)
     integration_attempt_models,  # noqa: F401  (private attempt and cursor receipts)
@@ -16,5 +18,6 @@ from . import (
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)
     service_contract_models,  # noqa: F401  (property service contracts and their links)
     tax_models,  # noqa: F401
+    teha_models,  # noqa: F401  (TEHA receive/published evidence)
     workspace_models,  # noqa: F401  (private drafts, saved views and navigation)
 )

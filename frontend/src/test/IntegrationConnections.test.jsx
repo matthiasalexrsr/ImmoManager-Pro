@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from '../api';
@@ -132,6 +132,7 @@ it('discards late details from A after navigating to B before A finishes', async
     return <><button onClick={() => navigate('/integration-connections?connection=c-b')}>Historieneintrag B öffnen</button><IntegrationConnections /></>;
   }
   render(<MemoryRouter initialEntries={['/integration-connections?connection=c-a']}><HistoryNavigation /></MemoryRouter>);
+  await waitFor(() => expect(api.get.mock.calls.some(([url]) => url.endsWith('/c-a'))).toBe(true));
   const aSignal = api.get.mock.calls.find(([url]) => url.endsWith('/c-a'))[1].signal;
   fireEvent.click(screen.getByRole('button', { name: 'Historieneintrag B öffnen' }));
   await screen.findByRole('heading', { name: 'Verbindung B' });

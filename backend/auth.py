@@ -251,6 +251,54 @@ def record_registration_attempt(client_ip: str) -> None:
     _register_limiter.record(client_ip)
 
 
+_registration_quota_lock = threading.Lock()
+
+
+def reserve_registration_attempt(client_ip: str) -> bool:
+    """Consume a public registration attempt across workers, refusing DB failures."""
+    if _auth_session_factory is None:
+        with _registration_quota_lock:
+            if check_register_rate_limit(client_ip):
+                return True
+            record_registration_attempt(client_ip)
+            return False
+    from sqlalchemy import select, text
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    from .db.access_models import RegistrationQuotaORM
+
+    session = _new_auth_session()
+    key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+    try:
+        dialect = session.get_bind().dialect.name
+        statement: Any
+        if dialect == "sqlite":
+            session.execute(text("BEGIN IMMEDIATE"))
+            statement = sqlite_insert(RegistrationQuotaORM).values(key_hash=key, attempts=[])
+        elif dialect == "postgresql":
+            statement = pg_insert(RegistrationQuotaORM).values(key_hash=key, attempts=[])
+        else:
+            raise RuntimeError("Unsupported quota database")
+        session.execute(statement.on_conflict_do_nothing(index_elements=["key_hash"]))
+        row = session.execute(select(RegistrationQuotaORM).where(
+            RegistrationQuotaORM.key_hash == key).with_for_update()).scalar_one()
+        now = datetime.now(timezone.utc).timestamp()
+        recent = [value for value in row.attempts if value > now - REGISTER_WINDOW_MINUTES * 60]
+        blocked = len(recent) >= MAX_REGISTER_ATTEMPTS
+        if not blocked:
+            recent.append(now)
+        row.attempts = recent
+        session.commit()
+        return blocked
+    except (SQLAlchemyError, RuntimeError):
+        session.rollback()
+        logger.warning("Registration quota unavailable; registration refused")
+        return True
+    finally:
+        session.close()
+
+
 # ---------------------------------------------------------------------------
 # T10: TOTP Two-Factor Authentication
 # ---------------------------------------------------------------------------

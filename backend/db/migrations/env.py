@@ -10,6 +10,8 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
 from sqlalchemy import create_engine, inspect, pool, text
 
 from backend.db.orm_models import Base
@@ -43,6 +45,18 @@ def _adopt_unversioned_database(connection) -> None:
     if inspector.has_table("alembic_version") and \
             connection.execute(text("SELECT 1 FROM alembic_version")).first() is not None:
         return
+    # A complete ORM-created desktop schema already contains the new private
+    # families. Only an exact schema match may be adopted at the current head;
+    # older/partial schemas still take every guarded historical upgrade below.
+    head = context.script.get_current_head()
+    if head is not None and context.get_revision_argument() == head:
+        comparison = MigrationContext.configure(connection, opts={'compare_type': True})
+        if not compare_metadata(comparison, target_metadata):
+            # Metadata callbacks install the same immutable guards, even when
+            # checkfirst finds that no table needs creating. No rows are seeded.
+            target_metadata.create_all(connection, checkfirst=True)
+            context.get_context().stamp(context.script, head)
+            return
     context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
 
 
@@ -71,6 +85,11 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             _adopt_unversioned_database(connection)
             context.run_migrations()
+        # SQLite's nontransactional-DDL mode has no per-step transaction when
+        # an exact current schema was only stamped. Persist that explicit
+        # adoption too; closing the connection must not roll the stamp back.
+        if connection.in_transaction():
+            connection.commit()
     connectable.dispose()
 
 

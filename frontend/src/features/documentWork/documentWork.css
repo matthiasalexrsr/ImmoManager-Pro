@@ -1,0 +1,23 @@
+.document-work-backdrop{position:fixed;inset:0;background:#10233899;z-index:1100;display:flex;align-items:center;justify-content:center;padding:16px}
+.document-work{background:var(--bg-primary,#fff);color:var(--text-primary,#1c2937);width:min(1400px,100%);height:95vh;overflow:auto;border-radius:12px;padding:20px;box-shadow:0 16px 70px #0005;min-width:0}
+.document-work header{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.document-work h2{overflow-wrap:anywhere;margin-top:0}
+.document-work code,.document-work pre{overflow-wrap:anywhere;white-space:pre-wrap;word-break:break-all}
+.document-work-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}
+.document-work label{display:flex;gap:5px;flex-direction:column;margin-bottom:8px}
+.document-work label:has(input[type=checkbox]){flex-direction:row;align-items:start}
+.document-work input,.document-work select,.document-work textarea{max-width:100%;min-width:0;padding:7px;border:1px solid #a6b2be;border-radius:5px}
+.document-work input[type=checkbox]{margin-top:4px}
+.document-work-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px);gap:20px}
+.document-work-grid>div{min-width:0}
+.document-work-grid .pdf-preview{height:clamp(28rem,64vh,54rem)}
+.document-work-grid p{margin:.65rem 0 1rem;overflow-wrap:anywhere}
+.document-work-grid+.document-work-toolbar{margin-top:1rem}
+.document-work aside{border-left:1px solid #d8dfe6;padding-left:16px}
+.document-invoice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.document-docx-host{min-height:600px;overflow:auto;background:#edf0f3;margin-top:12px}
+.document-annotation-surface{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.document-work-history{list-style:none;padding:0;display:grid;gap:8px}
+.document-work-history li{border:1px solid #d8dfe6;border-radius:5px;padding:10px;overflow-wrap:anywhere}
+.document-work-notice{padding:12px;background:#fff5d9;border:1px solid #e3c479;border-radius:6px}
+@media(max-width:760px){.document-work-backdrop{padding:0}.document-work{height:100dvh;border-radius:0;padding:12px}.document-work-grid{grid-template-columns:minmax(0,1fr)}.document-work aside{border-left:0;border-top:1px solid #d8dfe6;padding:12px 0}.document-work-toolbar>*{max-width:100%}.document-invoice-grid{grid-template-columns:minmax(0,1fr)}}

@@ -9,6 +9,7 @@ from typing import Any
 
 from ...config import settings
 from ...paths import get_data_dir
+from ..providers.teha_provider import TehaProvider
 from ..secret_box import SecretBox, SecretError, default_secret_box, is_sealed, token_key_id
 from .aktenwerk_provider import AktenwerkProvider
 from .base import IntegrationProvider, IntegrationRunRecord
@@ -55,6 +56,7 @@ class IntegrationManager:
             ListingPortalProvider(),
             HuggingFaceProvider(),
             AktenwerkProvider(),
+            TehaProvider(),
         ):
             self.register(provider)
         self._load_state()
@@ -286,6 +288,9 @@ class IntegrationManager:
         return current
 
     def run(self, integration_id: str, payload: dict) -> dict:
+        from ...config import settings
+        if settings.immo_restore_probe:
+            raise RuntimeError("Integrationen sind in der Wiederherstellungsprobe deaktiviert")
         provider = self._providers.get(integration_id)
         if provider is None:
             raise KeyError(integration_id)

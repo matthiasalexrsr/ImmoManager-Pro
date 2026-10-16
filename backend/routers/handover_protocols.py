@@ -152,6 +152,8 @@ def get_handover_protocol(protocol_id: str):
 def update_handover_protocol(protocol_id: str, payload: HandoverProtocolCreate):
     try:
         _editable(protocol_id)
+        from ..services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(store, protocol_id, payload.model_dump())
         _check_record(payload.contract_id, payload.unit_id, payload.status)
         return store.update_handover_protocol(protocol_id, payload)
     except (NotFoundError, ValidationError) as exc:
@@ -164,6 +166,8 @@ def patch_handover_protocol(protocol_id: str, payload: HandoverProtocolPatch):
     try:
         current = _editable(protocol_id)
         changes = payload.model_dump(exclude_unset=True)
+        from ..services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(store, protocol_id, changes)
         _check_record(changes.get("contract_id", current.contract_id), changes.get("unit_id", current.unit_id),
                       changes.get("status"))
         return store._patch_entity("handover_protocol", protocol_id, payload)
@@ -176,6 +180,8 @@ def delete_handover_protocol(protocol_id: str):
     """Delete a draft with its parts and the photo files no other protocol uses; a finalized one stays."""
     try:
         _editable(protocol_id)
+        from ..services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(store, protocol_id, deleting=True)
         files = {photo.file_url for photo in service.parts_of(store, {protocol_id})["handover_photos"]}
         store.delete_handover_protocol(protocol_id)
     except NotFoundError as exc:

@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import (
     authenticate_user,
-    check_register_rate_limit,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -19,10 +18,10 @@ from ..auth import (
     has_users,
     list_users,
     normalize_access,
-    record_registration_attempt,
     register_user,
     require_auth,
     require_role,
+    reserve_registration_attempt,
     revoke_token,
     set_user_password,
     update_user,
@@ -80,12 +79,11 @@ def register(payload: UserCreate, request: Request) -> UserRead:
     and self-registered accounts are always read-only.
     """
     client_ip = request.client.host if request.client else "unknown"
-    if check_register_rate_limit(client_ip):
+    if reserve_registration_attempt(client_ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
         )
-    record_registration_attempt(client_ip)
     with _registration_lock:
         if not has_users():
             role = "eigentuemer"

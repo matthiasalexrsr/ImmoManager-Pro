@@ -113,13 +113,17 @@ def send(payload: SendRequest, actor: Annotated[UserRead, Depends(require_auth)]
                                          "reason": "Dokument nicht gefunden oder nicht sichtbar"} for exchange_id in missing]
         outcome["results"] = results
         outcome["sent"] = sum(item["status"] in ("sent", "already_present") for item in results)
-        outcome["failed"] = len(results) - outcome["sent"]
-        sent, failed = outcome["sent"], outcome["failed"]
-        message = (f"{sent} an Aktenwerk übergeben" + (f", {failed} fehlgeschlagen" if failed else "")) if sent \
-            else "Nichts übergeben" + (f" ({failed} fehlgeschlagen)" if failed else "")
+        outcome["unknown"] = sum(item["status"] == "unknown" for item in results)
+        outcome["failed"] = len(results) - outcome["sent"] - outcome["unknown"]
+        sent, failed, unknown = outcome["sent"], outcome["failed"], outcome["unknown"]
+        message = (f"{sent} an Aktenwerk bestätigt" if sent else "Keine bestätigte Übergabe")
+        if failed:
+            message += f", {failed} abgelehnt/fehlgeschlagen"
+        if unknown:
+            message += f", {unknown} Ausgang unklar – bitte in Aktenwerk abgleichen"
         # the journal keeps which documents went where, not their content
-        return IntegrationActionResult(success=failed == 0 and sent > 0, message=message,
-                                       details={"sent": sent, "failed": failed,
+        return IntegrationActionResult(success=failed == 0 and unknown == 0 and sent > 0, message=message,
+                                       details={"sent": sent, "failed": failed, "unknown": unknown,
                                                 "results": [{k: v for k, v in r.items() if k != "title"} for r in results]})
 
     result = integration_manager.execute("aktenwerk", {"action": "send_documents", "exchange_ids": wanted,
@@ -128,5 +132,5 @@ def send(payload: SendRequest, actor: Annotated[UserRead, Depends(require_auth)]
         # disabled, not configured, or the journal is unavailable: nothing was sent
         raise HTTPException(409, result.get("message") or "Aktenwerk ist nicht bereit.")
     return {"message": result["message"], "sent": outcome["sent"], "failed": outcome["failed"],
-            "results": outcome["results"], **({"history_warning": result["history_warning"]}
+            "unknown": outcome["unknown"], "results": outcome["results"], **({"history_warning": result["history_warning"]}
                                              if result.get("history_warning") else {})}

@@ -33,6 +33,7 @@ import { handoverText } from './handoverProtocolText';
 import './HandoverProtocol.css';
 import useEntityFormDraft from '../../hooks/useEntityFormDraft';
 import CustomDraftNotice from '../../components/CustomDraftNotice';
+import HandoverEvidence from '../documentWork/HandoverEvidence';
 
 const DRAFT_FIELDS = ['protocol_date', 'tenant_present', 'landlord_present', 'overall_condition', 'notes',
   'tenant_signature', 'landlord_signature', 'rooms', 'defects', 'keys', 'meters'].map(key => ({ key }));
@@ -587,6 +588,7 @@ export default function HandoverProtocolEditor({ protocolId, onClose, onChanged,
           </>}
         </div>}
 
+        {service === handoverProtocolService && detail && <HandoverEvidence protocolId={currentId} />}
         <footer className="handover__footer">
           <button type="button" className="btn btn-secondary" disabled={busy === 'finalize'} onClick={requestClose}>{say('close')}</button>
         </footer>

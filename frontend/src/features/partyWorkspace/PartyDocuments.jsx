@@ -104,6 +104,7 @@ function DocumentCard({ document, contracts, onPreview, view }) {
         {error && <p className="party-inline-error" role="alert">{error}</p>}
       </div>
       <div className="party-document-actions">
+        <Link className="btn btn-sm btn-secondary" to={`/documents?tenant_id=${encodeURIComponent(document.tenant_id || '')}&tool_id=${encodeURIComponent(document.id)}`}>Werkzeuge</Link>
         <button type="button" className="btn btn-sm btn-secondary" onClick={() => onPreview(document)} disabled={!safeUrl} aria-label={`${text.preview}: ${document.title}`}><FileSearch size={15} aria-hidden="true" />{text.preview}</button>
         <button type="button" className="party-icon-button" onClick={handleDownload} disabled={!safeUrl || downloading} aria-label={`${downloading ? text.downloading : text.download}: ${document.title}`} title={text.download}><Download size={17} aria-hidden="true" /></button>
       </div>

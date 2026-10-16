@@ -262,8 +262,11 @@ def source_identity():
     def git(*args):
         return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True,
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    paths = git("ls-files", "--cached", "--others", "--exclude-standard").splitlines()
+    paths = [name for name in paths if name.startswith(("backend/", "frontend/src/", "tools/", "scripts/"))
+             and (REPO / name).is_file()]
     return {"head": git("rev-parse", "HEAD"), "changed_paths": git("status", "--short").splitlines(),
-            "sha256": {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in SOURCE_FILES}}
+            "sha256": {name: hashlib.sha256((REPO / name).read_bytes()).hexdigest() for name in sorted(paths)}}
 
 
 class Run:
@@ -640,6 +643,9 @@ def main(argv=None):
     parser.add_argument("--memory-mib", type=int, default=2048)
     parser.add_argument("--minimum-free-mib", type=int, default=1024)
     parser.add_argument("--no-receivables", action="store_true", help="Isolate booking/search pressure; records this exclusion")
+    parser.add_argument("--platform", action="store_true", help="Run real source/report/document/job/portable restore phases")
+    parser.add_argument("--platform-documents", type=int, default=100)
+    parser.add_argument("--platform-browser-module", type=Path, help="Explicit existing local Playwright module")
     args = parser.parse_args(argv)
     if args.rows < 1000 or args.rows % 10 or min(args.mixed_seconds, args.request_seconds, args.stage_seconds,
                                                 args.memory_mib, args.minimum_free_mib) <= 0:
@@ -654,6 +660,9 @@ def main(argv=None):
         run.setup()
         run.aggregates()
         run.searches()
+        if args.platform:
+            from tools.platform_scale_phases import run_platform
+            run_platform(run)
         run.mixed()
         run.data["status"] = "passed"
     except BaseException as exc:

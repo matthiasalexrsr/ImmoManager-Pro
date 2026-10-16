@@ -2,10 +2,37 @@
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .orm_models import Base
+
+
+class RegistrationQuotaORM(Base):
+    __tablename__ = "registration_quotas"
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempts: Mapped[list] = mapped_column(JSON, nullable=False)
+
+
+class PluginInstallationORM(Base):
+    __tablename__ = "plugin_installations"
+    name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    manifest: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    backups: Mapped[list] = mapped_column(JSON, nullable=False)
+    commands: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class StorageBindingORM(Base):
+    __tablename__ = "storage_bindings"
+    storage_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    bucket: Mapped[str] = mapped_column(String(200), nullable=False)
+    endpoint_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class UserAccessORM(Base):

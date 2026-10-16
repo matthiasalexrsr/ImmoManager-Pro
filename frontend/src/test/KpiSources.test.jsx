@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { api } from '../api';
@@ -95,16 +95,22 @@ describe('exact KPI source lists', () => {
     expect(screen.getByText('Einzelabrechnung B')).toBeInTheDocument();
   });
 
-  it('opens unread notifications and keeps them unread after a rejected mark-read request', async () => {
-    api.list.mockImplementation(async path => path === '/notifications' ? [{ id: 'n1', title: 'Offener Hinweis', status: 'unread', severity: 'warning' },
-      { id: 'n2', title: 'Gelesener Hinweis', status: 'read', severity: 'info' }] : []);
-    api.patch.mockRejectedValue(new Error('Lesestatus nicht gespeichert'));
+  it('opens the personal unread source and preserves it after a rejected archive receipt', async () => {
+    api.get.mockImplementation(async path => path.startsWith('/notifications/inbox?') ? {
+      items: [{ id: 'n1', title: 'Offener Hinweis', severity: 'warning', revision: 0, target: null,
+        target_error: 'Quelle nicht mehr vorhanden', created_at: '2026-10-15T09:00:00Z' }],
+      unread_count: 1, total: 1, snapshot: 'exact-source-snapshot', next_cursor: null,
+    } : {});
+    api.post.mockRejectedValue(new Error('Lesestatus nicht gespeichert'));
     show(<Messages />, '/messages?status=unread');
-    fireEvent.click(await screen.findByText('Offener Hinweis'));
+    await screen.findByText('Offener Hinweis');
+    fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Lesestatus nicht gespeichert');
     expect(screen.queryByText('Gelesener Hinweis')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ungelesen (1)' })).toBeInTheDocument();
-    expect(within(document.querySelector('.messages-list')).getByText('Offener Hinweis')).toBeInTheDocument();
-    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/notifications/n1', { status: 'read' }));
+    expect(screen.getByText('1 ungelesen · 1 in dieser Ansicht')).toBeInTheDocument();
+    expect(screen.getByText('Offener Hinweis')).toBeInTheDocument();
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/notifications/all/receipt', expect.objectContaining({
+      action: 'read_all', snapshot: 'exact-source-snapshot', idempotency_key: expect.any(String),
+    })));
   });
 });

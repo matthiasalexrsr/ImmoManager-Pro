@@ -826,7 +826,9 @@ def test_migration_up_down_and_refused_downgrade(tmp_path, monkeypatch):
     config = Config()
     config.set_main_option("script_location", str(ROOT / "backend" / "db" / "migrations"))
     config.set_main_option("sqlalchemy.url", url)
-    command.upgrade(config, "head")
+    # Exercise the historical review downgrade on its own schema revision.
+    # Later additive development heads intentionally refuse unrelated data loss.
+    command.upgrade(config, "c9f4a2e7b1d5")
     with sqlite3.connect(tmp_path / "app.db") as conn:
         conn.executescript("""
             INSERT INTO invoices (id, supplier, invoice_date, net_amount, vat_amount, gross_amount, status, created_at,

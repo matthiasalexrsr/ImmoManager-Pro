@@ -178,11 +178,11 @@ def receipt(unit, operation: str, payload, connection_id: str, response: dict) -
     commands.save_command(unit, unit.actor_id, "connection:" + operation, payload, context, response)
 
 
-def page(unit, model, actor_id: str, *, cursor: str | None = None, limit: int = 50,
+def page(unit, model, cursor_owner: str, *, cursor: str | None = None, limit: int = 50,
          sql_condition=None, memory_condition=None, **filters) -> dict:
     if not 1 <= limit <= 250:
         raise HTTPException(422, "Die Seitengröße muss zwischen 1 und 250 liegen.")
-    namespace = ["connection-page-v1", model.__tablename__, actor_id, filters]
+    namespace = ["connection-page-v1", model.__tablename__, cursor_owner, filters]
     decoded = commands.cursor_decode(cursor, namespace)
     anchor = None
     if decoded is not None:

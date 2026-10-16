@@ -26,6 +26,7 @@ from .routers import (
     business_qol,
     calendar,
     categories,
+    channels,
     communication,
     contacts,
     contracts,
@@ -35,6 +36,7 @@ from .routers import (
     deposits,
     dev_notes,
     diagnostics,
+    document_work,
     documents,
     dunning,
     escalation,
@@ -65,11 +67,13 @@ from .routers import (
     rent_charges,
     reports,
     review,
+    safe_actions,
     search,
     service_contracts,
     tasks,
     tasks_status,
     tax_rates,
+    teha,
     tenants,
     units,
     updates,
@@ -84,6 +88,7 @@ def build_api_v1() -> APIRouter:
 
     # Auth routes (public - no auth dependency)
     api_v1.include_router(auth.router)
+    api_v1.include_router(channels.public_router)
 
     # Protected routes
     _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
@@ -105,6 +110,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(workspace.router, dependencies=_auth_dep)
+    api_v1.include_router(safe_actions.router, dependencies=_auth_dep)
     api_v1.include_router(business_qol.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
@@ -114,6 +120,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
+    api_v1.include_router(document_work.router, dependencies=_auth_dep)
+    api_v1.include_router(document_work.evidence_router, dependencies=_auth_dep)
+    api_v1.include_router(teha.router, dependencies=_auth_dep)
     api_v1.include_router(tasks.router, dependencies=_auth_dep)
     api_v1.include_router(calendar.router, dependencies=_auth_dep)
     api_v1.include_router(listings.router, dependencies=_auth_dep)
@@ -137,6 +146,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(contacts.router, dependencies=_auth_dep)
     api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
     api_v1.include_router(messages.router, dependencies=_auth_dep)
+    api_v1.include_router(channels.router, dependencies=_auth_dep)
     api_v1.include_router(communication.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)

@@ -1,3 +1,4 @@
+import WhatsAppInbox from '../features/channels/WhatsAppInbox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -248,6 +249,7 @@ function ConnectionDetail({ connection, contract, onEdit, onChanged }) {
   }, [connection.id, cursor, attempt]);
   const updated = useCallback(run => setRuns(current => ({ ...current, items: current.items.map(item => item.id === run.id ? run : item) })), []);
   return <section className="connection-detail">
+    {connection.provider_id === 'whatsapp' && !connection.read_error && <WhatsAppInbox key={connection.id} connectionId={connection.id} />}
     <div className="connection-heading"><div><h2>{connection.name}</h2><p>{connection.provider_name} · Stand {connection.revision} · {connection.enabled ? 'Aktiv' : 'Deaktiviert'}</p></div>
       {canWrite && !connection.read_error && <button type="button" className="btn btn-secondary" onClick={onEdit}>Verbindung bearbeiten</button>}</div>
     {connection.read_error && <div role="alert">{connection.read_error}</div>}
@@ -307,7 +309,7 @@ export default function IntegrationConnections() {
     <div className="connection-heading"><div><h1 className="page-title">Verbindungen und Vorgänge</h1>
       <p>Geschützte Zugänge, geprüfte Vorschauen und nachvollziehbare Ergebnisse.</p></div>
       {canWrite && <button type="button" className="btn btn-primary" disabled={loading || !catalog.length} onClick={() => setEditor({ create: true })}>Verbindung anlegen</button>}</div>
-    <p><Link to="/integrations">Bisherige Anbieterübersicht</Link></p>
+    <p><Link to="/integrations">Bisherige Anbieterübersicht</Link> · <Link to="/teha">TEHA Kundenportal</Link></p>
     {error && <div role="alert" className="alert alert-danger">{error}<button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Übersicht erneut laden</button></div>}
     {loading && <p role="status">Verbindungen werden geladen …</p>}
     {!loading && !error && <div className="connection-layout"><aside aria-label="Verbindungen">

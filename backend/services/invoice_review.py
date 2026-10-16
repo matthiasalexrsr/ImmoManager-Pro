@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 from collections import defaultdict
 from collections.abc import Iterable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -297,8 +298,19 @@ def duplicate_check(store: Any, *, supplier: str, invoice_number: str | None, gr
 
 # ─── The original document ───────────────────────────────────────────────────
 
-def _file_digest(document: Any) -> str | None:
+def _file_digest(document: Any, rows: Any = None) -> str | None:
     from .file_storage import get_file_storage
+
+    if rows is not None:
+        from . import document_versions as archive
+        unit = archive.Unit(rows.store, rows.db, {}, None if rows.db is not None else archive.memory_archive(rows.store))
+        archived = archive.head(unit, document.id)
+        if archived is not None:
+            _, binding = archive.bind_document(unit, document.id)
+            archive.authorized_version(unit, document.id, archived.id, binding)
+            for _ in archive.verified_blocks(unit, archived):
+                pass
+            return archived.sha256
 
     url = getattr(document, "file_url", None) or ""
     if not url.startswith("/uploads/"):
@@ -358,7 +370,7 @@ def _terms(invoice: Any, values: dict, current: Any = None) -> dict:
     return result
 
 
-def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, actor_id: str | None) -> dict:
+def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, actor_id: str | None, *, _unit=None) -> dict:
     """Record the receipt of an invoice: of an existing one, or (payload.invoice) a new one."""
     from ..models import Invoice
 
@@ -371,7 +383,12 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
         if payload.invoice is not None:
             raise conflict("Eine vorhandene Rechnung wird nicht neu erfasst.")
         areas = (f"/invoices/{invoice_id}/review",)
-    with work(store, actor_id, areas) as unit:
+    if _unit is not None:
+        from .document_versions import check_account
+        check_account(_unit.user, write_areas=areas)
+        if _unit.actor_id != actor_id:
+            raise forbidden("Die Rechnung gehört zu einer anderen Bearbeitungssitzung.")
+    with (nullcontext(_unit) if _unit is not None else work(store, actor_id, areas)) as unit:
         rows = Rows.of(unit)
         user = unit.user
         if payload.invoice is not None:
@@ -425,7 +442,7 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
             document = rows.get("documents", document_id)
             if document is None:
                 raise NotFoundError("Beleg (Dokument) nicht gefunden")
-            digest = _file_digest(document)
+            digest = _file_digest(document, rows)
             if not invoice.source_document_id:
                 rows.update("invoices", invoice.id, source_document_id=document_id)
         now = stamp("invoice_reviews")
@@ -517,7 +534,7 @@ def patch_review(store: Any, invoice_id: str, payload: ReceiptPatch, actor_id: s
                 document = r.rows.get("documents", values["document_id"])
                 if document is None:
                     raise NotFoundError("Beleg (Dokument) nicht gefunden")
-                values["document_sha256"] = _file_digest(document)
+                values["document_sha256"] = _file_digest(document, r.rows)
                 if not r.invoice.source_document_id:
                     r.rows.update("invoices", r.invoice.id, source_document_id=document.id)
             else:
@@ -950,7 +967,7 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
     if document_id:
         found = rows.get("documents", document_id)
         if found is not None:
-            current = _file_digest(found)
+            current = _file_digest(found, rows)
             recorded = review.document_sha256 if review is not None else None
             integrity = ("unverified" if not recorded else "unavailable" if current is None
                          else "unchanged" if current == recorded else "changed")

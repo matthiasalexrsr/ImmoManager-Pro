@@ -77,7 +77,7 @@ export default function AktenwerkDialog({ onClose, ready, initialYear = '' }) {
     }
   };
 
-  const failed = outcome?.results?.filter(result => result.status === 'failed') || [];
+  const unresolved = outcome?.results?.filter(result => !['sent', 'already_present'].includes(result.status)) || [];
 
   return (
     <div className="modal-overlay" role="presentation" onClick={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
@@ -138,9 +138,9 @@ export default function AktenwerkDialog({ onClose, ready, initialYear = '' }) {
           )}
 
           {outcome && (
-            <div className={failed.length ? 'alert-error' : 'alert-info'} role={failed.length ? 'alert' : 'status'}>
+            <div className={unresolved.length ? 'alert-error' : 'alert-info'} role={unresolved.length ? 'alert' : 'status'}>
               {outcome.message}
-              {failed.length > 0 && <ul>{failed.slice(0, 8).map(item => <li key={item.exchange_id}>{entries.find(e => e.exchange_id === item.exchange_id)?.title || item.exchange_id}: {item.reason}</li>)}</ul>}
+              {unresolved.length > 0 && <ul>{unresolved.slice(0, 8).map(item => <li key={item.exchange_id}>{entries.find(e => e.exchange_id === item.exchange_id)?.title || item.exchange_id}: {item.reason}</li>)}</ul>}
             </div>
           )}
           {outcome?.history_warning && <div className="alert-error" role="alert">{outcome.history_warning}</div>}

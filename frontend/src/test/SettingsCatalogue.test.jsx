@@ -38,6 +38,7 @@ it('persists nothing on failure and retries exactly the same CAS command after a
   fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
   await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
   expect(api.put.mock.calls[1][1]).toEqual(first);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled());
 });
 it('restores unfinished input after unmount and preserves the original base revision', async () => {
   const first = mount(); fireEvent.change(await screen.findByLabelText(row.label), { target: { value: '21' } });
@@ -55,4 +56,33 @@ it('server and secret values expose no editable clear operation', async () => {
   expect(screen.getByText('••••••')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Speichern' })).not.toBeInTheDocument();
   expect(api.put).not.toHaveBeenCalled();
+});
+
+it('matches independent words, accent variants and scope without losing a pending draft', async () => {
+  const currency = { ...row, key: 'currency_display', label: 'Währungsdarstellung', value: 'symbol', group: 'Ansicht', choices: ['symbol', 'code'] };
+  api.get.mockResolvedValue({ items: [row, currency] });
+  mount(); await screen.findByLabelText(currency.label);
+  fireEvent.change(screen.getByLabelText('Suche nach Einstellung oder Bereich'), { target: { value: 'personal wahrung' } });
+  expect(screen.getByLabelText(currency.label)).toBeInTheDocument();
+  expect(screen.queryByLabelText(row.label)).not.toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'Währungssymbol (Quellwährung)' })).toBeInTheDocument();
+});
+
+it('can adopt the inherited value even while the unfinished input is invalid', async () => {
+  mount(); fireEvent.change(await screen.findByLabelText(row.label), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Vorgabe übernehmen' }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledWith('/auth/users/me/settings', expect.objectContaining({ reset: true, values: { reminder_days: '7' }, base_revision: 3 })));
+});
+
+it('a late successful answer cannot erase a newer edit after the card remounts', async () => {
+  let complete;
+  api.put.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  const first = mount();
+  fireEvent.change(await screen.findByLabelText(row.label), { target: { value: '14' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  first.unmount();
+  mount(); fireEvent.change(await screen.findByLabelText(row.label), { target: { value: '21' } });
+  await act(async () => { complete({ response: { _revision: 4 } }); });
+  expect(screen.getByLabelText(row.label)).toHaveValue(21);
+  expect(JSON.parse(sessionStorage.getItem('workspace:settings-reader:setting-draft:personal:reminder_days')).value).toBe('21');
 });

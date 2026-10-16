@@ -1,6 +1,6 @@
 """Actual consumers, token families and interleaved audit rollback; synthetic data only."""
 from datetime import datetime, timedelta, timezone
-from threading import Thread
+from threading import Event, Thread
 from uuid import uuid4
 
 import jwt
@@ -97,6 +97,83 @@ def test_family_read_failure_is_temporary_not_an_authorized_or_unknown_session(m
     assert 'synthetic private' not in str(error.value.detail)
     monkeypatch.setattr(auth, '_auth_session_factory', original)
     assert auth.decode_token(issued['access_token']).sub == actor.id
+
+
+def test_memory_token_checks_wait_for_revoke_rollback_before_deciding(monkeypatch):
+    if hasattr(store, 'db'):
+        pytest.skip('Memory interleaving oracle; SQL transactions provide isolation')
+    from backend.services import daily_sessions
+    actor, browser = client('session-interleaving')
+    issued = login(browser, actor.username)
+    family = auth.decode_token(issued['access_token']).sid
+    changed, finish, checked = Event(), Event(), Event()
+    outcomes: list[int | str] = []
+    def fail_after_mutation(*args, **kwargs):
+        changed.set()
+        assert finish.wait(timeout=5)
+        raise SQLAlchemyError('synthetic rollback after visible mutation')
+    monkeypatch.setattr(daily_state, 'remember', fail_after_mutation)
+    def revoke():
+        try:
+            daily_sessions.revoke(store, actor.id, family, {'base_revision': 1, 'idempotency_key': str(uuid4())})
+        except HTTPException as exc:
+            outcomes.append(exc.status_code)
+    def check():
+        try:
+            daily_sessions.check(family, actor.id)
+            outcomes.append('valid')
+        finally:
+            checked.set()
+    writer = Thread(target=revoke)
+    writer.start()
+    assert changed.wait(timeout=5)
+    reader = Thread(target=check)
+    reader.start()
+    try:
+        assert not checked.wait(timeout=0.1), 'Reader observed an uncommitted revoke'
+    finally:
+        finish.set()
+        writer.join(timeout=5)
+        reader.join(timeout=5)
+    assert not writer.is_alive() and not reader.is_alive()
+    assert len(outcomes) == 2 and 503 in outcomes and 'valid' in outcomes
+
+
+def test_memory_settings_read_does_not_expose_a_value_that_later_rolls_back(monkeypatch):
+    if hasattr(store, 'db'):
+        pytest.skip('Memory interleaving oracle; SQL transactions provide isolation')
+    from backend.services import settings_catalogue
+    actor, _ = client('setting-interleaving')
+    changed, finish, checked = Event(), Event(), Event()
+    outcomes: list[int | str] = []
+    def fail_after_mutation(*args, **kwargs):
+        changed.set()
+        assert finish.wait(timeout=5)
+        raise SQLAlchemyError('synthetic settings rollback after mutation')
+    monkeypatch.setattr(daily_state, 'remember', fail_after_mutation)
+    def write():
+        try:
+            settings_catalogue.update(store, actor.id, {'reminder_days': '30'}, 0, str(uuid4()))
+        except HTTPException as exc:
+            outcomes.append(exc.status_code)
+    def read():
+        try:
+            outcomes.append(settings_catalogue.prefs(store, actor.id)['reminder_days'])
+        finally:
+            checked.set()
+    writer = Thread(target=write)
+    writer.start()
+    assert changed.wait(timeout=5)
+    reader = Thread(target=read)
+    reader.start()
+    try:
+        assert not checked.wait(timeout=0.1), 'Read observed an uncommitted setting'
+    finally:
+        finish.set()
+        writer.join(timeout=5)
+        reader.join(timeout=5)
+    assert not writer.is_alive() and not reader.is_alive()
+    assert len(outcomes) == 2 and 503 in outcomes and '7' in outcomes
 
 
 @pytest.mark.parametrize('claims', [{}, {'sub': 'synthetic', 'sid': []}, {'sub': None}, {'sub': 'synthetic', 'type': None}])

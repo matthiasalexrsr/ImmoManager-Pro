@@ -7,6 +7,7 @@ Supports two storage backends:
 
 import json
 import logging
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional
@@ -42,9 +43,11 @@ class AuditStore(ABC):
 class InMemoryAuditStore(AuditStore):
     def __init__(self):
         self._logs: list[AuditLogEntry] = []
+        self._lock = threading.RLock()
 
     def add(self, entry: AuditLogEntry) -> None:
-        self._logs.append(entry)
+        with self._lock:
+            self._logs.append(entry)
 
     def list_all(
         self,
@@ -53,7 +56,8 @@ class InMemoryAuditStore(AuditStore):
         user_id: Optional[str] = None,
         action: Optional[str] = None,
     ) -> list[AuditLogEntry]:
-        results = self._logs
+        with self._lock:
+            results = list(self._logs)
         if entity_type:
             results = [e for e in results if e.entity_type == entity_type]
         if entity_id:
@@ -65,7 +69,8 @@ class InMemoryAuditStore(AuditStore):
         return results
 
     def clear(self) -> None:
-        self._logs.clear()
+        with self._lock:
+            self._logs.clear()
 
 
 class SQLAuditStore(AuditStore):

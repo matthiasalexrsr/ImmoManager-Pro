@@ -348,18 +348,26 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
 
 
 def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, delete: bool = False,
-           touch: bool = False, rebase: bool = False) -> dict:
+             touch: bool = False, rebase: bool = False, source_guard: tuple | None = None) -> dict:
     if kind not in MODELS:
         raise HTTPException(404, "Arbeitsstand nicht gefunden.")
     contexts.validate_json(body)
     if len(identifier) > 240 or not identifier:
         raise HTTPException(422, "Ungültige Kennung des Arbeitsstands.")
     operation = "delete" if delete else "touch" if touch else "rebase" if rebase else "put"
-    digest = hashlib.sha256(json.dumps([kind, identifier, operation, body], sort_keys=True, ensure_ascii=False,
+    command_parts = [kind, identifier, operation, body]
+    if source_guard is not None:
+        command_parts.append(source_guard)
+    digest = hashlib.sha256(json.dumps(command_parts, sort_keys=True, ensure_ascii=False,
                                        separators=(",", ":")).encode()).hexdigest()
     for attempt in range(2):
         try:
             with archive.work(store, actor_id, write_areas=("/workspace",)) as unit:
+                if source_guard:
+                    source_kind, source_id, expected_source = source_guard
+                    source = contexts.resolve_context(unit.store, source_kind, source_id, actor_id, lock=True)
+                    if not contexts.same_revision(expected_source, source["revision"]):
+                        raise HTTPException(409, "Quelle wurde geändert. Bitte Vorschlag erneut prüfen.")
                 with contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
                     prior = _get(unit, kind, identifier, lock=True)
                     command = _command(unit, body["idempotency_key"])

@@ -37,4 +37,8 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError("Persönliche Historie bleibt erhalten; kein automatischer Downgrade.")
+    from backend.db.migrations.retained import require_empty
+    names = require_empty(op.get_bind(), ('daily_commands', 'daily_user_state', 'daily_setting_rules'),
+                          'Persönliche Historie bleibt erhalten; kein automatischer Downgrade.')
+    for name in names:
+        op.drop_table(name)

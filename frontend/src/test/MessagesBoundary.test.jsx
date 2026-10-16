@@ -8,6 +8,8 @@ vi.mock('../api', () => ({ api: { list: vi.fn(), get: vi.fn(), post: vi.fn(), pa
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: () => undefined }) }));
 vi.mock('../contexts/DataStoreContext', () => ({ useEntities: () => ({ items: [] }) }));
 vi.mock('../components/FormModal', () => ({ default: () => null }));
+// Personal inbox has separate regressions; these tests own the thread transport boundary.
+vi.mock('../components/NotificationInbox', () => ({ default: () => null }));
 const threads = [{ id: 'a', subject: 'Vorgang A', message_count: 1 }, { id: 'b', subject: 'Vorgang B', message_count: 1 }];
 const message = (id, body) => ({ id, thread_id: id, sender_name: 'Pruefung', body, sent_at: '2026-10-15T09:00:00Z' });
 function deferred() { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
@@ -21,6 +23,10 @@ beforeEach(() => {
     return Promise.resolve([]);
   });
   api.get.mockImplementation(path => {
+    if (path.endsWith('/whatsapp/preview')) return Promise.resolve({ source_sha256: 'a'.repeat(64), asset_count: 0,
+      snapshot: { context: { title: 'Geprüfter Nachrichtenbezug' }, assets: [] } });
+    if (path.startsWith('/messages/channels/')) return Promise.resolve({ items: [], next_cursor: null });
+    if (path.startsWith('/messages/channel-options')) return Promise.resolve([]);
     const id = path.split('/')[3];
     return (reads[id]?.promise || Promise.resolve([])).then(items => ({ items, next_cursor: null }));
   });
@@ -193,4 +199,17 @@ it('ignores a send completion after a session change', async () => {
   await act(async () => sending.resolve(message('a', 'Private Nachricht')));
   expect(api.get).toHaveBeenCalledTimes(calls);
   expect(screen.queryByRole('heading', { name: 'Vorgang A' })).not.toBeInTheDocument();
+});
+
+
+it('opens WhatsApp only for the explicitly selected thread and closes it on switching', async () => {
+  await open(); choose('a');
+  expect(api.get.mock.calls.some(([path]) => path.endsWith('/whatsapp/preview'))).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'WhatsApp-Vorgänge anzeigen' }));
+  expect(await screen.findByText(/Geprüfter Nachrichtenbezug/)).toBeInTheDocument();
+  expect(api.get.mock.calls.some(([path]) => path === '/messages/threads/a/whatsapp/preview')).toBe(true);
+  choose('b');
+  expect(screen.queryByText(/Geprüfter Nachrichtenbezug/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'WhatsApp-Vorgänge anzeigen' })).toHaveAttribute('aria-expanded', 'false');
+  expect(api.post).not.toHaveBeenCalled();
 });

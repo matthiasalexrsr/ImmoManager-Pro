@@ -10,7 +10,12 @@ class Plugin(ABC):
     """Base class all plugins must inherit from.
 
     Plugins provide routes, migrations, locales, and lifecycle hooks.
+    They execute trusted Python code in this process and are never sandboxed.
     """
+
+    data_manifest: dict = {}
+    data_migrations: dict = {}
+    package_declaration: dict | None = None
 
     @property
     @abstractmethod
@@ -59,4 +64,6 @@ class Plugin(ABC):
             "name": self.name,
             "version": self.version,
             "description": self.description,
+            "sandboxed": False,
+            "status": getattr(self, "runtime_status", "discovered"),
         }

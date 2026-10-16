@@ -7,6 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel as PydanticBaseModel
 
 from .business_qol_models import BusinessCommand, ConversationNote, DocumentIntake, DuplicateException
+from .document_work_models import DocumentWorkEvent
 from .domain.booking_reversal import reversal_problem
 from .domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .domain.revision_time import next_updated_at
@@ -177,6 +178,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     properties: Dict[str, Property] = field(default_factory=dict)
     units: Dict[str, Unit] = field(default_factory=dict)
     documents: Dict[str, Document] = field(default_factory=dict)
+    document_work_events: Dict[str, DocumentWorkEvent] = field(default_factory=dict)
     invoices: Dict[str, Invoice] = field(default_factory=dict)
     maintenance_cases: Dict[str, MaintenanceCase] = field(default_factory=dict)
     receivables: Dict[str, Receivable] = field(default_factory=dict)
@@ -1793,6 +1795,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
 
     @atomic_memory_update("handover_protocols")
     def update_handover_protocol(self, proto_id: str, data: HandoverProtocolCreate) -> HandoverProtocol:
+        from .services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(self, proto_id, data.model_dump())
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
         old = self.handover_protocols[proto_id]
@@ -1807,6 +1811,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         return item
 
     def delete_handover_protocol(self, proto_id: str) -> None:
+        from .services.document_work import ensure_protocol_evidence_kept
+        ensure_protocol_evidence_kept(self, proto_id, deleting=True)
         if proto_id not in self.handover_protocols:
             raise NotFoundError("Übergabeprotokoll nicht gefunden")
         # Cascade like the SQL foreign keys: meter readings, rooms, defects, keys, photos

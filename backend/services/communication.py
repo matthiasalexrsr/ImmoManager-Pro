@@ -186,7 +186,10 @@ class Communication:
         original_portfolios = set(data.get('origin_portfolio_ids', data.get('source', {}).get('portfolio_ids', [])))
         if not scope.unrestricted and not original_portfolios.issubset(set(scope.portfolio_ids)):
             raise HTTPException(404, 'Nachricht nicht gefunden.')
-        if row.thread_id:
+        if data.get('notification_recipient_id'):
+            from .notification_email import context as notification_context
+            _, context = notification_context(unit, data)
+        elif row.thread_id:
             context = self.thread_context(unit, row.thread_id)
         elif row.kind == 'template':
             context = dict(kind='integration_connection', entity_id=row.id, property_id=None)
@@ -217,17 +220,17 @@ class Communication:
     def page(self, actor_id, *, kind='outbound', thread_id=None, cursor=None, limit=50):
         if kind == 'manual_dunning':
             return self.manual_dunning_page(actor_id, thread_id=thread_id, cursor=cursor, limit=limit)
-        if kind not in ('draft', 'outbound', 'inbound', 'template', 'mailbox'):
+        if kind not in ('draft', 'outbound', 'inbound', 'template', 'mailbox', 'notification'):
             raise HTTPException(422, 'Unbekannte Nachrichtenart.')
         with self.work(actor_id) as unit:
             if thread_id:
                 resolve_context(unit.store, 'message_thread', thread_id, actor_id)
-            elif not scope_from_user(unit.user).unrestricted:
+            elif kind != 'notification' and not scope_from_user(unit.user).unrestricted:
                 raise HTTPException(403, 'Bitte eine berechtigte Konversation öffnen.')
             filters = dict(kind=kind)
             if thread_id:
                 filters['thread_id'] = thread_id
-            if kind == 'draft':
+            if kind in ('draft', 'notification'):
                 filters['actor_id'] = actor_id
             result = dbs.page(unit, Item, actor_id, cursor=cursor, limit=limit, **filters)
             result['items'] = [self.public(unit, row) for row in result['items']]
@@ -393,6 +396,12 @@ class Communication:
                 dbs.revision(snippet, payload.snippet_revisions[identifier])
         return context, connection, config, self.attachments(unit, payload)
 
+    def check_outbound(self, unit, data):
+        if data.get('notification_recipient_id'):
+            from .notification_email import check
+            return check(self, unit, data)
+        return self.check_source(unit, Draft(idempotency_key='worker', **{key: value for key, value in data.items() if key in Draft.model_fields}))
+
     def evidence(self, unit, row, raw):
         if len(raw) > MAX_BYTES * 2:
             raise HTTPException(413, 'Die Nachricht ist zu groß; das Original bleibt auf dem Server.')
@@ -515,20 +524,20 @@ class Communication:
             if prior:
                 return prior
             dbs.revision(row, payload.base_revision)
-            if row.kind != 'outbound' or row.state not in (('failed', 'blocked') if retry else ('preview',)):
+            if row.kind not in ('outbound', 'notification') or row.state not in (('failed', 'blocked') if retry else ('preview',)):
                 raise HTTPException(409, 'Dieser Zustand erlaubt keinen Versand. Unklare Ergebnisse zuerst abgleichen.')
             data = self.data(row)
-            source = Draft(idempotency_key=payload.idempotency_key,
-                           **{key: value for key, value in data.items() if key in Draft.model_fields})
-            self.check_source(unit, source)
-            draft = dbs.row(unit, Item, data['draft_id'])
-            expected_draft_revision = data['draft_revision'] + (1 if retry else 0)
-            if draft.revision != expected_draft_revision or draft.state != ('released' if retry else 'draft'):
-                raise HTTPException(409, 'Der Entwurf wurde geändert. Bitte eine neue Vorschau erstellen.')
+            self.check_outbound(unit, data)
+            draft = None
+            if not data.get('notification_recipient_id'):
+                draft = dbs.row(unit, Item, data['draft_id'])
+                expected_draft_revision = data['draft_revision'] + (1 if retry else 0)
+                if draft.revision != expected_draft_revision or draft.state != ('released' if retry else 'draft'):
+                    raise HTTPException(409, 'Der Entwurf wurde geändert. Bitte eine neue Vorschau erstellen.')
             raw = self.raw(unit, row)
             if sha(raw) != payload.mime_sha256:
                 raise HTTPException(409, 'Die Bestätigung gehört zu einer anderen Vorschau.')
-            if not retry:
+            if not retry and draft is not None:
                 self.transition(unit, draft, 'released', 'Versandfreigabe ist an diesen Entwurf gebunden')
             row = self.transition(unit, row, 'ready', 'Versand ausdrücklich bestätigt', lease_token=None, lease_until=None)
             self.command(unit, operation, payload, context, row)
@@ -577,8 +586,7 @@ class Communication:
             elif row.state != 'ready':
                 return None
             data = self.data(row)
-            source = Draft(idempotency_key='worker', **{k: v for k, v in data.items() if k in Draft.model_fields})
-            self.check_source(unit, source)
+            self.check_outbound(unit, data)
             token = uuid4().hex
             self.transition(unit, row, 'claimed', lease_token=token, lease_until=dbs.now() + timedelta(seconds=180))
             return token
@@ -587,8 +595,7 @@ class Communication:
         with self.work(actor_id, True) as unit:
             row = self.fenced(unit, identifier, token)
             data = self.data(row)
-            source = Draft(idempotency_key='worker', **{k: v for k, v in data.items() if k in Draft.model_fields})
-            _, _, config, _ = self.check_source(unit, source)
+            _, _, config, _ = self.check_outbound(unit, data)
             raw = self.raw(unit, row)
             self.transition(unit, row, 'data_pending', 'Dauerhafter Checkpoint unmittelbar vor DATA')
             return data, config, raw

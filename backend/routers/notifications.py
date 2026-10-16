@@ -11,6 +11,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..auth import require_auth
 from ..dependencies import store
@@ -25,6 +26,7 @@ from ..models import (
     UserRead,
 )
 from ..services import notification_inbox as personal
+from ..services.notification_email import Preview as EmailPreview
 from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, receivable_debtor
 from ..storage import NotFoundError, ValidationError
 
@@ -69,6 +71,21 @@ def notification_receipt(notification_id: str, payload: ReceiptCommand, actor: U
         return personal.mutate(store, actor.id, notification_id, payload.model_dump())
     except NotFoundError as exc:
         raise HTTPException(404, "Hinweis oder Quelle nicht zugänglich.") from exc
+
+
+@router.post('/{notification_id}/email-preview')
+def notification_email_preview(notification_id: str, payload: EmailPreview, actor: UserRead = Depends(require_auth)):
+    from ..services.communication import Communication
+    from ..services.integrations.manager import integration_manager
+    from ..services.notification_email import preview
+    try:
+        return preview(Communication(store, integration_manager), notification_id, payload, actor.id)
+    except NotFoundError as exc:
+        raise HTTPException(404, 'Hinweis oder Quelle nicht zugänglich.') from exc
+    except IntegrityError as exc:
+        raise HTTPException(409, 'E-Mail-Vorschau gleichzeitig geändert. Bitte erneut abgleichen.') from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(503, 'E-Mail-Vorschau nicht bestätigt. Denselben Befehl erneut versuchen.') from exc
 
 
 # ---------------------------------------------------------------------------

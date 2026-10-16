@@ -3,6 +3,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 # Select store backend for tests.  Set TEST_STORE_BACKEND=sql to exercise
 # the SQLAlchemy persistence path (default: in-memory store).
 _backend = os.environ.get("TEST_STORE_BACKEND", "memory")
@@ -30,3 +32,16 @@ os.environ.setdefault("SECRET_KEY_FILE", str(_runtime / "secrets" / "keyring.jso
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+@pytest.fixture(autouse=True)
+def isolated_private_memory_families(monkeypatch):
+    """New private families are outside the legacy dataclass clear_all fixture.
+
+    Give each test its own journal without changing production reset/restore
+    guards. SQL tests already own their database and reset all mapped tables.
+    """
+    from backend.dependencies import store
+
+    if not hasattr(store, 'db'):
+        monkeypatch.setitem(store.__dict__, '_integration_connections', {})

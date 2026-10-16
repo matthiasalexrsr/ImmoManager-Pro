@@ -27,8 +27,9 @@ import re
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Iterable
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 SCHEMA = "immomanager-aktenwerk/1"
 EXCHANGE_PREFIX = "immomanager"
@@ -82,7 +83,10 @@ def _money(value: Any) -> str | None:
     """Amounts as decimal strings (cents), never as binary floats."""
     if value is None:
         return None
-    return f"{round(float(value) * 100) / 100:.2f}"
+    amount = Decimal(str(value))
+    if not amount.is_finite():
+        raise ValueError("Nicht-endlicher Geldbetrag im Quelldatensatz.")
+    return format(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), ".2f")
 
 
 @dataclass
@@ -397,9 +401,38 @@ def check_connection(config: dict, client=None) -> tuple[bool, str]:
     return True, "Verbindung zu Aktenwerk geprüft; nichts übertragen."
 
 
+def _confirmed_receipt_id(response, exchange_id: str, sha256: str) -> str | None:
+    """Never infer a matching remote original from HTTP success or 409 alone.
+
+    The counterpart must explicitly bind its own identifier to *both* the
+    canonical exchange identity and the exact bytes. Otherwise the outcome is
+    unresolved and requires a read-only reconciliation at the counterpart.
+    """
+    try:
+        receipt = response.json()
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(receipt, dict):
+        return None
+    receipt = receipt.get("receipt", receipt)
+    if not isinstance(receipt, dict):
+        return None
+    remote_id = receipt.get("id")
+    file = receipt.get("file")
+    if (receipt.get("exchange_id") != exchange_id or receipt.get("sha256") != sha256
+            or receipt.get("status", "stored") not in ("stored", "already_present", "sent")
+            or receipt.get("schema", SCHEMA) != SCHEMA
+            or (isinstance(file, dict) and file.get("sha256", sha256) != sha256)
+            or not isinstance(remote_id, str) or not 0 < len(remote_id.strip()) <= 256):
+        return None
+    return remote_id
+
+
 def send_entries(store, entries: list[Entry], config: dict, actor_id: str, client=None) -> dict:
-    """POST each document to Aktenwerk; results per entry, a failure does not stop the others."""
+    """POST each document; an unverified acknowledgement is never a successful transfer."""
     import httpx
+
+    from . import aktenwerk_receipts as durable
 
     owns = client is None
     client = client or httpx.Client(timeout=float(config.get("timeout") or 30), verify=config.get("verify_tls", True))
@@ -413,6 +446,21 @@ def send_entries(store, entries: list[Entry], config: dict, actor_id: str, clien
                 continue
             info = file_info(data, name, entry)
             metadata = {"schema": SCHEMA, **entry.as_manifest(info)}
+            identifier, prior = durable.begin(store, actor_id, entry, config, data, info)
+            if prior is not None:
+                if prior["status"] == "unknown" and config.get("receipt_status_supported") is True:
+                    try:
+                        status = client.get(_endpoint(config, "/documents/" + quote(entry.exchange_id, safe="")),
+                                            headers=_headers(config), params={"sha256": info["sha256"]})
+                        confirmed_id = _confirmed_receipt_id(status, entry.exchange_id, info["sha256"]) if status.status_code == 200 else None
+                        if confirmed_id is not None:
+                            prior = {"exchange_id": entry.exchange_id, "status": "already_present",
+                                     "aktenwerk_id": confirmed_id, "sha256": info["sha256"], "retry_automatically": False}
+                            durable.finish(store, actor_id, identifier, prior)
+                    except (httpx.HTTPError, ValueError):
+                        pass
+                results.append({**prior, "title": entry.title})
+                continue
             try:
                 response = client.post(
                     _endpoint(config, "/documents"),
@@ -420,28 +468,43 @@ def send_entries(store, entries: list[Entry], config: dict, actor_id: str, clien
                     data={"metadata": json.dumps(metadata, ensure_ascii=False)},
                     files={"file": (info["name"], data, info["media_type"])},
                 )
-            except httpx.HTTPError as exc:
+            except (httpx.ConnectError, httpx.ConnectTimeout):
                 results.append({"exchange_id": entry.exchange_id, "title": entry.title, "status": "failed",
-                                "reason": f"Aktenwerk nicht erreichbar ({type(exc).__name__})"})
+                                "reason": "Verbindung zu Aktenwerk kam nicht zustande; nichts bestätigt."})
+                durable.finish(store, actor_id, identifier, results[-1])
+                continue
+            except httpx.HTTPError:
+                # A timeout or dropped connection *after* POST may follow a commit.
+                # Retrying blindly can duplicate the external business action.
+                results.append({"exchange_id": entry.exchange_id, "title": entry.title, "status": "unknown",
+                                "reason": "Antwort nach Übertragung unklar. Vor erneutem Versand externen SHA-256 und Dokumentbezug abgleichen."})
+                durable.finish(store, actor_id, identifier, results[-1])
                 continue
             if response.status_code in (200, 201, 409):
-                # 409: Aktenwerk already holds exactly this file under this exchange id
-                try:
-                    body = response.json()
-                except ValueError:
-                    body = {}
-                results.append({"exchange_id": entry.exchange_id, "title": entry.title,
-                                "status": "already_present" if response.status_code == 409 else "sent",
-                                "aktenwerk_id": body.get("id") if isinstance(body, dict) else None,
-                                "sha256": info["sha256"]})
+                confirmed_id = _confirmed_receipt_id(response, entry.exchange_id, info["sha256"])
+                if confirmed_id is not None:
+                    results.append({"exchange_id": entry.exchange_id, "title": entry.title,
+                                    "status": "already_present" if response.status_code == 409 else "sent",
+                                    "aktenwerk_id": confirmed_id, "sha256": info["sha256"]})
+                else:
+                    # 409 can also mean conflicting bytes under the same ID.
+                    # 2xx without a verifiable receipt may already be stored.
+                    results.append({"exchange_id": entry.exchange_id, "title": entry.title,
+                                    "status": "conflict" if response.status_code == 409 else "unknown",
+                                    "reason": "Gegenstelle hat Dokument-ID und SHA-256 nicht übereinstimmend bestätigt. In Aktenwerk prüfen; nicht blind erneut senden."})
+            elif response.status_code == 202 or response.status_code == 408 or response.status_code >= 500:
+                results.append({"exchange_id": entry.exchange_id, "title": entry.title, "status": "unknown",
+                                "reason": f"Aktenwerk HTTP {response.status_code}: Ausgang unklar. Vor Wiederholung externen Zustand prüfen."})
             else:
                 reason = {401: "Zugang abgelehnt (Token prüfen)", 403: "Zugang abgelehnt (Token prüfen)",
                           413: "Datei zu groß für Aktenwerk", 415: "Dateityp von Aktenwerk nicht angenommen",
                           422: "Metadaten von Aktenwerk nicht angenommen"}.get(response.status_code,
                                                                               f"HTTP {response.status_code}")
                 results.append({"exchange_id": entry.exchange_id, "title": entry.title, "status": "failed", "reason": reason})
+            durable.finish(store, actor_id, identifier, results[-1])
     finally:
         if owns:
             client.close()
     sent = sum(1 for r in results if r["status"] in ("sent", "already_present"))
-    return {"sent": sent, "failed": len(results) - sent, "results": results}
+    unknown = sum(1 for r in results if r["status"] == "unknown")
+    return {"sent": sent, "failed": len(results) - sent - unknown, "unknown": unknown, "results": results}

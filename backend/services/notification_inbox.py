@@ -88,10 +88,10 @@ def _stats(unit, status=None, severity=None, kind=None):
                        and (not kind or contexts.KIND_ALIASES.get(n.entity_type, n.entity_type) == kind) for n, r in summaries)
         version = [(n.id, str(n.updated_at), r['revision']) for n, r in sorted(summaries, key=lambda pair: pair[0].id)]
         return selected, sum(own_status(r) == 'unread' for _, r in summaries), state.digest('inbox', version)
-    n, r, joined, own_status = _joined(unit)
-    selected = and_(*_filters(n, own_status, status, severity, kind)) if any((status, severity, kind)) else true()
-    row = unit.db.execute(select(func.count(), func.sum(case((own_status == 'unread', 1), else_=0)),
-        func.sum(case((selected, 1), else_=0)), func.max(n.c.updated_at), func.max(n.c.created_at),
+    n, r, joined, sql_status = _joined(unit)
+    sql_selected = and_(*_filters(n, sql_status, status, severity, kind)) if any((status, severity, kind)) else true()
+    row = unit.db.execute(select(func.count(), func.sum(case((sql_status == 'unread', 1), else_=0)),
+        func.sum(case((sql_selected, 1), else_=0)), func.max(n.c.updated_at), func.max(n.c.created_at),
         func.max(n.c.id), func.coalesce(func.sum(r.c.revision), 0)).select_from(joined)).one()
     # Receipt revisions are monotonic, including reopen; modified receipts cannot
     # disappear behind an unchanged unread count. The boundary covers ALL filters.
@@ -141,9 +141,9 @@ def _page(unit, status, severity, kind, limit, offset=0, after=None):
             if len(result) == limit:
                 break
         return result
-    n, r, joined, own_status = _joined(unit)
+    n, r, joined, sql_status = _joined(unit)
     query = select(*n.c, r.c.revision.label('receipt_revision'), r.c.payload.label('receipt_payload')).select_from(joined).where(
-        *_filters(n, own_status, status, severity, kind))
+        *_filters(n, sql_status, status, severity, kind))
     if after:
         stamp = datetime.fromisoformat(after[0]).replace(tzinfo=None)
         query = query.where(or_(n.c.created_at < stamp, and_(n.c.created_at == stamp, n.c.id < after[1])))

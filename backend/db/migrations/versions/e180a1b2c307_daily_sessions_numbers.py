@@ -23,4 +23,8 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError('Sitzungswiderrufe und Nummernreservierungen bleiben erhalten.')
+    from backend.db.migrations.retained import require_empty
+    names = require_empty(op.get_bind(), ('daily_auth_sessions', 'daily_number_reservations'),
+                          'Sitzungswiderrufe und Nummernreservierungen bleiben erhalten.')
+    for name in names:
+        op.drop_table(name)

@@ -63,16 +63,13 @@ def _load_env_file(path):
     if not os.path.isfile(path):
         return
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for raw_line in fh:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                key = key.strip()
-                value = value.strip().strip('"').strip("'")
-                if key and key not in os.environ:
-                    os.environ[key] = value
+        from dotenv import dotenv_values
+
+        from .runtime_origins import ENV_FILE_ORIGINS
+        for key, value in dotenv_values(path, interpolate=False).items():
+            if key and value is not None and key not in os.environ:
+                os.environ[key] = value
+                ENV_FILE_ORIGINS[key.lower()] = os.path.abspath(path)
     except OSError:
         print(f"WARNUNG: Runtime-Konfiguration konnte nicht gelesen werden: {path}")
 
@@ -399,6 +396,16 @@ if __name__ == "__main__":
     # On Windows frozen bundles, child processes re-execute the script and
     # freeze_support() ensures they exit cleanly instead of re-spawning.
     multiprocessing.freeze_support()
+
+    # Native PDF subprocesses must bypass the server launcher and its live
+    # runtime configuration/logfile, including in a frozen Windows bundle.
+    if sys.argv[1:2] == ["document-pdf-worker"]:
+        if len(sys.argv) != 3:
+            raise SystemExit(2)
+        from backend.services.document_pdf_worker import main as document_worker_main
+
+        document_worker_main(sys.argv[2])
+        raise SystemExit(0)
 
     # Set up a log file next to the .exe so errors survive a closed console
     _log_fh = _setup_logging_to_file()

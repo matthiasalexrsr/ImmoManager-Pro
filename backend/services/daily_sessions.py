@@ -4,6 +4,7 @@ The existing revocation service remains authoritative for individual JWTs. A
 session-family revoke additionally rejects ALL access/refresh tokens of that
 family. Old JWTs without a family retain the documented APIv1 token contract.
 """
+from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any
 from uuid import uuid4
@@ -63,7 +64,8 @@ def check(identifier, user_id):
 
 
 def inventory(store, actor_id, current=None):
-    with archive.work(store, actor_id) as unit:
+    from .. import auth
+    with auth._revocation_lock if not hasattr(store, 'db') else nullcontext(), archive.work(store, actor_id) as unit:
         rows = (unit.db.scalars(select(DailySessionORM).where(DailySessionORM.owner_id == actor_id)
                                .order_by(DailySessionORM.created_at.desc())).all() if unit.db is not None
                 else [deepcopy(row) for row in _sessions.values() if row['owner_id'] == actor_id])
@@ -74,8 +76,11 @@ def inventory(store, actor_id, current=None):
 
 
 def revoke(store, actor_id, identifier, body):
+    from .. import auth
     try:
-        with archive.work(store, actor_id, write_areas=('/auth/users/me/settings',)) as unit:
+        # Keep token checks/issuance outside the uncommitted mutation, including
+        # rollback. The archive unit's lock alone does not guard auth readers.
+        with auth._revocation_lock if not hasattr(store, 'db') else nullcontext(), archive.work(store, actor_id, write_areas=('/auth/users/me/settings',)) as unit:
             row = (unit.db.scalar(select(DailySessionORM).where(DailySessionORM.id == identifier,
                 DailySessionORM.owner_id == actor_id).with_for_update()) if unit.db is not None else deepcopy(_sessions.get(identifier)))
             data = row if isinstance(row, dict) else {key: getattr(row, key) for key in ('owner_id', 'revision', 'revoked_at')} if row else None

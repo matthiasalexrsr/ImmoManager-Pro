@@ -21,9 +21,11 @@ export default function SessionInventory() {
     try {
       if (!pending.current[row.id]) { try { pending.current[row.id] = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { /* optional recovery */ } }
       const body = pending.current[row.id] || { base_revision: row.revision, idempotency_key: crypto.randomUUID() };
-      pending.current[row.id] = body; sessionStorage.setItem(key, JSON.stringify(body));
+      pending.current[row.id] = body;
+      try { sessionStorage.setItem(key, JSON.stringify(body)); } catch { /* in-memory retry remains available */ }
       await api.post(`/auth/users/me/settings/sessions/${encodeURIComponent(row.id)}/revoke`, body); same();
-      sessionStorage.removeItem(key); delete pending.current[row.id]; setConfirm(null);
+      try { sessionStorage.removeItem(key); } catch { /* optional recovery */ }
+      delete pending.current[row.id]; setConfirm(null);
       setData(current => ({ ...current, items: current.items.map(item => item.id === row.id ? { ...item, revoked_at: new Date().toISOString() } : item) }));
       if (row.current) setError('Diese Sitzung wurde widerrufen. Bitte erneut anmelden.');
       else setAttempt(n => n + 1);

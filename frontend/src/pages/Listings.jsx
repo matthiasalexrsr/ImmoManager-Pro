@@ -1,3 +1,5 @@
+import MarketingPanel from '../features/channels/MarketingPanel';
+import ChannelPanel from '../features/channels/ChannelPanel';
 import NotificationArrival from '../components/NotificationArrival';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { prepareUploadAccess } from '../utils/uploadAccess';
@@ -232,6 +234,8 @@ export default function Listings() {
             <button className="btn btn-sm btn-secondary" onClick={() => setPreviewListing(null)}>Schließen</button>
           </div>
           <div className="panel-body">
+            <MarketingPanel key={`marketing-${previewListing.id}`} listingId={previewListing.id} />
+            <ChannelPanel key={previewListing.id} sourceId={previewListing.id} mode="listing" />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
               {Object.entries(PORTAL_TEMPLATES).map(([key, tmpl]) => (
                 <button

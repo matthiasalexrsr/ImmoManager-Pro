@@ -100,7 +100,8 @@ describe('Aktenwerk hand-over', () => {
   });
 
   it('says nothing was handed over when every document failed', async () => {
-    const outcome = await sendAll(['immomanager:document:x'], async () => ({ sent: 0, failed: 1, results: [] }));
+    const outcome = await sendAll(['immomanager:document:x'], async () => ({ sent: 0, failed: 1,
+      results: [{ exchange_id: 'immomanager:document:x', status: 'failed', reason: 'Zugang abgelehnt' }] }));
     expect(outcome.message).toBe('Nichts übergeben (1 fehlgeschlagen)');
   });
 });

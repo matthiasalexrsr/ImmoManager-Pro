@@ -114,11 +114,17 @@ Antworten:
 
 | Antwort | ImmoManager wertet als |
 | --- | --- |
-| `201` (neu) oder `200`, Text `{"id": "<aktenwerk-id>"}` | übergeben |
-| `409` (dieser Schlüssel liegt schon vor) | „bereits vorhanden“, also Erfolg |
+| `201` (neu) oder `200` mit geprüftem Receipt | übergeben |
+| `409` mit geprüftem Receipt | derselbe Originalinhalt liegt nachweislich bereits vor |
+| `409` ohne passendes Receipt | **Konflikt**, keine erfolgreiche Übernahme |
+| `200`/`201` ohne passendes Receipt, `202`, `408`, `5xx` oder Verbindungsabbruch nach POST | **Ausgang unklar**, vor Wiederholung extern abgleichen |
 | `401`/`403` | Zugang abgelehnt (Token prüfen) |
 | `413` / `415` / `422` | zu groß / Dateityp nicht angenommen / Metadaten nicht angenommen |
-| sonst | Fehlschlag mit HTTP-Status |
+| andere eindeutige Ablehnung | Fehlschlag mit HTTP-Status |
+
+**Seit 16.10.2026 verlangte Empfangsbestätigung:** Bei `200`, `201` und `409` muss Aktenwerk JSON `{"id":"<aktenwerk-id>","exchange_id":"<kanonische exchange_id>","sha256":"<hash der tatsächlich gespeicherten Bytes>"}` liefern. Alle drei Felder müssen vorhanden sein und exakt zur Anfrage passen. Eine HTTP-409-Antwort oder eine bloße Remote-ID beweist keine identischen Bytes. Eine bisherige Gegenstelle, die nur `{"id":"…"}` zurückgibt, ist **nicht kompatibel mit einer bestätigten Übernahme**, bis sie den Nachweis ergänzt. Alternativ ist eine erst zu spezifizierende **lesende** Statusabfrage mit denselben geprüften Identitäten erforderlich; ImmoManager erfindet dafür keinen Endpunkt.
+
+Bei möglicher Annahme und fehlendem bestätigten Receipt gilt **nicht blind erneut senden**. Es ist zuerst in Aktenwerk anhand von Exchange-ID und SHA-256 zu prüfen, was tatsächlich gespeichert wurde. Die lokale Antwort trennt `sent`, `already_present`, `conflict`, `unknown` und `failed`; `unknown` ist kein endgültiger Fehler.
 
 Jedes Dokument ist eine eigene Anfrage. Ein Fehlschlag hält die anderen nicht auf, und die Antwort nennt das Ergebnis pro Dokument.
 
@@ -148,7 +154,7 @@ Filter für `manifest` und `export`:
 
 Unbekannte Arten werden mit `422` abgelehnt.
 
-Antwort von `send`: `{"message": "2 an Aktenwerk übergeben, 1 fehlgeschlagen", "sent": 2, "failed": 1, "results": [{"exchange_id": "…", "status": "sent" | "already_present" | "failed", "aktenwerk_id": "…", "reason": "…"}]}`.
+Antwort von `send`: `{"message": "2 an Aktenwerk übergeben, 1 fehlgeschlagen", "sent": 2, "failed": 1, "results": [{"exchange_id": "…", "status": "sent" | "already_present" | "failed" | "unknown" | "conflict", "aktenwerk_id": "…", "reason": "…"}]}`.
 
 Ist Aktenwerk deaktiviert oder nicht eingerichtet, antwortet der Endpunkt mit `409` und sendet nichts. Jede Übergabe steht im Integrationsprotokoll mit den `exchange_ids`, aber ohne Dateiinhalt und ohne Token.
 
@@ -166,3 +172,33 @@ Ist Aktenwerk deaktiviert oder nicht eingerichtet, antwortet der Endpunkt mit `4
 - **Ablagestruktur und Verschlagwortung** auf Aktenwerk-Seite: Ordner nach `kind`/`year`/Objekt sind ein Vorschlag, die Felder dafür stehen im Manifest.
 - **Dokumente aus Aktenwerk in ImmoManager:** Aktenwerk kann den bestehenden Upload (`POST /api/v1/files/upload`, dann `POST /api/v1/documents` mit Bezug) nutzen. Einen eigenen Eingangsweg mit Dublettenprüfung über `sha256` gibt es noch nicht.
 - **Schlüssel des Steuerjahres:** Für Rechnungen ist es das Rechnungsdatum, nicht das Zahlungsdatum. Für Überschussrechnungen nach Zuflussprinzip sollte Aktenwerk die zugehörige Zahlung (Buchung) nachziehen.
+
+
+## Dauerhafter Übergabebeleg und optionaler Statusabgleich (Integration 16.10.2026)
+
+Vor einem HTTP-Schreibaufruf speichert ImmoManager die kanonische Exchange-ID,
+SHA-256 und die exakten Originalbytes verschlüsselt in einem dauerhaften Vorgang.
+Ein bestätigter Erfolg wird bei Wiederholung aus diesem Beleg beantwortet. Nach
+verlorener Antwort bleibt der Vorgang `unknown`; ein weiterer Aufruf sendet das
+Original nicht erneut. Abweichende Originalbytes unter derselben Exchange-ID
+verlangen eine neue Dokumentfassung. Ein Konflikt verlangt eine Prüfung der Gegenstelle.
+
+Ein positiver Empfangsbeleg muss eine nichtleere `id`, die unveränderte
+`exchange_id` und den exakten `sha256` bestätigen. Falls die Gegenstelle `status`,
+`schema` oder einen zusätzlichen Dateihash liefert, müssen auch diese Werte mit
+einer erfolgreichen Ablage und diesem Original übereinstimmen. HTTP 200/201/409
+allein ist kein Ablagenachweis.
+
+Der zusätzliche Schalter `receipt_status_supported` bleibt standardmäßig aus.
+Er darf nur aktiviert werden, wenn die Gegenstelle ausdrücklich folgenden
+Vertrag implementiert: `GET /api/immomanager/v1/documents/{URL-kodierte Exchange-ID}`
+mit Queryparameter `sha256` liefert bei HTTP 200 denselben vollständigen
+Empfangsbeleg. Eine Wiederholung eines unklaren Vorgangs nutzt dann ausschließlich
+diesen lesenden Abgleich. Die Anwendung folgt keiner vom Server gelieferten
+Status-URL. Dieser optionale Vertrag und eine reale Aktenwerk-Gegenstelle sind
+mit den synthetischen Integrationstests nicht als live verifiziert bezeichnet.
+
+Vollständige Datenbanksicherungen enthalten diese Vorgänge, Originalblöcke und
+Schlüssel. Der Wiederherstellungsnachweis prüft ihre verschlüsselten Inhalte,
+Quellhashes, Blockreihenfolge und vollständigen Originalhashes vor Freigabe der
+wiederhergestellten Daten.

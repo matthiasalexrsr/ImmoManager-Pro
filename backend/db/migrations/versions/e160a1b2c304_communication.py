@@ -40,4 +40,11 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError("Communication originals must be retained; restore a complete pre-upgrade backup instead.")
+    from backend.db.migrations.retained import require_empty
+    connection = op.get_bind()
+    names = require_empty(connection, ('communication_attachments', 'communication_blocks', 'communication_evidence', 'communication_items'),
+                          'Communication originals must be retained; restore a complete pre-upgrade backup instead.')
+    for name in names:
+        op.drop_table(name)
+    if connection.dialect.name == 'postgresql':
+        connection.exec_driver_sql('DROP FUNCTION IF EXISTS communication_evidence_guard()')

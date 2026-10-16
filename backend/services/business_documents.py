@@ -78,14 +78,25 @@ def file_hash(file_url: str) -> str:
         if isinstance(storage, LocalStorage):
             stream = storage._path(key).open("rb")
         elif isinstance(storage, S3Storage) and storage._client is not None:
-            stream = storage._client.get_object(Bucket=storage.bucket, Key=key)["Body"]
+            bound = storage.binding(key)
+            if storage.legacy_local is not None and bound is None:
+                stream = storage.legacy_local._path(key).open("rb")
+            else:
+                response = storage._call("get_object", key)
+                if response is None:
+                    raise HTTPException(404, "Datei nicht vorhanden.")
+                stream = response["Body"]
         else:
             raise HTTPException(503, "Dieser Dateispeicher unterstützt keine begrenzte Prüfsummenlesung.")
         try:
             checksum = hashlib.sha256()
             while block := stream.read(65536):
                 checksum.update(block)
-            return checksum.hexdigest()
+            digest = checksum.hexdigest()
+            if isinstance(storage, S3Storage) and bound is not None and digest != bound["sha256"]:
+                from .file_storage import StorageUnavailable
+                raise StorageUnavailable("Originalprüfsumme stimmt nicht mit der Speicherbindung überein")
+            return digest
         finally:
             stream.close()
     except (OSError, KeyError):
@@ -139,7 +150,13 @@ def analyze_bytes(content: bytes, file_url: str, *, use_ai: bool = False) -> dic
     return {"document_type": result.document_type, "summary": result.summary, "entities": result.entities,
             "invoice_number": result.invoice_number, "invoice_date": result.invoice_date,
             "total_amount": result.total_amount, "supplier": result.supplier, "cost_category": result.cost_category,
-            "ai_model": result.ai_model}
+            "ai_model": result.ai_model,
+            "origin": {"method": "ai" if result.ai_model else "regex", "model": result.ai_model},
+            "confidence": {"document_type": result.document_type_confidence if result.ai_model else None,
+                           "other_fields": None},
+            "source": {"file_url": file_url, "sha256": hashlib.sha256(content).hexdigest(),
+                       "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()},
+            "confirmation": {"required": True, "confirmed": False}, "financial_writes": False}
 
 
 def _public(context: dict, item: DocumentIntake | None, user: dict) -> dict:
@@ -318,7 +335,11 @@ def review_document(store, identifier: str, payload: ReviewDocument, actor_id: s
                 setattr(row, key, office.utc(value).replace(tzinfo=None) if isinstance(value, datetime) else value)
             unit.db.flush()
         record_unit_changes(unit, "documents", original, updated)
+        proposal = dict(item.result or {})
+        proposal["confirmation"] = {"required": True, "confirmed": True, "actor_id": actor_id,
+                                    "at": office.timestamp().isoformat(), "fields": sorted(changes)}
         item = item.model_copy(update={"status": "done", "source_revision": updated.updated_at.isoformat(),
+                                      "result": proposal,
                                       "property_id": updated.property_id,
                                       "updated_at": next_updated_at(item.updated_at, office.timestamp())})
         office.put_record(unit, "business_document_intake", item)

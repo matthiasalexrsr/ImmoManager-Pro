@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument('--native-port', type=int)
     parser.add_argument('--native-user', default='postgres')
     parser.add_argument('--coverage', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     parser.add_argument('tests', nargs='*', default=['backend/tests/test_message_workflow.py', 'backend/tests/test_message_thread_boundary.py'])
     options = parser.parse_args()
     if not options.label.replace('-', '').replace('_', '').isalnum():
@@ -80,7 +81,8 @@ def main() -> int:
             environment['IMMO_TEST_POSTGRES_ADMIN_URL'] = configured
             report['owned_database'] = name
         command = [sys.executable, '-m', 'pytest', *(str(ROOT / path) for path in options.tests),
-                   '-q', '--tb=short', f'--junitxml={output / "junit.xml"}']
+                   '-v' if options.verbose else '-q', '--tb=short', '-o', 'faulthandler_timeout=120',
+                   f'--junitxml={output / "junit.xml"}']
         if options.coverage:
             command += ['--cov=backend', '--cov-fail-under=80', f'--cov-report=xml:{output / "coverage.xml"}']
         with (output / 'pytest.log').open('w', encoding='utf-8') as log:

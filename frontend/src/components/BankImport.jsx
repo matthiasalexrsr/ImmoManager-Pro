@@ -22,9 +22,35 @@ export default function BankImport({ accounts, onImported }) {
   const [formDirty, setFormDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [profile, setProfile] = useState(null);
+  const [profileError, setProfileError] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const command = useRef(null);
   const mounted = useRef(true);
+  const inputsTouched = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const applyProfile = saved => {
+    setFormat(saved.format);
+    const options = saved.options;
+    setEncoding(options.encoding); setDelimiter(options.delimiter); setDecimal(options.decimal);
+    setDateFormat(options.date_format);
+    setColumns({ date: 'date', amount: 'amount', text: 'text', reference: '', currency: '', ...options.columns });
+  };
+  useEffect(() => {
+    if (!expanded) return;
+    let active = true;
+    const current = api.captureSession();
+    api.get('/auth/users/me/settings/bank-import-profile').then(saved => {
+      current();
+      if (!active || !saved?.options?.columns || !['csv', 'mt940', 'camt'].includes(saved.format)) return;
+      setProfile(saved);
+      if (!inputsTouched.current) applyProfile(saved);
+    }).catch(e => {
+      if (active && e.code !== 'SESSION_CHANGED') setProfileError('Die gespeicherte Formatvorlage konnte nicht geladen werden. Sie können die Angaben hier selbst festlegen.');
+    });
+    return () => { active = false; };
+  }, [expanded]);
 
   async function run(action) {
     const current = api.captureSession();
@@ -33,7 +59,7 @@ export default function BankImport({ accounts, onImported }) {
     catch (e) { if (mounted.current && e.code !== 'SESSION_CHANGED') setError(e.message); }
     finally { if (mounted.current) setBusy(false); }
   }
-  const load = (id, offset = 0) => run(async current => {
+  const load = (id, offset = 0) => { inputsTouched.current = true; return run(async current => {
     const data = await api.get(`/bank-imports/${encodeURIComponent(id)}?offset=${offset}`);
     current(); if (id !== preview?.id) { setDecisions({}); command.current = null; } setPreview(data); setIdentifier(id); setChecked(false);
     setFormDirty(false);
@@ -43,7 +69,7 @@ export default function BankImport({ accounts, onImported }) {
     setEncoding(options.encoding || 'utf-8-sig'); setDecimal(options.decimal || '.'); setDelimiter(options.delimiter || ';');
     setDateFormat(options.date_format || '%Y-%m-%d');
     setColumns(options.columns || { date: 'date', amount: 'amount', text: 'text', reference: '', currency: '' });
-  });
+  }); };
   const list = cursor => run(async current => {
     if (!account) throw new Error('Bitte zuerst das Konto auswählen.');
     const result = await api.get(`/bank-imports?account_id=${encodeURIComponent(account)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
@@ -76,8 +102,10 @@ export default function BankImport({ accounts, onImported }) {
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
     a.href = url; a.download = preview.filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
-  return <details className="card" style={{ marginBottom: 16 }}><summary>Bankdatei importieren und Übernahmebeleg öffnen</summary>
-    <fieldset disabled={busy} style={{ minWidth: 0 }} onChange={() => { setFormDirty(true); setChecked(false); }}><legend>Original und Format</legend>
+  return <details className="card" style={{ marginBottom: 16 }} onToggle={event => setExpanded(event.currentTarget.open)}><summary>Bankdatei importieren und Übernahmebeleg öffnen</summary>
+    <fieldset disabled={busy} style={{ minWidth: 0 }} onChange={() => { inputsTouched.current = true; setFormDirty(true); setChecked(false); }}><legend>Original und Format</legend>
+      {profile && <p>Ihre gespeicherte Formatvorlage steht bereit. <button type="button" onClick={() => { inputsTouched.current = true; applyProfile(profile); setFormDirty(true); setChecked(false); }}>Gespeicherte Formatvorlage anwenden</button></p>}
+      {profileError && <p role="status">{profileError}</p>}
       <label>Konto <select value={account} onChange={e => { setAccount(e.target.value); setHistory(null); }}><option value="">Bitte auswählen</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>{' '}
       <label>Originaldatei <input type="file" onChange={e => setFile(e.target.files[0])} /></label>
       <label>Format <select value={format} onChange={e => setFormat(e.target.value)}>{['csv', 'mt940', 'camt'].map(v => <option key={v}>{v}</option>)}</select></label>{' '}
