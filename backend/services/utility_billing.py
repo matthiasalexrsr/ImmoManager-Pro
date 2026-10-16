@@ -480,6 +480,44 @@ def _consumption_shares(result, store, key, units, segments, start, end, period_
     if factors is None:
         return [], billing_unit
 
+    # A meter replacement is not a continuous measuring chain merely because
+    # both endpoint readings exist. Detect unmeasured DAYS between the old
+    # removal and the new installation before any cost shares are finalized.
+    # Multiple overlapping meters can be intentional independent sites; do
+    # not silently double-count them without at least a visible review warning.
+    for unit in units:
+        installed = []
+        for meter in meters:
+            if meter.unit_id != unit.id:
+                continue
+            interval = in_service(meter, start, end)
+            if interval is not None:
+                installed.append((interval[0], interval[1], meter))
+        if len(installed) < 2:
+            continue
+        installed.sort(key=lambda part: (part[0], part[1], part[2].id))
+        last_day = installed[0][1]
+        previous_meter = installed[0][2]
+        for first_day, final_day, meter in installed[1:]:
+            if first_day > last_day + timedelta(days=1):
+                gap_start, gap_end = last_day + timedelta(days=1), first_day - timedelta(days=1)
+                result.blocker(
+                    "METER_SERVICE_GAP",
+                    "Zählerwechsel: die Messabdeckung hat ungemessene Tage",
+                    f"{label(unit.id)} / {key.name}: {_fmt(gap_start)} bis {_fmt(gap_end)} "
+                    f"zwischen {meter_name(previous_meter)} und {meter_name(meter)}",
+                )
+            elif first_day <= last_day:
+                result.warn(
+                    "METER_SERVICE_OVERLAP",
+                    "Mehrere Zähler derselben Art sind zeitgleich im Dienst; parallele "
+                    "Messstellen von einem Zählerwechsel unterscheiden",
+                    f"{label(unit.id)} / {key.name}: {meter_name(previous_meter)} und "
+                    f"{meter_name(meter)} ab {_fmt(first_day)}",
+                )
+            if final_day > last_day:
+                last_day, previous_meter = final_day, meter
+
     def value_near(meter_id: str, day: date) -> Optional[Decimal]:
         candidates = [
             r for r in readings.get(meter_id, [])
