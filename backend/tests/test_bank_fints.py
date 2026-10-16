@@ -153,3 +153,55 @@ def test_permission_revocation_discards_late_bank_response(bank):
     assert exc.value.status_code == 403
     assert len(adapter.calls) == 1
     assert service.get(session['id'], actor)['state'] == 'running'
+
+
+
+def test_network_claim_receipt_is_advanced_without_recreation(bank):
+    from backend.services import business_qol as commands
+    service, adapter, actor, start_command = setup(bank)
+    session = service.start(start_command, actor)
+    command = FinTSStep(idempotency_key=str(uuid4()), base_revision=session['revision'])
+    claimed = []
+    def observe_claim():
+        with service.work(actor) as unit:
+            receipt = commands.get_record(unit, 'business_qol_commands',
+                commands.command_id(actor, command.idempotency_key))
+            claimed.append(receipt.model_copy(deep=True))
+    adapter.callback = observe_claim
+    result = service.advance(session['id'], command, actor)
+    assert len(claimed) == 1 and claimed[0].response['state'] == 'running'
+    with service.work(actor) as unit:
+        completed = commands.get_record(unit, 'business_qol_commands', claimed[0].id)
+        assert completed.id == claimed[0].id
+        assert completed.created_at == claimed[0].created_at
+        assert completed.fingerprint == claimed[0].fingerprint
+        assert completed.updated_at > claimed[0].updated_at
+        assert completed.response['state'] == result['state'] == 'tan_required'
+    replayed = service.advance(session['id'], command, actor)
+    assert replayed['replayed'] and replayed['revision'] == result['revision']
+    assert len(adapter.calls) == 1
+
+
+def test_changed_claim_receipt_cannot_be_overwritten_by_late_result(bank):
+    from backend.services import business_qol as commands
+    service, adapter, actor, start_command = setup(bank)
+    session = service.start(start_command, actor)
+    command = FinTSStep(idempotency_key=str(uuid4()), base_revision=session['revision'])
+    def change_claim():
+        with service.work(actor, True) as unit:
+            receipt = commands.get_record(unit, 'business_qol_commands',
+                commands.command_id(actor, command.idempotency_key))
+            changed = receipt.model_copy(update={
+                'updated_at': receipt.updated_at + timedelta(seconds=1),
+                'response': {**receipt.response, 'state': 'review_required'}})
+            commands.put_record(unit, 'business_qol_commands', changed)
+    adapter.callback = change_claim
+    with pytest.raises(HTTPException) as caught:
+        service.advance(session['id'], command, actor)
+    assert caught.value.status_code == 409
+    assert service.get(session['id'], actor)['state'] == 'running'
+    with service.work(actor) as unit:
+        receipt = commands.get_record(unit, 'business_qol_commands',
+            commands.command_id(actor, command.idempotency_key))
+        assert receipt.response['state'] == 'review_required'
+    assert len(adapter.calls) == 1

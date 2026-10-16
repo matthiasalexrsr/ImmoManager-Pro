@@ -35,8 +35,12 @@ def test_private_connection_upgrade_preserves_exact_existing_state_and_refuses_l
             original = dict(previous_bytes.execute(select(IntegrationConnectionORM.__table__)).mappings().one())
         finally:
             previous_bytes.close()
-        _old, new = schema_state.run_migrations(url)
-        assert new.revision == NEW_HEAD and new.can_start
+        # Test this released package head first; the application can have later
+        # independent package/merge revisions. The aggregate startup check below
+        # still requires the full current graph and preserved original rows.
+        command.upgrade(schema_state.alembic_config(url), NEW_HEAD)
+        new = schema_state.inspect_url(url)
+        assert new.revision == NEW_HEAD
         tables = set(inspect(engine).get_table_names())
         assert {"integration_action_attempts", "integration_run_cursors"} <= tables
         with engine.connect() as db:
@@ -68,5 +72,10 @@ def test_private_connection_upgrade_preserves_exact_existing_state_and_refuses_l
             assert db.scalar(select(IntegrationActionAttemptORM.id)) == "synthetic-attempt"
             assert dict(db.execute(select(IntegrationConnectionORM.__table__)).mappings().one()) == original
         assert schema_state.inspect_url(url).revision == NEW_HEAD
+        _old, integrated = schema_state.run_migrations(url)
+        assert integrated.revision == schema_state.head_revision() and integrated.can_start
+        with engine.connect() as db:
+            assert db.scalar(select(IntegrationActionAttemptORM.id)) == 'synthetic-attempt'
+            assert dict(db.execute(select(IntegrationConnectionORM.__table__)).mappings().one()) == original
     finally:
         engine.dispose()

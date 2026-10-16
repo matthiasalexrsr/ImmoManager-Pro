@@ -154,8 +154,9 @@ class FinTS(BankImports):
             data.update(state='running', revision=row.revision + 1)
             row = records.put(unit, FinTSSessionORM, data)
             claimed_revision, account_id = row.revision, row.account_id
-            commands.save_command(unit, actor_id, 'fints-step/' + identifier, command,
+            claim = commands.save_command(unit, actor_id, 'fints-step/' + identifier, command,
                 {'kind': 'account', 'entity_id': account_id, 'property_id': None}, self.receipt_view(row))
+            claim_revision = claim.updated_at.isoformat()
         # No DB/account locks during network waits. Any crash leaves a durable running state.
         try:
             result = adapter.step(private['config'], private['protocol'], tan=tan, selected=payload.selected_account)
@@ -178,8 +179,10 @@ class FinTS(BankImports):
                         private_token=self.seal(private, f'fints-session/{identifier}'))
             row = records.put(unit, FinTSSessionORM, data)
             response = self.view(row, private)
-            commands.save_command(unit, actor_id, 'fints-step/' + identifier, command,
-                {'kind': 'account', 'entity_id': account_id, 'property_id': None}, self.receipt_view(row))
+            # The network claim is already durable. Advance that exact receipt;
+            # never recreate/upsert it or erase a concurrent command's outcome.
+            commands.advance_command(unit, actor_id, 'fints-step/' + identifier,
+                command, claim_revision, self.receipt_view(row))
             return response
 
     def stage_received(self, identifier, payload: CancelFinTS, actor_id):
