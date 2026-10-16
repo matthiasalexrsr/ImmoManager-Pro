@@ -40,7 +40,7 @@ from backend.models import (
 )
 from backend.services import invoice_review as service
 from backend.services.data_snapshot import clear_business_data, export_snapshot, import_snapshot
-from backend.services.file_storage import get_file_storage
+from backend.services.file_storage import LocalStorage, get_file_storage
 
 SQL = os.environ.get("TEST_STORE_BACKEND", "memory") == "sql"
 API = "/api/v1"
@@ -260,8 +260,19 @@ def test_receipt_records_original_and_refuses_a_duplicate_key_without_reason(own
         "supplier": "Dach Müller", "invoice_number": "RE 42", "gross_amount": 1, "invoice_date": TODAY.isoformat()}))
     assert {d["invoice_id"] for d in check["duplicates"]} == {first["id"], twin["id"]}
 
-    # the original changed on disk: the review says so
-    get_file_storage().save(key, BytesIO(b"%PDF-1.4 manipuliert"))
+    # The public storage API never permits overwriting existing invoice
+    # originals, even from the same name. Simulate corruption OUTSIDE the
+    # application only on this disposable local QA store, then ensure the
+    # invoice verifier detects the changed original without repairing it.
+    storage = get_file_storage()
+    assert isinstance(storage, LocalStorage)
+    original = storage.get(key)
+    with pytest.raises(ValueError, match="Originalbytes"):
+        storage.save(key, BytesIO(b"%PDF-1.4 manipuliert"))
+    assert storage.get(key) == original
+    local_path = storage.base_dir / key
+    assert local_path.resolve().is_relative_to(storage.base_dir.resolve())
+    local_path.write_bytes(b"%PDF-1.4 manipuliert")
     view = _view(owner, first["id"])
     assert view["document"]["integrity"] == "changed" and "document_changed" in {f["code"] for f in view["findings"]}
 

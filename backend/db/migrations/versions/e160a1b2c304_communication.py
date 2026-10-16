@@ -1,4 +1,6 @@
 ﻿"""Add durable communication, retaining all existing messages and manual dunning entries."""
+from typing import cast
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -8,7 +10,67 @@ branch_labels = None
 depends_on = None
 
 
+def _verify_adopted_schema(connection):
+    """Accept a pre-existing ORM-created family only if every constraint matches.
+
+    Desktop databases sometimes have all current tables but no Alembic
+    version. Do not issue duplicate CREATE TABLE, and do not silently stamp
+    a partial or less constrained schema as current.
+    """
+    from backend.db.communication_models import MODELS
+
+    inspector = sa.inspect(connection)
+    for model in MODELS:
+        table = cast(sa.Table, model.__table__)
+        name = table.name
+        found = {column["name"]: column for column in inspector.get_columns(name)}
+        expected = set(table.columns.keys())
+        if set(found) != expected:
+            raise RuntimeError(f"Unsafe communication schema adoption: {name} columns differ")
+        for column in table.columns:
+            actual = found[column.name]
+            if bool(actual["primary_key"]) != bool(column.primary_key):
+                raise RuntimeError(f"Unsafe communication schema adoption: {name} primary key differs")
+            if not column.primary_key and bool(actual["nullable"]) != bool(column.nullable):
+                raise RuntimeError(f"Unsafe communication schema adoption: {name} nullability differs")
+            actual_type = actual["type"].compile(dialect=connection.dialect).upper()
+            mapped_type = column.type.compile(dialect=connection.dialect).upper()
+            if actual_type != mapped_type:
+                raise RuntimeError(f"Unsafe communication schema adoption: {name} SQL type differs")
+        declared_indexes = {index.name: (tuple(col.name for col in index.columns), index.unique)
+                            for index in table.indexes}
+        stored_indexes = {index["name"]: (tuple(index["column_names"]), index["unique"])
+                          for index in inspector.get_indexes(name)}
+        if declared_indexes != stored_indexes:
+            raise RuntimeError(f"Unsafe communication schema adoption: {name} indexes differ")
+        declared_uniques = {tuple(col.name for col in constraint.columns)
+                            for constraint in table.constraints if isinstance(constraint, sa.UniqueConstraint)}
+        stored_uniques = {tuple(item["column_names"]) for item in inspector.get_unique_constraints(name)}
+        if declared_uniques != stored_uniques:
+            raise RuntimeError(f"Unsafe communication schema adoption: {name} uniqueness differs")
+        declared_fks = {(tuple(col.name for col in fk.columns),
+                         next(iter(fk.elements)).column.table.name,
+                         tuple(element.column.name for element in fk.elements),
+                         (next(iter(fk.elements)).ondelete or "").upper())
+                        for fk in table.constraints if isinstance(fk, sa.ForeignKeyConstraint)}
+        stored_fks = {(tuple(fk["constrained_columns"]), fk["referred_table"],
+                       tuple(fk["referred_columns"]), (fk.get("options", {}).get("ondelete") or "").upper())
+                      for fk in inspector.get_foreign_keys(name)}
+        if declared_fks != stored_fks:
+            raise RuntimeError(f"Unsafe communication schema adoption: {name} references differ")
+
+
 def upgrade():
+    from backend.db.communication_models import MODELS, install_guards
+
+    connection = op.get_bind()
+    present = {model.__tablename__ for model in MODELS} & set(sa.inspect(connection).get_table_names())
+    if present:
+        if present != {model.__tablename__ for model in MODELS}:
+            raise RuntimeError("Unsafe partial communication schema; restore a full backup before upgrade")
+        _verify_adopted_schema(connection)
+        install_guards(connection)
+        return
     op.create_table("communication_items",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("kind", sa.String(20), nullable=False), sa.Column("actor_id", sa.String(36), nullable=False),

@@ -14,6 +14,11 @@ depends_on = None
 
 
 def upgrade():
+    from backend.db.access_models import PluginInstallationORM, RegistrationQuotaORM, StorageBindingORM
+    from backend.db.migrations.adopt_existing import adopt_exact_family
+
+    if adopt_exact_family(op.get_bind(), (StorageBindingORM, RegistrationQuotaORM, PluginInstallationORM)):
+        return
     op.create_table(
         "storage_bindings",
         sa.Column("storage_key", sa.Text(), primary_key=True),
@@ -41,6 +46,13 @@ def upgrade():
 
 
 def downgrade():
+    # This old additive revision owns encrypted storage bindings, plugin
+    # packages and cross-process registration state. Never erase them merely
+    # to satisfy a version graph rollback request.
+    conn = op.get_bind()
+    for table in ("storage_bindings", "plugin_installations", "registration_quotas"):
+        if conn.execute(sa.text(f'SELECT 1 FROM "{table}" LIMIT 1')).first():
+            raise RuntimeError("Retained platform, plugin or storage data forbid destructive downgrade")
     op.drop_table("storage_bindings")
     op.drop_table("plugin_installations")
     op.drop_table("registration_quotas")

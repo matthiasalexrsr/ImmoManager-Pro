@@ -15,6 +15,11 @@ depends_on = None
 
 
 def upgrade():
+    from backend.db.daily_models import DailyCommandORM, DailyStateORM, SettingRuleORM
+    from backend.db.migrations.adopt_existing import adopt_exact_family
+
+    if adopt_exact_family(op.get_bind(), (DailyStateORM, DailyCommandORM, SettingRuleORM)):
+        return
     op.create_table("daily_user_state",
         sa.Column("owner_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
         sa.Column("key", sa.String(240), primary_key=True),

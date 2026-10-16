@@ -59,8 +59,10 @@ def world(client):
     ("techniker", "/tasks", True),
     ("readonly", "/auth/users/me/preferences", True),
     ("readonly", "/tasks", False),
-    ("readonly", "/notifications/abc", True),
-    ("readonly", "/notifications/abc/read", True),
+    ("readonly", "/notifications/abc", False),  # legacy global source rows are immutable
+    ("readonly", "/notifications/abc/read", False),  # legacy blind read is forbidden
+    ("readonly", "/notifications/abc/receipt", True),  # own persisted receipt allowed
+    ("readonly", "/notifications/all/receipt", True),  # own bounded read-all allowed
     ("readonly", "/notifications/templates", False),
     ("techniker", "/notifications/templates/abc", False),
     ("buchhaltung", "/notifications/generate/overdue-payments", True),

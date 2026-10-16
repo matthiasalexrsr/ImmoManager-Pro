@@ -41,9 +41,17 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
                                         attachment_ids=document.id, idempotency_key=str(uuid4()),
                                         base_revision=thread.updated_at.isoformat())
             saved = send_message(source, thread.id, command, owner.id)
+            # Auth is owned by the synthetic SQLUserStore. A successful write
+            # does not authorize a subsequent paginated read if the account
+            # has since disappeared or been revoked.
+            account_after_write = auth.get_user_by_id(owner.id)
+            assert account_after_write is not None and account_after_write["is_active"]
             assert message_page(source, thread.id, owner.id)["total"] == 1
         box = SecretBox(data / "secrets" / "keyring.json")
-        sealed = box.seal("synthetic recoverable evidence", "qa-message-recovery")
+        # Full archives bind encrypted integration values to their original
+        # JSON path. An arbitrary custom AAD must NEVER be silently accepted.
+        proof_context = "integrations/qa-extension/proof"
+        sealed = box.seal("synthetic recoverable evidence", proof_context)
         state = data / "integrations.json"
         state.write_text(json.dumps({"enabled": {}, "config": {"qa-extension": {"proof": sealed}}}), encoding="utf-8")
         (data / ".env").write_text("JOB_SCHEDULER_ENABLED=false\nBACKUP_SCHEDULE_ENABLED=false\n", encoding="utf-8")
@@ -61,7 +69,7 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
         assert hashlib.sha256((target / "uploads" / "original.bin").read_bytes()).digest() == hashlib.sha256(original).digest()
         recovered_box = SecretBox(target / "secrets" / "keyring.json")
         recovered_state = json.loads((target / "integrations.json").read_text(encoding="utf-8"))
-        assert recovered_box.open(recovered_state["config"]["qa-extension"]["proof"], "qa-message-recovery") == "synthetic recoverable evidence"
+        assert recovered_box.open(recovered_state["config"]["qa-extension"]["proof"], proof_context) == "synthetic recoverable evidence"
         # Remove the original location before re-opening the restored database.
         # The caller cannot accidentally pass this proof using its original DB.
         engine.dispose()

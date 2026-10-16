@@ -49,7 +49,7 @@ def test_real_merge_upgrade_preserves_old_rows_and_blocks_partial_downgrade(tmp_
                 "backups": [],
                 "commands": {},
             })
-        with pytest.raises(RuntimeError, match="partial downgrade"):
+        with pytest.raises(RuntimeError, match="Irreversible combined TEHA/plugin schema"):
             command.downgrade(schema_state.alembic_config(url), "e1f0a1b2c314")
         with engine.connect() as connection:
             assert connection.scalar(select(PluginInstallationORM.revision)
@@ -57,5 +57,26 @@ def test_real_merge_upgrade_preserves_old_rows_and_blocks_partial_downgrade(tmp_
             assert connection.scalar(select(LoginAttemptORM.username).where(
                 LoginAttemptORM.id == "test-preserved")) == "fixture"
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
+    finally:
+        engine.dispose()
+
+
+
+def test_empty_current_merge_refuses_downgrade_before_even_one_sqlite_schema_change(tmp_path):
+    """Even empty, old immutable branch migrations cannot be partially reversed."""
+    url = f"sqlite:///{(tmp_path / 'empty-current-guard.sqlite3').as_posix()}"
+    command.upgrade(schema_state.alembic_config(url), HEAD)
+    engine = create_engine(url)
+    try:
+        def snapshot():
+            with engine.connect() as conn:
+                return tuple(conn.execute(text(
+                    "SELECT type, name, sql FROM sqlite_master "
+                    "WHERE type IN ('table', 'index', 'trigger') ORDER BY type,name")).fetchall())
+        before = snapshot()
+        with pytest.raises(RuntimeError, match="Irreversible combined TEHA/plugin schema"):
+            command.downgrade(schema_state.alembic_config(url), "e1f0a1b2c314")
+        assert snapshot() == before
+        assert schema_state.inspect_url(url).revision == HEAD
     finally:
         engine.dispose()

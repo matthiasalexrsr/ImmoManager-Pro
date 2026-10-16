@@ -124,8 +124,34 @@ def install_guards(connection):
 
 
 def upgrade():
+    from backend.db.migrations.adopt_existing import adopt_exact_family
+    from backend.db.teha_models import (
+        TehaBatchORM as CurrentBatch,
+    )
+    from backend.db.teha_models import (
+        TehaItemORM as CurrentItem,
+    )
+    from backend.db.teha_models import (
+        TehaMappingORM as CurrentMapping,
+    )
+    from backend.db.teha_models import (
+        TehaReceiptORM as CurrentReceipt,
+    )
+    from backend.db.teha_models import (
+        TehaReturnDraftORM as CurrentReturnDraft,
+    )
+
     connection = op.get_bind()
-    for model in (TehaBatchORM, TehaItemORM, TehaMappingORM, TehaReceiptORM, TehaReturnDraftORM):
+    # The historical migration declares minimal external FK stubs, while
+    # create_all infers VARCHAR(36) from each referenced primary key.
+    # A pre-existing ORM schema must match the CURRENT canonical model,
+    # not the deliberately minimal, historical migration stubs.
+    current_models = (CurrentBatch, CurrentItem, CurrentMapping, CurrentReceipt, CurrentReturnDraft)
+    if adopt_exact_family(connection, current_models):
+        install_guards(connection)
+        return
+    models = (TehaBatchORM, TehaItemORM, TehaMappingORM, TehaReceiptORM, TehaReturnDraftORM)
+    for model in models:
         cast(Table, model.__table__).create(connection, checkfirst=False)
     install_guards(connection)
 

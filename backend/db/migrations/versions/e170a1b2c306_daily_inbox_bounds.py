@@ -9,12 +9,25 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table('daily_inbox_epoch', sa.Column('id', sa.Integer(), primary_key=True),
-                    sa.Column('revision', sa.Integer(), nullable=False))
-    op.create_index('idx_notifications_inbox_order', 'notifications', ['created_at', 'id'])
-    op.create_index('idx_notifications_inbox_filter', 'notifications', ['entity_type', 'severity', 'created_at', 'id'])
-    from backend.db.daily_models import install_inbox_epoch
-    install_inbox_epoch(op.get_bind())
+    from backend.db.daily_models import InboxEpochORM, install_inbox_epoch
+    from backend.db.migrations.adopt_existing import adopt_exact_family
+
+    connection = op.get_bind()
+    if not adopt_exact_family(connection, (InboxEpochORM,)):
+        op.create_table('daily_inbox_epoch', sa.Column('id', sa.Integer(), primary_key=True),
+                        sa.Column('revision', sa.Integer(), nullable=False))
+    existing = {idx['name']: (tuple(idx['column_names']), idx['unique'])
+                for idx in sa.inspect(connection).get_indexes('notifications')}
+    for index_name, columns in (
+        ('idx_notifications_inbox_order', ('created_at', 'id')),
+        ('idx_notifications_inbox_filter', ('entity_type', 'severity', 'created_at', 'id')),
+    ):
+        if index_name in existing:
+            if existing[index_name] != (columns, 0):
+                raise RuntimeError('Existing inbox index does not match authenticated pagination order')
+        else:
+            op.create_index(index_name, 'notifications', list(columns))
+    install_inbox_epoch(connection)
 
 
 def downgrade():

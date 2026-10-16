@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 from fastapi.responses import Response
 
 from backend.dependencies import store
@@ -34,6 +35,7 @@ from backend.routers.tasks import (
     _parse_rrule,
     generate_recurring_tasks,
 )
+from backend.services.bank_formats import parse
 
 
 def _clear_store():
@@ -164,25 +166,40 @@ class TestBankImport:
     def test_import_bookings(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data
         csv_data = "date;amount;text\n2024-01-15;-500.00;Handwerker\n2024-01-20;800.00;Miete"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 2
-        assert result["errors"] == 0
-        assert len(store.list_bookings()) == 2
+        parsed = parse(csv_data.encode("utf-8"), "csv", {})
+        assert parsed["errors"] == []
+        assert [item["cents"] for item in parsed["rows"]] == [-50000, 80000]
+        # The legacy endpoint must not secretly commit unapproved bank rows:
+        # imports require a current owner and a separate confirmed preview.
+        with pytest.raises(HTTPException) as error:
+            import_bookings(account_id=account.id, csv_content=csv_data)
+        assert error.value.status_code == 409
+        assert store.list_bookings() == []
 
     def test_import_with_errors(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data
         csv_data = "date;amount;text\ninvalid;abc;Bad row\n2024-01-20;800.00;Good row"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
-        assert result["errors"] == 1
+        parsed = parse(csv_data.encode("utf-8"), "csv", {})
+        assert len(parsed["rows"]) == 1
+        assert parsed["rows"][0]["cents"] == 80000
+        assert len(parsed["errors"]) == 1
+        assert parsed["errors"][0]["line"] == 2
+        with pytest.raises(HTTPException) as error:
+            import_bookings(account_id=account.id, csv_content=csv_data)
+        assert error.value.status_code == 409
+        assert store.list_bookings() == []
 
     def test_import_german_decimals(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data
         csv_data = "date;amount;text\n2024-03-01;1500,50;Miete"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
-        booking = store.list_bookings()[0]
-        assert booking.amount == 1500.50
+        parsed = parse(csv_data.encode("utf-8"), "csv", {"decimal": ","})
+        assert parsed["errors"] == []
+        assert len(parsed["rows"]) == 1
+        assert parsed["rows"][0]["cents"] == 150050
+        with pytest.raises(HTTPException) as error:
+            import_bookings(account_id=account.id, csv_content=csv_data)
+        assert error.value.status_code == 409
+        assert store.list_bookings() == []
 
 
 # === Recurring Tasks Tests ===

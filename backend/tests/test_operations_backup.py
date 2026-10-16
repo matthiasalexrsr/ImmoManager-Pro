@@ -292,7 +292,16 @@ def test_restore_probe_opens_checks_and_removes_the_copy(installation):
     event = full_backup.restore_probe(sources=installation.sources)
     checks = event["checks"]
     assert event["ok"] and checks["row_counts_match"] and checks["revision"] == schema_state.head_revision()
-    assert checks["uploads"] == 2 and checks["secrets"] == {"sealed_values": 1, "decrypted": 1, "warning": None}
+    assert checks["uploads"] == 2
+    assert checks["secrets"]["sealed_values"] == 1
+    assert checks["secrets"]["decrypted"] == 1
+    assert checks["secrets"]["warning"] is None
+    # The current product also verifies every newly supported *independent*
+    # source family. An empty family must be explicitly confirmed empty, not
+    # omitted or silently interpreted as a successful decrypted original.
+    assert checks["secrets"]["bank_originals"] == 0
+    assert checks["secrets"]["tax_receipts_verified"] == 0
+    assert checks["secrets"]["communication"] == {"items": 0, "originals": 0, "blocks": 0}
     assert checks["probe_dir_removed"] and not list(installation.sources.root.glob(".probe-*"))
     assert event["warnings"] == []
     logged = full_backup.read_events(installation.sources.root)

@@ -9,10 +9,12 @@ skip/limit and filter params must always be passed explicitly.
 
 import datetime
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
+from backend import auth
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -89,6 +91,7 @@ from backend.routers import (
     units,
     viewings,
 )
+from backend.services import notification_inbox as personal
 
 # Default pagination values (Query defaults aren't resolved outside FastAPI).
 # We define wrapper helpers for each list function so that tests stay concise.
@@ -302,6 +305,7 @@ def _list_notifications(**kw):
         status_filter=kw.get("status_filter"),
         notification_type=kw.get("notification_type"),
         severity=kw.get("severity"),
+        actor=kw["actor"],
     )
 
 
@@ -2775,6 +2779,10 @@ class TestDeposits:
 class TestNotifications:
     def setup_method(self) -> None:
         _clear_store()
+        self.actor = auth.register_user(
+            "synthetic-notice-" + uuid4().hex, "notices@example.test",
+            "Benachrichtigungsprüfung", "Synthetic123", "eigentuemer",
+        )
 
     def _make(self, **overrides):
         data = dict(
@@ -2790,12 +2798,12 @@ class TestNotifications:
         assert n.id
 
     def test_list_notifications_empty(self) -> None:
-        assert _list_notifications() == []
+        assert _list_notifications(actor=self.actor) == []
 
     def test_list_notifications_returns_created(self) -> None:
         notifications.create_notification(self._make(title="A"))
         notifications.create_notification(self._make(title="B"))
-        assert len(_list_notifications()) == 2
+        assert len(_list_notifications(actor=self.actor)) == 2
 
     def test_get_notification(self) -> None:
         n = notifications.create_notification(self._make())
@@ -2809,21 +2817,44 @@ class TestNotifications:
 
     def test_mark_read(self) -> None:
         n = notifications.create_notification(self._make())
-        assert n.status == "unread"
-        assert n.read_at is None
-        read = notifications.mark_notification_read(n.id)
-        assert read.status == "read"
-        assert read.read_at is not None
+        # Global notification.status is historical source state, not the
+        # current account's receipt. Legacy blind mark-read is forbidden.
+        with pytest.raises(HTTPException) as denied:
+            notifications.mark_notification_read(n.id)
+        assert denied.value.status_code == 409
+        before = personal.inbox(store, self.actor.id)
+        assert before["unread_count"] == 1
+        confirmed = notifications.notification_receipt(
+            "all",
+            notifications.ReceiptCommand(idempotency_key=str(uuid4()),
+                base_revision=0, action="read_all", snapshot=before["snapshot"]),
+            actor=self.actor,
+        )
+        assert confirmed["acknowledged"] == 1 and confirmed["unread_count"] == 0
+        after = personal.inbox(store, self.actor.id)
+        assert after["items"][0]["status"] == "archived"
+        assert notifications.get_notification(n.id).status == "unread"
 
     def test_mark_read_404(self) -> None:
-        with pytest.raises(HTTPException) as exc_info:
+        # Unsupported legacy actions reveal no existence oracle.
+        with pytest.raises(HTTPException) as legacy:
             notifications.mark_notification_read("nonexistent")
-        assert exc_info.value.status_code == 404
+        assert legacy.value.status_code == 409
+        # Authenticated personal receipts still return a real 404 for a
+        # nonexistent source, preserving ordinary API error semantics.
+        with pytest.raises(HTTPException) as missing:
+            notifications.notification_receipt(
+                "nonexistent",
+                notifications.ReceiptCommand(idempotency_key=str(uuid4()),
+                    base_revision=0, action="landed"),
+                actor=self.actor,
+            )
+        assert missing.value.status_code == 404
 
     def test_delete_notification(self) -> None:
         n = notifications.create_notification(self._make())
         notifications.delete_notification(n.id)
-        assert _list_notifications() == []
+        assert _list_notifications(actor=self.actor) == []
 
     def test_delete_notification_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
@@ -2831,32 +2862,50 @@ class TestNotifications:
         assert exc_info.value.status_code == 404
 
     def test_filter_by_status(self) -> None:
-        n = notifications.create_notification(self._make(title="A"))
+        notifications.create_notification(self._make(title="A"))
         notifications.create_notification(self._make(title="B"))
-        notifications.mark_notification_read(n.id)
-        assert len(_list_notifications(status_filter="unread")) == 1
-        assert len(_list_notifications(status_filter="read")) == 1
+        assert len(_list_notifications(status_filter="unread", actor=self.actor)) == 2
+        snapshot = personal.inbox(store, self.actor.id)["snapshot"]
+        notifications.notification_receipt(
+            "all",
+            notifications.ReceiptCommand(idempotency_key=str(uuid4()), base_revision=0,
+                action="read_all", snapshot=snapshot),
+            actor=self.actor,
+        )
+        assert len(_list_notifications(status_filter="unread", actor=self.actor)) == 0
+        assert len(_list_notifications(status_filter="archived", actor=self.actor)) == 2
+        assert len(_list_notifications(status_filter="read", actor=self.actor)) == 0
 
     def test_filter_by_type(self) -> None:
         notifications.create_notification(self._make(notification_type="overdue_payment"))
         notifications.create_notification(self._make(notification_type="task_due"))
-        assert len(_list_notifications(notification_type="overdue_payment")) == 1
+        assert len(_list_notifications(notification_type="overdue_payment", actor=self.actor)) == 1
 
     def test_filter_by_severity(self) -> None:
         notifications.create_notification(self._make(severity="warning"))
         notifications.create_notification(self._make(severity="info"))
-        assert len(_list_notifications(severity="warning")) == 1
+        assert len(_list_notifications(severity="warning", actor=self.actor)) == 1
 
     def test_patch_notification(self) -> None:
         n = notifications.create_notification(self._make())
-        patched = notifications.patch_notification(n.id, NotificationPatch(status="archived"))
-        assert patched.status == "archived"
-        assert patched.title == "Test"
+        with pytest.raises(HTTPException) as legacy:
+            notifications.patch_notification(n.id, NotificationPatch(status="archived"))
+        assert legacy.value.status_code == 409
+        assert notifications.get_notification(n.id).status == "unread"
+        assert personal.inbox(store, self.actor.id)["items"][0]["status"] == "unread"
 
     def test_patch_notification_404(self) -> None:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(HTTPException) as legacy:
             notifications.patch_notification("nonexistent", NotificationPatch(status="archived"))
-        assert exc_info.value.status_code == 404
+        assert legacy.value.status_code == 409
+        with pytest.raises(HTTPException) as missing:
+            notifications.notification_receipt(
+                "nonexistent",
+                notifications.ReceiptCommand(idempotency_key=str(uuid4()),
+                    base_revision=0, action="reopen"),
+                actor=self.actor,
+            )
+        assert missing.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -2939,6 +2988,10 @@ class TestNotificationTemplates:
 class TestNotificationGeneration:
     def setup_method(self) -> None:
         _clear_store()
+        self.actor = auth.register_user(
+            "synthetic-generated-" + uuid4().hex, "generated@example.test",
+            "Generierte Benachrichtigungsprüfung", "Synthetic123", "eigentuemer",
+        )
         self.portfolio = store.create_portfolio(PortfolioCreate(name="P"))
         self.prop = store.create_property(
             PropertyCreate(portfolio_id=self.portfolio.id, name="H", property_type="MFH")
@@ -3058,4 +3111,4 @@ class TestNotificationGeneration:
         notifications.generate_overdue_payment_notifications(
             as_of=datetime.date(2025, 2, 1)
         )
-        assert len(_list_notifications()) == 1
+        assert len(_list_notifications(actor=self.actor)) == 1

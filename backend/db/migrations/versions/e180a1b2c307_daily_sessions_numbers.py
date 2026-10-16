@@ -9,6 +9,11 @@ depends_on = None
 
 
 def upgrade():
+    from backend.db.daily_models import DailySessionORM, NumberReservationORM
+    from backend.db.migrations.adopt_existing import adopt_exact_family
+
+    if adopt_exact_family(op.get_bind(), (DailySessionORM, NumberReservationORM)):
+        return
     op.create_table('daily_auth_sessions',
         sa.Column('id', sa.String(80), primary_key=True),
         sa.Column('owner_id', sa.String(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),

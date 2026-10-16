@@ -5,6 +5,7 @@ chaining multiple requests to verify realistic usage scenarios.
 """
 
 from datetime import date, timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -676,32 +677,42 @@ class TestNotificationLifecycle:
         assert get_resp.status_code == 200
         assert get_resp.json()["title"] == "Willkommen"
 
-        # Step 3: Mark as read via POST /{id}/read
-        read_resp = client.post(
-            f"/api/v1/notifications/{notif_id}/read",
-            headers=auth_headers,
-        )
-        assert read_resp.status_code == 200
-        read_notif = read_resp.json()
-        assert read_notif["status"] == "read"
-        assert read_notif["read_at"] is not None
+        # Step 3: Older blind mark-read operations cannot mutate global
+        # notification state on behalf of another account.
+        legacy = client.post(f"/api/v1/notifications/{notif_id}/read", headers=auth_headers)
+        assert legacy.status_code == 409
 
-        # Step 4: Verify via GET that the status persisted
-        verify_resp = client.get(
-            f"/api/v1/notifications/{notif_id}",
-            headers=auth_headers,
-        )
-        assert verify_resp.status_code == 200
-        assert verify_resp.json()["status"] == "read"
+        # The personal inbox returns a frozen generation marker; a confirmed
+        # read-all receipt requires that exact marker and a single-use command.
+        page = client.get("/api/v1/notifications/inbox", headers=auth_headers)
+        assert page.status_code == 200
+        before = page.json()
+        assert [item["id"] for item in before["items"]] == [notif_id]
+        assert before["items"][0]["status"] == "unread"
+        assert before["unread_count"] == 1
 
-        # Step 5: Filter by status=unread should return empty now
-        unread_resp = client.get(
-            "/api/v1/notifications",
-            params={"status": "unread"},
-            headers=auth_headers,
-        )
+        receipt = client.post("/api/v1/notifications/all/receipt", headers=auth_headers,
+                              json={"idempotency_key": str(uuid4()), "base_revision": 0,
+                                    "action": "read_all", "snapshot": before["snapshot"]})
+        assert receipt.status_code == 200
+        assert receipt.json() == {"acknowledged": 1, "unread_count": 0}
+
+        # Step 4: The original legacy source row was not rewritten, while
+        # the current account's personal receipt is now archived and readable.
+        source = client.get(f"/api/v1/notifications/{notif_id}", headers=auth_headers)
+        assert source.status_code == 200 and source.json()["status"] == "unread"
+        archived = client.get("/api/v1/notifications/inbox", headers=auth_headers,
+                              params={"status": "archived"})
+        assert archived.status_code == 200
+        assert archived.json()["items"][0]["id"] == notif_id
+        assert archived.json()["items"][0]["read_at"] is not None
+
+        # Step 5: Nothing remains unread for this account.
+        unread_resp = client.get("/api/v1/notifications/inbox", headers=auth_headers,
+                                 params={"status": "unread"})
         assert unread_resp.status_code == 200
-        assert len(unread_resp.json()) == 0
+        assert unread_resp.json()["items"] == []
+        assert unread_resp.json()["unread_count"] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,6 @@ TOTP 2FA, task queue, file storage, portal adapters, and email service.
 """
 
 import io
-from pathlib import Path
 
 import pytest
 
@@ -293,9 +292,16 @@ class TestLocalStorage:
 
     def test_windows_traversal_key_stays_under_base_dir(self, storage):
         malicious_key = r"..\..\Windows\system32\drivers\etc\hosts"
-        saved_path = Path(storage.save(malicious_key, io.BytesIO(b"safe"))).resolve()
-        assert saved_path.is_relative_to(storage.base_dir.resolve())
-        assert storage.get(malicious_key) == b"safe"
+        # Reject the entire path rather than silently rewriting it into a
+        # different key. A synthetic upload must never be accessible through
+        # an attacker-supplied Windows path alias.
+        with pytest.raises(ValueError, match="Dateischl"):
+            storage.save(malicious_key, io.BytesIO(b"safe"))
+        with pytest.raises(ValueError, match="Dateischl"):
+            storage.get(malicious_key)
+        with pytest.raises(ValueError, match="Dateischl"):
+            storage.exists(malicious_key)
+        assert list(storage.base_dir.rglob("hosts")) == []
 
     def test_save_nested_key(self, storage):
         storage.save("a/b/c.txt", io.BytesIO(b"nested"))

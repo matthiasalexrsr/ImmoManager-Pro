@@ -61,7 +61,13 @@ def test_dunning_tables_of_a_create_all_database_are_adopted(migrate):  # noqa: 
     engine.dispose()
     migrate()
     assert set(DUNNING_TABLES) <= set(_schema(migrate.db_path))
-    migrate.downgrade(PREVIOUS)
-    assert not set(DUNNING_TABLES) & set(_schema(migrate.db_path))
-    migrate()
+    # The full current application now includes deliberately irreversible
+    # TEHA, communication and plugin evidence families. Global downgrade
+    # must be refused AT THE MERGE HEAD, even when the test created no
+    # business rows. The separate pre-merge test above still verifies
+    # that the historical dunning-only downgrade works when authorized.
+    original_schema = _schema(migrate.db_path)
+    with pytest.raises(RuntimeError, match="Irreversible combined TEHA/plugin schema"):
+        migrate.downgrade(PREVIOUS)
+    assert _schema(migrate.db_path) == original_schema
     assert _version(migrate.db_path) == migrate.head

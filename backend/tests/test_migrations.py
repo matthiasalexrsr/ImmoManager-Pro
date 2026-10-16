@@ -187,7 +187,9 @@ def test_document_tenant_upgrade_keeps_legacy_null_links(migrate):
 
 
 def test_document_tenant_downgrade_refuses_to_lose_associations(migrate):
-    db_path = migrate()
+    # Exercise the actual historical tenant-link revision, not an unrelated
+    # later immutable TEHA/plugin merge that must block ALL deep downgrades.
+    db_path = migrate("6e2f8a4c9b71")
     _seed_previous_schema(db_path)
     with sqlite3.connect(db_path) as conn:
         conn.execute("""INSERT INTO documents (id, tenant_id, title, file_url, created_at, updated_at)
@@ -203,7 +205,7 @@ def test_document_tenant_downgrade_refuses_to_lose_associations(migrate):
 
 
 def test_document_tenant_downgrade_keeps_unassigned_documents(migrate):
-    db_path = migrate()
+    db_path = migrate("6e2f8a4c9b71")
     with sqlite3.connect(db_path) as conn:
         conn.execute("""INSERT INTO documents (id, title, file_url, created_at, updated_at)
                         VALUES ('legacy', 'Alt', '/legacy.pdf', '2025-01-01', '2025-01-01')""")
@@ -233,7 +235,9 @@ def test_document_tenant_downgrade_on_adopted_schema_keeps_invoice_links(migrate
                  source_document_id, created_at, updated_at)
                 VALUES ('invoice', 'Firma', '2025-01-01', 100, 19, 19, 119, 'open', 'doc', '2025-01-01', '2025-01-01')""")
         engine.dispose()
-        migrate()
+        # Run this historical downgrade only from its own revision. Modern
+        # private TEHA/plugin originals forbid deep downgrades by design.
+        migrate("6e2f8a4c9b71")
         migrate.downgrade("a1d6c3f8e2b4")
         with sqlite3.connect(migrate.db_path) as conn:
             assert conn.execute("SELECT source_document_id FROM invoices").fetchall() == [("doc",)]
@@ -279,7 +283,7 @@ def test_document_originals_are_guarded_after_the_upgrade(migrate):
 
 
 def test_document_originals_downgrade_refuses_to_destroy_evidence(migrate):
-    db_path = migrate()
+    db_path = migrate("e5f1a7c3b9d2")
     _seed_original(db_path)
     with pytest.raises(RuntimeError, match="Document originals exist"):
         migrate.downgrade(ARCHIVE_PARENT)
@@ -288,7 +292,9 @@ def test_document_originals_downgrade_refuses_to_destroy_evidence(migrate):
 
 
 def test_document_originals_downgrade_without_originals(migrate):
-    db_path = migrate()
+    # Historical reversible subset only. Modern additive private evidence
+    # migrations are purposefully not reversible via deep downgrade.
+    db_path = migrate("e5f1a7c3b9d2")
     migrate.downgrade(ARCHIVE_PARENT)
     assert not {"document_versions", "document_version_chunks"} & set(_schema(db_path))
     migrate()
@@ -325,7 +331,9 @@ def test_portfolio_access_downgrade_refuses_to_widen_access(migrate):
     db_path = migrate(ACCESS_PARENT)
     _seed_previous_schema(db_path)
     _seed_users(db_path)
-    migrate()
+    # Verify the exact historical portfolio revision independently from the
+    # modern unconditional fail-closed TEHA/plugin merge barrier.
+    migrate(ACCESS_REVISION)
     with sqlite3.connect(db_path) as conn:
         conn.execute("UPDATE user_portfolio_access SET mode = 'selected' WHERE user_id = 'staff'")
     with pytest.raises(RuntimeError, match="Restricted accounts exist"):
@@ -461,7 +469,7 @@ def test_booking_reversal_downgrade_of_an_adopted_database_leaves_the_column(mig
     engine = create_engine(f"sqlite:///{migrate.db_path}")
     Base.metadata.create_all(engine)
     engine.dispose()
-    migrate()
+    migrate(REVERSALS_REVISION)  # historical booking-reversal revision, before immutable modern families
     migrate.downgrade(BILLING_REGRESSION_REVISION)
     assert _version(migrate.db_path) == BILLING_REGRESSION_REVISION
     assert "reverses_booking_id" in _schema(migrate.db_path)["bookings"]   # unused, ignored by older versions
@@ -630,7 +638,7 @@ def test_handover_downgrade_of_an_adopted_database_leaves_the_reference_columns(
     Base.metadata.create_all(engine)       # installs the triggers through the metadata event
     engine.dispose()
     assert HANDOVER_TRIGGERS <= _triggers(migrate.db_path)
-    migrate()
+    migrate(HANDOVER_REVISION)
     migrate.downgrade(PROJECTS_REVISION)
     schema = _schema(migrate.db_path)
     assert {"correction_of_id", "document_id"} <= schema["handover_protocols"]       # table-level references
@@ -724,7 +732,7 @@ def test_service_contracts_on_an_adopted_database(migrate):
     engine = create_engine(f"sqlite:///{migrate.db_path}")
     Base.metadata.create_all(engine)
     engine.dispose()
-    migrate()
+    migrate(SERVICE_CONTRACTS_REVISION)
     assert SERVICE_CONTRACT_TABLES <= set(_schema(migrate.db_path))
     migrate.downgrade(HANDOVER_REVISION)
     schema = _schema(migrate.db_path)
@@ -811,7 +819,7 @@ def test_deposit_file_on_an_adopted_database(migrate):
     Base.metadata.create_all(engine)       # installs the triggers through the metadata event
     engine.dispose()
     assert "immo_deposit_settlements_update" in _triggers(migrate.db_path)
-    migrate()
+    migrate(DEPOSITS_REVISION)
     migrate.downgrade(SERVICE_CONTRACTS_REVISION)
     assert not DEPOSIT_TABLES & set(_schema(migrate.db_path))
     migrate()
