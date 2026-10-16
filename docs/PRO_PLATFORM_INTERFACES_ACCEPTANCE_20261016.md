@@ -49,10 +49,12 @@ und isolierte Schlüssel. Keine Cloudanbindung wurde freigeschaltet.
   Der zunächst rote Test hatte ein Ziel außerhalb des vom
   Restore-Gate vorgeschriebenen, frischen `artifacts/`-Verzeichnisses
   gewählt; *die Sicherheitsprüfung wurde nicht aufgeweicht*.
-- Native PostgreSQL: `artifacts/pro-native/bce41abae2234d35ac325156093681ae`
-  mit `artifacts/pro-tests/owned-native-native-a26e851adf06445488f8b3c23accaa4b`:
-  **7/7 ohne Skip**, frischer lokaler Testcluster anschließend
-  ausdrücklich beendet.
+- Native PostgreSQL: erster Teilstand
+  `artifacts/pro-native/bce41abae2234d35ac325156093681ae`
+  mit **7/7**. Auf dem **exakten Codecommit `f1a2917e`**
+  `artifacts/pro-native/2cc21ae7367145e8bcb3296571081359`
+  mit `artifacts/pro-tests/owned-native-native-b6f70e1fd6804f359868cb6eb3078297`:
+  **11/11 ohne Skip**, frischer lokaler Testcluster anschließend beendet.
 - `artifacts/pro-tests/platform-schema-declarations-sql-2047fd93737543dcb9760f31546c47ec`:
   **4/4 SQLite-Negativprüfungen** von falschen, fehlenden,
   doppelten und unbekannten Plugin-Schemakennungen.
@@ -97,7 +99,9 @@ und isolierte Schlüssel. Keine Cloudanbindung wurde freigeschaltet.
    Ohne vollständig linearisierte Migrationen kein
    gemeinsamer SQL-Appstart und kein Deployment.
 4. Zusätzlich sind `artifacts/pro-tests/platform-static-green-final-sql-e45b022fc3b7422da9f78a45d3869a00`
-   mit **19/19 SQLite** einschließlich Memory-Audit-Rollback-Negativfall,
+   mit **19/19 SQLite** im früheren Worktree sowie
+   `artifacts/pro-tests/platform-committed-f1a2917e-sql-231093b580ee4fdd9f9dde02dec2a137`
+   mit **19/19 auf exakt Commit `f1a2917e`**, einschließlich Memory-Audit-Rollback-Negativfall,
    `artifacts/pro-tests/platform-schema-declarations-sql-2047fd93737543dcb9760f31546c47ec`
    mit **4/4** Invalid-Schema-Fällen und
    `artifacts/pro-tests/platform-plugin-transport-fence-sql-6d3a17cb247a492fb9572dbb96be30b4`
