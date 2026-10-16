@@ -26,6 +26,7 @@ from .routers import (
     business_qol,
     calendar,
     categories,
+    communication,
     contacts,
     contracts,
     dashboard,
@@ -136,6 +137,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(contacts.router, dependencies=_auth_dep)
     api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
     api_v1.include_router(messages.router, dependencies=_auth_dep)
+    api_v1.include_router(communication.router, dependencies=_auth_dep)
     api_v1.include_router(rent_charges.router, dependencies=_auth_dep)
     api_v1.include_router(integrations.router, dependencies=_auth_dep)
     api_v1.include_router(integration_connections.router, dependencies=_auth_dep)

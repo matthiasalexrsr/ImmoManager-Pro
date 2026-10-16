@@ -7,6 +7,8 @@ import FormModal from '../components/FormModal';
 import { useSearchParams } from 'react-router-dom';
 import useMessageConversation from '../hooks/useMessageConversation';
 import './messages.css';
+import CommunicationCenter from '../features/communication/CommunicationCenter';
+import InternalReplyComposer from '../features/communication/InternalReplyComposer';
 import { useCanWrite } from '../contexts/AuthContext';
 
 export default function Messages() {
@@ -86,6 +88,13 @@ export default function Messages() {
 
   const loadThreadMessages = conversation.selectThread;
   const handleSendMessage = () => conversation.send();
+  const linkedThreadId = params.get('thread_id') || params.get('focus_id');
+  useEffect(() => {
+    if (!linkedThreadId || selectedThread?.id === linkedThreadId) return;
+    const linked = threads.find(item => item.id === linkedThreadId);
+    if (linked) { setView('threads'); loadThreadMessages(linked); }
+  }, [linkedThreadId, selectedThread?.id, threads, loadThreadMessages]);
+
 
   const handleCreateThread = async (data) => {
     const sameSession = api.captureSession();
@@ -161,8 +170,13 @@ export default function Messages() {
         >
           {t('pages.messages.conversations') || 'Konversationen'} ({threads.length})
         </button>
+        <button className={`detail-tab ${view === 'communication' ? 'active' : ''}`} onClick={() => setView('communication')}>E-Mail und Empfang</button>
       </div>
 
+      {view === 'communication' && <CommunicationCenter threads={threads} onOpenThread={id => {
+        const linked = threads.find(item => item.id === id);
+        if (linked) { setView('threads'); loadThreadMessages(linked); }
+      }} />}
       {view === 'notifications' && (
         <div className="messages-layout">
           <div className="messages-sidebar">
@@ -301,19 +315,8 @@ export default function Messages() {
                     </div>
                   ))}
                 </div>
-                {canWrite && <div className="thread-composer">
-                  <label htmlFor="thread-reply">Antwort an „{selectedThread.subject}“</label>
-                  <textarea id="thread-reply"
-                    value={newMessage}
-                    onChange={e => setNewMessage(e.target.value)}
-                    placeholder={t('pages.messages.writePlaceholder') || 'Nachricht schreiben...'}
-                    rows={3}
-                    onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleSendMessage(); }}
-                  />
-                  <button className="btn btn-primary" onClick={handleSendMessage} disabled={!newMessage.trim() || notice.sending || notice.uncertain}>
-                    {notice.sending ? 'Wird gespeichert …' : t('pages.messages.send') || 'Senden'}
-                  </button>
-                </div>}
+                {canWrite && <InternalReplyComposer key={selectedThread.id} thread={selectedThread}
+                  value={newMessage} onChange={setNewMessage} onSend={handleSendMessage} notice={notice} />}
               </>
             ) : (
               <div className="message-detail-empty">

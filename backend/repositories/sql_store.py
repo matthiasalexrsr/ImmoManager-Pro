@@ -469,6 +469,9 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         return self.document.update_document(document_id, data)
 
     def delete_document(self, document_id: str) -> None:
+        from ..services.communication import ensure_document_can_delete
+        self.get_document(document_id)
+        ensure_document_can_delete(self, document_id)
         self.document.delete_document(document_id)
 
     # --- Tasks ---
@@ -944,6 +947,9 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         return self.communication.update_message_thread(thread_id, data)
 
     def delete_message_thread(self, thread_id: str) -> None:
+        from ..services.communication import ensure_thread_can_delete
+        self.get_message_thread(thread_id)
+        ensure_thread_can_delete(self, thread_id)
         self.communication.delete_message_thread(thread_id)
 
     # --- Messages ---

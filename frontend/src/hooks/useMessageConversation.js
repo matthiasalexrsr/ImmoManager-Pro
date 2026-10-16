@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 const emptyPage = () => ({ items: [], status: 'idle', error: '', cursor: null, nextCursor: null, history: [], number: 1, total: null });
+const pendingKey = (owner, thread) => `workspace:${owner}:message-command:${thread}`;
+const bufferCommand = (owner, thread, command) => {
+  if (!owner) return true;
+  try { if (command) localStorage.setItem(pendingKey(owner, thread), JSON.stringify(command));
+    else localStorage.removeItem(pendingKey(owner, thread)); return true; } catch { return false; }
+};
+const recoverCommand = (owner, thread) => {
+  if (!owner) return null;
+  try { const value = JSON.parse(localStorage.getItem(pendingKey(owner, thread)) || 'null');
+    return value?.thread_id === thread && typeof value.body === 'string' && typeof value.idempotency_key === 'string'
+      && typeof value.base_revision === 'string' && Number.isInteger(value.draftVersion) ? value : null;
+  } catch { return null; }
+};
 const rejected = error => [400, 401, 403, 404, 409, 422].includes(error.statusCode);
 
 // A conversation, a read attempt and a submitted command have separate identities.
 // Aborting a read is an optimization; generation/session checks are the boundary.
 export default function useMessageConversation(onThreadLoaded) {
+  const owner = useAuth()?.user?.id;
   const [selectedThread, setSelectedThread] = useState(null);
   const [page, setPage] = useState(emptyPage);
   const [drafts, setDrafts] = useState({});
@@ -65,6 +80,19 @@ export default function useMessageConversation(onThreadLoaded) {
         setSelectedThread(result.thread);
         onThreadLoaded?.(result.thread);
       }
+      // Read a crash buffer only after this server page has rechecked the source rights.
+      if (!pending.current.has(thread.id)) {
+        const recovered = recoverCommand(owner, thread.id);
+        if (recovered) {
+          pending.current.set(thread.id, recovered);
+          if (!draftValues.current.has(thread.id)) {
+            draftValues.current.set(thread.id, { body: recovered.body, version: recovered.draftVersion });
+            setDrafts(values => ({ ...values, [thread.id]: recovered.body }));
+          }
+          setNotices(values => ({ ...values, [thread.id]: { uncertain: true, sending: false,
+            error: 'Eine unterbrochene Speicherung wurde wiedergefunden. Bitte mit derselben Kennung abgleichen.' } }));
+        }
+      }
       setPage({ items: result.items, status: 'ready', error: '', cursor, history, number,
         nextCursor: result.next_cursor || null, total: result.total ?? null });
     } catch (failure) {
@@ -73,7 +101,7 @@ export default function useMessageConversation(onThreadLoaded) {
       setPage({ ...emptyPage(), status: 'error', cursor, history, number,
         error: failure.message || 'Nachrichten konnten nicht geladen werden.' });
     }
-  }, [invalidate, onThreadLoaded]);
+  }, [invalidate, onThreadLoaded, owner]);
 
   const selectThread = useCallback(thread => {
     selected.current = thread;
@@ -111,6 +139,10 @@ export default function useMessageConversation(onThreadLoaded) {
       base_revision: thread.updated_at,
       idempotency_key: crypto.randomUUID(), draftVersion: draft.version,
     };
+    if (!bufferCommand(owner, thread.id, command)) {
+      setNotices(values => ({ ...values, [thread.id]: { error: 'Die sichere Wiederaufnahme konnte nicht gespeichert werden. Bitte Browserspeicher prüfen; es wurde keine Nachricht übertragen.' } }));
+      return;
+    }
     pending.current.set(thread.id, command);
     sending.current.add(thread.id);
     setNotices(values => ({ ...values, [thread.id]: { sending: true, error: '', uncertain: false } }));
@@ -121,6 +153,7 @@ export default function useMessageConversation(onThreadLoaded) {
       sameSession();
       if (!saved?.id || saved.thread_id !== thread.id) throw new Error('Die Speicherung wurde nicht eindeutig bestätigt.');
       pending.current.delete(thread.id);
+      bufferCommand(owner, thread.id, null);
       const latest = draftValues.current.get(thread.id);
       // Typing while a send is in flight creates a new draft, even after undoing
       // back to identical text. Its version must not be cleared by the old send.
@@ -134,13 +167,13 @@ export default function useMessageConversation(onThreadLoaded) {
       if (!active()) return;
       if (failure.code === 'SESSION_CHANGED') { invalidate(); return; }
       const definite = rejected(failure);
-      if (definite) pending.current.delete(thread.id);
+      if (definite) { pending.current.delete(thread.id); bufferCommand(owner, thread.id, null); }
       setNotices(values => ({ ...values, [thread.id]: { sending: false,
         error: failure.message || 'Nachricht konnte nicht gespeichert werden.', uncertain: !definite } }));
     } finally {
       if (active()) sending.current.delete(thread.id);
     }
-  }, [invalidate, loadPage]);
+  }, [invalidate, loadPage, owner]);
 
   const refresh = () => selectedThread && loadPage(selectedThread);
   const retryRead = () => selectedThread && loadPage(selectedThread, page.cursor, page.history, page.number);

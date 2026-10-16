@@ -312,8 +312,10 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
             row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
             revision = row[0] if row else None
         from .bank_backup import key_ids
+        from .communication_backup import needed_key_ids as communication_key_ids
         return {"integrity": check, "row_counts": counts, "revision": revision,
-                "bank_key_ids": key_ids(connection, tables)}
+                "bank_key_ids": key_ids(connection, tables),
+                "communication_key_ids": communication_key_ids(connection, tables)}
     finally:
         connection.close()
 
@@ -365,6 +367,8 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
                 revision = None
                 if "alembic_version" in tables:
                     revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                from .communication_backup import needed_key_ids as communication_key_ids
+                communication_keys = communication_key_ids(connection, tables)
                 server = connection.execute(text("SHOW server_version")).scalar()
                 from .bank_backup import key_ids
                 bank_keys = key_ids(connection, tables)
@@ -376,7 +380,7 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
     finally:
         engine.dispose()
     return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
-            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys}
+            "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys, "communication_key_ids": communication_keys}
 
 
 class _Lock:
@@ -661,7 +665,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
         env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
-        needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])))
+        needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])) | set(facts.get('communication_key_ids', [])))
         if dialect == "sqlite":
             from .tax_archive_validation import needed_key_ids
             tax_engine = create_engine(f"sqlite:///{db_copy.resolve().as_posix()}", poolclass=NullPool)
@@ -898,6 +902,7 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             tokens.extend(bank_tokens(connection, tables))
     result: dict[str, Any] = {"sealed_values": len(tokens), "decrypted": 0, "warning": warning}
+    communication_database = extracted / DB_SQLITE
     if warning:
         return result
     keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
@@ -923,11 +928,20 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
         database_path = extracted / manifest["database"]["path"]
         engine = create_engine(f"sqlite:///{database_path.resolve().as_posix()}", poolclass=NullPool)
         try:
-            with engine.connect() as connection:
-                result["tax_receipts_verified"] = verify_tax_archive(connection,
+            with engine.connect() as tax_connection:
+                result["tax_receipts_verified"] = verify_tax_archive(tax_connection,
                     lambda token, context: secret_box.open_with(keys, token, context))
         finally:
             engine.dispose()
+
+    if communication_database.is_file():
+        from .communication_backup import verify
+        connection = sqlite3.connect(f"{communication_database.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            result["communication"] = verify(connection, keys, tables)
+        finally:
+            connection.close()
     return result
 
 
@@ -970,7 +984,10 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
         secret_box.open_with(keys, token, context)
     bank_proof = verify_bank(connection, tables, keys)
     tax_proof = verify_tax_archive(connection, lambda token, context: secret_box.open_with(keys, token, context))
+    from .communication_backup import verify as verify_communication
+    communication_proof = verify_communication(connection, keys, tables)
     return {
+        "communication": communication_proof,
         "bank_originals": bank_proof, "tax_receipts_verified": tax_proof,
         "present": proof["present"], "verified_rows": proof["rows"],
         "verified_result_bytes": proof["verified_result_bytes"],
@@ -1119,6 +1136,8 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
 
                     checks["archived_originals"] = verify_document_versions(connection)
                 checks["private_connections"] = _private_connection_proof(connection, private_keys)
+                checks['communication'] = checks['private_connections']['communication']
+                checks['communication_verified'] = True
         finally:
             engine.dispose()
         _compare({"revision": revision, "row_counts": counts}, database)

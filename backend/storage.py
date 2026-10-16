@@ -855,6 +855,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def delete_document(self, document_id: str) -> None:
         if document_id not in self.documents:
             raise NotFoundError("Dokument nicht gefunden")
+        from .services.communication import ensure_document_can_delete
+        ensure_document_can_delete(self, document_id)
         self._drop_service_contract_rows("service_contract_documents", "document_id", document_id)
         del self.documents[document_id]
 
@@ -2045,6 +2047,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def delete_message_thread(self, thread_id: str) -> None:
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
+        from .services.communication import ensure_thread_can_delete
+        ensure_thread_can_delete(self, thread_id)
         # Also delete associated messages
         msg_ids = [m.id for m in self.messages.values() if m.thread_id == thread_id]
         for mid in msg_ids:

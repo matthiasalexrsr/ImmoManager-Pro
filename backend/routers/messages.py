@@ -61,6 +61,9 @@ def patch_thread(thread_id: str, payload: MessageThreadPatch) -> MessageThread:
 @router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_thread(thread_id: str) -> None:
     try:
+        from ..services.communication import ensure_thread_can_delete
+        store.get_message_thread(thread_id)
+        ensure_thread_can_delete(store, thread_id)
         store.delete_message_thread(thread_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

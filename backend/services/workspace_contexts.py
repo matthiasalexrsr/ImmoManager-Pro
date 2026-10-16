@@ -43,6 +43,8 @@ CONTEXTS = {
     "rent-charges": ("rent_charge", "RentChargeCreate"),
     "service-contracts": ("service_contract", "ServiceContractCreate"),
     "messages": ("message_thread", "MessageThreadCreate"),
+    "message-reply": ("message_thread", "InternalMessageReply"),
+    "email-compose": ("message_thread", "EmailComposition"),
     "invoice-review": ("invoice", "InvoiceCreate"), "dunning": ("contract", "ContractCreate"),
     "conversation-note": ("contact", "ConversationNote"),
     "housing-confirmation": ("contract", "HousingForm"),
@@ -55,6 +57,8 @@ CONTEXTS = {
     "contract-wizard": ("contract", "ContractWizard"),
 }
 CUSTOM_FIELDS = {
+    "InternalMessageReply": {"body"},
+    "EmailComposition": {"to", "cc", "bcc", "subject", "body", "connection_id", "template_id", "reply_to_item_id", "attachments", "snippet_ids"},
     "ContractWizard": {"form"},
     "HousingForm": {"dwelling_address", "dwelling_label", "housing_provider_name", "housing_provider_address",
                     "owner_relation", "owner_name", "actual_move_in_date", "issue_date", "issuer_name", "issuer_role",
@@ -149,7 +153,7 @@ def check_context(actor_id: str, context: str, *, edit: bool = False) -> str:
 
 def context_area(context: str) -> str:
     key = context_key(context)
-    return {"conversation-note": "/messages", "housing-confirmation": "/contracts", "contract-wizard": "/contracts",
+    return {"email-compose": "/messages", "message-reply": "/messages", "conversation-note": "/messages", "housing-confirmation": "/contracts", "contract-wizard": "/contracts",
             "handover-protocol-content": "/handover-protocols", "rent-payment": "/rent-charges",
             "invoice-review-action": "/invoices", "maintenance-protocol": "/maintenance",
             "dunning-action": "/dunning"}.get(key, "/" + key)

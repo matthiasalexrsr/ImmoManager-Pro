@@ -2,6 +2,7 @@ from . import (
     access_models,  # noqa: F401  (portfolio grants)
     bank_models,  # noqa: F401 (bank source originals and ledger links)
     business_qol_models,  # noqa: F401  (conversation notes, undo, document processing)
+    communication_models,  # noqa: F401 (durable communication and original MIME)
     datev_models,  # noqa: F401
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)

@@ -112,7 +112,9 @@ def probe_handler(ctx: JobContext) -> bool:
 
 
 def default_handlers() -> dict:
-    return {RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
+    from .communication import KIND as COMMUNICATION_KIND
+    from .communication import handler as communication_handler
+    return {COMMUNICATION_KIND: communication_handler, RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
             SERVICE_CONTRACT_KIND: make_service_contract_handler(),
             BACKUP_KIND: backup_handler, PROBE_KIND: probe_handler}
 
@@ -159,6 +161,8 @@ def tick(jobs: JobStore | None = None, runner: JobRunner | None = None,
          now: datetime | None = None) -> list[JobRun]:
     jobs = jobs or get_job_store()
     enqueue_due(jobs, now)
+    from .communication import recover
+    recover(jobs)
     runner = runner or JobRunner(jobs, default_handlers())
     return runner.run_until_idle()
 

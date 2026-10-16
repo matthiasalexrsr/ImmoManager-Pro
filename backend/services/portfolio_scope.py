@@ -104,6 +104,7 @@ INTERNAL = frozenset({
     "login_attempts",
     "revoked_tokens",
     "integration_action_attempts", "integration_run_cursors",
+    "communication_items", "communication_evidence", "communication_blocks", "communication_attachments",
     "integration_connections", "integration_connection_secrets", "integration_connection_mappings",
     "integration_action_runs", "integration_source_blocks", "integration_connection_events",
     "audit_logs",            # installation-wide; its API needs all access (middleware)
