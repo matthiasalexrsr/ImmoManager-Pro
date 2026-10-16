@@ -25,8 +25,13 @@ DOCUMENT_EXTENSIONS = IMAGE_EXTENSIONS | frozenset(
 )
 # Generated originals (Wohnungsgeberbestätigung, Übergabe- and maintenance protocols, dunning letters) are served
 # from the verified archive, never from a file on disk that happens to have the same name.
-ARCHIVED_PREFIXES = ("housing-confirmations/", "handover-protocols/", "maintenance-protocols/", "dunning-letters/",
-                     "deposit-settlements/")
+ARCHIVED_PREFIXES = (
+    "housing-confirmations/",
+    "handover-protocols/",
+    "maintenance-protocols/",
+    "dunning-letters/",
+    "deposit-settlements/",
+)
 # Browsers render these inline without executing script.
 INLINE_SAFE_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp"})
 
@@ -87,6 +92,7 @@ class UploadStaticFiles(StaticFiles):
             raise
 
     async def get_response(self, path: str, scope: Scope) -> Response:
+        path = path.replace("\\", "/")
         try:
             if scope["method"] not in ("GET", "HEAD"):
                 raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -95,7 +101,35 @@ class UploadStaticFiles(StaticFiles):
                 return await run_in_threadpool(_archived_original, path, user)
             # a restricted account reads only files of records in its portfolios
             await run_in_threadpool(require_file_access, path.replace("\\", "/").lstrip("/"))
-            response = await super().get_response(path, scope)
+            from .file_storage import S3Storage, StorageUnavailable, get_file_storage, validate_key
+
+            try:
+                storage = get_file_storage()
+            except StorageUnavailable:
+                raise HTTPException(503, "Originalspeicher ist nicht verfügbar. Bitte Konfiguration prüfen.") from None
+            if isinstance(storage, S3Storage):
+                import mimetypes
+
+                from .private_file_response import private_bytes
+
+                try:
+                    data = await run_in_threadpool(storage.get, validate_key(path))
+                except ValueError:
+                    raise HTTPException(400, "Ungültiger Dateischlüssel") from None
+                except StorageUnavailable:
+                    raise HTTPException(
+                        503, "Originalspeicher nicht erreichbar. Bitte erneut versuchen.", headers={"Retry-After": "5"}
+                    ) from None
+                if data is None:
+                    raise HTTPException(404, "Datei nicht gefunden")
+                response = private_bytes(
+                    data,
+                    media_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
+                    range_header=Request(scope).headers.get("range"),
+                    head=scope["method"] == "HEAD",
+                )
+            else:
+                response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
         if file_extension(path) not in INLINE_SAFE_EXTENSIONS:
@@ -108,12 +142,15 @@ def read_archived_pdf(store, key: str, actor_id: str) -> bytes | None:
     """The verified original behind a virtual upload path, or None if no feature owns the path."""
     if key.startswith("maintenance-protocols/"):
         from .maintenance_projects import read_pdf_for_key as read_protocol
+
         return read_protocol(store, key, actor_id)
     if key.startswith("dunning-letters/"):
         from .dunning import read_pdf_for_key as read_letter
+
         return read_letter(store, key, actor_id)
     if key.startswith("deposit-settlements/"):
         from .deposits import read_pdf_for_key as read_settlement
+
         return read_settlement(store, key, actor_id)
     from . import handover_protocol, housing_confirmation
 

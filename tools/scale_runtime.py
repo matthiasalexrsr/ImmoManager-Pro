@@ -20,9 +20,49 @@ class ScaleServer(Server):
     def env(self):
         temporary = self.dir / "tmp"
         temporary.mkdir(exist_ok=True)
-        return {**super().env(), "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false",
-                "AI_ENABLED": "false", "PLUGIN_DIRS": "[]", "TASK_QUEUE_BACKEND": "sync",
-                "TMP": str(temporary), "TEMP": str(temporary), "TMPDIR": str(temporary)}
+        inherited = super().env()
+        # Keep explicit fixture values and OS essentials; never inherit provider credentials.
+        explicit = {
+            "PYTHONPATH",
+            "PYTHONUTF8",
+            "PYTHONIOENCODING",
+            "DATA_DIR",
+            "DATABASE_URL",
+            "UPLOADS_DIR",
+            "BACKUP_DIR",
+            "INTEGRATION_STATE_FILE",
+            "LOG_FILE",
+            "AI_CACHE_DIR",
+            "JWT_SECRET_KEY",
+            "ENVIRONMENT",
+            "IMMO_TESTVERSION",
+            "RATE_LIMIT_ENABLED",
+            "AUTO_SEED_DEMO_DATA",
+            "AUTO_MIGRATE",
+            "SQLITE_PERSISTENT_STORE",
+            "ALLOW_INMEMORY_FALLBACK",
+            "PLUGIN_DIRS",
+            "AI_ENABLED",
+            "TASK_QUEUE_BACKEND",
+            "JOB_SCHEDULER_ENABLED",
+            "BACKUP_SCHEDULE_ENABLED",
+            "CORS_ORIGINS",
+        }
+        os_keys = {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "LANG"}
+        return {
+            **{key: value for key, value in inherited.items() if key in explicit or key.upper() in os_keys},
+            "FILE_STORAGE_BACKEND": "local",
+            "SECRET_KEYS": "",
+            "SECRET_KEY_FILE": str(self.dir / "secrets/keyring.json"),
+            "JOB_SCHEDULER_ENABLED": "false",
+            "BACKUP_SCHEDULE_ENABLED": "false",
+            "AI_ENABLED": "false",
+            "PLUGIN_DIRS": "[]",
+            "TASK_QUEUE_BACKEND": "sync",
+            "TMP": str(temporary),
+            "TEMP": str(temporary),
+            "TMPDIR": str(temporary),
+        }
 
     def stop(self, hard=False):
         with self.stop_lock:
@@ -38,8 +78,11 @@ def resource_sample(root: int) -> dict:
                 fields = (path / "stat").read_text().rsplit(")", 1)[1].split()
                 pid, parent = int(path.name), int(fields[1])
                 pairs.append((pid, parent))
-                values[pid] = {"pid": pid, "rss": int(fields[21]) * os.sysconf("SC_PAGE_SIZE"),
-                               "cpu_seconds": (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")}
+                values[pid] = {
+                    "pid": pid,
+                    "rss": int(fields[21]) * os.sysconf("SC_PAGE_SIZE"),
+                    "cpu_seconds": (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK"),
+                }
             except (OSError, ValueError, IndexError):
                 continue
         memory = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
@@ -48,19 +91,47 @@ def resource_sample(root: int) -> dict:
         from ctypes import wintypes as w
 
         class Entry(ctypes.Structure):
-            _fields_ = [("size", w.DWORD), ("usage", w.DWORD), ("pid", w.DWORD),
-                        ("heap", ctypes.c_size_t), ("module", w.DWORD), ("threads", w.DWORD),
-                        ("parent", w.DWORD), ("priority", w.LONG), ("flags", w.DWORD), ("exe", w.WCHAR * 260)]
+            _fields_ = [
+                ("size", w.DWORD),
+                ("usage", w.DWORD),
+                ("pid", w.DWORD),
+                ("heap", ctypes.c_size_t),
+                ("module", w.DWORD),
+                ("threads", w.DWORD),
+                ("parent", w.DWORD),
+                ("priority", w.LONG),
+                ("flags", w.DWORD),
+                ("exe", w.WCHAR * 260),
+            ]
 
         class Counters(ctypes.Structure):
             _fields_ = [("cb", w.DWORD), ("faults", w.DWORD)] + [
-                (name, ctypes.c_size_t) for name in ("peak_rss", "rss", "peak_paged", "paged", "peak_nonpaged",
-                                                    "nonpaged", "private_bytes", "peak_private")]
+                (name, ctypes.c_size_t)
+                for name in (
+                    "peak_rss",
+                    "rss",
+                    "peak_paged",
+                    "paged",
+                    "peak_nonpaged",
+                    "nonpaged",
+                    "private_bytes",
+                    "peak_private",
+                )
+            ]
 
         class Memory(ctypes.Structure):
             _fields_ = [("length", w.DWORD), ("load", w.DWORD)] + [
-                (name, ctypes.c_ulonglong) for name in ("total", "available", "total_page", "available_page",
-                                                      "total_virtual", "available_virtual", "extended")]
+                (name, ctypes.c_ulonglong)
+                for name in (
+                    "total",
+                    "available",
+                    "total_page",
+                    "available_page",
+                    "total_virtual",
+                    "available_virtual",
+                    "extended",
+                )
+            ]
 
         kernel, psapi = ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("psapi", use_last_error=True)
         signatures = {
@@ -100,8 +171,13 @@ def resource_sample(root: int) -> dict:
                 stamps = [w.FILETIME() for _ in range(4)]
                 times_ok = kernel.GetProcessTimes(handle, *(ctypes.byref(stamp) for stamp in stamps))
                 cpu = sum((stamp.dwHighDateTime << 32) + stamp.dwLowDateTime for stamp in stamps[2:]) / 1e7
-                values[pid] = {"pid": pid, "rss": counters.rss, "peak_rss": counters.peak_rss,
-                               "private_bytes": counters.private_bytes, "cpu_seconds": cpu if times_ok else None}
+                values[pid] = {
+                    "pid": pid,
+                    "rss": counters.rss,
+                    "peak_rss": counters.peak_rss,
+                    "private_bytes": counters.private_bytes,
+                    "cpu_seconds": cpu if times_ok else None,
+                }
             finally:
                 kernel.CloseHandle(handle)
         memory = Memory()
@@ -110,9 +186,13 @@ def resource_sample(root: int) -> dict:
             raise ctypes.WinError(ctypes.get_last_error())
         available = memory.available
     processes = [values[pid] for pid in sorted(descendants(root, pairs)) if pid in values]
-    return {"processes": processes, "rss": sum(p["rss"] for p in processes), "available_bytes": available,
-            "cpu_seconds": sum(p.get("cpu_seconds") or 0 for p in processes),
-            "private_bytes": sum(p.get("private_bytes", 0) for p in processes)}
+    return {
+        "processes": processes,
+        "rss": sum(p["rss"] for p in processes),
+        "available_bytes": available,
+        "cpu_seconds": sum(p.get("cpu_seconds") or 0 for p in processes),
+        "private_bytes": sum(p.get("private_bytes", 0) for p in processes),
+    }
 
 
 def descendants(root, pairs):
@@ -155,7 +235,9 @@ class Monitor:
                             peak[field] = max(peak[field], sample[field])
                         peak.setdefault("cpu_start_seconds", sample["cpu_seconds"])
                         peak["cpu_delta_seconds"] = peak["cpu_seconds"] - peak["cpu_start_seconds"]
-                        log.write(json.dumps({"elapsed": time.monotonic() - started, "phase": self.phase, **sample}) + "\n")
+                        log.write(
+                            json.dumps({"elapsed": time.monotonic() - started, "phase": self.phase, **sample}) + "\n"
+                        )
                         log.flush()
                         if not sample["processes"]:
                             raise RuntimeError("The process tree could not be measured")

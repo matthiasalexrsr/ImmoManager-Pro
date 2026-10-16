@@ -28,7 +28,7 @@ from .middleware import (
     RequestLoggingMiddleware,
 )
 from .paths import ensure_runtime_dirs, get_uploads_dir
-from .plugins import get_plugins, load_plugins
+from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
 from .routing import build_api_v1, get_i18n_router
 from .services.portfolio_http import PortfolioScopeMiddleware
 from .services.upload_policy import UploadStaticFiles
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─── Startup Validation ──────────────────────────────────────────────────────
+
 
 def _validate_startup_config() -> None:
     """Enforce production-safe configuration.
@@ -72,8 +73,10 @@ def _validate_startup_config() -> None:
 
     if settings.auto_migrate:
         # not blocking: the setting has no effect any more
-        advisories.append("AUTO_MIGRATE is ignored. Schema changes run only through the explicit "
-                          "upgrade (python -m backend.upgrade), which takes a full backup first.")
+        advisories.append(
+            "AUTO_MIGRATE is ignored. Schema changes run only through the explicit "
+            "upgrade (python -m backend.upgrade), which takes a full backup first."
+        )
 
     if settings.allow_inmemory_fallback:
         issues.append("ALLOW_INMEMORY_FALLBACK is enabled. Disable to prevent silent data loss.")
@@ -99,8 +102,7 @@ def _validate_startup_config() -> None:
         for issue in issues:
             logger.critical("PRODUCTION CONFIG ERROR: %s", issue)
         raise RuntimeError(
-            "Unsafe configuration detected in production mode. "
-            f"{len(issues)} issue(s): {'; '.join(issues)}"
+            f"Unsafe configuration detected in production mode. {len(issues)} issue(s): {'; '.join(issues)}"
         )
 
     for issue in issues:
@@ -108,6 +110,7 @@ def _validate_startup_config() -> None:
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -120,13 +123,7 @@ async def lifespan(app: FastAPI):
     # Load plugins
     if settings.plugin_dirs:
         loaded = load_plugins(settings.plugin_dirs)
-        for plugin in loaded:
-            try:
-                plugin.register_routes(app, f"/api/v1/plugins/{plugin.name}")
-                plugin.on_startup()
-                logger.info("Plugin loaded: %s v%s", plugin.name, plugin.version)
-            except Exception:
-                logger.exception("Failed to start plugin: %s", plugin.name)
+        start_plugins(app, loaded)
 
     # --- Production safety checks ---
     _validate_startup_config()
@@ -135,9 +132,11 @@ async def lifespan(app: FastAPI):
     if settings.auto_seed_demo_data:
         try:
             from .dependencies import store
+
             if len(store.list_portfolios()) == 0:
                 logger.info("Empty database detected — seeding demo data (AUTO_SEED_DEMO_DATA=true) …")
                 from seed_data import seed
+
                 seed()
                 logger.info("Demo data seeded successfully")
         except Exception:
@@ -148,10 +147,17 @@ async def lifespan(app: FastAPI):
     try:
         from .dependencies import cleanup_session, store
         from .services.payment_allocations import allocate_unassigned
-        result = allocate_unassigned(store)
-        if result["allocated"] or result["unassigned"]:
-            logger.info("Payment allocation: %d bookings allocated, %d need a decision",
-                        result["allocated"], len(result["unassigned"]))
+
+        result = {"allocated": 0, "unassigned": []} if settings.immo_restore_probe else allocate_unassigned(store)
+        pending_unassigned = result.get("unassigned")
+        if not isinstance(pending_unassigned, list):
+            raise ValueError("Payment allocation returned no valid pending-bookings list")
+        if result["allocated"] or pending_unassigned:
+            logger.info(
+                "Payment allocation: %d bookings allocated, %d need a decision",
+                result["allocated"],
+                len(pending_unassigned),
+            )
         cleanup_session()
     except Exception:
         logger.exception("Allocating existing payments failed (non-fatal)")
@@ -159,6 +165,7 @@ async def lifespan(app: FastAPI):
     # Start periodic cleanup of auth in-memory stores
     async def _periodic_auth_cleanup():
         from .auth import _cleanup_blacklist, _register_limiter
+
         while True:
             await asyncio.sleep(300)  # Every 5 minutes
             try:
@@ -174,21 +181,18 @@ async def lifespan(app: FastAPI):
     scheduler_task = None
     if settings.job_scheduler_enabled:
         from .services.jobs.scheduler import run_forever
+
         scheduler_task = asyncio.create_task(run_forever(settings.job_scheduler_interval_seconds, scheduler_stop))
 
     yield
 
     cleanup_task.cancel()
-    scheduler_stop.set()            # a running job stops after its current chunk
+    scheduler_stop.set()  # a running job stops after its current chunk
     if scheduler_task is not None:
         scheduler_task.cancel()
 
     # Shutdown plugins
-    for plugin in get_plugins():
-        try:
-            plugin.on_shutdown()
-        except Exception:
-            logger.exception("Error shutting down plugin: %s", plugin.name)
+    stop_plugins(app, get_plugins())
 
     logger.info("ImmoManager Pro shutting down")
 
@@ -254,29 +258,37 @@ def _load_contract_wizard_mount():
     """
     try:
         import sys as _sys
+
         pkg_dir = str(Path(__file__).resolve().parent.parent / "mietvertrag_wizard_fastapi_reportlab_pro")
         if pkg_dir not in _sys.path:
             _sys.path.insert(0, pkg_dir)
         from mietvertrag_wizard.pdf_reportlab import build_contract_pdf  # type: ignore[import-untyped]
+
         pkg_path = Path(pkg_dir) / "mietvertrag_wizard"
         if not _wizard_assets_ready(pkg_path):
-            CONTRACT_WIZARD_STATUS.update({
-                "available": False,
-                "reason": "package found but templates/static files are missing",
-            })
+            CONTRACT_WIZARD_STATUS.update(
+                {
+                    "available": False,
+                    "reason": "package found but templates/static files are missing",
+                }
+            )
             logger.error("Mietvertrag-Wizard unavailable: templates/static missing")
             return None
 
-        CONTRACT_WIZARD_STATUS.update({
-            "available": True,
-            "reason": None,
-        })
+        CONTRACT_WIZARD_STATUS.update(
+            {
+                "available": True,
+                "reason": None,
+            }
+        )
         return build_contract_pdf, pkg_path
     except Exception as exc:
-        CONTRACT_WIZARD_STATUS.update({
-            "available": False,
-            "reason": f"{type(exc).__name__}: {exc}",
-        })
+        CONTRACT_WIZARD_STATUS.update(
+            {
+                "available": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+        )
         logger.exception("Mietvertrag-Wizard could not be loaded")
         return None
 
@@ -344,6 +356,7 @@ _ensure_contract_wizard_mount(app)
 
 # ─── Health ──────────────────────────────────────────────────────────────────
 
+
 @app.get("/health")
 def health() -> dict:
     from .dependencies import _use_sql_store
@@ -353,6 +366,7 @@ def health() -> dict:
     if _use_sql_store:
         try:
             from .db.session import engine
+
             with engine.connect() as conn:
                 conn.execute(__import__("sqlalchemy").text("SELECT 1"))
         except Exception:
@@ -374,6 +388,7 @@ def health() -> dict:
 
 # ─── Serve built frontend (SPA) ─────────────────────────────────────────────
 
+
 def _resolve_frontend_dir() -> Path | None:
     """Locate the built frontend dist directory."""
     import sys as _sys
@@ -391,6 +406,7 @@ def _resolve_frontend_dir() -> Path | None:
 
 
 _FRONTEND_DIR = _resolve_frontend_dir()
+
 
 def _spa_file(frontend_root: Path, full_path: str) -> Path | None:
     """Resolve a request path to a file inside the built frontend, or None.

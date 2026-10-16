@@ -28,8 +28,14 @@ from . import document_versions as archive
 from . import workspace_contexts as contexts
 from .portfolio_scope import scope_context, scope_from_user
 
-MODELS: dict[str, Any] = {"drafts": WorkspaceDraftORM, "views": WorkspaceViewORM, "recents": WorkspaceRecentORM,
-          "favorites": WorkspaceFavoriteORM, "view-state": WorkspaceViewStateORM, "deferrals": WorkspaceDeferralORM}
+MODELS: dict[str, Any] = {
+    "drafts": WorkspaceDraftORM,
+    "views": WorkspaceViewORM,
+    "recents": WorkspaceRecentORM,
+    "favorites": WorkspaceFavoriteORM,
+    "view-state": WorkspaceViewStateORM,
+    "deferrals": WorkspaceDeferralORM,
+}
 VIEW_KEYS = {"search", "column_filters", "sort", "visible_columns", "hidden_columns", "column_order", "page_size"}
 STATE_KEYS = VIEW_KEYS | {"page_cursor", "page", "scroll_top", "scroll_left", "row_mark"}
 
@@ -60,11 +66,20 @@ def _get(unit, kind: str, identifier: str, *, lock: bool = False):
 def _put(unit, kind: str, identifier: str, context: str, payload: dict, prior, *, deleted: bool = False):
     row: Any
     stamp = _now()
-    values = {"id": identifier, "owner_user_id": unit.actor_id, "context": context,
-              "revision": prior.revision + 1 if prior else 1, "deleted": deleted,
-              "payload": deepcopy(payload), "created_at": prior.created_at if prior else stamp, "updated_at": stamp}
+    values = {
+        "id": identifier,
+        "owner_user_id": unit.actor_id,
+        "context": context,
+        "revision": prior.revision + 1 if prior else 1,
+        "deleted": deleted,
+        "payload": deepcopy(payload),
+        "created_at": prior.created_at if prior else stamp,
+        "updated_at": stamp,
+    }
     if kind == "views":
-        values["name_key"] = "deleted:" + identifier if deleted else unicodedata.normalize("NFKC", payload["name"]).casefold()
+        values["name_key"] = (
+            "deleted:" + identifier if deleted else unicodedata.normalize("NFKC", payload["name"]).casefold()
+        )
     if unit.db is not None:
         if prior is None:
             row = MODELS[kind](**values)
@@ -76,9 +91,18 @@ def _put(unit, kind: str, identifier: str, context: str, payload: dict, prior, *
         unit.db.flush()
         return row
     row = SimpleNamespace(**values)
-    if kind == "views" and not deleted and any(other.owner_user_id == unit.actor_id and not other.deleted
-            and other.context == context and other.name_key == row.name_key and other.id != identifier
-            for other in _memory(unit.store, kind).values()):
+    if (
+        kind == "views"
+        and not deleted
+        and any(
+            other.owner_user_id == unit.actor_id
+            and not other.deleted
+            and other.context == context
+            and other.name_key == row.name_key
+            and other.id != identifier
+            for other in _memory(unit.store, kind).values()
+        )
+    ):
         raise HTTPException(409, {"code": "view_name_conflict", "message": "Diese Ansicht hat bereits einen Namen."})
     unit.insert(_memory(unit.store, kind), (unit.actor_id, identifier), row)
     return row
@@ -87,14 +111,22 @@ def _put(unit, kind: str, identifier: str, context: str, payload: dict, prior, *
 def _command(unit, key: str):
     if unit.db is None:
         return _memory(unit.store, "commands").get((unit.actor_id, key))
-    return unit.db.scalar(select(WorkspaceCommandORM).where(
-        WorkspaceCommandORM.owner_user_id == unit.actor_id, WorkspaceCommandORM.idempotency_key == key))
+    return unit.db.scalar(
+        select(WorkspaceCommandORM).where(
+            WorkspaceCommandORM.owner_user_id == unit.actor_id, WorkspaceCommandORM.idempotency_key == key
+        )
+    )
 
 
 def _remember(unit, key: str, digest: str, response: dict, authorization: dict):
-    values = {"id": hashlib.sha256(f"{unit.actor_id}:{key}".encode()).hexdigest(), "owner_user_id": unit.actor_id,
-              "idempotency_key": key, "request_hash": digest,
-              "response": {"result": deepcopy(response), "authorization": deepcopy(authorization)}, "created_at": _now()}
+    values = {
+        "id": hashlib.sha256(f"{unit.actor_id}:{key}".encode()).hexdigest(),
+        "owner_user_id": unit.actor_id,
+        "idempotency_key": key,
+        "request_hash": digest,
+        "response": {"result": deepcopy(response), "authorization": deepcopy(authorization)},
+        "created_at": _now(),
+    }
     if unit.db is not None:
         unit.db.add(WorkspaceCommandORM(**values))
         unit.db.flush()
@@ -108,7 +140,9 @@ def _source_state(unit, payload: dict) -> dict:
         return {"status": "new", "current_revision": None}
     anchored = not payload.get("source")
     try:
-        current = contexts.resolve_context(unit.store, source["kind"], source["id"], unit.actor_id, include_dependencies=True)
+        current = contexts.resolve_context(
+            unit.store, source["kind"], source["id"], unit.actor_id, include_dependencies=True
+        )
     except HTTPException as exc:
         if exc.status_code != 404:
             raise
@@ -120,10 +154,17 @@ def _source_state(unit, payload: dict) -> dict:
     dependency_key = "_anchor_dependencies" if anchored else "_source_dependencies"
     expected = (payload.get("_anchor_revision") or current["revision"]) if anchored else source["revision"]
     dependencies_changed = payload.get(dependency_key, current["dependencies"]) != current["dependencies"]
-    return {"status": "current" if contexts.same_revision(expected, current["revision"]) and not dependencies_changed else "changed",
-            "dependencies_changed": dependencies_changed,
-            "current_revision": current["revision"], "reference": "anchor" if anchored else "source",
-            "kind": current["kind"], "id": current["entity_id"], "title": current["title"]}
+    return {
+        "status": "current"
+        if contexts.same_revision(expected, current["revision"]) and not dependencies_changed
+        else "changed",
+        "dependencies_changed": dependencies_changed,
+        "current_revision": current["revision"],
+        "reference": "anchor" if anchored else "source",
+        "kind": current["kind"],
+        "id": current["entity_id"],
+        "title": current["title"],
+    }
 
 
 def _source_exists_unscoped(unit, source: dict) -> bool:
@@ -167,9 +208,13 @@ def _authorize(unit, kind: str, payload: dict, *, write: bool = False):
         state = _source_state(unit, payload)
         anchor = payload.get("anchor")
         source = payload.get("source") or anchor
-        own_deleted_anchor = state["status"] == "deleted" and anchor and source and (
-            contexts.canonical_kind(anchor["kind"]), anchor["id"]) == (
-                contexts.canonical_kind(source["kind"]), source["id"])
+        own_deleted_anchor = (
+            state["status"] == "deleted"
+            and anchor
+            and source
+            and (contexts.canonical_kind(anchor["kind"]), anchor["id"])
+            == (contexts.canonical_kind(source["kind"]), source["id"])
+        )
         if not own_deleted_anchor:
             _anchor(unit, anchor, lock=write)
         if state["status"] != "deleted":
@@ -181,12 +226,14 @@ def _authorize(unit, kind: str, payload: dict, *, write: bool = False):
             contexts.validate_references(unit.store, payload.get("values", {}), unit.actor_id, deleted_source=source)
     else:
         _anchor(unit, payload.get("anchor"), lock=write)
-        _validate_view(unit, deepcopy(payload.get("config", payload.get("state", {}))),
-                       state=kind == "view-state", read=not write)
+        _validate_view(
+            unit, deepcopy(payload.get("config", payload.get("state", {}))), state=kind == "view-state", read=not write
+        )
 
 
 def _work_item(store, key: str, actor_id: str) -> dict:
     from .workspace_work_items import resolve_work_item
+
     return resolve_work_item(store, key, actor_id, require_applicable=True)
 
 
@@ -198,18 +245,27 @@ def _validate_view(unit, config: dict, *, state: bool = False, read: bool = Fals
     if not isinstance(search, str) or len(search) > 2000:
         raise HTTPException(422, "Ungültiger Suchtext.")
     filters = config.get("column_filters", {})
-    if not isinstance(filters, dict) or any(not isinstance(key, str) or not contexts.IDENTIFIER.fullmatch(key) for key in filters):
+    if not isinstance(filters, dict) or any(
+        not isinstance(key, str) or not contexts.IDENTIFIER.fullmatch(key) for key in filters
+    ):
         raise HTTPException(422, "Ungültige Spaltenfilter.")
     contexts.validate_references(unit.store, filters, unit.actor_id)
     for key in ("visible_columns", "hidden_columns", "column_order"):
         columns = config.get(key, [])
-        if not isinstance(columns, list) or len(columns) > 250 or any(
-                not isinstance(column, str) or not contexts.IDENTIFIER.fullmatch(column) for column in columns):
+        if (
+            not isinstance(columns, list)
+            or len(columns) > 250
+            or any(not isinstance(column, str) or not contexts.IDENTIFIER.fullmatch(column) for column in columns)
+        ):
             raise HTTPException(422, "Ungültige Spaltenauswahl.")
     sort = config.get("sort")
-    if sort is not None and (not isinstance(sort, dict) or set(sort) - {"key", "direction"}
-            or not isinstance(sort.get("key"), str) or not contexts.IDENTIFIER.fullmatch(sort["key"])
-            or sort.get("direction") not in ("asc", "desc")):
+    if sort is not None and (
+        not isinstance(sort, dict)
+        or set(sort) - {"key", "direction"}
+        or not isinstance(sort.get("key"), str)
+        or not contexts.IDENTIFIER.fullmatch(sort["key"])
+        or sort.get("direction") not in ("asc", "desc")
+    ):
         raise HTTPException(422, "Ungültige Sortierung.")
     if "page_size" in config and (type(config["page_size"]) is not int or not 1 <= config["page_size"] <= 1000):
         raise HTTPException(422, "Ungültige Seitengröße.")
@@ -231,8 +287,13 @@ def _validate_view(unit, config: dict, *, state: bool = False, read: bool = Fals
 
 def _public(unit, kind: str, row) -> dict:
     payload = {key: deepcopy(value) for key, value in row.payload.items() if not key.startswith("_")}
-    result = {"id": row.id, "revision": row.revision, "created_at": _stamp(row.created_at),
-              "updated_at": _stamp(row.updated_at), **payload}
+    result = {
+        "id": row.id,
+        "revision": row.revision,
+        "created_at": _stamp(row.created_at),
+        "updated_at": _stamp(row.updated_at),
+        **payload,
+    }
     if row.deleted:
         return {"id": row.id, "revision": row.revision, "deleted": True}
     if kind == "drafts":
@@ -241,7 +302,9 @@ def _public(unit, kind: str, row) -> dict:
     elif kind in ("recents", "favorites"):
         entity = contexts.resolve_context(unit.store, payload["kind"], payload["entity_id"], unit.actor_id)
         result.update(kind=entity["kind"], title=entity["title"], href=entity["href"])
-        result["last_opened_at" if kind == "recents" else "pinned_at"] = _stamp(row.updated_at if kind == "recents" else row.created_at)
+        result["last_opened_at" if kind == "recents" else "pinned_at"] = _stamp(
+            row.updated_at if kind == "recents" else row.created_at
+        )
     elif kind == "view-state":
         _validate_view(unit, result["state"], state=True, read=True)
     return result
@@ -271,40 +334,52 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
         return prior.context, deepcopy(prior.payload)
     if kind == "drafts":
         context = contexts.check_context(unit.actor_id, body["context"], edit=True)
-        payload = {key: deepcopy(value) for key, value in body.items()
-                   if key not in {"base_revision", "idempotency_key"}}
+        payload = {
+            key: deepcopy(value) for key, value in body.items() if key not in {"base_revision", "idempotency_key"}
+        }
         payload["context"] = context
         supplied_anchor_revision = payload.pop("anchor_revision", None)
         payload["values"] = contexts.recovery_values(payload.get("values", {}))
         if contexts.context_key(context) == "conversation-note" and not payload.get("anchor"):
             raise HTTPException(422, "Eine Gesprächsnotiz braucht einen Bezug.")
-        if contexts.context_key(context) != "contract-wizard" and contexts.CONTEXTS[contexts.context_key(context)][1] in contexts.CUSTOM_FIELDS and not (
-                payload.get("anchor") or payload.get("source")):
+        if (
+            contexts.context_key(context) != "contract-wizard"
+            and contexts.CONTEXTS[contexts.context_key(context)][1] in contexts.CUSTOM_FIELDS
+            and not (payload.get("anchor") or payload.get("source"))
+        ):
             raise HTTPException(422, "Dieser Arbeitsstand braucht einen Datensatzbezug.")
         if payload.get("mode") == "edit" and not payload.get("source"):
             raise HTTPException(422, "Ein Bearbeitungsentwurf braucht seinen Quelldatensatz.")
         if prior is not None and not prior.deleted:
             for key in ("context", "mode", "source", "anchor", "form_key"):
                 if payload.get(key) != prior.payload.get(key):
-                    raise HTTPException(409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."})
+                    raise HTTPException(
+                        409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."}
+                    )
             payload["_portfolio_anchors"] = prior.payload.get("_portfolio_anchors", [])
             payload["_source_dependencies"] = prior.payload.get("_source_dependencies", [])
             payload["_anchor_revision"] = prior.payload.get("_anchor_revision")
             payload["_anchor_dependencies"] = prior.payload.get("_anchor_dependencies", [])
-            if supplied_anchor_revision and not contexts.same_revision(supplied_anchor_revision, payload.get("_anchor_revision") or ""):
-                raise HTTPException(409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."})
+            if supplied_anchor_revision and not contexts.same_revision(
+                supplied_anchor_revision, payload.get("_anchor_revision") or ""
+            ):
+                raise HTTPException(
+                    409, {"code": "draft_identity_conflict", "message": "Der Formularbezug bleibt unverändert."}
+                )
         else:
             refs = [_anchor(unit, payload.get("anchor"), lock=True)]
             if payload.get("anchor"):
                 anchor = payload["anchor"]
-                resolved_anchor = contexts.resolve_context(unit.store, anchor["kind"], anchor["id"], unit.actor_id,
-                                                          lock=True, include_dependencies=True)
+                resolved_anchor = contexts.resolve_context(
+                    unit.store, anchor["kind"], anchor["id"], unit.actor_id, lock=True, include_dependencies=True
+                )
                 payload["_anchor_revision"] = supplied_anchor_revision or resolved_anchor["revision"]
                 payload["_anchor_dependencies"] = resolved_anchor["dependencies"]
             if payload.get("source"):
                 source = payload["source"]
-                resolved = contexts.resolve_context(unit.store, source["kind"], source["id"], unit.actor_id,
-                                                    lock=True, include_dependencies=True)
+                resolved = contexts.resolve_context(
+                    unit.store, source["kind"], source["id"], unit.actor_id, lock=True, include_dependencies=True
+                )
                 permitted = {contexts.CONTEXTS[contexts.context_key(context)][0]}
                 if contexts.context_key(context) == "meters":
                     permitted |= {"meter_reading", "standalone_reading"}
@@ -313,9 +388,19 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
                 refs.append(resolved)
                 payload["_source_dependencies"] = resolved["dependencies"]
             payload["_portfolio_anchors"] = sorted({pid for ref in refs if ref for pid in ref["portfolio_ids"]})
-        deleted_source = (payload.get("source") or payload.get("anchor")) if _source_state(unit, payload)["status"] == "deleted" else None
-        contexts.validate_values(unit.store, context, payload.get("values", {}), unit.actor_id,
-                                 payload.get("field_keys"), deleted_source=deleted_source)
+        deleted_source = (
+            (payload.get("source") or payload.get("anchor"))
+            if _source_state(unit, payload)["status"] == "deleted"
+            else None
+        )
+        contexts.validate_values(
+            unit.store,
+            context,
+            payload.get("values", {}),
+            unit.actor_id,
+            payload.get("field_keys"),
+            deleted_source=deleted_source,
+        )
         _authorize(unit, kind, payload, write=True)
         return context, payload
     if kind == "views":
@@ -347,25 +432,50 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
     return context, payload
 
 
-def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, delete: bool = False,
-           touch: bool = False, rebase: bool = False) -> dict:
+def mutate(
+    store,
+    actor_id: str,
+    kind: str,
+    identifier: str,
+    body: dict,
+    *,
+    delete: bool = False,
+    touch: bool = False,
+    rebase: bool = False,
+    source_guard: tuple | None = None,
+) -> dict:
     if kind not in MODELS:
         raise HTTPException(404, "Arbeitsstand nicht gefunden.")
     contexts.validate_json(body)
     if len(identifier) > 240 or not identifier:
         raise HTTPException(422, "Ungültige Kennung des Arbeitsstands.")
     operation = "delete" if delete else "touch" if touch else "rebase" if rebase else "put"
-    digest = hashlib.sha256(json.dumps([kind, identifier, operation, body], sort_keys=True, ensure_ascii=False,
-                                       separators=(",", ":")).encode()).hexdigest()
+    command_parts = [kind, identifier, operation, body]
+    if source_guard is not None:
+        command_parts.append(source_guard)
+    digest = hashlib.sha256(
+        json.dumps(command_parts, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
     for attempt in range(2):
         try:
             with archive.work(store, actor_id, write_areas=("/workspace",)) as unit:
+                if source_guard:
+                    source_kind, source_id, expected_source = source_guard
+                    source = contexts.resolve_context(unit.store, source_kind, source_id, actor_id, lock=True)
+                    if not contexts.same_revision(expected_source, source["revision"]):
+                        raise HTTPException(409, "Quelle wurde geändert. Bitte Vorschlag erneut prüfen.")
                 with contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
                     prior = _get(unit, kind, identifier, lock=True)
                     command = _command(unit, body["idempotency_key"])
                     if command:
                         if command.request_hash != digest:
-                            raise HTTPException(409, {"code": "idempotency_conflict", "message": "Der Wiederholungsschlüssel gehört zu einer anderen Änderung."})
+                            raise HTTPException(
+                                409,
+                                {
+                                    "code": "idempotency_conflict",
+                                    "message": "Der Wiederholungsschlüssel gehört zu einer anderen Änderung.",
+                                },
+                            )
                         # Recheck permission before returning even a saved response.
                         response = deepcopy(command.response["result"])
                         saved_payload = command.response["authorization"]
@@ -374,7 +484,9 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                             if kind == "drafts":
                                 response["source_state"] = _source_state(unit, saved_payload)
                             elif kind in ("favorites", "recents"):
-                                entity = contexts.resolve_context(unit.store, saved_payload["kind"], saved_payload["entity_id"], actor_id)
+                                entity = contexts.resolve_context(
+                                    unit.store, saved_payload["kind"], saved_payload["entity_id"], actor_id
+                                )
                                 response.update(title=entity["title"], href=entity["href"])
                             elif kind == "view-state":
                                 _validate_view(unit, response["state"], state=True, read=True)
@@ -382,18 +494,35 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                     if prior is not None and not prior.deleted:
                         _authorize(unit, kind, prior.payload, write=kind != "view-state")
                     if rebase:
-                        if kind != "drafts" or prior is None or prior.deleted or not (prior.payload.get("source") or prior.payload.get("anchor")):
+                        if (
+                            kind != "drafts"
+                            or prior is None
+                            or prior.deleted
+                            or not (prior.payload.get("source") or prior.payload.get("anchor"))
+                        ):
                             raise HTTPException(404, "Bearbeitungsentwurf nicht gefunden.")
                         source = prior.payload.get("source") or prior.payload["anchor"]
-                        live = contexts.resolve_context(unit.store, source["kind"], source["id"], actor_id,
-                                                        lock=True, include_dependencies=True)
+                        live = contexts.resolve_context(
+                            unit.store, source["kind"], source["id"], actor_id, lock=True, include_dependencies=True
+                        )
                         if not contexts.same_revision(body["source_revision"], live["revision"]):
                             raise HTTPException(409, {"code": "source_conflict", "current_revision": live["revision"]})
-                        provided = {(stamp["table"], stamp["id"]): stamp["revision"] for stamp in body["dependency_etags"]}
+                        provided = {
+                            (stamp["table"], stamp["id"]): stamp["revision"] for stamp in body["dependency_etags"]
+                        }
                         actual = {(stamp["table"], stamp["id"]): stamp["revision"] for stamp in live["dependencies"]}
-                        if len(provided) != len(body["dependency_etags"]) or provided.keys() != actual.keys() or any(
-                                not contexts.same_revision(provided[key], value) for key, value in actual.items()):
-                            raise HTTPException(409, {"code": "source_conflict", "message": "Ein verknüpfter Datensatz wurde geändert. Bitte erneut vergleichen."})
+                        if (
+                            len(provided) != len(body["dependency_etags"])
+                            or provided.keys() != actual.keys()
+                            or any(not contexts.same_revision(provided[key], value) for key, value in actual.items())
+                        ):
+                            raise HTTPException(
+                                409,
+                                {
+                                    "code": "source_conflict",
+                                    "message": "Ein verknüpfter Datensatz wurde geändert. Bitte erneut vergleichen.",
+                                },
+                            )
                         context, payload = prior.context, deepcopy(prior.payload)
                         if payload.get("source"):
                             payload["source"]["revision"] = body["source_revision"]
@@ -402,23 +531,40 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                             payload["_anchor_revision"] = body["source_revision"]
                             payload["_anchor_dependencies"] = live["dependencies"]
                         payload["values"] = contexts.recovery_values(body["values"])
-                        contexts.validate_values(unit.store, context, payload["values"], actor_id, payload.get("field_keys"))
+                        contexts.validate_values(
+                            unit.store, context, payload["values"], actor_id, payload.get("field_keys")
+                        )
                     else:
                         context, payload = _prepare(unit, kind, identifier, body, prior, delete=delete)
                     expected = body.get("base_revision", 0)
-                    valid = touch or (expected == 0 and (prior is None or prior.deleted)) or (
-                        prior is not None and not prior.deleted and expected == prior.revision)
+                    valid = (
+                        touch
+                        or (expected == 0 and (prior is None or prior.deleted))
+                        or (prior is not None and not prior.deleted and expected == prior.revision)
+                    )
                     if not valid:
                         current = _public(unit, kind, prior) if prior else None
-                        raise HTTPException(409, {"code": "workspace_conflict", "current_revision": prior.revision if prior else 0,
-                                                  "current": current})
+                        raise HTTPException(
+                            409,
+                            {
+                                "code": "workspace_conflict",
+                                "current_revision": prior.revision if prior else 0,
+                                "current": current,
+                            },
+                        )
                     row = _put(unit, kind, identifier, context, payload, prior, deleted=delete)
                     response = _public(unit, kind, row)
                     _remember(unit, body["idempotency_key"], digest, response, payload)
                     return response
         except IntegrityError:
             if attempt:
-                raise HTTPException(409, {"code": "workspace_conflict", "message": "Eine gleichzeitige Änderung wurde gespeichert. Bitte neu laden."}) from None
+                raise HTTPException(
+                    409,
+                    {
+                        "code": "workspace_conflict",
+                        "message": "Eine gleichzeitige Änderung wurde gespeichert. Bitte neu laden.",
+                    },
+                ) from None
     raise AssertionError("unreachable")
 
 
@@ -435,11 +581,24 @@ def _cursor(raw: str | None, owner: str, kind: str, context: str | None) -> tupl
 
 
 def _next_cursor(owner: str, kind: str, context: str | None, stamp: datetime, identifier: str) -> str:
-    return base64.urlsafe_b64encode(json.dumps([owner, kind, context, stamp.isoformat(), identifier]).encode()).decode().rstrip("=")
+    return (
+        base64.urlsafe_b64encode(json.dumps([owner, kind, context, stamp.isoformat(), identifier]).encode())
+        .decode()
+        .rstrip("=")
+    )
 
 
-def list_records(store, actor_id: str, kind: str, *, context: str | None = None, cursor: str | None = None,
-                 limit: int = 50, due_before: date | None = None, form_key: str | None = None) -> dict:
+def list_records(
+    store,
+    actor_id: str,
+    kind: str,
+    *,
+    context: str | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
+    due_before: date | None = None,
+    form_key: str | None = None,
+) -> dict:
     if kind not in MODELS or not 1 <= limit <= 200:
         raise HTTPException(422, "Ungültige Liste persönlicher Arbeitsstände.")
     if context:
@@ -451,10 +610,15 @@ def list_records(store, actor_id: str, kind: str, *, context: str | None = None,
             # Fetch one bounded raw page. Hidden rows consume cursor positions,
             # never a global cap; clients may continue even an empty page.
             if unit.db is None:
-                rows = [row for row in _memory(unit.store, kind).values() if row.owner_user_id == actor_id
-                        and not row.deleted and (context is None or row.context == context)
-                        and (after is None or (getattr(row, order), row.id) < after)]
-                rows = sorted(rows, key=lambda row: (getattr(row, order), row.id), reverse=True)[:limit + 1]
+                rows = [
+                    row
+                    for row in _memory(unit.store, kind).values()
+                    if row.owner_user_id == actor_id
+                    and not row.deleted
+                    and (context is None or row.context == context)
+                    and (after is None or (getattr(row, order), row.id) < after)
+                ]
+                rows = sorted(rows, key=lambda row: (getattr(row, order), row.id), reverse=True)[: limit + 1]
             else:
                 model = MODELS[kind]
                 column = getattr(model, order)
@@ -476,8 +640,11 @@ def list_records(store, actor_id: str, kind: str, *, context: str | None = None,
                 except HTTPException as exc:
                     if exc.status_code not in (403, 404):
                         raise
-            following = _next_cursor(actor_id, kind, context, getattr(rows[limit - 1], order), rows[limit - 1].id) \
-                if len(rows) > limit else None
+            following = (
+                _next_cursor(actor_id, kind, context, getattr(rows[limit - 1], order), rows[limit - 1].id)
+                if len(rows) > limit
+                else None
+            )
             return {"items": items, "next_cursor": following}
 
 
@@ -489,12 +656,18 @@ def deferrals_for(store, keys: list[str], actor_id: str) -> dict[str, dict]:
     user = contexts.actor(actor_id, store)
     unit = SimpleNamespace(store=store, db=getattr(store, "db", None), actor_id=actor_id, user=user)
     if unit.db is None:
-        rows = [row for row in _memory(store, "deferrals").values()
-                if row.owner_user_id == actor_id and row.id in wanted and not row.deleted]
+        rows = [
+            row
+            for row in _memory(store, "deferrals").values()
+            if row.owner_user_id == actor_id and row.id in wanted and not row.deleted
+        ]
     else:
         model = WorkspaceDeferralORM
-        rows = list(unit.db.scalars(select(model).where(model.owner_user_id == actor_id,
-                                model.id.in_(wanted), model.deleted.is_(False))))
+        rows = list(
+            unit.db.scalars(
+                select(model).where(model.owner_user_id == actor_id, model.id.in_(wanted), model.deleted.is_(False))
+            )
+        )
     return {row.id: _public(unit, "deferrals", row) for row in rows}
 
 

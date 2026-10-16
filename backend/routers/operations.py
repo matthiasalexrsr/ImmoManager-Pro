@@ -6,14 +6,87 @@ already by the portfolio middleware for /admin.
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
+from ..auth import require_role
+from ..models import UserRead
 from ..services import full_backup
 from ..services.integrations.manager import integration_manager
 from ..services.portfolio_scope import require_installation_scope
 
 router = APIRouter(prefix="/admin/operations", tags=["Admin"])
+
+
+@router.get("/platform")
+def platform_status(actor: UserRead = Depends(require_role("eigentuemer"))):
+    require_installation_scope()
+    from sqlalchemy import select
+
+    from ..config import SETTING_ORIGINS, settings
+    from ..db.access_models import PluginInstallationORM
+    from ..db.session import SessionLocal
+    from ..plugins import get_plugin_errors, get_plugins
+    from ..plugins.lifecycle import manifest
+
+    with SessionLocal() as session:
+        rows = {row.name: row for row in session.scalars(select(PluginInstallationORM))}
+        plugins = []
+        for plugin in get_plugins():
+            row = rows.get(plugin.name)
+            plugins.append(
+                {
+                    **plugin.to_dict(),
+                    "declaration": manifest(plugin),
+                    "revision": row.revision if row else 0,
+                    "installed_version": row.manifest.get("version") if row else None,
+                    "enabled": row.enabled if row else False,
+                    "backup_revisions": [item["revision"] for item in row.backups] if row else [],
+                }
+            )
+    return {
+        "storage": {
+            "backend": settings.file_storage_backend,
+            "origin": SETTING_ORIGINS.get("file_storage_backend", "default"),
+        },
+        "portable_export": {
+            "passphrase_configured": bool(settings.backup_passphrase),
+            "application_gate": "separate_owned_probe_required",
+        },
+        "plugins": plugins,
+        "plugin_errors": get_plugin_errors(),
+        "sandboxed": False,
+    }
+
+
+class PluginChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: str = Field(pattern="^(upgrade|uninstall|restore)$")
+    expected_revision: int = Field(ge=0)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    backup_revision: int | None = Field(default=None, ge=1)
+
+
+@router.post("/plugins/{name}")
+def change_plugin(name: str, payload: PluginChange, actor: UserRead = Depends(require_role("eigentuemer"))):
+    require_installation_scope()
+    _require_database()
+    from ..db.session import SessionLocal
+    from ..plugins import get_plugins, stop_plugins
+    from ..plugins.lifecycle import change
+
+    plugin = next((candidate for candidate in get_plugins() if candidate.name == name), None)
+    if plugin is None:
+        raise HTTPException(404, "Geprüftes Pluginpaket ist nicht installiert")
+    try:
+        result = change(SessionLocal, plugin, actor_id=actor.id, **payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    # Existing routes cannot keep serving code against a changed or uninstalled schema.
+    from ..app import app
+
+    stop_plugins(app, [plugin])
+    return result
 
 
 def _require_database() -> None:
@@ -38,9 +111,18 @@ def _jobs() -> list[dict[str, Any]]:
     from ..services.jobs.scheduler import BACKUP_KIND, PROBE_KIND, get_job_store
 
     runs = [run for run in get_job_store().list_runs(limit=200) if run.kind in (BACKUP_KIND, PROBE_KIND)]
-    return [{"kind": run.kind, "key": run.idempotency_key, "status": run.status, "attempts": run.attempts,
-             "last_error": run.last_error, "created_at": run.created_at, "finished_at": run.finished_at}
-            for run in runs[:10]]
+    return [
+        {
+            "kind": run.kind,
+            "key": run.idempotency_key,
+            "status": run.status,
+            "attempts": run.attempts,
+            "last_error": run.last_error,
+            "created_at": run.created_at,
+            "finished_at": run.finished_at,
+        }
+        for run in runs[:10]
+    ]
 
 
 def _failed(exc: Exception) -> HTTPException:
@@ -66,7 +148,7 @@ def run_full_backup() -> dict:
     _require_database()
     try:
         return full_backup.create_full_backup("manual")
-    except Exception as exc:     # logged in the ops log by create_full_backup
+    except Exception as exc:  # logged in the ops log by create_full_backup
         raise _failed(exc) from None
 
 
@@ -97,5 +179,5 @@ def run_restore_probe() -> dict:
     _require_database()
     try:
         return full_backup.restore_probe()
-    except Exception as exc:     # logged in the ops log by restore_probe
+    except Exception as exc:  # logged in the ops log by restore_probe
         raise _failed(exc) from None

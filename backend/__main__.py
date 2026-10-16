@@ -63,16 +63,14 @@ def _load_env_file(path):
     if not os.path.isfile(path):
         return
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for raw_line in fh:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                key = key.strip()
-                value = value.strip().strip('"').strip("'")
-                if key and key not in os.environ:
-                    os.environ[key] = value
+        from dotenv import dotenv_values
+
+        from .runtime_origins import ENV_FILE_ORIGINS
+
+        for key, value in dotenv_values(path, interpolate=False).items():
+            if key and value is not None and key not in os.environ:
+                os.environ[key] = value
+                ENV_FILE_ORIGINS[key.lower()] = os.path.abspath(path)
     except OSError:
         print(f"WARNUNG: Runtime-Konfiguration konnte nicht gelesen werden: {path}")
 
@@ -113,7 +111,7 @@ def _configure_runtime_environment(data_dir_arg=None, testversion=False):
     if not data_dir and (IS_FROZEN or os.name == "nt"):
         data_dir = _default_windows_data_dir()
         if _is_testversion():
-            data_dir += "-Testversion"      # never mixed with real data of an installed version
+            data_dir += "-Testversion"  # never mixed with real data of an installed version
     if not data_dir and _is_testversion():
         data_dir = os.path.join(os.path.expanduser("~"), ".immomanager-testversion")
 
@@ -138,7 +136,9 @@ def _configure_runtime_environment(data_dir_arg=None, testversion=False):
     _persist_env_default(runtime_env, "INTEGRATION_STATE_FILE", os.path.join(data_dir, "integrations.json"))
     _persist_env_default(runtime_env, "ALLOW_INMEMORY_FALLBACK", "false")
     _persist_env_default(runtime_env, "SQLITE_PERSISTENT_STORE", "true")
-    _persist_env_default(runtime_env, "CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000,http://localhost:5173")
+    _persist_env_default(
+        runtime_env, "CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000,http://localhost:5173"
+    )
     if IS_FROZEN:
         _persist_env_default(runtime_env, "ENVIRONMENT", "production")
         _persist_env_default(runtime_env, "CONTRACT_WIZARD_REQUIRED", "true")
@@ -282,12 +282,20 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
     parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
-    parser.add_argument("--testversion", action="store_true",
-                        help="Test version: realistic data set and master logins on the first start")
+    parser.add_argument(
+        "--testversion",
+        action="store_true",
+        help="Test version: realistic data set and master logins on the first start",
+    )
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
-    parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
-    parser.add_argument("--no-upgrade", action="store_true",
-                        help="Skip the explicit upgrade step; an outdated database then refuses to start")
+    parser.add_argument(
+        "--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs"
+    )
+    parser.add_argument(
+        "--no-upgrade",
+        action="store_true",
+        help="Skip the explicit upgrade step; an outdated database then refuses to start",
+    )
     args = parser.parse_args()
 
     # When running as frozen .exe, set working directory and sys.path
@@ -326,6 +334,7 @@ def main():
     except Exception as exc:
         print(f"\nFEHLER beim Laden der Anwendung:\n{exc}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
@@ -346,6 +355,7 @@ def main():
         except Exception as exc:
             print(f"FEHLER beim Anlegen der Testdaten:\n{exc}")
             import traceback
+
             traceback.print_exc()
 
     # Seed demo data if requested
@@ -353,6 +363,7 @@ def main():
         print("Lade Demo-Daten...")
         try:
             from seed_data import seed
+
             seed()
         except ImportError:
             print("WARNUNG: seed_data.py nicht gefunden. Demo-Daten werden nicht geladen.")
@@ -390,6 +401,7 @@ def main():
     except Exception as exc:
         print(f"\nFEHLER beim Starten des Servers:\n{exc}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
@@ -418,6 +430,7 @@ if __name__ == "__main__":
     except BaseException as exc:
         print(f"\nUnerwarteter Fehler:\n{exc}")
         import traceback
+
         traceback.print_exc()
         _pause_console()
     finally:

@@ -121,7 +121,9 @@ class IntegrationManager:
         config = self._candidate_config(integration_id, config)
         fields = config_fields(manifest)
         errors = field_errors(config, fields, required=True)
-        errors.update({key: "Unbekanntes Konfigurationsfeld" for key in set(config) - {field["key"] for field in fields}})
+        errors.update(
+            {key: "Unbekanntes Konfigurationsfeld" for key in set(config) - {field["key"] for field in fields}}
+        )
         # provider-specific rules (e.g. Aktenwerk: plain HTTP only inside the local network)
         if hasattr(provider, "config_errors"):
             errors.update(provider.config_errors(config))
@@ -185,7 +187,9 @@ class IntegrationManager:
     # --- secrets at rest ---------------------------------------------------------------
     def _secret_keys(self, integration_id: str) -> set[str]:
         manifest = self._providers[integration_id].manifest
-        return set(manifest.secret_config_keys) | {field["key"] for field in config_fields(manifest) if field.get("secret")}
+        return set(manifest.secret_config_keys) | {
+            field["key"] for field in config_fields(manifest) if field.get("secret")
+        }
 
     @staticmethod
     def _context(integration_id: str, key: str) -> str:
@@ -222,7 +226,9 @@ class IntegrationManager:
             if is_sealed(value):
                 if self._box is None:
                     opened.pop(key)
-                    errors.append("Verschlüsselte Integrationsgeheimnisse vorhanden, aber keine Schlüsselverwaltung aktiv.")
+                    errors.append(
+                        "Verschlüsselte Integrationsgeheimnisse vorhanden, aber keine Schlüsselverwaltung aktiv."
+                    )
                     continue
                 try:
                     opened[key] = self._box.open(value, self._context(integration_id, key))
@@ -235,8 +241,13 @@ class IntegrationManager:
 
     def secret_status(self) -> dict:
         """For the operations overview: how secrets are stored, never a value."""
-        status: dict[str, Any] = {"encryption": "aes-256-gcm" if self._box else None, "sealed": 0, "plaintext": 0,
-                                  "key_ids_in_use": [], "error": self._state_error}
+        status: dict[str, Any] = {
+            "encryption": "aes-256-gcm" if self._box else None,
+            "sealed": 0,
+            "plaintext": 0,
+            "key_ids_in_use": [],
+            "error": self._state_error,
+        }
         if self._box is not None:
             status.update(key_source="env" if self._box.uses_env_keys else "file", key_file=str(self._box.key_file))
             try:
@@ -269,9 +280,13 @@ class IntegrationManager:
         with self._lock:
             self._ensure_writable()
             self._persist(self._enabled, self._config)
-            return sum(1 for integration_id, values in self._config.items() if integration_id in self._providers
-                       for key in self._secret_keys(integration_id) & set(values)
-                       if isinstance(values[key], str) and values[key])
+            return sum(
+                1
+                for integration_id, values in self._config.items()
+                if integration_id in self._providers
+                for key in self._secret_keys(integration_id) & set(values)
+                if isinstance(values[key], str) and values[key]
+            )
 
     def _candidate_config(self, integration_id, updates):
         current = deepcopy(self._config.get(integration_id, {}))
@@ -286,6 +301,10 @@ class IntegrationManager:
         return current
 
     def run(self, integration_id: str, payload: dict) -> dict:
+        from ...config import settings
+
+        if settings.immo_restore_probe:
+            raise RuntimeError("Integrationen sind in der Wiederherstellungsprobe deaktiviert")
         provider = self._providers.get(integration_id)
         if provider is None:
             raise KeyError(integration_id)
@@ -310,8 +329,11 @@ class IntegrationManager:
                 payload = {**payload, "action": action_id}
         result: dict[str, Any]
         if errors:
-            result = {"success": False, "message": "Ungültige Aktionsangaben: " + ", ".join(errors),
-                      "details": {"code": "invalid_payload", "errors": errors}}
+            result = {
+                "success": False,
+                "message": "Ungültige Aktionsangaben: " + ", ".join(errors),
+                "details": {"code": "invalid_payload", "errors": errors},
+            }
             self._append_history(integration_id, payload, result)
             return result
 
@@ -352,28 +374,40 @@ class IntegrationManager:
             self._append_history(integration_id, payload, result)
             return result
 
-        record = IntegrationRunRecord(integration_id, False, "Ausführung begonnen; Ergebnis unbestätigt",
-                                      self._history_payload(manifest, payload, all_keys=journal_all_keys),
-                                      {"code": "in_progress"})
+        record = IntegrationRunRecord(
+            integration_id,
+            False,
+            "Ausführung begonnen; Ergebnis unbestätigt",
+            self._history_payload(manifest, payload, all_keys=journal_all_keys),
+            {"code": "in_progress"},
+        )
         try:
             self._ensure_writable()
             self._journal.append(record)
         except OSError:
-            return {"success": False, "message": "Integrationsjournal nicht verfügbar; Aktion wurde nicht ausgeführt.",
-                    "details": {"code": "history_unavailable"}}
+            return {
+                "success": False,
+                "message": "Integrationsjournal nicht verfügbar; Aktion wurde nicht ausgeführt.",
+                "details": {"code": "history_unavailable"},
+            }
         try:
             action = work(deepcopy(config))
             result = {"success": action.success, "message": action.message, "details": action.details}
         except Exception as exc:
-            result = {"success": False, "message": "Integration fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
-                      "details": {"code": "provider_error", "error_type": type(exc).__name__}}
+            result = {
+                "success": False,
+                "message": "Integration fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
+                "details": {"code": "provider_error", "error_type": type(exc).__name__},
+            }
         record.success = bool(result["success"])
         record.message = result["message"]
         record.details = result.get("details")
         try:
             self._journal.finish(record)
         except OSError:
-            result["history_warning"] = "Ergebnis konnte nicht dauerhaft protokolliert werden. Versand nicht automatisch wiederholen."
+            result["history_warning"] = (
+                "Ergebnis konnte nicht dauerhaft protokolliert werden. Versand nicht automatisch wiederholen."
+            )
         return result
 
     def list_history(self, integration_id: str, limit: int = 20, skip: int = 0) -> list[dict]:
@@ -425,14 +459,25 @@ class IntegrationManager:
     @staticmethod
     def _history_payload(manifest, payload, *, all_keys: bool = False):
         allowed = {"action"} | {field["key"] for action in manifest.actions for field in action.get("inputs", [])}
+
         def redact(value):
             if isinstance(value, dict):
-                return {key: ("***" if key in manifest.secret_config_keys or any(word in key.lower() for word in ("password", "token", "secret", "api_key")) else redact(item))
-                        for key, item in value.items()}
+                return {
+                    key: (
+                        "***"
+                        if key in manifest.secret_config_keys
+                        or any(word in key.lower() for word in ("password", "token", "secret", "api_key"))
+                        else redact(item)
+                    )
+                    for key, item in value.items()
+                }
             if isinstance(value, list):
                 return [redact(item) for item in value]
             return value
-        return redact({key: value for key, value in payload.items() if all_keys or not manifest.actions or key in allowed})
+
+        return redact(
+            {key: value for key, value in payload.items() if all_keys or not manifest.actions or key in allowed}
+        )
 
     def _load_state(self) -> None:
         try:
@@ -469,7 +514,9 @@ class IntegrationManager:
     @staticmethod
     def _safe_config(manifest, config: dict) -> dict:
         masked = dict(config)
-        secret = set(manifest.secret_config_keys) | {field["key"] for field in config_fields(manifest) if field.get("secret")}
+        secret = set(manifest.secret_config_keys) | {
+            field["key"] for field in config_fields(manifest) if field.get("secret")
+        }
         for key, value in masked.items():
             if (key in secret and value) or is_sealed(value):
                 masked[key] = "***"

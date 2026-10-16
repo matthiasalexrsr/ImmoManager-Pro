@@ -65,6 +65,7 @@ from .routers import (
     rent_charges,
     reports,
     review,
+    safe_actions,
     search,
     service_contracts,
     tasks,
@@ -105,6 +106,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(bank_imports.router, dependencies=_auth_dep)
     api_v1.include_router(review.router, dependencies=_auth_dep)
     api_v1.include_router(workspace.router, dependencies=_auth_dep)
+    api_v1.include_router(safe_actions.router, dependencies=_auth_dep)
     api_v1.include_router(business_qol.router, dependencies=_auth_dep)
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
@@ -171,7 +173,7 @@ async def plausibility_guard(request: Request) -> AsyncIterator[None]:
         body = json.loads(await request.body() or b"null")
     except ValueError:
         yield
-        return          # the endpoint answers malformed JSON itself
+        return  # the endpoint answers malformed JSON itself
     from .dependencies import store
     from .services.plausibility import StaleRecordError, check, check_not_stale
     from .services.record_revisions import revision_scope
@@ -184,4 +186,3 @@ async def plausibility_guard(request: Request) -> AsyncIterator[None]:
     with revision_scope(expected):
         await run_in_threadpool(check, request.method, path, body, store)
         yield
-

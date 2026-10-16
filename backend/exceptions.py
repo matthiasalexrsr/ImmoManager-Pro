@@ -27,6 +27,7 @@ from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging_config import request_id_var
+from .services.file_storage import StorageUnavailable
 from .storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class ErrorCode(str, Enum):
 
     See backend/error_helpers.py ERROR_CATALOG for full documentation.
     """
+
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     AUTH_FAILED = "AUTH_FAILED"
@@ -96,25 +98,40 @@ def _error_response(
 
 
 # Default texts of the framework, as users read them
-_STANDARD_TEXTS = {"Not Found": "Nicht gefunden", "Method Not Allowed": "Diese Aktion ist hier nicht möglich",
-                   "Not authenticated": "Bitte anmelden", "Unauthorized": "Bitte anmelden",
-                   "Forbidden": "Keine Berechtigung", "Internal Server Error": "Interner Fehler"}
+_STANDARD_TEXTS = {
+    "Not Found": "Nicht gefunden",
+    "Method Not Allowed": "Diese Aktion ist hier nicht möglich",
+    "Not authenticated": "Bitte anmelden",
+    "Unauthorized": "Bitte anmelden",
+    "Forbidden": "Keine Berechtigung",
+    "Internal Server Error": "Interner Fehler",
+}
 
 _FIELD_TEXT = {
-    "float_parsing": "Bitte eine gültige Zahl angeben", "float_type": "Bitte eine gültige Zahl angeben",
-    "int_parsing": "Bitte eine ganze Zahl angeben", "int_type": "Bitte eine ganze Zahl angeben",
-    "int_from_float": "Bitte eine ganze Zahl angeben", "decimal_parsing": "Bitte eine gültige Zahl angeben",
+    "float_parsing": "Bitte eine gültige Zahl angeben",
+    "float_type": "Bitte eine gültige Zahl angeben",
+    "int_parsing": "Bitte eine ganze Zahl angeben",
+    "int_type": "Bitte eine ganze Zahl angeben",
+    "int_from_float": "Bitte eine ganze Zahl angeben",
+    "decimal_parsing": "Bitte eine gültige Zahl angeben",
     "finite_number": "Bitte eine endliche Zahl angeben",
-    "bool_parsing": "Bitte ja oder nein angeben", "bool_type": "Bitte ja oder nein angeben",
+    "bool_parsing": "Bitte ja oder nein angeben",
+    "bool_type": "Bitte ja oder nein angeben",
     "date_parsing": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
     "date_from_datetime_parsing": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
     "date_type": "Bitte ein gültiges Datum angeben (JJJJ-MM-TT)",
     "datetime_parsing": "Bitte Datum und Uhrzeit angeben (JJJJ-MM-TT hh:mm)",
     "datetime_from_date_parsing": "Bitte Datum und Uhrzeit angeben (JJJJ-MM-TT hh:mm)",
-    "string_type": "Bitte einen Text angeben", "list_type": "Bitte eine Liste angeben",
-    "dict_type": "Ungültige Daten", "model_type": "Ungültige Daten", "model_attributes_type": "Ungültige Daten",
-    "json_invalid": "Ungültiges JSON", "enum": "Ungültiger Wert", "literal_error": "Ungültiger Wert",
-    "uuid_parsing": "Ungültige ID", "extra_forbidden": "Unbekanntes Feld",
+    "string_type": "Bitte einen Text angeben",
+    "list_type": "Bitte eine Liste angeben",
+    "dict_type": "Ungültige Daten",
+    "model_type": "Ungültige Daten",
+    "model_attributes_type": "Ungültige Daten",
+    "json_invalid": "Ungültiges JSON",
+    "enum": "Ungültiger Wert",
+    "literal_error": "Ungültiger Wert",
+    "uuid_parsing": "Ungültige ID",
+    "extra_forbidden": "Unbekanntes Feld",
 }
 
 
@@ -127,8 +144,12 @@ def german_message(err: dict) -> str:
         return str(err.get("msg", "")).removeprefix("Value error, ")
     if kind == "missing":
         return f"Pflichtangabe fehlt: {field}" if field else "Pflichtangabe fehlt"
-    bounds = {"greater_than_equal": ("mindestens", "ge"), "greater_than": ("größer als", "gt"),
-              "less_than_equal": ("höchstens", "le"), "less_than": ("kleiner als", "lt")}
+    bounds = {
+        "greater_than_equal": ("mindestens", "ge"),
+        "greater_than": ("größer als", "gt"),
+        "less_than_equal": ("höchstens", "le"),
+        "less_than": ("kleiner als", "lt"),
+    }
     if kind in bounds:
         word, key = bounds[kind]
         return f"{field or 'Der Wert'}: muss {word} {ctx.get(key)} sein"
@@ -151,7 +172,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         ctx = _request_context(request)
         logger.info(
             "NOT_FOUND: %s %s – %s | context=%s",
-            request.method, request.url.path, msg, ctx,
+            request.method,
+            request.url.path,
+            msg,
+            ctx,
         )
         return _error_response(404, ErrorCode.NOT_FOUND, msg)
 
@@ -161,17 +185,21 @@ def register_exception_handlers(app: FastAPI) -> None:
         ctx = _request_context(request)
         logger.warning(
             "VALIDATION_ERROR: %s %s – %s | context=%s",
-            request.method, request.url.path, msg, ctx,
+            request.method,
+            request.url.path,
+            msg,
+            ctx,
         )
         return _error_response(400, ErrorCode.VALIDATION_ERROR, msg)
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_handler(request: Request, exc: RequestValidationError):
         """Body and query errors: same shape as FastAPI's ({"detail": [{loc, msg, type}]}), German texts."""
-        detail = [{"loc": list(err.get("loc", [])), "type": err.get("type"), "msg": german_message(err)}
-                  for err in exc.errors()]
-        logger.warning("REQUEST_VALIDATION: %s %s – %s", request.method, request.url.path,
-                       [d["msg"] for d in detail])
+        detail = [
+            {"loc": list(err.get("loc", [])), "type": err.get("type"), "msg": german_message(err)}
+            for err in exc.errors()
+        ]
+        logger.warning("REQUEST_VALIDATION: %s %s – %s", request.method, request.url.path, [d["msg"] for d in detail])
         return JSONResponse(status_code=422, content={"detail": detail})
 
     @app.exception_handler(PydanticValidationError)
@@ -183,7 +211,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         ctx = _request_context(request)
         logger.warning(
             "PYDANTIC_VALIDATION: %s %s – %d field errors: %s | context=%s",
-            request.method, request.url.path, len(details), details, ctx,
+            request.method,
+            request.url.path,
+            len(details),
+            details,
+            ctx,
         )
         return _error_response(422, ErrorCode.VALIDATION_ERROR, "Ungültige Eingabe", details)
 
@@ -202,8 +234,13 @@ def register_exception_handlers(app: FastAPI) -> None:
                 cause = cause.__cause__
             logger.error(
                 "DB_ERROR: %s %s – op=%s detail=%s | cause_chain=%s | context=%s | traceback=%s",
-                request.method, request.url.path, exc.operation, exc.detail,
-                cause_chain, ctx, traceback.format_exc(),
+                request.method,
+                request.url.path,
+                exc.operation,
+                exc.detail,
+                cause_chain,
+                ctx,
+                traceback.format_exc(),
             )
             # Return 409 for integrity errors instead of 500
             status_code = 500
@@ -242,18 +279,33 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.log(
             log_level,
             "HTTP_%d: %s %s – code=%s message=%s | context=%s",
-            exc.status_code, request.method, request.url.path,
-            code.value, msg, ctx,
+            exc.status_code,
+            request.method,
+            request.url.path,
+            code.value,
+            msg,
+            ctx,
         )
         return _error_response(exc.status_code, code, msg)
+
+    @app.exception_handler(StorageUnavailable)
+    async def storage_unavailable_handler(request: Request, exc: StorageUnavailable):
+        response = _error_response(
+            503, ErrorCode.SERVICE_UNAVAILABLE, "Originalspeicher nicht erreichbar. Bitte erneut versuchen."
+        )
+        response.headers["Retry-After"] = "5"
+        return response
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
         ctx = _request_context(request)
         logger.critical(
             "UNHANDLED_EXCEPTION: %s %s – type=%s message=%s | context=%s | traceback:\n%s",
-            request.method, request.url.path,
-            type(exc).__name__, exc, ctx,
+            request.method,
+            request.url.path,
+            type(exc).__name__,
+            exc,
+            ctx,
             traceback.format_exc(),
         )
         return _error_response(

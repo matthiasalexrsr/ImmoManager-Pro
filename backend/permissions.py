@@ -30,38 +30,81 @@ from __future__ import annotations
 import re
 
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
-PERSONAL = ("/workspace", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
-            r"^/notifications/(all/receipt|[^/]+/receipt)$")
+PERSONAL = (
+    "/workspace",
+    "/auth/users/me/preferences",
+    "/auth/users/me/settings",
+    "/auth/2fa",
+    "/auth/logout",
+    "/auth/refresh",
+    "/auth/login",
+    r"^/notifications/(all/receipt|[^/]+/receipt)$",
+)
 OFFICE = ("/work-center", "/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 # Project file of a maintenance case: awarding and cancelling orders and deciding change orders
 # commits money; the invoices of an order are bookkeeping. Both are not the technician's.
-MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
-                         r"^/maintenance/[^/]+/orders/[^/]+/(cancel|complete)$",
-                         r"^/maintenance/[^/]+/change-orders/[^/]+/(approve|reject)$")
+MAINTENANCE_DECISIONS = (
+    r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
+    r"^/maintenance/[^/]+/orders/[^/]+/(cancel|complete)$",
+    r"^/maintenance/[^/]+/change-orders/[^/]+/(approve|reject)$",
+)
 MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
 # the factual check of an invoice: whether the work was ordered and done
 INVOICE_FACTUAL = (r"^/invoices/[^/]+/review/factual-check$",)
-BOOKKEEPING = ("/bank-imports", "/aktenwerk", "/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
-               "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
-               r"^/contracts/[^/]+/dunning-campaign$", "/dunning", *MAINTENANCE_INVOICES,
-               r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
+BOOKKEEPING = (
+    "/bank-imports",
+    "/aktenwerk",
+    "/invoice-review/receipts",
+    "/bookings",
+    "/accounts",
+    "/categories",
+    "/invoices",
+    "/receivables",
+    "/rent-charges",
+    "/deposits",
+    "/budgets",
+    "/tax-rates",
+    "/reports",
+    "/billing/cost-items",
+    "/escalation/run",
+    "/notifications/generate",
+    r"^/contracts/[^/]+/dunning-campaign$",
+    "/dunning",
+    *MAINTENANCE_INVOICES,
+    r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$",
+)
 TECHNICAL = ("/maintenance", "/meters", "/handover-protocols", *INVOICE_FACTUAL)
 # inside an area the role may write, these paths stay closed to it
-DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
-                                      "buchhaltung": INVOICE_FACTUAL}
-OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
-              "/updates/restart", "/admin/operations/second-target")
+DENIED: dict[str, tuple[str, ...]] = {
+    "techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
+    "buchhaltung": INVOICE_FACTUAL,
+}
+OWNER_ONLY = (
+    "/admin/restore",
+    "/admin/import",
+    "/data/import",
+    "/admin/bulk-delete",
+    "/updates/apply",
+    "/updates/restart",
+    "/admin/operations/second-target",
+    "/admin/operations/plugins",
+)
 
 WRITE_AREAS: dict[str, tuple[str, ...] | None] = {
-    "eigentuemer": None,          # None: everything
+    "eigentuemer": None,  # None: everything
     "verwalter": None,
     "buchhaltung": PERSONAL + OFFICE + BOOKKEEPING,
     "techniker": PERSONAL + OFFICE + TECHNICAL,
     "readonly": PERSONAL,
 }
 
-ROLE_LABELS = {"eigentuemer": "Eigentümer", "verwalter": "Verwalter", "buchhaltung": "Buchhaltung",
-               "techniker": "Technik", "readonly": "Nur Lesen"}
+ROLE_LABELS = {
+    "eigentuemer": "Eigentümer",
+    "verwalter": "Verwalter",
+    "buchhaltung": "Buchhaltung",
+    "techniker": "Technik",
+    "readonly": "Nur Lesen",
+}
 
 
 def _matches(path: str, patterns: tuple[str, ...]) -> bool:
