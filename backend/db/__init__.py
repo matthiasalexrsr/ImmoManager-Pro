@@ -16,5 +16,6 @@ from . import (
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)
     service_contract_models,  # noqa: F401  (property service contracts and their links)
     tax_models,  # noqa: F401
+    teha_models,  # noqa: F401 (versioned TEHA receive and publication)
     workspace_models,  # noqa: F401  (private drafts, saved views and navigation)
 )

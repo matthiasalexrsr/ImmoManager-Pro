@@ -110,7 +110,12 @@ class Unit:
         del collection[key]
 
     def append(self, collection: list, value: Any, *, lock=None) -> None:
-        """Track exact memory append identity under the optional writer lock."""
+        """Register the exact appended object, not only the list length.
+
+        Concurrent writers may append after this unit; rollback must never
+        remove a later independent audit event. Shared stores may provide
+        the same lock used for separate appends.
+        """
         assert self.db is None
         with lock if lock is not None else nullcontext():
             collection.append(value)
@@ -119,6 +124,8 @@ class Unit:
     def rollback(self) -> None:
         for collection, appended, lock in reversed(self._appends):
             with lock if lock is not None else nullcontext():
+                # Identity, not equality: equal audit values from two writers
+                # are still distinct events.
                 for index in range(len(collection) - 1, -1, -1):
                     if collection[index] is appended:
                         del collection[index]

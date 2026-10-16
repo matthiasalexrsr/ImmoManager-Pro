@@ -31,6 +31,7 @@ ARCHIVED_PREFIXES = (
     "maintenance-protocols/",
     "dunning-letters/",
     "deposit-settlements/",
+    "teha/",
 )
 # Browsers render these inline without executing script.
 INLINE_SAFE_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp"})
@@ -140,6 +141,14 @@ class UploadStaticFiles(StaticFiles):
 
 def read_archived_pdf(store, key: str, actor_id: str) -> bytes | None:
     """The verified original behind a virtual upload path, or None if no feature owns the path."""
+    if key.startswith("teha/"):
+        from .integrations.connection_runs import ConnectionRuns
+        from .integrations.manager import integration_manager
+        from .teha_receive import TehaReceive
+        parts = key.split("/")
+        if len(parts) != 3 or not parts[2].endswith(".pdf") or not all(parts):
+            raise HTTPException(404, "TEHA-Original nicht gefunden.")
+        return TehaReceive(store, ConnectionRuns(store, integration_manager)).original(parts[1], parts[2][:-4], actor_id)[0]
     if key.startswith("maintenance-protocols/"):
         from .maintenance_projects import read_pdf_for_key as read_protocol
 

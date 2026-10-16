@@ -380,6 +380,7 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
             revision = row[0] if row else None
         from .bank_backup import key_ids
         from .communication_backup import needed_key_ids as communication_key_ids
+        from .teha_restore import needed_key_ids as teha_key_ids
 
         return {
             "integrity": check,
@@ -387,6 +388,7 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
             "revision": revision,
             "bank_key_ids": key_ids(connection, tables),
             "communication_key_ids": communication_key_ids(connection, tables),
+            "teha_key_ids": teha_key_ids(connection, tables),
         }
     finally:
         connection.close()
@@ -449,9 +451,11 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
                 from .bank_backup import key_ids as bank_key_ids
                 from .portable_runtime import inventory
                 from .tax_archive_validation import needed_key_ids as tax_key_ids
+                from .teha_restore import needed_key_ids as teha_key_ids
 
                 bank_keys = bank_key_ids(connection, tables)
                 tax_keys = sorted(tax_key_ids(connection))
+                teha_keys = teha_key_ids(connection, tables)
                 references, runtime_key_ids = inventory(connection)
                 _run(
                     [
@@ -476,6 +480,7 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
         "bank_key_ids": bank_keys,
         "tax_needed_key_ids": tax_keys,
         "communication_key_ids": communication_keys,
+        "teha_key_ids": teha_keys,
         "references": references,
         "key_ids": runtime_key_ids,
     }
@@ -787,15 +792,15 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
             inventory(db_copy) if dialect == "sqlite" else (facts["references"], facts["key_ids"])
         )
 
-        # Portable attachment inventory and every existing private source
-        # verifier contribute to the same archive key requirement. A generic
-        # column scan is not proof that all domain-specific keys are present.
+        # Retain BOTH the platform's portable external file inventory and the
+        # domain-specific TEHA private key requirements from one SQL snapshot.
         needed_ids = (
             set(_needed_key_ids(state_bytes))
             | set(database_keys)
             | set(facts.get("bank_key_ids", []))
             | set(facts.get("communication_key_ids", []))
             | set(facts.get("tax_needed_key_ids", []))
+            | set(facts.get("teha_key_ids", []))
         )
         if dialect == "sqlite":
             from .tax_archive_validation import needed_key_ids as tax_needed_key_ids
@@ -1126,16 +1131,9 @@ def _check_secrets(
     communication_database = extracted / DB_SQLITE
     if warning:
         return result
-    keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
-    from .portable_runtime import RUNTIME
-
-    if RUNTIME in files:
-        keys += secret_box.parse_env_keys(json.loads(files[RUNTIME]).get("secret_keys", ""))
-    env_text = files.get(ENV, b"").decode("utf-8", "replace")
-    for line in env_text.splitlines():
-        name, _, value = line.strip().partition("=")
-        if name.strip() == "SECRET_KEYS":
-            keys += secret_box.parse_env_keys(value.strip().strip('"').strip("'"))
+    # Use exactly the same archive-only key loader as the connection,
+    # TEHA, bank, tax and communication SQL snapshot verification.
+    keys = _archived_connection_keys(files)
     missing = (set(manifest["secrets"].get("needed_key_ids", [])) | set(extra_key_ids)) - {key.id for key in keys}
     if missing:
         raise BackupError("Benötigte Entschlüsselungsschlüssel fehlen im Archiv")
@@ -1175,13 +1173,29 @@ def _check_secrets(
 
 
 def _archived_connection_keys(files: dict[str, bytes]) -> list[secret_box.Key]:
-    """Only keys actually bundled in the archive, never ambient process secrets."""
-    keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
-    for line in files.get(ENV, b"").decode("utf-8", "replace").splitlines():
-        field, _, value = line.strip().partition("=")
-        if field.strip() == "SECRET_KEYS":
-            keys.extend(secret_box.parse_env_keys(value.strip().strip('"').strip("'")))
-    return keys
+    """Keys bundled in keyring, sealed runtime or dotenv; never ambient secrets."""
+    from .portable_runtime import RUNTIME
+
+    try:
+        keys = secret_box.keys_from_bytes(files[KEYRING]) if KEYRING in files else []
+        if RUNTIME in files:
+            runtime = json.loads(files[RUNTIME])
+            if not isinstance(runtime, dict) or not isinstance(runtime.get("secret_keys", ""), str):
+                raise ValueError("bad archived key declaration")
+            keys.extend(secret_box.parse_env_keys(runtime.get("secret_keys", "")))
+        for line in files.get(ENV, b"").decode("utf-8", "replace").splitlines():
+            field, _, value = line.strip().partition("=")
+            if field.strip() == "SECRET_KEYS":
+                keys.extend(secret_box.parse_env_keys(value.strip().strip('"').strip("'")))
+        unique: dict[str, secret_box.Key] = {}
+        for key in keys:
+            if key.id in unique and unique[key.id].material != key.material:
+                raise ValueError("conflicting archived key identities")
+            unique[key.id] = key
+        return list(unique.values())
+    except (ValueError, TypeError, UnicodeError, secret_box.SecretError):
+        # Never leak key values or arbitrary source bytes in restore errors.
+        raise BackupError("Archivierte Entschlüsselungsschlüssel sind nicht lesbar oder widersprüchlich.") from None
 
 
 def _private_connection_proof(connection, keys: list[secret_box.Key], *, normalize: bool = False) -> dict:
@@ -1217,7 +1231,15 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     from .communication_backup import verify as verify_communication
 
     communication_proof = verify_communication(connection, keys, tables)
+    from .teha_restore import verify_teha_with_keys
+    try:
+        teha_proof = verify_teha_with_keys(connection, keys)
+    except Exception:
+        # Not even provider exception messages or SQL parameters can be used
+        # as a successful (or user-visible) restore diagnostic.
+        raise BackupError("Geschützte TEHA-Originale und Übernahmebelege sind nicht vollständig prüfbar.") from None
     return {
+        "teha": teha_proof,
         "communication": communication_proof,
         "bank_originals": bank_proof,
         "tax_receipts_verified": tax_proof,
