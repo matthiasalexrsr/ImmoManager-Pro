@@ -2,6 +2,9 @@
 .draft-status { color:var(--text-muted,#667085); font-size:.82rem; min-height:1.2em; margin-bottom:.5rem; }
 .draft-recovery { border:1px solid var(--border,#d0d5dd); border-left:3px solid var(--primary,#326cbd); padding:1rem; border-radius:.6rem; margin-bottom:1rem; background:var(--bg-secondary,#f8fafc); }
 .draft-recovery p { margin:.4rem 0 .8rem; }
+.form-error-feedback:focus { outline:2px solid var(--primary,#326cbd); outline-offset:2px; }
+.form-error-feedback p { margin:.25rem 0 .5rem; }
+.draft-discard-confirm { margin-top:.7rem; padding:.75rem; border:1px solid var(--border,#d0d5dd); border-radius:.5rem; }
 .draft-recovery td { white-space:pre-wrap; overflow-wrap:anywhere; max-width:18rem; }
 .draft-values { margin:.4rem 0; overflow-wrap:anywhere; }
 .draft-values > div { padding:.3rem 0; border-bottom:1px solid var(--border,#e4e7ec); }

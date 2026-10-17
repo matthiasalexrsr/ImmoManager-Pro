@@ -152,7 +152,14 @@
       "saveAndNew": "Speichern & weiteren",
       "saveAndNewShortcut": "Strg+Umschalt+Enter",
       "today": "Heute",
-      "todayFill": "Heute eintragen"
+      "todayFill": "Heute eintragen",
+      "saveFailed": "Speichern fehlgeschlagen.",
+      "saveFailedKeepInput": "Ihre Eingaben bleiben erhalten. Prüfen Sie den Fehler und versuchen Sie es erneut.",
+      "reviewInputs": "Eingaben prüfen",
+      "confirmRecoveredDiscard": "Entwurf verwerfen bestätigen",
+      "recoveredDiscardWarning": "Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.",
+      "keepRecoveredDraft": "Entwurf behalten",
+      "discardRecoveredDraft": "Endgültig verwerfen"
     },
     "table": {
       "adjustColumns": "Spalten anpassen",

@@ -152,7 +152,14 @@
       "saveAndNew": "Save & add another",
       "saveAndNewShortcut": "Ctrl+Shift+Enter",
       "today": "Today",
-      "todayFill": "Enter today"
+      "todayFill": "Enter today",
+      "saveFailed": "Save failed.",
+      "saveFailedKeepInput": "Your entries are still here. Review the error and try saving again.",
+      "reviewInputs": "Review entries",
+      "confirmRecoveredDiscard": "Confirm draft discard",
+      "recoveredDiscardWarning": "Discard the recovered draft permanently? Unsaved entries will be lost.",
+      "keepRecoveredDraft": "Keep draft",
+      "discardRecoveredDraft": "Discard permanently"
     },
     "table": {
       "adjustColumns": "Adjust Columns",

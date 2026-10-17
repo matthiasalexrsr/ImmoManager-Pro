@@ -41,6 +41,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
     [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
+  const [saveFailure, setSaveFailure] = useState(false);
+  const [confirmDraftDiscard, setConfirmDraftDiscard] = useState(false);
   const [saving, setSaving] = useState(false);
   // Typed input is never thrown away silently: closing an edited form asks first.
   const [dirty, setDirty] = useState(false);
@@ -58,6 +60,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const fieldDisabled = saving || draftWaiting || draftBusy || (draft.enabled && !draft.ready);
   const modalRef = useRef(null);
   const formRef = useRef(null);
+  const errorRef = useRef(null);
+  const restoreFocusRef = useRef(false);
+  const draftDiscardRef = useRef(null);
   const againRef = useRef(null);
   const pressStartedOnOverlay = useRef(false);
   const sessionRef = useRef({ key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at });
@@ -77,6 +82,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     if (changedRecord) {
       sessionRef.current = { key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at };
       setError(null);
+      setSaveFailure(false);
+      setConfirmDraftDiscard(false);
+      restoreFocusRef.current = false;
       setDirty(false);
       setConfirmDiscard(false);
       leaveRef.current = null;
@@ -118,6 +126,16 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     (element || modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea)'))?.focus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCount]);
+
+  // A failed save must be announced and reachable by keyboard, including for long forms.
+  useEffect(() => { if (saveFailure && error) errorRef.current?.focus(); }, [saveFailure, error]);
+
+  // Resuming a stored draft returns the keyboard to the restored inputs, not the action button.
+  useEffect(() => {
+    if (!restoreFocusRef.current || fieldDisabled || draft.recovery) return;
+    restoreFocusRef.current = false;
+    modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus();
+  }, [fieldDisabled, draft.recovery]);
 
   const update = (key, value, extra) => {
     setDirty(true);
@@ -204,6 +222,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     savingRef.current = true;
     setSaving(true);
     setError(null);
+    setSaveFailure(false);
     try {
       const cleaned = {};
       fields.forEach(f => {
@@ -246,7 +265,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       }
       onClose();
     } catch (err) {
-      if (isCurrentSession()) setError(err.message);
+      if (isCurrentSession()) { setError(err?.message || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.')); setSaveFailure(true); }
     } finally {
       if (isCurrentSession()) { savingRef.current = false; setSaving(false); }
     }
@@ -276,7 +295,15 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         </div>
         <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
-            {error && <div className="alert-error" role="alert">{error}</div>}
+            {error && <div className="alert-error form-error-feedback" role="alert" tabIndex={-1} ref={errorRef}>
+              <p>{error}</p>
+              {saveFailure && <>
+                <p>{tr('ui.form.saveFailedKeepInput', 'Ihre Eingaben bleiben erhalten. Prüfen Sie den Fehler und versuchen Sie es erneut.')}</p>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus()}>
+                  {tr('ui.form.reviewInputs', 'Eingaben prüfen')}
+                </button>
+              </>}
+            </div>}
             {initial?.id == null && ['contracts', 'bookings'].includes(draftContext || formContext(window.location.pathname)) && <DraftDefaults
               context={draftContext || formContext(window.location.pathname)} propertyId={values.property_id} disabled={fieldDisabled}
               onApply={defaults => { const next = { ...values }; for (const [key, value] of Object.entries(defaults)) if (fields.some(field => field.key === key) && !next[key]) next[key] = value; setValues(next); setDirty(true); draft.stage(next); }} />}
@@ -316,17 +343,27 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       if (!recoverySource.contextOnly) sessionRef.current.updatedAt = recoverySource.revision;
                       onDraftRebase?.(recoverySource);
                     }
-                    setValues(restored); setDirty(true); setRecoverySource(null); draft.stage(restored);
+                    setValues(restored); setDirty(true); setRecoverySource(null); setConfirmDraftDiscard(false); restoreFocusRef.current = true; draft.stage(restored);
                   } catch (failure) { if (isCurrentSession()) { setError(failure.message); if (failure.statusCode === 409) setRecoverySource(null); } }
                   finally { if (isCurrentSession()) setDraftBusy(false); }
                 }}>{recoverySource ? 'Verglichenen Entwurf übernehmen' : draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed' ? 'Aktuellen Stand vergleichen' : 'Entwurf wiederaufnehmen'}</button>}
-                <button type="button" className="btn btn-ghost" disabled={draftBusy} onClick={async () => {
-                  setDraftBusy(true);
-                  try { await draft.clear(); if (isCurrentSession()) setRecoverySource(null); }
-                  catch (failure) { if (isCurrentSession()) setError(failure.message); }
-                  finally { if (isCurrentSession()) setDraftBusy(false); }
-                }}>Entwurf verwerfen</button>
+                <button ref={draftDiscardRef} type="button" className="btn btn-ghost" disabled={draftBusy}
+                  aria-expanded={confirmDraftDiscard} aria-controls="form-draft-discard-confirm"
+                  onClick={() => setConfirmDraftDiscard(true)}>Entwurf verwerfen</button>
               </div>
+              {confirmDraftDiscard && <div id="form-draft-discard-confirm" className="draft-discard-confirm" role="group" aria-label={tr('ui.form.confirmRecoveredDiscard', 'Entwurf verwerfen bestätigen')}>
+                <p role="alert">{tr('ui.form.recoveredDiscardWarning', 'Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.')}</p>
+                <div className="workspace-actions">
+                  <button type="button" className="btn btn-secondary" autoFocus disabled={draftBusy}
+                    onClick={() => { setConfirmDraftDiscard(false); draftDiscardRef.current?.focus(); }}>{tr('ui.form.keepRecoveredDraft', 'Entwurf behalten')}</button>
+                  <button type="button" className="btn btn-danger" disabled={draftBusy} onClick={async () => {
+                    setDraftBusy(true); setError(null);
+                    try { await draft.clear(); if (isCurrentSession()) { setRecoverySource(null); setConfirmDraftDiscard(false); } }
+                    catch (failure) { if (isCurrentSession()) { setError(failure.message); setConfirmDraftDiscard(false); } }
+                    finally { if (isCurrentSession()) setDraftBusy(false); }
+                  }}>{tr('ui.form.discardRecoveredDraft', 'Endgültig verwerfen')}</button>
+                </div>
+              </div>}
             </section>}
             {savedCount > 0 && !error && (
               <div className="form-saved-next" role="status">

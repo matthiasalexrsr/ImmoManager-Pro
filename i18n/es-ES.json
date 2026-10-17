@@ -152,7 +152,14 @@
       "saveAndNew": "Guardar y añadir otro",
       "saveAndNewShortcut": "Ctrl+Mayús+Intro",
       "today": "Hoy",
-      "todayFill": "Poner hoy"
+      "todayFill": "Poner hoy",
+      "saveFailed": "No se pudo guardar.",
+      "saveFailedKeepInput": "Sus datos se conservan. Revise el error y vuelva a intentar guardar.",
+      "reviewInputs": "Revisar datos",
+      "confirmRecoveredDiscard": "Confirmar descarte del borrador",
+      "recoveredDiscardWarning": "¿Descartar definitivamente el borrador recuperado? Se perderán los datos sin guardar.",
+      "keepRecoveredDraft": "Conservar borrador",
+      "discardRecoveredDraft": "Descartar definitivamente"
     },
     "table": {
       "adjustColumns": "Ajustar columnas",
