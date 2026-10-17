@@ -57,7 +57,10 @@ def get_version():
 
 # ─── System Status ───────────────────────────────────────────────────────────
 
-@router.get("/system-status")
+# Compatibility implementation for admin_runtime.system_status().
+# The runtime router owns the sole public GET /api/v1/admin/system-status
+# route and calls this helper; exposing it twice creates duplicate OpenAPI
+# operation IDs and divergent generated clients.
 def system_status():
     """Comprehensive system status for admin diagnostics."""
     from ..dependencies import _use_sql_store
@@ -99,7 +102,9 @@ def system_status():
 
 # ─── Database Info ───────────────────────────────────────────────────────────
 
-@router.get("/database-info")
+# Compatibility implementation for admin_runtime.get_database_info().
+# The runtime wrapper owns the sole public route and adds the active upload
+# directory; this helper must not register a second OpenAPI operation.
 def get_database_info():
     """Return database type, store backend, and operational details."""
     from ..dependencies import store as active_store
