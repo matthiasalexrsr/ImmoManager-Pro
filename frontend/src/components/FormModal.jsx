@@ -71,6 +71,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const activeSession = useRef(null);
   const savingRef = useRef(false);
   const leaveRef = useRef(null);
+  const leaveFocusRef = useRef(null);
+  const discardCancelRef = useRef(null);
+  const restoreLeaveFocusRef = useRef(false);
   const unloadRef = useRef(null);
   useLayoutEffect(() => {
     activeSession.current = sessionKey;
@@ -91,6 +94,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       setDirty(false);
       setConfirmDiscard(false);
       leaveRef.current = null;
+      leaveFocusRef.current = null;
+      restoreLeaveFocusRef.current = false;
       savingRef.current = false; setSaving(false); setDraftBusy(false); setRecoverySource(null);
     }
     setValues(current => {
@@ -135,10 +140,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
 
   // Resuming a stored draft returns the keyboard to the restored inputs, not the action button.
   useEffect(() => {
-    if (!restoreFocusRef.current || fieldDisabled || draft.recovery) return;
+    if (!restoreFocusRef.current || fieldDisabled || draft.recovery || confirmDraftDiscard) return;
     restoreFocusRef.current = false;
     modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus();
-  }, [fieldDisabled, draft.recovery]);
+  }, [fieldDisabled, draft.recovery, confirmDraftDiscard]);
 
   const update = (key, value, extra) => {
     setFieldErrors(current => {
@@ -157,9 +162,34 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
 
   const requestLeave = useCallback(action => {
     if (savingRef.current) return;
-    if (dirty) { leaveRef.current = action; setConfirmDiscard(true); }
-    else action();
+    if (dirty) {
+      leaveRef.current = action;
+      leaveFocusRef.current = modalRef.current?.contains(document.activeElement) ? document.activeElement : null;
+      setConfirmDiscard(true);
+    } else action();
   }, [dirty]);
+
+  const cancelDiscard = useCallback(() => {
+    leaveRef.current = null;
+    restoreLeaveFocusRef.current = true;
+    setConfirmDiscard(false);
+  }, []);
+
+  const cancelRecoveredDiscard = useCallback(() => {
+    setConfirmDraftDiscard(false);
+    draftDiscardRef.current?.focus();
+  }, []);
+
+  // The discard question replaces footer controls: restore focus after React puts them back.
+  useLayoutEffect(() => {
+    if (confirmDiscard) { discardCancelRef.current?.focus(); return; }
+    if (!restoreLeaveFocusRef.current) return;
+    restoreLeaveFocusRef.current = false;
+    const target = leaveFocusRef.current;
+    leaveFocusRef.current = null;
+    if (target?.isConnected && !target.disabled) target.focus();
+    else modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus();
+  }, [confirmDiscard]);
 
   const requestClose = useCallback(() => {
     requestLeave(onClose);
@@ -180,11 +210,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     const handler = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (confirmDiscard) setConfirmDiscard(false);
+        if (confirmDraftDiscard) {
+          if (!draftBusy) cancelRecoveredDiscard();
+        } else if (confirmDiscard) cancelDiscard();
         else requestClose();
       } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && modalRef.current?.contains(document.activeElement)) {
         e.preventDefault();
-        if (savingRef.current || confirmDiscard) return;
+        if (savingRef.current || confirmDiscard || confirmDraftDiscard || draftBusy) return;
         // Ctrl+Shift+Enter: save and start the next entry
         if (e.shiftKey && repeatable) againRef.current?.click();
         else formRef.current?.requestSubmit();
@@ -192,7 +224,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [requestClose, confirmDiscard, repeatable]);
+  }, [requestClose, confirmDiscard, confirmDraftDiscard, draftBusy, cancelDiscard, cancelRecoveredDiscard, repeatable]);
 
   // Focus trap
   useEffect(() => {
@@ -226,7 +258,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
 
   const handleSubmit = async (e, again = false, next = false) => {
     e.preventDefault();
-    if (savingRef.current || confirmDiscard || draftWaiting || draft.status === 'changed' || draftBusy) return;
+    if (savingRef.current || confirmDiscard || confirmDraftDiscard || draftWaiting || draft.status === 'changed' || draftBusy) return;
     // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
     if ((again || next) && !formRef.current?.reportValidity()) return;
     savingRef.current = true;
@@ -366,17 +398,17 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                   finally { if (isCurrentSession()) setDraftBusy(false); }
                 }}>{recoverySource ? 'Verglichenen Entwurf übernehmen' : draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed' ? 'Aktuellen Stand vergleichen' : 'Entwurf wiederaufnehmen'}</button>}
                 <button ref={draftDiscardRef} type="button" className="btn btn-ghost" disabled={draftBusy}
-                  aria-expanded={confirmDraftDiscard} aria-controls="form-draft-discard-confirm"
+                  aria-expanded={confirmDraftDiscard} aria-controls={confirmDraftDiscard ? 'form-draft-discard-confirm' : undefined}
                   onClick={() => setConfirmDraftDiscard(true)}>Entwurf verwerfen</button>
               </div>
               {confirmDraftDiscard && <div id="form-draft-discard-confirm" className="draft-discard-confirm" role="group" aria-label={tr('ui.form.confirmRecoveredDiscard', 'Entwurf verwerfen bestätigen')}>
                 <p role="alert">{tr('ui.form.recoveredDiscardWarning', 'Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.')}</p>
                 <div className="workspace-actions">
                   <button type="button" className="btn btn-secondary" autoFocus disabled={draftBusy}
-                    onClick={() => { setConfirmDraftDiscard(false); draftDiscardRef.current?.focus(); }}>{tr('ui.form.keepRecoveredDraft', 'Entwurf behalten')}</button>
+                    onClick={cancelRecoveredDiscard}>{tr('ui.form.keepRecoveredDraft', 'Entwurf behalten')}</button>
                   <button type="button" className="btn btn-danger" disabled={draftBusy} onClick={async () => {
                     setDraftBusy(true); setError(null);
-                    try { await draft.clear(); if (isCurrentSession()) { setRecoverySource(null); setConfirmDraftDiscard(false); } }
+                    try { await draft.clear(); if (isCurrentSession()) { restoreFocusRef.current = true; setRecoverySource(null); setConfirmDraftDiscard(false); } }
                     catch (failure) { if (isCurrentSession()) { setError(failure.message); setConfirmDraftDiscard(false); } }
                     finally { if (isCurrentSession()) setDraftBusy(false); }
                   }}>{tr('ui.form.discardRecoveredDraft', 'Endgültig verwerfen')}</button>
@@ -395,6 +427,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 }
                 const inputId = `form-field-${f.key}`;
                 const fieldErrorId = fieldErrors[f.key] ? `form-error-${f.key}` : undefined;
+                const hintId = f.hint ? `form-hint-${f.key}` : undefined;
+                const descriptionIds = [fieldErrorId, hintId].filter(Boolean).join(' ') || undefined;
                 const options = typeof f.options === 'function' ? f.options(values) : f.options;
                 return (
                   <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
@@ -403,7 +437,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       <select
                         id={inputId}
                         aria-invalid={fieldErrorId ? true : undefined}
-                        aria-describedby={fieldErrorId}
+                        aria-describedby={descriptionIds}
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value,
                           Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
@@ -421,7 +455,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       <textarea
                         id={inputId}
                         aria-invalid={fieldErrorId ? true : undefined}
-                        aria-describedby={fieldErrorId}
+                        aria-describedby={descriptionIds}
                         value={values[f.key] || ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
@@ -434,7 +468,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         <input
                           id={inputId}
                           aria-invalid={fieldErrorId ? true : undefined}
-                          aria-describedby={fieldErrorId}
+                          aria-describedby={descriptionIds}
                           type="date"
                           value={values[f.key] ?? ''}
                           onChange={e => update(f.key, e.target.value)}
@@ -449,7 +483,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       <input
                         id={inputId}
                         aria-invalid={fieldErrorId ? true : undefined}
-                        aria-describedby={fieldErrorId}
+                        aria-describedby={descriptionIds}
                         type={f.type || 'text'}
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value)}
@@ -460,7 +494,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       />
                     )}
                     {fieldErrorId && <small id={fieldErrorId} className="form-field-error">{fieldErrors[f.key].join(' · ')}</small>}
-                    {f.hint && <small className="form-hint">{f.hint}</small>}
+                    {f.hint && <small id={hintId} className="form-hint">{f.hint}</small>}
                     <MissingChoice hint={prerequisiteFor(f, options)} requestLeave={requestLeave} />
                   </div>
                 );
@@ -493,7 +527,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
           {confirmDiscard ? (
             <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
               <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
-              <button type="button" onClick={() => setConfirmDiscard(false)} className="btn btn-secondary" autoFocus>{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
+              <button ref={discardCancelRef} type="button" onClick={cancelDiscard} className="btn btn-secondary">{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
               <button type="button" disabled={draftBusy} onClick={async () => {
                 // A plain prerequisite link may leave the browser page immediately.
                 // The explicit discard has already answered its unload question.

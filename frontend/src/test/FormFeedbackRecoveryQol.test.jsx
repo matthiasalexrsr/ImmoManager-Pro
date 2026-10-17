@@ -89,6 +89,7 @@ it('asks before deleting an interrupted draft and allows cancel without a delete
   await waitFor(() => expect(workspace.remove).toHaveBeenCalledTimes(1));
   expect(workspace.remove).toHaveBeenCalledWith('drafts', 'interrupted-draft', expect.objectContaining({ base_revision: 3 }));
   expect(screen.queryByText('Ungespeicherter Entwurf vorhanden')).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus());
   expect(onSave).not.toHaveBeenCalled();
 });
 
@@ -133,8 +134,8 @@ it('marks the exact 422 fields and guides review to the first invalid field with
   const onSave = vi.fn().mockRejectedValueOnce(invalid).mockResolvedValue(undefined);
   const onClose = vi.fn();
   const editedFields = [
-    { key: 'full_name', label: 'Name' }, { key: 'email', label: 'E-Mail' },
-    { key: 'notes', label: 'Notiz', type: 'textarea' },
+    { key: 'full_name', label: 'Name' }, { key: 'email', label: 'E-Mail', hint: 'Gültige Adresse verwenden' },
+    { key: 'notes', label: 'Notiz', type: 'textarea', hint: 'Zusätzliche Angaben' },
   ];
   const { container } = render(<FormModal title="Mieter" fields={editedFields} autosave={false}
     onSave={onSave} onClose={onClose} />);
@@ -148,10 +149,12 @@ it('marks the exact 422 fields and guides review to the first invalid field with
   const email = screen.getByLabelText('E-Mail');
   const notes = screen.getByLabelText('Notiz');
   expect(email).toHaveAttribute('aria-invalid', 'true');
-  expect(email).toHaveAttribute('aria-describedby', 'form-error-email');
+  expect(email).toHaveAttribute('aria-describedby', 'form-error-email form-hint-email');
+  expect(document.getElementById('form-hint-email')).toHaveTextContent('Gültige Adresse verwenden');
   expect(document.getElementById('form-error-email')).toHaveTextContent('E-Mail-Adresse ungültig');
   expect(notes).toHaveAttribute('aria-invalid', 'true');
   expect(document.getElementById('form-error-notes')).toHaveTextContent('Notiz genauer beschreiben');
+  expect(notes).toHaveAttribute('aria-describedby', 'form-error-notes form-hint-notes');
   expect(screen.getByLabelText('Name')).not.toHaveAttribute('aria-invalid');
   expect(screen.getByLabelText('Name')).toHaveValue('Anna');
   expect(notes).toHaveValue('Unfertige Notiz');
@@ -160,7 +163,7 @@ it('marks the exact 422 fields and guides review to the first invalid field with
   expect(email).toHaveFocus(); // form order, not server error order
   fireEvent.change(email, { target: { value: 'anna@example.test' } });
   expect(email).not.toHaveAttribute('aria-invalid');
-  expect(email).not.toHaveAttribute('aria-describedby');
+  expect(email).toHaveAttribute('aria-describedby', 'form-hint-email');
   expect(document.getElementById('form-error-email')).toBeNull();
   expect(notes).toHaveAttribute('aria-invalid', 'true'); // unrelated field stays visible
   fireEvent.submit(container.querySelector('form'));
@@ -179,18 +182,67 @@ it('links structured field messages for select, date and number inputs but ignor
     ],
   });
   const fieldsWithTypes = [
-    { key: 'state', label: 'Status', type: 'select', options: [{ value: 'open', label: 'Offen' }] },
-    { key: 'start_date', label: 'Datum', type: 'date' },
-    { key: 'amount', label: 'Betrag', type: 'number' },
+    { key: 'state', label: 'Status', type: 'select', options: [{ value: 'open', label: 'Offen' }], hint: 'Status auswählen' },
+    { key: 'start_date', label: 'Datum', type: 'date', hint: 'Prüfen Sie den Zeitraum' },
+    { key: 'amount', label: 'Betrag', type: 'number', hint: 'Betrag in EUR' },
   ];
   const { container } = render(<FormModal title="Vorgang" fields={fieldsWithTypes} autosave={false}
     onSave={vi.fn().mockRejectedValue(error)} onClose={vi.fn()} />);
   fireEvent.submit(container.querySelector('form'));
   await screen.findByRole('alert');
   for (const label of ['Status', 'Datum', 'Betrag']) expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByLabelText('Status')).toHaveAttribute('aria-describedby', 'form-error-state form-hint-state');
+  expect(screen.getByLabelText('Datum')).toHaveAttribute('aria-describedby', 'form-error-start_date form-hint-start_date');
+  expect(screen.getByLabelText('Betrag')).toHaveAttribute('aria-describedby', 'form-error-amount form-hint-amount');
   fireEvent.click(screen.getByRole('button', { name: 'Eingaben prüfen' }));
   expect(screen.getByLabelText('Status')).toHaveFocus();
   fireEvent.click(screen.getByRole('button', { name: 'Heute eintragen' }));
   expect(screen.getByLabelText('Datum')).not.toHaveAttribute('aria-invalid');
+  expect(screen.getByLabelText('Datum')).toHaveAttribute('aria-describedby', 'form-hint-start_date');
   expect(screen.getByLabelText('Betrag')).toHaveAttribute('aria-invalid', 'true');
+});
+
+it('Escape only cancels recovered draft deletion and returns focus without deleting or saving', async () => {
+  workspace.list.mockResolvedValue({ items: [savedDraft], next_cursor: null });
+  const onClose = vi.fn(); const onSave = vi.fn();
+  render(<FormModal title="Mieter" fields={fields} draftContext="tenants" onSave={onSave} onClose={onClose} />);
+  await screen.findByText('Ungespeicherter Entwurf vorhanden');
+  const discard = screen.getByRole('button', { name: 'Entwurf verwerfen' });
+  discard.focus();
+  fireEvent.click(discard);
+  expect(screen.getByRole('button', { name: 'Entwurf behalten' })).toHaveFocus();
+  expect(discard).toHaveAttribute('aria-controls', 'form-draft-discard-confirm');
+  fireEvent.keyDown(document, { key: 'Enter', ctrlKey: true });
+  expect(onSave).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: 'Entwurf verwerfen bestätigen' })).not.toBeInTheDocument();
+  expect(discard).toHaveFocus();
+  expect(discard).toHaveAttribute('aria-expanded', 'false');
+  expect(discard).not.toHaveAttribute('aria-controls');
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onSave).not.toHaveBeenCalled();
+  expect(workspace.remove).not.toHaveBeenCalled();
+  expect(screen.getByText('Ungespeicherter Entwurf vorhanden')).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(onClose).toHaveBeenCalledOnce(); // Only the second Escape can close the untouched form.
+  expect(workspace.remove).not.toHaveBeenCalled();
+});
+
+it('does not close or repeat actions if Escape is pressed during confirmed draft deletion', async () => {
+  workspace.list.mockResolvedValue({ items: [savedDraft], next_cursor: null });
+  let finishDelete;
+  workspace.remove.mockImplementationOnce(() => new Promise(resolve => { finishDelete = resolve; }));
+  const onClose = vi.fn(); const onSave = vi.fn();
+  render(<FormModal title="Mieter" fields={fields} draftContext="tenants" onSave={onSave} onClose={onClose} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Entwurf verwerfen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Endgültig verwerfen' }));
+  await waitFor(() => expect(workspace.remove).toHaveBeenCalledTimes(1));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onSave).not.toHaveBeenCalled();
+  expect(workspace.remove).toHaveBeenCalledTimes(1);
+  await act(async () => { finishDelete({ deleted: true }); });
+  await waitFor(() => expect(screen.queryByText('Ungespeicherter Entwurf vorhanden')).not.toBeInTheDocument());
+  expect(onSave).not.toHaveBeenCalled();
+  expect(workspace.remove).toHaveBeenCalledTimes(1);
 });

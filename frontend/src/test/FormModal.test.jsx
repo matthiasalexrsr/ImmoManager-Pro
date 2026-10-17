@@ -301,3 +301,22 @@ it('hebt den Browser-Verlassensschutz direkt nach einem nachweislich erfolgreich
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   expect(unloadDuringClose).toHaveBeenCalledWith(false);
 });
+
+it('returns keyboard focus to the edited input when discarding is cancelled', () => {
+  const onClose = vi.fn();
+  render(<FormModal title="Mieter" fields={fields} autosave={false} onSave={vi.fn()} onClose={onClose} />);
+  const input = screen.getByLabelText('Name');
+  fireEvent.change(input, { target: { value: 'Noch bearbeiten' } });
+  input.focus();
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.getByRole('button', { name: 'Weiter bearbeiten' })).toHaveFocus();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  expect(input).toHaveFocus();
+  expect(input).toHaveValue('Noch bearbeiten');
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'ui.buttons.cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Weiter bearbeiten' }));
+  expect(input).toHaveFocus();
+  expect(onClose).not.toHaveBeenCalled();
+});
