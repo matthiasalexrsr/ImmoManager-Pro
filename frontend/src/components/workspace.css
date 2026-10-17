@@ -4,6 +4,8 @@
 .draft-recovery p { margin:.4rem 0 .8rem; }
 .form-error-feedback:focus { outline:2px solid var(--primary,#326cbd); outline-offset:2px; }
 .form-error-feedback p { margin:.25rem 0 .5rem; }
+.form-field-error { display:block; margin-top:.3rem; color:var(--danger,#b42318); font-weight:600; }
+.form-group [aria-invalid="true"] { border-color:var(--danger,#b42318); }
 .draft-discard-confirm { margin-top:.7rem; padding:.75rem; border:1px solid var(--border,#d0d5dd); border-radius:.5rem; }
 .draft-recovery td { white-space:pre-wrap; overflow-wrap:anywhere; max-width:18rem; }
 .draft-values { margin:.4rem 0; overflow-wrap:anywhere; }

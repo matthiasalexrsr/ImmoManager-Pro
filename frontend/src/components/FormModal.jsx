@@ -8,6 +8,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { formContext } from '../utils/workspaceClient';
 import useFormDraft from '../hooks/useFormDraft';
+import { fieldValidationErrors } from '../utils/formValidationFeedback';
 import './workspace.css';
 import DuplicateHints from './DuplicateHints';
 import DraftDefaults from './DraftDefaults';
@@ -41,6 +42,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
     [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [saveFailure, setSaveFailure] = useState(false);
   const [confirmDraftDiscard, setConfirmDraftDiscard] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -82,6 +84,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     if (changedRecord) {
       sessionRef.current = { key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at };
       setError(null);
+      setFieldErrors({});
       setSaveFailure(false);
       setConfirmDraftDiscard(false);
       restoreFocusRef.current = false;
@@ -138,6 +141,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   }, [fieldDisabled, draft.recovery]);
 
   const update = (key, value, extra) => {
+    setFieldErrors(current => {
+      if (!current[key] && !Object.keys(extra || {}).some(other => current[other])) return current;
+      const nextErrors = { ...current };
+      delete nextErrors[key];
+      Object.keys(extra || {}).forEach(other => { delete nextErrors[other]; });
+      return nextErrors;
+    });
     setDirty(true);
     setConfirmDiscard(false);
     const next = { ...values, [key]: value, ...extra };
@@ -222,6 +232,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     savingRef.current = true;
     setSaving(true);
     setError(null);
+    setFieldErrors({});
     setSaveFailure(false);
     try {
       const cleaned = {};
@@ -265,7 +276,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       }
       onClose();
     } catch (err) {
-      if (isCurrentSession()) { setError(err?.message || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.')); setSaveFailure(true); }
+      if (isCurrentSession()) {
+        setError(err?.message || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.'));
+        setFieldErrors(fieldValidationErrors(err, fields));
+        setSaveFailure(true);
+      }
     } finally {
       if (isCurrentSession()) { savingRef.current = false; setSaving(false); }
     }
@@ -299,7 +314,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
               <p>{error}</p>
               {saveFailure && <>
                 <p>{tr('ui.form.saveFailedKeepInput', 'Ihre Eingaben bleiben erhalten. Prüfen Sie den Fehler und versuchen Sie es erneut.')}</p>
-                <button type="button" className="btn btn-sm btn-secondary" onClick={() => modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus()}>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => {
+                  const inputs = [...(modalRef.current?.querySelectorAll('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)') || [])];
+                  (inputs.find(input => fields.some(f => fieldErrors[f.key] && input.id === `form-field-${f.key}`)) || inputs[0])?.focus();
+                }}>
                   {tr('ui.form.reviewInputs', 'Eingaben prüfen')}
                 </button>
               </>}
@@ -376,6 +394,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                   return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
                 }
                 const inputId = `form-field-${f.key}`;
+                const fieldErrorId = fieldErrors[f.key] ? `form-error-${f.key}` : undefined;
                 const options = typeof f.options === 'function' ? f.options(values) : f.options;
                 return (
                   <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
@@ -383,6 +402,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                     {f.type === 'select' ? (
                       <select
                         id={inputId}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={fieldErrorId}
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value,
                           Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
@@ -399,6 +420,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                     ) : f.type === 'textarea' ? (
                       <textarea
                         id={inputId}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={fieldErrorId}
                         value={values[f.key] || ''}
                         onChange={e => update(f.key, e.target.value)}
                         required={f.required}
@@ -410,6 +433,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                       <span className="date-input-row">
                         <input
                           id={inputId}
+                          aria-invalid={fieldErrorId ? true : undefined}
+                          aria-describedby={fieldErrorId}
                           type="date"
                           value={values[f.key] ?? ''}
                           onChange={e => update(f.key, e.target.value)}
@@ -423,6 +448,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                     ) : (
                       <input
                         id={inputId}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={fieldErrorId}
                         type={f.type || 'text'}
                         value={values[f.key] ?? ''}
                         onChange={e => update(f.key, e.target.value)}
@@ -432,6 +459,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         placeholder={f.placeholder}
                       />
                     )}
+                    {fieldErrorId && <small id={fieldErrorId} className="form-field-error">{fieldErrors[f.key].join(' · ')}</small>}
                     {f.hint && <small className="form-hint">{f.hint}</small>}
                     <MissingChoice hint={prerequisiteFor(f, options)} requestLeave={requestLeave} />
                   </div>

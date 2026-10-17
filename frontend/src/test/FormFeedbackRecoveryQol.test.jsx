@@ -120,3 +120,77 @@ it('ignores a late failed save from a form that was replaced by another record',
   expect(screen.getByLabelText('Name')).toHaveValue('Zweiter');
   expect(screen.queryByText('Alter Fehler')).not.toBeInTheDocument();
 });
+
+
+it('marks the exact 422 fields and guides review to the first invalid field without losing input', async () => {
+  const invalid = Object.assign(new Error('Bitte die Eingaben korrigieren'), {
+    statusCode: 422, details: [
+      { loc: ['body', 'notes'], msg: 'Notiz genauer beschreiben' },
+      { loc: ['body', 'email'], msg: 'E-Mail-Adresse ungültig' },
+      { loc: ['body', 'unrelated'], msg: 'Unbekannt' },
+    ],
+  });
+  const onSave = vi.fn().mockRejectedValueOnce(invalid).mockResolvedValue(undefined);
+  const onClose = vi.fn();
+  const editedFields = [
+    { key: 'full_name', label: 'Name' }, { key: 'email', label: 'E-Mail' },
+    { key: 'notes', label: 'Notiz', type: 'textarea' },
+  ];
+  const { container } = render(<FormModal title="Mieter" fields={editedFields} autosave={false}
+    onSave={onSave} onClose={onClose} />);
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Anna' } });
+  fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'bad' } });
+  fireEvent.change(screen.getByLabelText('Notiz'), { target: { value: 'Unfertige Notiz' } });
+  fireEvent.submit(container.querySelector('form'));
+  const summary = await screen.findByRole('alert');
+  await waitFor(() => expect(summary).toHaveFocus());
+
+  const email = screen.getByLabelText('E-Mail');
+  const notes = screen.getByLabelText('Notiz');
+  expect(email).toHaveAttribute('aria-invalid', 'true');
+  expect(email).toHaveAttribute('aria-describedby', 'form-error-email');
+  expect(document.getElementById('form-error-email')).toHaveTextContent('E-Mail-Adresse ungültig');
+  expect(notes).toHaveAttribute('aria-invalid', 'true');
+  expect(document.getElementById('form-error-notes')).toHaveTextContent('Notiz genauer beschreiben');
+  expect(screen.getByLabelText('Name')).not.toHaveAttribute('aria-invalid');
+  expect(screen.getByLabelText('Name')).toHaveValue('Anna');
+  expect(notes).toHaveValue('Unfertige Notiz');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Eingaben prüfen' }));
+  expect(email).toHaveFocus(); // form order, not server error order
+  fireEvent.change(email, { target: { value: 'anna@example.test' } });
+  expect(email).not.toHaveAttribute('aria-invalid');
+  expect(email).not.toHaveAttribute('aria-describedby');
+  expect(document.getElementById('form-error-email')).toBeNull();
+  expect(notes).toHaveAttribute('aria-invalid', 'true'); // unrelated field stays visible
+  fireEvent.submit(container.querySelector('form'));
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  expect(onSave).toHaveBeenCalledTimes(2);
+  expect(onSave).toHaveBeenLastCalledWith({ full_name: 'Anna', email: 'anna@example.test', notes: 'Unfertige Notiz' });
+});
+
+it('links structured field messages for select, date and number inputs but ignores unrelated details', async () => {
+  const error = Object.assign(new Error('Ungültige Eingabe'), {
+    statusCode: 422, details: [
+      { field: 'state', message: 'Auswahl prüfen' },
+      { field: 'start_date', message: 'Datum liegt zu früh' },
+      { field: 'amount', message: 'Betrag zu klein' },
+      { field: 'state.deep', message: 'Verschachtelt' },
+    ],
+  });
+  const fieldsWithTypes = [
+    { key: 'state', label: 'Status', type: 'select', options: [{ value: 'open', label: 'Offen' }] },
+    { key: 'start_date', label: 'Datum', type: 'date' },
+    { key: 'amount', label: 'Betrag', type: 'number' },
+  ];
+  const { container } = render(<FormModal title="Vorgang" fields={fieldsWithTypes} autosave={false}
+    onSave={vi.fn().mockRejectedValue(error)} onClose={vi.fn()} />);
+  fireEvent.submit(container.querySelector('form'));
+  await screen.findByRole('alert');
+  for (const label of ['Status', 'Datum', 'Betrag']) expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'Eingaben prüfen' }));
+  expect(screen.getByLabelText('Status')).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', { name: 'Heute eintragen' }));
+  expect(screen.getByLabelText('Datum')).not.toHaveAttribute('aria-invalid');
+  expect(screen.getByLabelText('Betrag')).toHaveAttribute('aria-invalid', 'true');
+});

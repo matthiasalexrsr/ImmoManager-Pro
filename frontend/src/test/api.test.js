@@ -138,7 +138,23 @@ describe('validation errors', () => {
     });
 
     const { api } = await import('../api.js');
-    await expect(api.post('/bookings', { amount: 0 })).rejects.toThrow(/^Betrag darf nicht 0 sein$/);
+    await expect(api.post('/bookings', { amount: 0 })).rejects.toMatchObject({
+      message: 'Betrag darf nicht 0 sein', statusCode: 422,
+      details: [{ loc: ['body', 'amount'], msg: 'Value error, Betrag darf nicht 0 sein' }],
+    });
+  });
+
+  it('preserves standardized validation field details without changing the message', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false, status: 422, headers: new Headers(),
+      json: async () => ({ error: { code: 'VALIDATION_ERROR', message: 'Ungültige Eingabe',
+        details: [{ field: 'amount', message: 'Betrag erforderlich' }] } }),
+    });
+    const { api } = await import('../api.js');
+    await expect(api.post('/bookings', { amount: 0 })).rejects.toMatchObject({
+      message: 'Ungültige Eingabe', statusCode: 422,
+      details: [{ field: 'amount', message: 'Betrag erforderlich' }],
+    });
   });
 });
 

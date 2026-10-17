@@ -181,6 +181,8 @@ function parseApiError(body, statusCode) {
     err.requestId = body.error.request_id;
   } else if (body?.detail) {
     err = new Error(typeof body.detail === 'string' ? body.detail : validationMessage(body.detail));
+    // Preserve FastAPI's field paths for the shared form, without changing error text.
+    if (Array.isArray(body.detail)) err.details = body.detail;
   } else {
     err = new Error('Ein Fehler ist aufgetreten');
   }
