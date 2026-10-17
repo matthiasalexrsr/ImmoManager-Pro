@@ -53,8 +53,9 @@ export default function SetupChecklist({ stats, ready }) {
         ))}
       </ol>
       <p className="setup-checklist-note">
-        Die Datensicherung läuft automatisch jeden Tag. Speicherort und letzte Sicherung stehen unter{' '}
-        <Link to="/settings">Einstellungen → System</Link>.
+        Ob und wann automatische Sicherungen laufen, sehen Sie unter{' '}
+        <Link to="/settings?section=system">Einstellungen → System</Link>.
+        Prüfen Sie dort Zeitplan, letzte erfolgreiche Sicherung und Wiederherstellungsprobe.
       </p>
     </section>
   );
