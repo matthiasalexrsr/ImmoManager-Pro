@@ -3345,7 +3345,10 @@ table.data-table tbody tr:last-child td {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  /* A tiny nonzero duration starts transitions even on elements that normally
+     have none. Responsive dimensions can then retain their desktop geometry
+     for a frame and overflow the viewport. Honour reduced motion directly. */
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 /* Settings → Users: portfolio access of an account */

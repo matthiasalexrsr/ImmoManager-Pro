@@ -59,6 +59,15 @@ und Escape schließt nicht versehentlich eine darunterliegende Akte.
   Ein zusätzlich gefundener Fehler bei gleichzeitigem Maus-/Tastaturfokus
   wurde unabhängig reproduziert und korrigiert: Beide Pausegründe müssen
   beendet sein, bevor die Restanzeigezeit weiterläuft.
+- Ein zusätzlicher Edge-Browserfall fand beim Wechsel auf 320 Pixel eine
+  kurzfristige Dokumentbreite von 599 Pixeln. Die globale Regel für reduzierte
+  Bewegung aktivierte mit einer universellen Dauer von 0,01 ms auch zuvor
+  nicht vorhandene Größenübergänge. `transition: none` und `animation: none`
+  berücksichtigen diese Einstellung jetzt unmittelbar. Ein eigener DOM-Probe-
+  Nachweis ermittelt danach sowohl unmittelbar als auch nach dem Umschalten
+  exakt 320 Pixel ohne überstehende Elemente. Der Browserfall wartet zusätzlich
+  auf die tatsächlich angezeigten Mobilsteuerelemente und prüft weiterhin
+  die vollständige Dokumentbreite.
 
 ## Bewusst nicht überschrieben
 

@@ -46,7 +46,8 @@ async function step(name, run) {
   } finally { await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2)); }
 }
 async function fitsViewport(tab) {
-  assert.ok(await tab.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Document must not scroll horizontally');
+  const size = await tab.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));
+  assert.ok(size.document <= size.viewport + 1, 'Document must not scroll horizontally: ' + JSON.stringify(size));
 }
 try {
   const bootstrap = await request.newContext({ baseURL: base.origin });
@@ -312,6 +313,10 @@ try {
     await page.screenshot({ path: path.join(output, 'inbox-archive-1440.png') });
     for (const width of [320, 360]) {
       await page.setViewportSize({ width, height: 900 });
+      // The shell changes its rendered controls in response to matchMedia.
+      // Assert the mobile state before measuring its completed layout.
+      await expect(page.getByRole('button', { name: 'Navigation öffnen', exact: true })).toBeVisible();
+      await expect(page.locator('.top-bar-page-title')).toBeHidden();
       await fitsViewport(page);
       await expect(inbox.getByLabel('Ansicht', { exact: true })).toBeVisible();
       await page.screenshot({ path: path.join(output, `inbox-archive-${width}.png`) });
