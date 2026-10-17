@@ -94,7 +94,9 @@ it('saves recipient choices in a private draft without initiating SMTP', async (
 
 it('opens a saved draft from the global list in its source conversation', async () => {
   items = [{ ...row, kind: 'draft', state: 'draft', connection_id: 'connection' }];
-  open(); fireEvent.click(await screen.findByRole('button', { name: /Ausgewählte E-Mail/ }));
+  open();
+  const draft = await screen.findByRole('button', { name: /Ausgewählte E-Mail/ });
+  await act(async () => { fireEvent.click(draft); });
   expect(screen.getByLabelText('Konversation')).toHaveValue('thread');
   expect(screen.getByLabelText('Nachricht')).toHaveValue('Freizugebender Inhalt');
   expect(screen.getByRole('button', { name: 'Entwurf speichern' })).toBeInTheDocument();

@@ -11,6 +11,7 @@ vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), pu
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({
   'ui.buttons.new': 'Neu', 'ui.buttons.edit': 'Bearbeiten', 'ui.buttons.save': 'Speichern',
   'ui.buttons.cancel': 'Abbrechen', 'ui.buttons.close': 'Schließen',
+  'tenantsContracts.contracts.occupants.action': 'Bewohner',
 }[key]), locale: 'de-DE' }) }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => async () => true }));

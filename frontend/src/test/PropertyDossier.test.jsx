@@ -312,7 +312,9 @@ describe('property page as the place to act on a property', () => {
   it('lists who lives in the property with links to the party and the unit', async () => {
     withContract();
     show();
-    fireEvent.click(await screen.findByRole('tab', { name: 'Mieter & Verträge (1)' }));
+    const contracts = await screen.findByRole('tab', { name: 'Mieter & Verträge (1)' });
+    // Opening this section also loads its named views; flush the updates as a user sees them.
+    await act(async () => { fireEvent.click(contracts); });
     const row = screen.getByRole('row', { name: /MV-7/ });
     expect(within(row).getByText('Lena Langzeit')).toBeInTheDocument();
     expect(within(row).getByRole('link', { name: 'Wohnung Alpha' })).toHaveAttribute('href', '/units/u1');

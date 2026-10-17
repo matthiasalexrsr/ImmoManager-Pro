@@ -147,7 +147,7 @@ describe('dashboard working overview', () => {
       expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
     }
     expect(api.get).toHaveBeenCalledWith('/reports/finance', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    fireEvent.click(screen.getByRole('button', { name: 'Arbeit' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Arbeit' })); });
     expect(screen.getByText('Heizung prüfen')).toBeInTheDocument();
   });
 

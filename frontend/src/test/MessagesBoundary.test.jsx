@@ -64,7 +64,8 @@ it('keeps separate drafts for A and B', async () => {
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Entwurf A' } }); choose('b');
   expect(screen.getByRole('textbox')).toHaveValue('');
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Entwurf B' } }); choose('a');
-  expect(screen.getByRole('textbox')).toHaveValue('Entwurf A'); choose('b');
+  expect(screen.getByRole('textbox')).toHaveValue('Entwurf A');
+  await act(async () => choose('b'));
   expect(screen.getByRole('textbox')).toHaveValue('Entwurf B');
 });
 

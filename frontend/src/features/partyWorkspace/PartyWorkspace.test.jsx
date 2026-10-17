@@ -225,6 +225,8 @@ describe('party workspace', () => {
     fireEvent.keyDown(overviewTab, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: /Dokumente/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: /Dokumente/ })).toHaveFocus();
+    // Tab navigation starts a document fetch; observe its result before ending the test.
+    expect(await screen.findByRole('button', { name: doc.title })).toBeInTheDocument();
   });
 
   it('loads all paginated results and removes the more action when the final page arrives', async () => {

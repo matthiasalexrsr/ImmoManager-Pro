@@ -171,7 +171,7 @@ describe('source-bound work lists', () => {
     show(<><WorkCenter /><Where /></>, '/work-center?due_before=2026-10-15&deferred=due');
     expect(await screen.findByRole('link', { name: 'Vorgang öffnen' })).toHaveAttribute('href', '/tasks?suche=R%C3%BCckruf');
     expect(api.get).toHaveBeenCalledWith('/work-center/items?due_before=2026-10-15&deferred=due&limit=25', expect.anything());
-    fireEvent.change(screen.getByLabelText('Bereich'), { target: { value: 'task' } });
+    await act(async () => { fireEvent.change(screen.getByLabelText('Bereich'), { target: { value: 'task' } }); });
     expect(screen.getByTestId('where')).toHaveTextContent('kind=task');
   });
 });

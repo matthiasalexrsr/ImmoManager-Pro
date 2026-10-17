@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import DataTable from '../components/DataTable';
@@ -123,7 +123,7 @@ describe('accessible list workspace', () => {
     render(<MemoryRouter><Properties /></MemoryRouter>);
     expect(await screen.findByRole('alert')).toHaveTextContent('Einheiten nicht erreichbar');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' })); });
     expect(mocks.reload).toHaveBeenCalled();
   });
 

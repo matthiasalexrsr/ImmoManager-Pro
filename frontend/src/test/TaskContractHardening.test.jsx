@@ -7,7 +7,8 @@ import { api } from '../api';
 
 const context = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), invalidate: vi.fn(), openParty: vi.fn(), lookups: {} }));
 vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), del: vi.fn() } }));
-vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({ 'ui.buttons.save': 'Speichern', 'ui.buttons.cancel': 'Abbrechen', 'ui.buttons.close': 'Schließen' }[key]), locale: 'de-DE' }) }));
+vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({ 'ui.buttons.save': 'Speichern', 'ui.buttons.cancel': 'Abbrechen', 'ui.buttons.close': 'Schließen',
+  'tenantsContracts.contracts.occupants.action': 'Bewohner' }[key]), locale: 'de-DE' }) }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ error: context.error, success: context.success }) }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => async () => true }));
 vi.mock('../contexts/DataStoreContext', () => ({
