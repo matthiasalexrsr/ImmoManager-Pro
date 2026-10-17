@@ -10,6 +10,7 @@ const translationCache = {};
 const BUILTIN_TRANSLATIONS = {
   'de-DE': {
     comp: { dataTable: {
+      openRow: 'Eintrag öffnen',
       activeFilters: 'Aktive Tabellenfilter', removeSearch: 'Suche entfernen',
       removeFilter: 'Filter entfernen', filterBy: 'filtern',
       rangeStart: 'ab', rangeEnd: 'bis',
@@ -144,6 +145,7 @@ const BUILTIN_TRANSLATIONS = {
   },
   'en-US': {
     comp: { dataTable: {
+      openRow: 'Open entry',
       activeFilters: 'Active table filters', removeSearch: 'Remove search',
       removeFilter: 'Remove filter', filterBy: 'filter',
       rangeStart: 'from', rangeEnd: 'to',
@@ -278,6 +280,7 @@ const BUILTIN_TRANSLATIONS = {
   },
   'es-ES': {
     comp: { dataTable: {
+      openRow: 'Abrir entrada',
       activeFilters: 'Filtros activos de la tabla', removeSearch: 'Quitar búsqueda',
       removeFilter: 'Quitar filtro', filterBy: 'filtrar',
       rangeStart: 'desde', rangeEnd: 'hasta',

@@ -8,3 +8,18 @@
 @media (max-width: 380px) { .page-title { font-size: 1.3rem; letter-spacing: -.025em; } }
 html[data-density="compact"] .data-table td, html[data-density="compact"] .data-table th { padding-top: .35rem; padding-bottom: .35rem; }
 html[data-density="compact"] .personal-inbox-list li { padding-top: .45rem; padding-bottom: .45rem; }
+
+/* Read-all is intentionally a separate confirmation step, even in the bell. */
+.personal-inbox .inbox-bulk-confirm {
+  display: grid;
+  gap: .65rem;
+  margin: .75rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: .6rem;
+  background: var(--color-bg, #f8fafc);
+  min-width: 0;
+}
+.personal-inbox .inbox-bulk-confirm p { margin: 0; overflow-wrap: anywhere; }
+.personal-inbox .inbox-bulk-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.personal-inbox .inbox-bulk-actions button { min-height: 38px; }

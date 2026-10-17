@@ -114,3 +114,10 @@
 @media (max-width: 640px) {
   .data-table-workspace .table-active-filters { padding: 9px 14px 12px; }
 }
+
+/* Rows with a detail/open action are first-class keyboard targets. */
+.data-table-workspace .data-table tbody tr[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  background: var(--color-primary-light, var(--color-bg));
+}

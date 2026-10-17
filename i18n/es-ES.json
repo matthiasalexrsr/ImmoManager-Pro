@@ -2045,6 +2045,7 @@
   },
   "comp": {
     "dataTable": {
+      "openRow": "Abrir entrada",
       "activeFilters": "Filtros activos de la tabla",
       "removeFilter": "Quitar filtro",
       "removeSearch": "Quitar búsqueda",

@@ -1285,6 +1285,7 @@
   },
   "comp": {
     "dataTable": {
+      "openRow": "Open entry",
       "activeFilters": "Active table filters",
       "removeFilter": "Remove filter",
       "removeSearch": "Remove search",

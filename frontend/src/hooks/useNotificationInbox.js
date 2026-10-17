@@ -13,6 +13,7 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const pending = useRef(null);
+  const submitting = useRef(false);
   const reload = useCallback(() => setAttempt(n => n + 1), []);
   useEffect(() => {
     let live = true;
@@ -55,7 +56,10 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
     return () => { clearInterval(timer); window.removeEventListener('focus', update); window.removeEventListener('notification-receipt', update); };
   }, [reload]);
   const mutate = async (id, values) => {
-    if (busy) return;
+    // State updates are asynchronous: guard a rapid double click *before*
+    // React can render the disabled button, so only one receipt POST escapes.
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true); setError(null);
     const identity = JSON.stringify([id, values]);
     if (pending.current?.identity !== identity) pending.current = { identity, body: receiptCommand(values) };
@@ -68,7 +72,7 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
       if (failure.code === 'SESSION_CHANGED') return;
       setError(failure.message || 'Änderung nicht bestätigt. Mit derselben Aktion erneut versuchen.');
       if ((failure.statusCode || failure.status) === 409) { pending.current = null; reload(); }
-    } finally { setBusy(false); }
+    } finally { submitting.current = false; setBusy(false); }
   };
   return { page, error, busy, reload, mutate };
 }

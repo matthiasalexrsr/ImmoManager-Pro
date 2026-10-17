@@ -68,6 +68,9 @@ it('inbox provides native keyboard and new-tab links and complete server snapsho
   expect(link).toHaveAttribute('href', notice.open_href);
   expect(screen.getByRole('status')).toHaveTextContent('27 ungelesen');
   fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
+  expect(api.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('group', { name: 'Sammelbestätigung' })).toHaveTextContent('27');
+  fireEvent.click(screen.getByRole('button', { name: '27 Hinweise jetzt archivieren' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith('/notifications/all/receipt', expect.objectContaining({ action: 'read_all', snapshot: 'complete-authorized-inbox' })));
 });
 

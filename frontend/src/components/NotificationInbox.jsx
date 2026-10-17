@@ -1,5 +1,5 @@
 ﻿import NotificationArrival from './NotificationArrival';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import NotificationEmailPreview from './NotificationEmailPreview';
 import { Link, useSearchParams } from 'react-router-dom';
 import useNotificationInbox from '../hooks/useNotificationInbox';
@@ -14,7 +14,27 @@ export default function NotificationInbox({ compact = false }) {
   const [cursor, setCursor] = useState(null);
   const [history, setHistory] = useState([]);
   const [snapshot, setSnapshot] = useState(null);
+  const [bulkConfirmation, setBulkConfirmation] = useState(null);
+  const readAllRef = useRef(null);
+  const cancelRef = useRef(null);
   const { page, error, busy, reload, mutate } = useNotificationInbox(status, cursor, compact ? 10 : 50, snapshot, compact ? '' : severity, compact ? '' : kind);
+  useEffect(() => {
+    if (bulkConfirmation) cancelRef.current?.focus();
+  }, [bulkConfirmation]);
+
+  const cancelBulk = () => {
+    setBulkConfirmation(null);
+    readAllRef.current?.focus();
+  };
+  const confirmBulk = () => {
+    const proof = bulkConfirmation;
+    if (!proof || busy || page?.snapshot !== proof.snapshot || page?.unread_count !== proof.count) return;
+    setBulkConfirmation(null);
+    // The exact preview that was confirmed determines the server command.
+    // Changes made by other tabs are refused by the backend's snapshot fence.
+    void mutate('all', { action: 'read_all', snapshot: proof.snapshot });
+  };
+
   useEffect(() => {
     const reset = () => { setCursor(null); setHistory([]); setSnapshot(null); };
     window.addEventListener('notification-receipt', reset);
@@ -33,7 +53,29 @@ export default function NotificationInbox({ compact = false }) {
     {page && <>
       <p role="status">{page.unread_count} ungelesen · {page.total} in dieser Ansicht</p>
       {page.unread_count > 0 && <p>Bestätigungsumfang: alle {page.unread_count} aktuell berechtigten ungelesenen Hinweise aus der geladenen Vorschau, unabhängig von den Filtern. Bei Änderungen wird eine neue Vorschau verlangt.</p>}
-      {page.unread_count > 0 && <button className="btn btn-secondary" disabled={busy} onClick={() => mutate('all', { action: 'read_all', snapshot: page.snapshot })}>Alle berechtigten Hinweise gelesen archivieren</button>}
+      {page.unread_count > 0 && <button type="button" ref={readAllRef} className="btn btn-secondary"
+        disabled={busy} aria-expanded={Boolean(bulkConfirmation)}
+        onClick={() => setBulkConfirmation({ count: page.unread_count, snapshot: page.snapshot })}>
+        Alle berechtigten Hinweise gelesen archivieren
+      </button>}
+      {bulkConfirmation && <div className="inbox-bulk-confirm" role="group" aria-label="Sammelbestätigung"
+        onKeyDown={event => {
+          if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelBulk(); }
+        }}>
+        <strong>{bulkConfirmation.count === 1
+          ? 'Diesen einen ungelesenen Hinweis wirklich gelesen archivieren?'
+          : `Alle ${bulkConfirmation.count} ungelesenen Hinweise wirklich gelesen archivieren?`}</strong>
+        <p>Diese Aktion betrifft alle aktuell berechtigten ungelesenen Hinweise, unabhängig von den eingestellten Filtern und der angezeigten Seite.</p>
+        {(page?.snapshot !== bulkConfirmation.snapshot || page?.unread_count !== bulkConfirmation.count) &&
+          <p role="alert">Die Vorschau hat sich geändert. Bitte abbrechen und den Eingang neu prüfen.</p>}
+        <div className="inbox-bulk-actions">
+          <button type="button" ref={cancelRef} className="btn btn-secondary" onClick={cancelBulk}>Abbrechen</button>
+          <button type="button" className="btn btn-danger" onClick={confirmBulk}
+            disabled={busy || page?.snapshot !== bulkConfirmation.snapshot || page?.unread_count !== bulkConfirmation.count}>
+            {bulkConfirmation.count === 1 ? 'Einen Hinweis jetzt archivieren' : `${bulkConfirmation.count} Hinweise jetzt archivieren`}
+          </button>
+        </div>
+      </div>}
       {page.items.length === 0 && <p>Keine Hinweise in dieser Ansicht.</p>}
       <NotificationArrival rows={page.items} />
       <ul className="personal-inbox-list">{page.items.map(n => <li key={n.id}>

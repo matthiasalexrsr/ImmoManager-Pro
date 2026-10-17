@@ -108,6 +108,8 @@ describe('exact KPI source lists', () => {
     expect(api.post).not.toHaveBeenCalled();
     expect(screen.getByText(/1 ungelesen/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Einen Hinweis jetzt archivieren' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Lesestatus nicht gespeichert');
     expect(screen.getByText('Offener Hinweis')).toBeInTheDocument();
     expect(screen.getByText(/1 ungelesen/)).toBeInTheDocument();
@@ -117,6 +119,7 @@ describe('exact KPI source lists', () => {
       action: 'read_all', snapshot, idempotency_key: expect.any(String),
     }));
     fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Einen Hinweis jetzt archivieren' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     expect(api.post.mock.calls[1][1]).toEqual(original);
     expect(api.patch).not.toHaveBeenCalled();

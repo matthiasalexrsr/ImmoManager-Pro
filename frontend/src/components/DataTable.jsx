@@ -751,12 +751,24 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               </td></tr>
             ) : (
               pageData.map(row => (
-                <tr key={row.id} onClick={event => {
-                  markRow(row);
-                  // A link/button inside the row owns its action. Calling both
-                  // would navigate twice and make Back reopen the same record.
-                  if (!event.target?.closest?.('a, button, input, select, textarea, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])')) onRowClick?.(row);
-                }} aria-selected={selectable ? selectedIds.has(row.id) : undefined}
+                <tr key={row.id} tabIndex={onRowClick ? 0 : undefined}
+                  aria-label={onRowClick ? `${tr('comp.dataTable.openRow', 'Eintrag öffnen')}: ${bulkWords.rowName(row)}` : undefined}
+                  onClick={event => {
+                    // Nested links and buttons own their action; clicking them
+                    // must never unexpectedly open the complete row.
+                    markRow(row);
+                    if (event.target?.closest?.('a, button, input, select, textarea, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])')) return;
+                    onRowClick?.(row);
+                  }}
+                  onKeyDown={onRowClick ? event => {
+                    // Enter/Space activates a focused row, not the buttons or
+                    // links nested inside it (those have their own keyboard UI).
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    markRow(row); onRowClick(row);
+                  } : undefined}
+                  aria-selected={selectable ? selectedIds.has(row.id) : undefined}
                   className={[onRowClick ? 'clickable-row' : '', selectedIds.has(row.id) ? 'row-selected' : '', rowMark === String(row.id) ? 'workspace-row-mark' : ''].filter(Boolean).join(' ') || undefined}
                   style={onRowClick ? { cursor: 'pointer' } : undefined}>
                   {selectable && <td className="td-select" onClick={e => e.stopPropagation()}>
