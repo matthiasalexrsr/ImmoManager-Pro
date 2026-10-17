@@ -249,10 +249,14 @@ try {
     await form.getByLabel('Titel', { exact: false }).fill(title);
     await form.getByLabel('Beschreibung', { exact: true }).fill('Diesen Text nach dem Neuladen erhalten.');
     const route = '**/api/v1/tasks';
+    let saveAttempts = 0;
     await page.route(route, async request => {
-      if (request.request().method() === 'POST') await request.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ detail: [
-        { loc: ['body', 'title'], msg: 'QA Titel bitte prüfen', type: 'value_error' },
-      ] }) });
+      if (request.request().method() === 'POST') {
+        saveAttempts++;
+        await request.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ detail: [
+          { loc: ['body', 'title'], msg: 'QA Titel bitte prüfen', type: 'value_error' },
+        ] }) });
+      }
       else await request.continue();
     });
     await form.getByRole('button', { name: 'Speichern', exact: true }).click();
@@ -267,11 +271,23 @@ try {
     form = page.getByRole('dialog', { name: 'Aufgabe erstellen', exact: true });
     await form.getByRole('button', { name: 'Entwurf verwerfen', exact: true }).click();
     await expect(form.getByRole('group', { name: 'Entwurf verwerfen bestätigen', exact: true })).toBeVisible();
-    await form.getByRole('button', { name: 'Entwurf behalten', exact: true }).click();
+    await expect(form.getByRole('button', { name: 'Entwurf behalten', exact: true })).toBeFocused();
+    await page.keyboard.press('Control+Enter');
+    assert.equal(saveAttempts, 1, 'The discard question must never submit the form');
+    await page.keyboard.press('Escape');
+    await expect(form.getByRole('button', { name: 'Entwurf verwerfen', exact: true })).toBeFocused();
+    await expect(form.getByRole('group', { name: 'Entwurf verwerfen bestätigen', exact: true })).toHaveCount(0);
     await form.getByRole('button', { name: 'Entwurf wiederaufnehmen', exact: true }).click();
     await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
     await expect(form.getByLabel('Titel', { exact: false })).toBeFocused();
     await expect(form.getByLabel('Beschreibung', { exact: true })).toHaveValue('Diesen Text nach dem Neuladen erhalten.');
+    await page.keyboard.press('Escape');
+    await expect(form.getByRole('alertdialog')).toBeVisible();
+    await expect(form.getByRole('button', { name: 'Weiter bearbeiten', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(form.getByRole('alertdialog')).toHaveCount(0);
+    await expect(form.getByLabel('Titel', { exact: false })).toBeFocused();
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
     await page.screenshot({ path: path.join(output, 'recovered-form-1440.png') });
     await page.unroute(route);
     await form.getByRole('button', { name: 'Speichern', exact: true }).click();

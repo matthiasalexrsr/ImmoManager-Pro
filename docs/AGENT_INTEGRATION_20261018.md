@@ -13,6 +13,13 @@ Commitstände und SHA-256-Werte der 23 geänderten Quelldateien und Übergaben.
 Die Quellverzeichnisse wurden ausschließlich gelesen. Ältere Agentenpakete
 bleiben durch das bisherige Inventar und die Integrationshistorie dokumentiert.
 
+Die abschließende Nachsicht enthält 19 Verzeichnisse. Das inzwischen neu
+angelegte `pro-media-expose-rent-ui-20261018` basiert noch auf dem vorhandenen
+QoL-Stand und besitzt zum Auswahlzeitpunkt keine neuen Medien-/Exposé-Arbeiten.
+Es enthält jedoch den zusätzlichen fertigen Formular-Commit `5eb9bd3c`, der
+gezielt übernommen wird. Beide Inventarstände bleiben getrennt erhalten:
+`inventory-at-selection.json` und `inventory-at-final.json`.
+
 | Quelle | Übernommener Nutzen | Übernahme |
 |---|---|---|
 | `pro-qol-integration-qa-20261017`, `03f6d171` bis `fa558fab` | Globale Bestätigungen, Tastaturbedienung, Meldungen, Filter, natürliche Sortierung, CSV, Mehrfachfehler, Formulare und Entwurfswiederaufnahme | Einzelne Commits mit `cherry-pick -x`, Konflikte fachlich aufgelöst |
@@ -20,6 +27,7 @@ bleiben durch das bisherige Inventar und die Integrationshistorie dokumentiert.
 | `pro-stage-backup-truth-ui-20261017`, `cbebe963` | Ersteinrichtung behauptet keinen unbeobachteten täglichen Sicherungslauf | `d36fc7d6`, einschließlich zwei Gegenproben |
 | `pro-stage-combined-billing-20261017`, `fbe835a6` | Fehlende Messtage bei Zählerwechseln verhindern eine unbemerkte Abrechnungsfreigabe | `42aab9be`, einschließlich drei Gegenproben |
 | `pro-stage-api-catalog-20261017`, uncommitteter Entwurf | Verwaltungsdiagnosen nur einmal öffentlich registrieren; OpenAPI-Katalog eindeutig halten | `3f45ec8e`, vorab am unveränderten Integrationsstand reproduziert |
+| `pro-media-expose-rent-ui-20261018`, `5eb9bd3c` | Escape und Fokus bei Entwurfsrückfragen; gemeinsam zugängliche Feldhinweise und Fehler | `c2e1f3f3`, 55 gezielte Formularprüfungen erfolgreich, echter Browserablauf erweitert |
 
 Die zusammengeführte Oberfläche erhält die bereits vorhandenen Aktenfavoriten,
 den persönlichen Schnellzugriff, den Browser-Verlauf, barrierearme Aktenreiter,
