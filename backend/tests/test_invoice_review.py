@@ -837,7 +837,10 @@ def test_migration_up_down_and_refused_downgrade(tmp_path, monkeypatch):
     config = Config()
     config.set_main_option("script_location", str(ROOT / "backend" / "db" / "migrations"))
     config.set_main_option("sqlalchemy.url", url)
-    command.upgrade(config, "head")
+    # Exercise the invoice-review revision at its actual historic boundary.
+    # A downgrade from the modern merged head crosses independently retained
+    # private sources and must be refused before invoice-review's own guard.
+    command.upgrade(config, "c9f4a2e7b1d5")
     with sqlite3.connect(tmp_path / "app.db") as conn:
         conn.executescript("""
             INSERT INTO invoices (id, supplier, invoice_date, net_amount, vat_amount, gross_amount, status, created_at,
@@ -860,7 +863,8 @@ def test_migration_up_down_and_refused_downgrade(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="invoice reviews"):
         command.downgrade(config, "5e8b2d4f7a19")
     with sqlite3.connect(tmp_path / "app.db") as conn:     # refused: nothing changed, also not a later revision
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] in (before, "c9f4a2e7b1d5")
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == before
+        assert conn.execute("SELECT id FROM invoice_review_events").fetchall() == [("e1",)]
         conn.executescript("DELETE FROM invoice_review_events; DELETE FROM invoice_reviews;")
     command.downgrade(config, "5e8b2d4f7a19")
     with sqlite3.connect(tmp_path / "app.db") as conn:

@@ -147,7 +147,10 @@ def test_booking_tenant_index_upgrade_preserves_rows_and_downgrade_is_additive(t
         """)
         assert not any("SEARCH bookings USING INDEX idx_bookings_tenant" in row[-1] for row in
                        db.execute("EXPLAIN QUERY PLAN SELECT * FROM bookings WHERE tenant_id='t'"))
-    command.upgrade(config, "head")
+    # Isolate exactly the reversible historic index revision. Upgrading to
+    # today's head first would cross later immutable connection/finance proofs
+    # and a downgrade to 6e2 would *correctly* be forbidden.
+    command.upgrade(config, "8c4d2e6f1a93")
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT id,amount FROM bookings WHERE tenant_id='t'").fetchall() == [("b", 12.34)]
         assert any("SEARCH bookings USING INDEX idx_bookings_tenant" in row[-1] for row in
@@ -156,6 +159,12 @@ def test_booking_tenant_index_upgrade_preserves_rows_and_downgrade_is_additive(t
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT id,amount FROM bookings").fetchall() == [("b", 12.34)]
         assert "idx_bookings_tenant" not in {row[1] for row in db.execute("PRAGMA index_list(bookings)")}
+    # Prove the current combined migration graph still accepts these untouched
+    # old bookings and reintroduces the index without silently changing money.
+    command.upgrade(config, "head")
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT id,amount FROM bookings").fetchall() == [("b", 12.34)]
+        assert "idx_bookings_tenant" in {row[1] for row in db.execute("PRAGMA index_list(bookings)")}
 
 
 @pytest.mark.parametrize("kind", ["result", "table"])

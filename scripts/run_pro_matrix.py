@@ -32,6 +32,7 @@ def main() -> int:
     parser.add_argument('--native-port', type=int)
     parser.add_argument('--native-user', default='postgres')
     parser.add_argument('--coverage', action='store_true')
+    parser.add_argument('--optional-libs', type=Path, help='Explicitly installed isolated optional QA libraries under artifacts/pro-tools')
     parser.add_argument('tests', nargs='*', default=['backend/tests/test_message_workflow.py', 'backend/tests/test_message_thread_boundary.py'])
     options = parser.parse_args()
     if not options.label.replace('-', '').replace('_', '').isalnum():
@@ -56,6 +57,24 @@ def main() -> int:
                        ALLOW_INMEMORY_FALLBACK='true' if options.backend == 'memory' else 'false',
                        DATABASE_URL='sqlite:///:memory:' if options.backend == 'memory' else f'sqlite:///{(runtime / "test.db").as_posix()}',
                        PYTHONPATH=str(ROOT), PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
+    library_receipt = None
+    if options.optional_libs:
+        libraries = (options.optional_libs if options.optional_libs.is_absolute()
+                     else ROOT / options.optional_libs).resolve()
+        allowed_parent = (ROOT / 'artifacts' / 'pro-tools').resolve()
+        manifest = libraries / 'fints-5.0.1.dist-info' / 'METADATA'
+        if (not libraries.is_relative_to(allowed_parent) or not manifest.is_file()
+                or not (libraries / 'fints').is_dir()):
+            parser.error('optional libraries require the explicitly owned, installed fints==5.0.1 QA directory')
+        raw = manifest.read_bytes()
+        if b'Version: 5.0.1' not in raw:
+            parser.error('optional library version does not match requirements-bank.txt')
+        environment['PYTHONPATH'] = str(libraries) + os.pathsep + str(ROOT)
+        library_receipt = {
+            'path': str(libraries),
+            'fints_metadata_sha256': hashlib.sha256(raw).hexdigest(),
+            'requirements_bank_sha256': hashlib.sha256((ROOT / 'requirements-bank.txt').read_bytes()).hexdigest(),
+        }
     if options.coverage:
         environment['COVERAGE_FILE'] = str(output / '.coverage')
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -65,7 +84,8 @@ def main() -> int:
     report = {'commit': head, 'backend': options.backend, 'tests': options.tests,
               'source_hashes': hashes, 'runtime': str(runtime), 'evidence': str(output),
               'launcher_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-              'runtime_short_path': True, 'exit_code': None}
+              'runtime_short_path': True, 'optional_library_receipt': library_receipt,
+              'exit_code': None}
     (output / 'input.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print('QA_DIRECTORY=' + str(output), flush=True)
     print('QA_HEAD=' + head + ' BACKEND=' + options.backend, flush=True)
