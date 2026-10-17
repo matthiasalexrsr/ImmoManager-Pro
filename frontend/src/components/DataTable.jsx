@@ -192,6 +192,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     if (!serverPaged) writeTableView(viewStorageKey, { search, columnFilters, page });
   }, [viewStorageKey, serverPaged, search, columnFilters, page]);
   const [showColMenu, setShowColMenu] = useState(false);
+  const colToggleRef = useRef(null);
+  const colMenuRef = useRef(null);
   const [showFilters, setShowFilters] = useState(false);
   const filterToggleRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -394,7 +396,18 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
 
   useEffect(() => {
     if (!showColMenu) return;
-    const close = event => { if (event.key === 'Escape') setShowColMenu(false); };
+    // A popover is not a modal: focus the first available control, then
+    // allow Tab to leave it normally. Escape returns focus to its opener.
+    const menu = colMenuRef.current;
+    (menu?.querySelector('input[type="checkbox"]:not(:disabled)') || menu)?.focus();
+    const close = event => {
+      if (event.key !== 'Escape' ||
+          !(menu?.contains(event.target) || colToggleRef.current?.contains(event.target))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setShowColMenu(false);
+      colToggleRef.current?.focus();
+    };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
   }, [showColMenu]);
@@ -524,13 +537,20 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               </button>
             )}
             <div className="col-menu-wrapper">
-              <button onClick={() => setShowColMenu(!showColMenu)} aria-expanded={showColMenu} className="btn btn-sm btn-secondary">
+              <button type="button" ref={colToggleRef} aria-controls={showColMenu ? `${titleId}-columns` : undefined}
+                onClick={() => setShowColMenu(value => !value)} aria-expanded={showColMenu} className="btn btn-sm btn-secondary">
                 {t('ui.table.adjustColumns')}
               </button>
               {showColMenu && (
                 <>
                   <div className="col-menu-backdrop" onClick={() => setShowColMenu(false)} />
-                  <div className="col-menu-dropdown">
+                  <div id={`${titleId}-columns`} ref={colMenuRef}
+                    role="group" aria-label={tr('ui.table.adjustColumns', 'Spaltenauswahl')}
+                    tabIndex={-1} className="col-menu-dropdown"
+                    onBlur={event => {
+                      if (!event.currentTarget.contains(event.relatedTarget) &&
+                          event.relatedTarget !== colToggleRef.current) setShowColMenu(false);
+                    }}>
                     {columns.map(col => (
                       <label key={col.key} className="col-menu-item">
                         <input

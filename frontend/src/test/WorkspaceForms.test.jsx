@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import FormModal from '../components/FormModal';
 import NamedViews from '../components/NamedViews';
+import { ConfirmProvider } from '../components/ConfirmDialog';
 import { workspace } from '../utils/workspaceClient';
 import { api } from '../api';
 import useFormDraft from '../hooks/useFormDraft';
@@ -363,4 +364,49 @@ it('saves the latest table position typed while the preceding state write was ru
   expect(workspace.put).toHaveBeenCalledTimes(1);
   await act(async () => { resolveFirst({ id: 'tenants#scroll', revision: 1, state: { scroll_top: 10 } }); });
   expect(workspace.put.mock.calls[1][2]).toMatchObject({ base_revision: 1, state: { scroll_top: 200 } });
+});
+
+
+describe('named-view destructive-action safety', () => {
+  const view = { id: 'view-old', revision: 7, name: 'Wichtige Objektfilter', config: { search: 'Alt' } };
+  it('asks before deletion; cancel leaves the original server view intact', async () => {
+    workspace.list.mockResolvedValue({ items: [view], next_cursor: null });
+    render(<ConfirmProvider><NamedViews context="tenants#main" config={{ search: '' }} onApply={vi.fn()} /></ConfirmProvider>);
+    await screen.findByRole('option', { name: view.name });
+    fireEvent.change(screen.getByLabelText('Ansicht'), { target: { value: view.id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ansicht löschen' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(view.name);
+    expect(workspace.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(workspace.remove).not.toHaveBeenCalled();
+    expect(screen.getByRole('option', { name: view.name })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ansicht löschen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    await waitFor(() => expect(workspace.remove).toHaveBeenCalledTimes(1));
+    expect(workspace.remove).toHaveBeenCalledWith('views', view.id, {
+      base_revision: 7, idempotency_key: expect.any(String),
+    });
+    await waitFor(() => expect(screen.queryByRole('option', { name: view.name })).not.toBeInTheDocument());
+  });
+
+  it('cannot delete an old context after a delayed confirmation from another workspace', async () => {
+    workspace.list.mockResolvedValue({ items: [view], next_cursor: null });
+    const { rerender } = render(<ConfirmProvider>
+      <NamedViews context="tenants#old" config={{ search: 'Original' }} onApply={vi.fn()} />
+    </ConfirmProvider>);
+    await screen.findByRole('option', { name: view.name });
+    fireEvent.change(screen.getByLabelText('Ansicht'), { target: { value: view.id } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ansicht löschen' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    rerender(<ConfirmProvider>
+      <NamedViews context="tasks#new" config={{ search: 'Anders' }} onApply={vi.fn()} />
+    </ConfirmProvider>);
+    await screen.findByRole('option', { name: view.name });
+    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(workspace.remove).not.toHaveBeenCalled();
+  });
 });

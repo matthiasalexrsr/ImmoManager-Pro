@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from './ConfirmDialog';
 import { workspace } from '../utils/workspaceClient';
 import './workspace.css';
 
 export default function NamedViews({ context, config, onApply, anchor }) {
   const auth = useAuth();
+  const confirm = useConfirm();
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [selected, setSelected] = useState('');
@@ -73,10 +75,16 @@ export default function NamedViews({ context, config, onApply, anchor }) {
       {current && <>
         <button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={() => save(true)}>Ansicht aktualisieren</button>
         <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => run(async live => {
-          const body = { base_revision: current.revision, idempotency_key: workspace.command() };
-          await workspace.remove('views', current.id, body);
+          const view = current;
+          const question = `Gespeicherte Ansicht „${view.name}“ wirklich löschen? Die aktuell angezeigten Tabellenfilter bleiben erhalten.`;
+          const accepted = await (confirm ? confirm(question) : window.confirm(question));
+          // The confirmation may have been open when the user switched to
+          // another workspace: never delete an old selection in that case.
+          if (!accepted || !live()) return;
+          const body = { base_revision: view.revision, idempotency_key: workspace.command() };
+          await workspace.remove('views', view.id, body);
           if (!live()) return;
-          setItems(rows => rows.filter(item => item.id !== current.id)); setSelected('');
+          setItems(rows => rows.filter(item => item.id !== view.id)); setSelected('');
         })}>Ansicht löschen</button>
       </>}
     </div>

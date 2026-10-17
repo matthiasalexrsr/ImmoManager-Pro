@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DataTable from '../components/DataTable';
 import { privateStorageKey } from '../utils/workspaceIdentity';
@@ -123,4 +123,29 @@ it('ein vollständig gelöschter Datumsbereich stellt undatierte Vorgänge wiede
   expect(within(screen.getByRole('table', { name: 'Termine' })).queryByText('Noch kein Datum')).not.toBeInTheDocument();
   fireEvent.change(from, { target: { value: '' } });
   expect(within(screen.getByRole('table', { name: 'Termine' })).getByText('Noch kein Datum')).toBeInTheDocument();
+});
+
+
+it('führt den Tastaturfokus sicher in die Spaltenauswahl und per Escape zurück', () => {
+  render(<DataTable title="Fokusliste" columns={columns} data={data} />);
+  const trigger = screen.getByRole('button', { name: 'ui.table.adjustColumns' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const menu = screen.getByRole('group', { name: 'Spaltenauswahl' });
+  const firstColumn = within(menu).getByRole('checkbox', { name: 'Bezeichnung' });
+  expect(firstColumn).toHaveFocus();
+  fireEvent.keyDown(firstColumn, { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: 'Spaltenauswahl' })).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
+
+it('schließt die Spaltenauswahl beim Tab-Wechsel, ohne den externen Fokus zu übernehmen', () => {
+  render(<DataTable title="Fokusliste" columns={columns} data={data} />);
+  fireEvent.click(screen.getByRole('button', { name: 'ui.table.adjustColumns' }));
+  const menu = screen.getByRole('group', { name: 'Spaltenauswahl' });
+  expect(within(menu).getByRole('checkbox', { name: 'Bezeichnung' })).toHaveFocus();
+  const search = screen.getByRole('textbox', { name: 'Fokusliste durchsuchen' });
+  act(() => { search.focus(); fireEvent.focusIn(search); });
+  expect(screen.queryByRole('group', { name: 'Spaltenauswahl' })).not.toBeInTheDocument();
+  expect(search).toHaveFocus();
 });
