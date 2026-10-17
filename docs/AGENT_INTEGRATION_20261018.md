@@ -82,6 +82,34 @@ für Tabellen, Teilfehler, Formulardatenerhalt, Entwurfswiederaufnahme und
 Sammelarchivierung ergänzt. Er verwendet eine eigene frische Testinstallation,
 synthetische Daten und gesperrte Live-Ports 8000/8765.
 
-Die endgültigen Prüfergebnisse und der genaue freigegebene Commit werden nach
-Abschluss in diesem Nachweis ergänzt. Alte Browser-/PDF-/CI-Ergebnisse werden
-nicht als Nachweis für ungetestete neue Änderungen verwendet.
+Die erste vollständige lokale Frontend-Prüfung des zusammengeführten Codes
+bestand **775 Tests in 119 Dateien**, die SQLite-Fachmatrix **164 Tests ohne
+übersprungene Fälle**. ESLint, Ruff und Produktionsbuild sind erfolgreich.
+Die gezielte Gegenprobe zur überlappenden Meldungspause besteht sechs Tests.
+Die spätere Änderung an `frontend/src/test/setup.js` ergänzt ausschließlich
+die ausdrücklich fehlende jsdom-Scrollimplementierung als Spy; tatsächliche
+Browserbewegungen werden weiterhin im Browser geprüft.
+
+Der eigene Browserlauf in Chromium besteht **zehn zusammenhängende Fälle**;
+keine JavaScript-Seitenfehler und keine externen Anfragen. Nachweise:
+`artifacts/agent-qol-browser-final-20261018/daily-l9cpi6oh`, einschließlich
+Abschlussbeleg über den beendeten eigenen Server. Geprüft wurden 1440, 360
+und 320 Pixel sowie zwei getrennte Benutzer. Tabellen-, Formular- und
+Mobilbilder wurden auch visuell geöffnet und geprüft.
+Eine zusätzliche Erwartung wartet jetzt bei Mobilbildern auf das Ende beider
+Aktenladevorgänge. Der ursprüngliche Fehlversuch bleibt als roter Nachweis
+erhalten: Seine letzte Behauptung verwendete irrtümlich ein Objekt statt der
+tatsächlichen Listenantwort; nach Korrektur besteht der gesamte Ablauf.
+
+`scripts/run_daily_browser_qa.py --binary <Pfad im Checkout>` unterstützt nun
+denselben Ablauf mit der tatsächlich gebauten Windows-Anwendung und zeichnet
+deren SHA-256 auf. Beide Varianten erzeugen ausschließlich eine neue eigene
+Testinstallation. Das Windows-Paket wird separat gebaut und geprüft; ein
+Build allein bestätigt keine Auslieferung auf einer bestehenden Installation.
+
+Die anschließende GitHub-Matrix prüft den eingefrorenen Push einschließlich
+beider Python-Versionen und Storevarianten, PostgreSQL, Docker-Smoke,
+Wiederherstellung und Dokument-/Browserabläufen. Ihr Ergebnis wird im lokalen
+abschließenden Abnahmebericht und in der Übergabe mit genauer Run-ID benannt.
+Ein noch laufender Job wird nicht als bestanden gezählt. Alte Browser-/PDF-/
+CI-Ergebnisse werden nicht als Nachweis für ungetestete Änderungen verwendet.

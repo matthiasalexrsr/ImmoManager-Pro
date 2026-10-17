@@ -181,6 +181,7 @@ try {
       await page.getByRole('button', { name: 'Akten öffnen', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Akten öffnen', exact: true })).toBeVisible();
       await expect(page.getByRole('dialog', { name: 'Akten öffnen', exact: true }).getByRole('link', { name: property.name + ' · Immobilie', exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Akten öffnen', exact: true }).getByText('Wird geladen…', { exact: true })).toHaveCount(0);
       await fitsViewport(page);
       await page.screenshot({ path: path.join(output, `quick-access-${width}.png`) });
       await page.getByRole('button', { name: 'Aktenübersicht schließen', exact: true }).click();
