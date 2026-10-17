@@ -122,6 +122,15 @@ deren SHA-256 auf. Beide Varianten erzeugen ausschließlich eine neue eigene
 Testinstallation. Das Windows-Paket wird separat gebaut und geprüft; ein
 Build allein bestätigt keine Auslieferung auf einer bestehenden Installation.
 
+Der zusätzliche Windows-Build reproduzierte einen Pfadlängenfehler im langen
+Ausgabeverzeichnis: Unnötig mitkopierte `__pycache__`-Dateien von Migrationen
+besitzen noch längere Namen als die eigentlichen Quellen. Das Spec übernimmt
+jetzt ausschließlich die maßgeblichen Quell-/Assetdateien dieser beiden
+Projektverzeichnisse und schließt `.pyc`/`.pyo` sowie Cacheverzeichnisse aus.
+Die Alembic-Quellen und Wizardvorlagen bleiben enthalten. Der fehlgeschlagene
+Build wird als roter Nachweis erhalten; das vollständige Paket wird anschließend
+erneut gebaut und als tatsächliche EXE im Browser geprüft.
+
 Die anschließende GitHub-Matrix prüft den eingefrorenen Push einschließlich
 beider Python-Versionen und Storevarianten, PostgreSQL, Docker-Smoke,
 Wiederherstellung und Dokument-/Browserabläufen. Ihr Ergebnis wird im lokalen

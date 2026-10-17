@@ -248,7 +248,12 @@ if os.path.isfile(alembic_ini):
 migrations_dir = os.path.join(ROOT, 'backend', 'db', 'migrations')
 if os.path.isdir(migrations_dir):
     for dirpath, dirnames, filenames in os.walk(migrations_dir):
+        # Ship authoritative sources, not interpreter-specific caches. Cache
+        # names also needlessly exceed Windows path limits in longer releases.
+        dirnames[:] = [name for name in dirnames if name != '__pycache__']
         for f in filenames:
+            if f.endswith(('.pyc', '.pyo')):
+                continue
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
@@ -262,7 +267,10 @@ if os.path.isdir(fonts_dir):
 # Include Mietvertrag wizard package assets/templates/static
 if os.path.isdir(WIZARD_ROOT):
     for dirpath, dirnames, filenames in os.walk(WIZARD_ROOT):
+        dirnames[:] = [name for name in dirnames if name != '__pycache__']
         for f in filenames:
+            if f.endswith(('.pyc', '.pyo')):
+                continue
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
