@@ -9,6 +9,7 @@ import { useConfirm } from './ConfirmDialog';
 export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, onRunningChange, words, report, setReport, sums = [] }) {
   const confirm = useConfirm();
   const [running, setRunning] = useState(null);
+  const [showAllFailures, setShowAllFailures] = useState(false);
   const busy = useRef(false);
 
   const run = async action => {
@@ -25,6 +26,7 @@ export default function BulkBar({ rows, total, allSelected, actions, onSelectAll
         if (!ok) return;
       }
       setReport(null);
+      setShowAllFailures(false);
       const failed = [];
       for (let i = 0; i < targets.length; i += 1) {
         setRunning({ label: action.label, done: i, count: targets.length });
@@ -73,10 +75,19 @@ export default function BulkBar({ rows, total, allSelected, actions, onSelectAll
       {report && !running && (
         <div className={`bulk-bar-report${report.failed.length ? ' has-failures' : ''}`} role={report.failed.length ? 'alert' : 'status'}>
           {words.report(report)}
-          {rows.length === 0 && <button type="button" className="btn btn-sm btn-ghost bulk-bar-dismiss" onClick={() => setReport(null)}>{words.dismiss}</button>}
+          <button type="button" className="btn btn-sm btn-ghost bulk-bar-dismiss"
+            aria-label={words.dismiss} onClick={() => { setReport(null); setShowAllFailures(false); }}>{words.dismiss}</button>
           {report.failed.length > 0 && (
-            <ul>{report.failed.slice(0, 5).map(f => <li key={f.row.id}>{words.rowName(f.row)}: {f.message}</li>)}
-              {report.failed.length > 5 && <li>{words.more(report.failed.length - 5)}</li>}</ul>
+            <>
+              <ul>{(showAllFailures ? report.failed : report.failed.slice(0, 5)).map(f =>
+                <li key={f.row.id}>{words.rowName(f.row)}: {f.message}</li>)}</ul>
+              {report.failed.length > 5 && <button type="button" className="btn btn-sm btn-ghost"
+                aria-expanded={showAllFailures} onClick={() => setShowAllFailures(value => !value)}>
+                {showAllFailures ? (words.lessFailures || 'Weniger Fehler anzeigen')
+                  : (words.showAllFailures ? words.showAllFailures(report.failed.length)
+                    : `Alle ${report.failed.length} Fehler anzeigen`)}
+              </button>}
+            </>
           )}
         </div>
       )}

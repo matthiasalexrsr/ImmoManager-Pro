@@ -2081,6 +2081,8 @@
         "done": "{{label}}: {{count}} hechos",
         "failed": "{{count}} fallidos",
         "skipped": "{{count}} no afectados",
+        "showAllFailures": "Mostrar los {{count}} errores",
+        "lessFailures": "Mostrar menos errores",
         "more": "y {{count}} más",
         "selectPage": "Seleccionar todas las entradas de esta página",
         "selectRow": "Seleccionar"

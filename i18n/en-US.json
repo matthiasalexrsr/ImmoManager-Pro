@@ -1321,6 +1321,8 @@
         "done": "{{label}}: {{count}} done",
         "failed": "{{count}} failed",
         "skipped": "{{count}} not affected",
+        "showAllFailures": "Show all {{count}} errors",
+        "lessFailures": "Show fewer errors",
         "more": "and {{count}} more",
         "selectPage": "Select all entries on this page",
         "selectRow": "Select"

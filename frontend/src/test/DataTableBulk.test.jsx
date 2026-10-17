@@ -139,4 +139,25 @@ describe('DataTable bulk selection', () => {
     await waitFor(() => expect(box('Aufgabe 01')).not.toBeDisabled());
     expect(run).toHaveBeenCalledTimes(1);
   });
+
+  it('shows all failures on request and dismisses the report without losing failed selections', async () => {
+    const failing = vi.fn(async () => { throw new Error('Datensatz gesperrt'); });
+    render(<DataTable title="Aufgaben" columns={columns} data={rows}
+      bulkActions={[{ key: 'archive', label: 'Archivieren', run: failing }]} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Alle Einträge dieser Seite auswählen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archivieren' }));
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(failing).toHaveBeenCalledTimes(25));
+    expect(within(alert).getAllByRole('listitem')).toHaveLength(5);
+    const expand = within(alert).getByRole('button', { name: 'Alle 25 Fehler anzeigen' });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(expand);
+    expect(within(alert).getAllByRole('listitem')).toHaveLength(25);
+    expect(within(alert).getByRole('button', { name: 'Weniger Fehler anzeigen' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Schließen' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Auswahl' })).toHaveTextContent('25 ausgewählt');
+    expect(box('Aufgabe 01')).toBeChecked();
+  });
+
 });

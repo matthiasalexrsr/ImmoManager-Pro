@@ -544,6 +544,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       r.skipped ? tr('comp.dataTable.bulk.skipped', '{{count}} nicht betroffen').replace('{{count}}', r.skipped) : null,
     ].filter(Boolean).join(' · '),
     more: n => tr('comp.dataTable.bulk.more', 'und {{count}} weitere').replace('{{count}}', n),
+    showAllFailures: n => tr('comp.dataTable.bulk.showAllFailures', 'Alle {{count}} Fehler anzeigen').replace('{{count}}', n),
+    lessFailures: tr('comp.dataTable.bulk.lessFailures', 'Weniger Fehler anzeigen'),
     dismiss: tr('ui.buttons.close', 'Schließen'),
     rowName: row => (rowName ? rowName(row) : String(row[visibleColumns[0]?.key] ?? row.id)),
   };
