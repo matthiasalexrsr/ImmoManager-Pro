@@ -73,11 +73,15 @@ const PINNABLE_PATHS = ALL_ITEMS.map(item => item.to).filter(path => !PRIMARY_PA
 const isEditable = element => element instanceof HTMLElement
   && (element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName));
 const PRIMARY_ITEMS = PRIMARY_PATHS.map(path => NAV_SECTIONS.flatMap(section => section.items).find(item => item.to === path));
-const GROUPS = NAV_SECTIONS.slice(1).map(section => ({ ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)) }));
+// Keep every non-primary destination, including the work center in the
+// Overview section. Dropping the whole first group hid that real page.
+const GROUPS = NAV_SECTIONS.map(section => ({
+  ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)),
+})).filter(section => section.items.length > 0);
 const SHELL_TEXT = {
-  de: { favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
-  en: { favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
-  es: { favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
+  de: { skip: 'Zum Hauptinhalt springen', favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
+  en: { skip: 'Skip to main content', favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
+  es: { skip: 'Saltar al contenido principal', favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
 };
 
 function LayoutFrame() {
@@ -207,6 +211,10 @@ function LayoutFrame() {
 
   return (
     <div className={`app-layout workspace-shell ${collapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
+      <a className="skip-to-content" href="#main-content"
+        onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>
+        {words.skip}
+      </a>
       <aside ref={sidebarRef} className="sidebar" role={mobileNavOpen ? 'dialog' : undefined}
         aria-modal={mobileNavOpen ? true : undefined} aria-label={words.navigation} inert={mobile && !mobileNavOpen ? true : undefined}>
         <div className="sidebar-header">
@@ -247,7 +255,7 @@ function LayoutFrame() {
         </div>
       </aside>
       {mobileNavOpen && <button type="button" className="mobile-nav-backdrop" tabIndex={-1} onClick={() => setMobileNavOpen(false)} aria-label={words.close} />}
-      <main className="main-content" inert={mobileNavOpen ? true : undefined}>
+      <main id="main-content" className="main-content" tabIndex={-1} inert={mobileNavOpen ? true : undefined}>
         <div className="top-bar">
           <div className="top-bar-left">
             {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}

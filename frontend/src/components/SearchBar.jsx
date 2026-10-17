@@ -306,10 +306,15 @@ export default function SearchBar() {
           aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
         />
         {query ? (
-          <button
+          <button type="button"
             className="search-bar-clear"
-            onClick={() => { setQuery(''); setResults([]); setActiveIndex(-1); }}
-            aria-label={t('ui.buttons.clear') || 'Clear search'}
+            onClick={() => {
+              setQuery(''); setResults([]); setActiveIndex(-1);
+              // Removing this button should not strand the keyboard focus on
+              // the document body. Continue searching without another shortcut.
+              inputRef.current?.focus();
+            }}
+            aria-label={tr('ui.buttons.clear', 'Suche löschen')}
           >
             <CloseIcon size={14} />
           </button>

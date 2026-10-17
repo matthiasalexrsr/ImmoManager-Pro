@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import { duplicateOf } from '../utils/duplicate';
@@ -80,7 +80,7 @@ describe('Duplizieren', () => {
     expect(screen.getByLabelText('Nr.')).toHaveValue('');
     // a new record: "Speichern & weiteren" is offered, and the payload carries no edit token
     expect(screen.getByRole('button', { name: 'Speichern & weiteren' })).toBeInTheDocument();
-    fireEvent.submit(container.querySelector('form'));
+    await act(async () => { fireEvent.submit(container.querySelector('form')); });
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledWith({ supplier: 'Wärmemeister', invoice_number: null }));
   });
 });

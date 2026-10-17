@@ -1571,10 +1571,9 @@ table.data-table tbody tr:last-child td {
   box-shadow: var(--shadow-md);
   font-size: 0.85rem;
   pointer-events: auto;
-  cursor: pointer;
   animation: toast-in 0.3s ease;
-  min-width: 280px;
-  max-width: 420px;
+  min-width: min(280px, calc(100vw - 2rem));
+  max-width: min(420px, calc(100vw - 2rem));
 }
 
 @keyframes toast-in {
@@ -1593,7 +1592,29 @@ table.data-table tbody tr:last-child td {
 
 .toast-message {
   flex: 1;
+  min-width: 0;
   font-weight: 500;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.toast-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin: -0.25rem -0.45rem -0.25rem 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+.toast-dismiss:hover { background: var(--color-bg); color: var(--color-text); }
+.toast-dismiss:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
 }
 
 .toast-success { border-left: 3px solid var(--color-success); }

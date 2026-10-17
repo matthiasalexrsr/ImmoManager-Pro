@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Link, MemoryRouter } from 'react-router-dom';
 import Layout from '../components/Layout';
+import { NAV_SECTIONS } from '../components/navigation';
 
 const settings = vi.hoisted(() => ({ prefs: { theme: 'light', sidebar_collapsed: false }, toggleSidebar: vi.fn(), toggleTheme: vi.fn() }));
 vi.mock('../api', () => ({ logout: vi.fn() }));
@@ -36,7 +37,10 @@ it('keeps six everyday entries direct and exposes all other destinations through
   for (const button of within(navigation).getAllByRole('button')) {
     if (button.getAttribute('aria-expanded') === 'false') fireEvent.click(button);
   }
-  expect(within(navigation).getAllByRole('link')).toHaveLength(43);
+  const destinations = NAV_SECTIONS.flatMap(section => section.items.map(item => item.to));
+  const links = within(navigation).getAllByRole('link').map(link => link.getAttribute('href'));
+  expect(links).toHaveLength(destinations.length);
+  expect(new Set(links)).toEqual(new Set(destinations));
   expect(within(navigation).getByRole('link', { name: 'Steueraufbereitung / DATEV' })).toHaveAttribute('href', '/tax-exports');
 });
 
@@ -105,4 +109,27 @@ it('scrolls to the page start only after a pathname change, preserving initial, 
   expect(window.scrollTo).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('link', { name: 'Immobilien' }));
   expect(window.scrollTo).toHaveBeenCalledTimes(2);
+});
+
+
+it('bietet einen sichtbaren Tastatur-Sprung direkt zum Hauptinhalt', () => {
+  show('/properties');
+  const shortcut = screen.getByRole('link', { name: 'Zum Hauptinhalt springen' });
+  const content = screen.getByRole('main');
+  expect(shortcut).toHaveAttribute('href', '#main-content');
+  expect(content).toHaveAttribute('id', 'main-content');
+  expect(content).toHaveAttribute('tabindex', '-1');
+  shortcut.focus();
+  fireEvent.click(shortcut);
+  expect(content).toHaveFocus();
+});
+
+
+it('zeigt die Arbeitszentrale in der Navigation und öffnet ihre Gruppe bei Direkteinstieg', () => {
+  show('/work-center');
+  const navigation = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+  const workCenter = within(navigation).getByRole('link', { name: 'Arbeitszentrale' });
+  expect(workCenter).toHaveAttribute('href', '/work-center');
+  expect(workCenter).toHaveAttribute('aria-current', 'page');
+  expect(within(navigation).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-expanded', 'true');
 });

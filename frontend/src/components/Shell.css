@@ -1,3 +1,26 @@
+/* Keyboard-first navigation: visible only when the user tabs to it. */
+.workspace-shell .skip-to-content {
+  position: fixed;
+  z-index: 510;
+  top: 12px;
+  left: 12px;
+  padding: 11px 15px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-primary);
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+  transform: translateY(calc(-100% - 24px));
+}
+.workspace-shell .skip-to-content:focus-visible {
+  transform: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .workspace-shell {
   --shell-bg: #142f32;
   --shell-text: #e6efed;

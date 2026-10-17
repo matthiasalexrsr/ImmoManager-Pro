@@ -191,3 +191,16 @@ describe('SearchBar quick actions', () => {
     expect(screen.queryByRole('option', { name: /Neue Buchung/ })).toBeNull();
   });
 });
+
+
+it('behält nach dem Löschen der Suchanfrage den Fokus im Suchfeld', () => {
+  render(<MemoryRouter><SearchBar /></MemoryRouter>);
+  const box = screen.getByRole('searchbox');
+  fireEvent.change(box, { target: { value: 'Miete' } });
+  const clear = screen.getByRole('button', { name: 'Suche löschen' });
+  clear.focus();
+  fireEvent.click(clear);
+  expect(box).toHaveValue('');
+  expect(box).toHaveFocus();
+  expect(screen.queryByRole('button', { name: 'Suche löschen' })).not.toBeInTheDocument();
+});
