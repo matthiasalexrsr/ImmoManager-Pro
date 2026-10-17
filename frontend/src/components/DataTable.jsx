@@ -20,6 +20,49 @@ import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const NUMERIC_TYPES = new Set(['number', 'currency']);
+// Property/unit labels often contain numbers. Lexicographic sorting would
+// place "Wohnung 10" before "Wohnung 2".
+const TABLE_COLLATOR = new Intl.Collator('de', { numeric: true, sensitivity: 'base' });
+
+function sortValue(raw, type) {
+  if (raw == null || (typeof raw === 'string' && !raw.trim())) return null;
+  if (NUMERIC_TYPES.has(type)) {
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : null;
+  }
+  if (type === 'date') {
+    const time = Date.parse(String(raw));
+    return Number.isFinite(time) ? time : null;
+  }
+  return String(codeLabel(raw));
+}
+
+function compareRows(a, b, column, direction) {
+  const first = sortValue(a[column.key], column.type);
+  const second = sortValue(b[column.key], column.type);
+  // Missing or invalid amounts/dates always come last in both directions.
+  // A missing balance is not a real zero balance.
+  if (first == null) return second == null ? 0 : 1;
+  if (second == null) return -1;
+  const result = typeof first === 'number' && typeof second === 'number'
+    ? first - second : TABLE_COLLATOR.compare(String(first), String(second));
+  return direction === 'desc' ? -result : result;
+}
+
+function safeCsvFilename(title) {
+  const basename = String(title || 'export')
+    .replace(/[<>:"/\\|?*]/g, ' ')
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/\s+/g, '_')
+    .replace(/^\.+/, '')
+    .slice(0, 100)
+    .replace(/[._ ]+$/, '');
+  // Windows forbids these device names even when an extension is present.
+  const name = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(basename)
+    ? `Export_${basename}` : basename || 'export';
+  return `${name}.csv`;
+}
+
 const keyHash = value => { let hash = 2166136261; for (const char of value || '') hash = Math.imul(hash ^ char.charCodeAt(0), 16777619); return (hash >>> 0).toString(16); };
 
 // link: { kind, idKey } (or just the kind) makes the shown name lead to its record; subLink does
@@ -199,6 +242,21 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const searchInputRef = useRef(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const exportLockRef = useRef(false);
+  const exportEpochRef = useRef(0);
+  useEffect(() => {
+    const epoch = exportEpochRef;
+    const invalidate = () => { epoch.current += 1; };
+    window.addEventListener('workspace-owner', invalidate);
+    window.addEventListener('workspace-logout', invalidate);
+    return () => {
+      // Never download an earlier account's still-pending private CSV after a
+      // sign-out, account change or navigation away from this table.
+      invalidate();
+      window.removeEventListener('workspace-owner', invalidate);
+      window.removeEventListener('workspace-logout', invalidate);
+    };
+  }, []);
   const viewScope = viewAnchor ? `${storageKey}:${viewAnchor.kind}:${viewAnchor.id}` : storageKey;
   const viewContext = storageKey && formContext(pathname) ? `${formContext(pathname)}#${keyHash(viewScope)}` : null;
   const namedConfig = { search, sort: sortKey ? { key: sortKey, direction: sortDir } : null,
@@ -316,25 +374,10 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const sorted = useMemo(() => {
     if (serverPaged || !sortKey) return filtered;
     const col = columns.find(c => c.key === sortKey);
-    return [...filtered].sort((a, b) => {
-      let va = a[sortKey] ?? '';
-      let vb = b[sortKey] ?? '';
-      if (col?.type === 'number' || col?.type === 'currency') {
-        va = Number(va) || 0;
-        vb = Number(vb) || 0;
-        return sortDir === 'asc' ? va - vb : vb - va;
-      }
-      if (col?.type === 'date') {
-        va = va ? new Date(va).getTime() : 0;
-        vb = vb ? new Date(vb).getTime() : 0;
-        return sortDir === 'asc' ? va - vb : vb - va;
-      }
-      va = String(va).toLowerCase();
-      vb = String(vb).toLowerCase();
-      if (va < vb) return sortDir === 'asc' ? -1 : 1;
-      if (va > vb) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
+    if (!col) return filtered;
+    // Native Array.sort is stable: matching values retain their original row
+    // order, while empty/invalid values remain at the bottom even descending.
+    return [...filtered].sort((a, b) => compareRows(a, b, col, sortDir));
   }, [filtered, sortKey, sortDir, columns, serverPaged]);
 
   // Pagination
@@ -352,13 +395,20 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
 
   // CSV export
   const exportCsv = useCallback(async () => {
-    if (exporting) return;
+    // A state update is not a synchronous lock; rapid clicks or keyboard
+    // activation must never launch two expensive full-portfolio requests.
+    if (exportLockRef.current) return;
+    exportLockRef.current = true;
+    const epoch = exportEpochRef.current;
     setExporting(true);
     setExportError('');
     try {
       // A server page supplies only the visible slice; its loader owns the
       // complete selection and enrichment. A failed loader never falls back.
       const exportData = loadExportData ? await loadExportData() : sorted;
+      // The load may finish after the account changed or the table unmounted.
+      // Do not materialize a stale CSV file or report an error in another view.
+      if (epoch !== exportEpochRef.current) return;
       if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
       const csv = buildCsv(visibleColumns, exportData);
       const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
@@ -366,17 +416,20 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       try {
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${(title || 'export').replace(/\s+/g, '_')}.csv`;
+        a.download = safeCsvFilename(title);
         a.click();
       } finally {
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      setExportError(`CSV-Export fehlgeschlagen. ${error?.message || 'Bitte erneut versuchen.'}`);
+      if (epoch === exportEpochRef.current) {
+        setExportError(`CSV-Export fehlgeschlagen. ${error?.message || 'Bitte erneut versuchen.'}`);
+      }
     } finally {
-      setExporting(false);
+      exportLockRef.current = false;
+      if (epoch === exportEpochRef.current) setExporting(false);
     }
-  }, [sorted, visibleColumns, title, loadExportData, exporting]);
+  }, [sorted, visibleColumns, title, loadExportData]);
 
   // The global search's "Neue Buchung" and Alt+N ask the page for its New form (utils/newEntry).
   const addRef = useRef(onAdd);
