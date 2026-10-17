@@ -49,6 +49,12 @@ und Escape schließt nicht versehentlich eine darunterliegende Akte.
 - Sammelarchivierung im persönlichen Eingang zeigt Umfang und bestätigten
   Snapshot. Abbrechen oder Escape schreibt keinen Empfangsbeleg. Fachliche
   Quellvorgänge werden durch persönliche Empfangsbestätigungen nicht verändert.
+- Die zusätzliche Sichtprüfung fand eine gestalterisch unvollständige
+  Eingangsseite und den irreführenden Seitentitel „Dashboard“. Der Eingang hat
+  jetzt einen eigenen Navigationseintrag und Seitentitel, eine einheitliche
+  Filterleiste, lesbare Einträge und einen gestalteten leeren Zustand. Archiv,
+  Fehler, Wiederholung und Seitenwechsel bleiben erreichbar; schmale Ansichten
+  werden im echten Browser geprüft.
 - Die Meldungsanzeige pausiert während des Lesens mit Maus oder Tastatur.
   Ein zusätzlich gefundener Fehler bei gleichzeitigem Maus-/Tastaturfokus
   wurde unabhängig reproduziert und korrigiert: Beide Pausegründe müssen

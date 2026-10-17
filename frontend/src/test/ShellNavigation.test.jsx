@@ -53,6 +53,14 @@ it('opens the active group on direct entry and on subsequent route changes', () 
   expect(screen.getByRole('link', { name: 'Zähler' })).toHaveAttribute('aria-current', 'page');
 });
 
+it('identifies the notification inbox as its own page and offers its navigation entry', () => {
+  show('/notifications');
+  expect(screen.getByRole('heading', { name: 'Benachrichtigungen', exact: true })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Benachrichtigungen', exact: true })).toHaveAttribute('aria-current', 'page');
+  const group = NAV_SECTIONS.find(section => section.items.some(item => item.to === '/notifications'));
+  expect(screen.getByRole('button', { name: group.fallback, exact: true })).toHaveAttribute('aria-expanded', 'true');
+});
+
 it('keeps collapsed desktop controls named and expands the navigation when a group is chosen', () => {
   settings.prefs.sidebar_collapsed = true;
   show();

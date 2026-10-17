@@ -4,6 +4,7 @@ import NotificationEmailPreview from './NotificationEmailPreview';
 import { Link, useSearchParams } from 'react-router-dom';
 import useNotificationInbox from '../hooks/useNotificationInbox';
 import { formatDateTime } from '../utils/format';
+import { Bell, Inbox, Archive, ArrowUpRight } from 'lucide-react';
 import './notificationInbox.css';
 
 export default function NotificationInbox({ compact = false }) {
@@ -40,24 +41,25 @@ export default function NotificationInbox({ compact = false }) {
     window.addEventListener('notification-receipt', reset);
     return () => window.removeEventListener('notification-receipt', reset);
   }, []);
-  return <section className="personal-inbox" aria-label="Persönliche Benachrichtigungen">
-    {!compact && <><h2>Persönlicher Eingang</h2><label>Ansicht <select aria-label="Ansicht" value={status} onChange={e => { setStatus(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}>
+  return <section className={`personal-inbox${compact ? ' personal-inbox-compact' : ' personal-inbox-page'}`} aria-label="Persönliche Benachrichtigungen">
+    {!compact && <><header className="inbox-header"><span className="inbox-header-icon" aria-hidden="true"><Bell size={22} /></span><div>
+      <h2>Persönlicher Eingang</h2><p>Hinweise prüfen, den zugehörigen Vorgang öffnen und erledigte Hinweise im persönlichen Archiv wiederfinden.</p>
+    </div></header><div className="inbox-filters"><label>Ansicht <select aria-label="Ansicht" value={status} onChange={e => { setStatus(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}>
       <option value="unread">Ungelesen</option><option value="archived">Gelesen und archiviert</option><option value="">Gesamte Historie</option>
     </select></label>
       <label>Dringlichkeit <select aria-label="Dringlichkeit" value={severity} onChange={e => { setSeverity(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle</option><option value="info">Information</option><option value="warning">Warnung</option><option value="error">Fehler</option><option value="critical">Kritisch</option></select></label>
       <label>Quelle <select aria-label="Quelle" value={kind} onChange={e => { setKind(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle Quellen</option>
-        {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', contract: 'Mietvertraege', property: 'Immobilien', tenant: 'Parteien', document: 'Dokumente', service_contract: 'Objektvertraege', billing_period: 'Abrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select></label></>}
-    {error && <div role="alert">{error} <button onClick={() => { setCursor(null); setHistory([]); setSnapshot(null); reload(); }}>Neu laden</button></div>}
-    {!page && !error && <p role="status">Hinweise werden geladen …</p>}
+        {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', contract: 'Mietverträge', property: 'Immobilien', tenant: 'Parteien', document: 'Dokumente', service_contract: 'Objektverträge', billing_period: 'Abrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></label></div></>}
+    {error && <div className="inbox-error" role="alert"><span>{error}</span> <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setCursor(null); setHistory([]); setSnapshot(null); reload(); }}>Neu laden</button></div>}
+    {!page && !error && <p className="inbox-loading" role="status">Hinweise werden geladen …</p>}
     {page && <>
-      <p role="status">{page.unread_count} ungelesen · {page.total} in dieser Ansicht</p>
-      {page.unread_count > 0 && <p>Bestätigungsumfang: alle {page.unread_count} aktuell berechtigten ungelesenen Hinweise aus der geladenen Vorschau, unabhängig von den Filtern. Bei Änderungen wird eine neue Vorschau verlangt.</p>}
-      {page.unread_count > 0 && <button type="button" ref={readAllRef} className="btn btn-secondary"
+      <div className="inbox-summary"><p role="status">{page.unread_count} ungelesen · {page.total} in dieser Ansicht</p>
+      {page.unread_count > 0 && <button type="button" ref={readAllRef} className="btn btn-sm btn-secondary"
         disabled={busy} aria-expanded={Boolean(bulkConfirmation)}
         onClick={() => setBulkConfirmation({ count: page.unread_count, snapshot: page.snapshot })}>
         Alle berechtigten Hinweise gelesen archivieren
-      </button>}
+      </button>}</div>
       {bulkConfirmation && <div className="inbox-bulk-confirm" role="group" aria-label="Sammelbestätigung"
         onKeyDown={event => {
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelBulk(); }
@@ -76,18 +78,24 @@ export default function NotificationInbox({ compact = false }) {
           </button>
         </div>
       </div>}
-      {page.items.length === 0 && <p>Keine Hinweise in dieser Ansicht.</p>}
+      {page.items.length === 0 && <div className="inbox-empty">
+        {status === 'archived' ? <Archive size={30} aria-hidden="true" /> : <Inbox size={30} aria-hidden="true" />}
+        <p>Keine Hinweise in dieser Ansicht.</p>
+        {!compact && <span>{status === 'unread' ? 'Ihr Eingang ist aufgeräumt. Bereits gelesene Hinweise finden Sie im Archiv.' : 'Ändern Sie bei Bedarf die Ansicht oder die Filter.'}</span>}
+      </div>}
       <NotificationArrival rows={page.items} />
-      <ul className="personal-inbox-list">{page.items.map(n => <li key={n.id}>
-        <strong>{n.target ? <Link to={n.open_href}>{n.title}</Link> : n.title}</strong>
+      <ul className="personal-inbox-list">{page.items.map(n => <li key={n.id} className={n.archived_at ? 'inbox-item is-archived' : 'inbox-item'}>
+        <strong>{n.target ? <Link to={n.open_href}>{n.title}<ArrowUpRight size={16} aria-hidden="true" /></Link> : n.title}</strong>
         <p>{n.content}</p>
         <small>{n.email_eligible ? 'E-Mail-Kanal zugelassen · ' : 'E-Mail für diesen Hinweis nicht vorgesehen · '}{n.target ? `Quelle: ${n.target.title}` : n.target_error} · {formatDateTime(n.created_at)}</small>
         {!compact && n.email_eligible && n.target && <NotificationEmailPreview notice={n} />}
-        {n.archived_at && <><p>Persönlich gelesen: {formatDateTime(n.read_at)}</p><button disabled={busy} onClick={() => mutate(n.id, { action: 'reopen', base_revision: n.revision })}>Wieder in den Eingang</button></>}
+        {n.archived_at && <><p className="inbox-read-at">Persönlich gelesen: {formatDateTime(n.read_at)}</p><button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={() => mutate(n.id, { action: 'reopen', base_revision: n.revision })}>Wieder in den Eingang</button></>}
       </li>)}</ul>
-      {history.length > 0 && <button onClick={() => { setCursor(history[history.length - 1]); setHistory(history.slice(0, -1)); }}>Zurück</button>}
-      {page.next_cursor && <button onClick={() => { setSnapshot(page.snapshot); setHistory(previous => [...previous, cursor]); setCursor(page.next_cursor); }}>Weitere Hinweise</button>}
+      {(history.length > 0 || page.next_cursor) && <nav className="inbox-pagination" aria-label="Hinweisseiten">
+        {history.length > 0 && <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setCursor(history[history.length - 1]); setHistory(history.slice(0, -1)); }}>Zurück</button>}
+        {page.next_cursor && <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setSnapshot(page.snapshot); setHistory(previous => [...previous, cursor]); setCursor(page.next_cursor); }}>Weitere Hinweise</button>}
+      </nav>}
     </>}
-    {compact && <Link to="/notifications">Vollständiger Eingang und Archiv</Link>}
+    {compact && <Link className="inbox-full-link" to="/notifications">Vollständiger Eingang und Archiv <ArrowUpRight size={16} aria-hidden="true" /></Link>}
   </section>;
 }

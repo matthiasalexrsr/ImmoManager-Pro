@@ -293,6 +293,7 @@ try {
     const notice = await call('POST', '/notifications', { notification_type: 'task_due', title: 'QA Sammelhinweis ' + suffix,
       content: 'Nur persönlicher Empfangsbeleg', entity_type: 'task', entity_id: task2.id });
     await page.goto(base.origin + '/notifications');
+    await expect(page.getByRole('heading', { name: 'Benachrichtigungen', exact: true })).toBeVisible();
     const inbox = page.getByRole('region', { name: 'Persönliche Benachrichtigungen', exact: true });
     const opener = inbox.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren', exact: true });
     await opener.click();
@@ -306,7 +307,15 @@ try {
     await expect.poll(async () => (await call('GET', '/notifications/inbox?status=archived')).items.some(n => n.id === notice.id)).toBe(true);
     assert.equal((await call('GET', '/notifications/' + notice.id)).status, 'unread');
     assert.equal((await call('GET', '/tasks/' + task2.id)).status, 'completed');
+    await inbox.getByLabel('Ansicht', { exact: true }).selectOption('archived');
+    await expect(inbox.getByRole('link', { name: 'QA Sammelhinweis ' + suffix, exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(output, 'inbox-archive-1440.png') });
+    for (const width of [320, 360]) {
+      await page.setViewportSize({ width, height: 900 });
+      await fitsViewport(page);
+      await expect(inbox.getByLabel('Ansicht', { exact: true })).toBeVisible();
+      await page.screenshot({ path: path.join(output, `inbox-archive-${width}.png`) });
+    }
   });
   assert.deepEqual(report.page_errors, []);
   assert.deepEqual(report.external, []);

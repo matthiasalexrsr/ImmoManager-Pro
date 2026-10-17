@@ -7,7 +7,7 @@ import {
   SunIcon, MoonIcon, LogoutIcon, ChevronLeftIcon, ChevronRightIcon,
   RentIcon, MeterIcon, ContactIcon, StatementIcon, MessageIcon, SettingsIcon,
   CategoryIcon, DepositIcon, InsuranceIcon, IntegrationIcon,
-  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon, HelpIcon,
+  CalendarIcon, ChartIcon, SearchIcon, MenuIcon, CloseIcon, HelpIcon, BellIcon,
 } from './Icons';
 
 export const NAV_SECTIONS = [
@@ -17,6 +17,7 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/', labelKey: 'navigation.main.dashboard', fallback: 'Dashboard', icon: DashboardIcon },
       { to: '/work-center', labelKey: 'navigation.main.workCenter', fallback: 'Arbeitszentrale', icon: TaskIcon },
+      { to: '/notifications', labelKey: 'navigation.main.notifications', fallback: 'Benachrichtigungen', icon: BellIcon },
     ],
   },
   {
