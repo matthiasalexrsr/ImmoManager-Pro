@@ -35,6 +35,33 @@ SMTP = {"sender_email": "office@example.test", "smtp_host": "smtp.example.test",
 OLD_REVISION = "a7c2e9f4b1d3"           # portfolio access, before durable jobs
 
 
+def test_long_original_survives_full_backup_restore_and_probe(installation, tmp_path):
+    from io import BytesIO
+
+    from backend.services.file_storage import LocalStorage
+    from backend.services.filesystem_paths import filesystem_path
+
+    sources = installation.sources
+    key = 'documents/' + '/'.join('section-' + str(i) + '-' + 'x' * 52 for i in range(4)) + '/original.pdf'
+    data = b'%PDF-1.4 synthetic long original\x00\xff'
+    assert len(str(sources.uploads_dir / key)) > 260
+    LocalStorage(sources.uploads_dir).save(key, BytesIO(data))
+    with sqlite3.connect(installation.db) as connection:
+        connection.execute('CREATE TABLE synthetic_references(file_url TEXT)')
+        connection.execute('INSERT INTO synthetic_references VALUES (?)', ('/uploads/' + key,))
+    sources.passphrase = 'synthetic-long-backup-passphrase'
+    event = full_backup.create_full_backup(sources=sources)
+    archive = sources.root / event['archive']
+    with zipfile.ZipFile(archive) as zipped:
+        assert zipped.read('uploads/' + key) == data
+    target = tmp_path / 'fresh-restoration'
+    restored = full_backup.restore_archive(archive, target, passphrase=sources.passphrase)
+    assert restored['readiness'] == 'data_verified'
+    assert filesystem_path(target / 'uploads' / key).read_bytes() == data
+    assert full_backup.restore_probe(archive, sources, passphrase=sources.passphrase)['ok']
+    assert not list(sources.root.glob('.probe-*'))
+
+
 def _manager(data: Path, box=None) -> IntegrationManager:
     manager = IntegrationManager(store=JsonFileIntegrationConfigStore(str(data / "integrations.json")),
                                  secret_box=box)

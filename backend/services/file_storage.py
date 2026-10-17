@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO, Optional
 
+from .filesystem_paths import filesystem_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +78,7 @@ class LocalStorage(FileStorage):
 
             base_dir = get_uploads_dir()
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        filesystem_path(self.base_dir).mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
         validate_key(key)
@@ -90,7 +92,8 @@ class LocalStorage(FileStorage):
         return candidate
 
     def save(self, key: str, data: BinaryIO, content_type: str = "application/octet-stream") -> str:
-        path = self._path(key)
+        canonical = self._path(key)
+        path = filesystem_path(canonical)
         path.parent.mkdir(parents=True, exist_ok=True)
         handle, temporary = tempfile.mkstemp(prefix=".upload-", dir=path.parent)
         try:
@@ -109,16 +112,16 @@ class LocalStorage(FileStorage):
         finally:
             Path(temporary).unlink(missing_ok=True)
         logger.info("File saved: %s", key)
-        return str(path)
+        return str(canonical)
 
     def get(self, key: str) -> Optional[bytes]:
-        path = self._path(key)
+        path = filesystem_path(self._path(key))
         if not path.exists():
             return None
         return path.read_bytes()
 
     def delete(self, key: str) -> bool:
-        path = self._path(key)
+        path = filesystem_path(self._path(key))
         if path.exists():
             path.unlink()
             logger.info("File deleted: %s", key)
@@ -126,7 +129,7 @@ class LocalStorage(FileStorage):
         return False
 
     def exists(self, key: str) -> bool:
-        return self._path(key).exists()
+        return filesystem_path(self._path(key)).exists()
 
     def get_url(self, key: str) -> str:
         return f"/uploads/{key}"

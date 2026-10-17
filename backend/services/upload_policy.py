@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import Message, Receive, Scope, Send
 
 from ..config import settings
+from .filesystem_paths import filesystem_path
 from .portfolio_scope import require_file_access
 from .upload_access import require_upload_access
 
@@ -61,6 +62,13 @@ async def read_limited(file: UploadFile) -> bytes:
 
 class UploadStaticFiles(StaticFiles):
     """Private uploads with native ranges and no executable stored web pages."""
+
+    def __init__(self, *, directory=None, **kwargs):
+        # Keep Starlette's traversal/symlink guards and range implementation;
+        # its filesystem operations must use the same long-path root as writes.
+        if directory is not None:
+            directory = filesystem_path(directory)
+        super().__init__(directory=directory, **kwargs)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         response_started = False

@@ -51,6 +51,8 @@ class BinaryServer(Server):
 
 
 def main() -> int:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--playwright', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/daily-browser')

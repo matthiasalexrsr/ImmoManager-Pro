@@ -139,6 +139,21 @@ Die Alembic-Quellen und Wizardvorlagen bleiben enthalten. Der fehlgeschlagene
 Build wird als roter Nachweis erhalten; das vollständige Paket wird anschließend
 erneut gebaut und als tatsächliche EXE im Browser geprüft.
 
+Der längere Windows-Prüfpfad fand außerdem einen echten MAX_PATH-Fehler beim
+Fotoupload. Die neue interne Pfadumsetzung verwendet erweiterte Win32-Pfade
+ausschließlich für Dateisystemzugriffe. Öffentliche Dateischlüssel, URLs,
+Traversierungsprüfung und Originalschutz bleiben erhalten. Lokaler Speicher
+und private Dateiauslieferung verwenden dieselbe Umsetzung. Die Vollsicherung
+erfasst lange Anhänge vollständig; Wiederherstellung, Referenzprüfung und
+Aufräumen der eigenen Prüfverzeichnisse berücksichtigen diese Pfade ebenfalls.
+Zwei ursprüngliche Speichergegenproben und eine Sicherungsgegenprobe wurden
+vor der Korrektur unabhängig fehlgeschlagen. Anschließend sind 24 Speicher-/
+Upload-/URL-Prüfungen und vier gezielte Sicherungs-/Langpfadprüfungen grün,
+einschließlich Unveränderlichkeit, OCR-Korrektur, privatem HTTP-Download,
+HEAD/Range, ZIP-Originalvergleich und vollständiger Wiederherstellungsprobe.
+Die Windows-Diagnoseausgabe des Browserprüfers verwendet UTF-8, damit ein
+Unicodezeichen im Fehlerbericht nicht die eigentliche Ursache verdeckt.
+
 Die anschließende GitHub-Matrix prüft den eingefrorenen Push einschließlich
 beider Python-Versionen und Storevarianten, PostgreSQL, Docker-Smoke,
 Wiederherstellung und Dokument-/Browserabläufen. Ihr Ergebnis wird im lokalen

@@ -52,6 +52,7 @@ from sqlalchemy.pool import NullPool
 from ..config import settings
 from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
 from . import secret_box
+from .filesystem_paths import filesystem_path
 
 logger = logging.getLogger(__name__)
 
@@ -562,6 +563,7 @@ class _Writer:
 
 
 def _iter_uploads(directory: Path) -> Iterator[tuple[Path, str]]:
+    directory = filesystem_path(directory)
     if not directory.is_dir():
         return
     for current, dirs, files in os.walk(directory, followlinks=False):
@@ -794,7 +796,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         partial.unlink(missing_ok=True)
         raise
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(filesystem_path(work), ignore_errors=True)
 
     event: dict[str, Any] = {
         "event": "backup", "ok": True, "trigger": trigger, "archive": name, "size": final.stat().st_size,
@@ -918,6 +920,7 @@ def _extract(path: Path, target: Path, pulse: _Pulse) -> dict[str, Any]:
             destination = target.joinpath(*PurePosixPath(name).parts)
             if not destination.resolve().is_relative_to(target.resolve()):
                 raise BackupError(f"Pfad außerhalb des Zielverzeichnisses: {name}")
+            destination = filesystem_path(destination)
             destination.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(name) as source, destination.open("wb") as out:
                 shutil.copyfileobj(source, out, _CHUNK)
@@ -1135,7 +1138,7 @@ def _check_attachments(manifest: dict, extracted: Path) -> dict:
         current, key_ids = inventory(extracted / DB_SQLITE)
         references.update(current)
     for key in references:
-        path = extracted / "uploads" / validate_key(key)
+        path = filesystem_path(extracted / "uploads" / validate_key(key))
         if not path.is_file():
             raise BackupError("Referenziertes Original fehlt im Archiv")
     for extension in registered.values():
@@ -1219,7 +1222,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
         if missing:
             warnings.append(f"Schlüssel nicht im Backup enthalten: {', '.join(missing)}")
     finally:
-        shutil.rmtree(probe_dir, ignore_errors=True)
+        shutil.rmtree(filesystem_path(probe_dir), ignore_errors=True)
     checks["probe_dir_removed"] = not probe_dir.exists()
     runtime_ready = not manifest.get("runtime") or manifest["runtime"].get("status") != "passphrase_required"
     ready = not missing and not secrets_check.get("warning") and checks["attachments"]["checked"] and runtime_ready
@@ -1376,7 +1379,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
         os.replace(target, final_target)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(filesystem_path(staging), ignore_errors=True)
     target = final_target
     steps.append(f"Programm stoppen, DATA_DIR auf {target} zeigen lassen (oder Verzeichnis tauschen), dann "
                  "python -m backend.upgrade und starten.")
