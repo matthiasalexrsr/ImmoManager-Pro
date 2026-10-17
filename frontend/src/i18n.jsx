@@ -9,6 +9,12 @@ const translationCache = {};
 
 const BUILTIN_TRANSLATIONS = {
   'de-DE': {
+    comp: { dataTable: {
+      activeFilters: 'Aktive Tabellenfilter', removeSearch: 'Suche entfernen',
+      removeFilter: 'Filter entfernen', filterBy: 'filtern',
+      rangeStart: 'ab', rangeEnd: 'bis',
+      keepColumn: 'Mindestens eine Spalte muss sichtbar bleiben',
+    } },
     navigation: {
       main: {
         contractWizard: 'Mietvertrag-Wizard',
@@ -137,6 +143,12 @@ const BUILTIN_TRANSLATIONS = {
     },
   },
   'en-US': {
+    comp: { dataTable: {
+      activeFilters: 'Active table filters', removeSearch: 'Remove search',
+      removeFilter: 'Remove filter', filterBy: 'filter',
+      rangeStart: 'from', rangeEnd: 'to',
+      keepColumn: 'At least one column must remain visible',
+    } },
     navigation: {
       main: {
         contractWizard: 'Lease Wizard',
@@ -265,6 +277,12 @@ const BUILTIN_TRANSLATIONS = {
     },
   },
   'es-ES': {
+    comp: { dataTable: {
+      activeFilters: 'Filtros activos de la tabla', removeSearch: 'Quitar búsqueda',
+      removeFilter: 'Quitar filtro', filterBy: 'filtrar',
+      rangeStart: 'desde', rangeEnd: 'hasta',
+      keepColumn: 'Debe quedar visible al menos una columna',
+    } },
     navigation: {
       main: {
         contractWizard: 'Asistente de contrato',

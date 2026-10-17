@@ -228,6 +228,9 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       // The domain save succeeded. Cleanup failure must never re-submit it.
       await draft.clear({ completed: true }).catch(() => {});
       if (!isCurrentSession()) return;
+      // The write succeeded: disarm the browser's dirty-form guard BEFORE
+      // notifying the caller. React's effect cleanup after setDirty(false)
+      // might otherwise lag behind onClose and prompt again on navigation.
       if (unloadRef.current) {
         window.removeEventListener('beforeunload', unloadRef.current);
         unloadRef.current = null;

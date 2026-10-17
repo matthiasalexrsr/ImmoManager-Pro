@@ -282,3 +282,22 @@ describe('FormModal', () => {
     });
   });
 });
+
+
+it('hebt den Browser-Verlassensschutz direkt nach einem nachweislich erfolgreichen Speichern auf', async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  const unloadDuringClose = vi.fn();
+  const onClose = vi.fn(() => {
+    const after = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(after);
+    unloadDuringClose(after.defaultPrevented);
+  });
+  const { container } = render(<FormModal title="Mieter" fields={fields} onSave={onSave} onClose={onClose} />);
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Anna' } });
+  const before = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(before);
+  expect(before.defaultPrevented).toBe(true);
+  fireEvent.submit(container.querySelector('form'));
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  expect(unloadDuringClose).toHaveBeenCalledWith(false);
+});

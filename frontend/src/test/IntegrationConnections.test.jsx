@@ -132,6 +132,8 @@ it('discards late details from A after navigating to B before A finishes', async
     return <><button onClick={() => navigate('/integration-connections?connection=c-b')}>Historieneintrag B öffnen</button><IntegrationConnections /></>;
   }
   render(<MemoryRouter initialEntries={['/integration-connections?connection=c-a']}><HistoryNavigation /></MemoryRouter>);
+  // The deep link is resolved after the asynchronous list response. Don't
+  // inspect a request until the component has actually issued it.
   await waitFor(() => expect(api.get.mock.calls.some(([url]) => url.endsWith('/c-a'))).toBe(true));
   const aSignal = api.get.mock.calls.find(([url]) => url.endsWith('/c-a'))[1].signal;
   fireEvent.click(screen.getByRole('button', { name: 'Historieneintrag B öffnen' }));

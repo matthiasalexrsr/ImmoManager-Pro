@@ -155,13 +155,25 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const sortKey = !serverPaged && columns.some(c => c.key === stored.sortKey && c.sortable !== false) ? stored.sortKey : null;
   const sortDir = stored.sortDir === 'desc' ? 'desc' : 'asc';
   const pageSize = PAGE_SIZES.includes(stored.pageSize) ? stored.pageSize : 25;
-  const hiddenCols = useMemo(() => ({
-    ...Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])),
-    ...Object.fromEntries(Object.entries(stored.hiddenCols || {}).filter(([, hidden]) => typeof hidden === 'boolean')),
-  }), [columns, stored.hiddenCols]);
+  const hiddenCols = useMemo(() => {
+    const hidden = {
+      ...Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])),
+      ...Object.fromEntries(Object.entries(stored.hiddenCols || {}).filter(([, value]) => typeof value === 'boolean')),
+    };
+    // Old saved views or imported layouts may hide every column. Recover
+    // a visible column without erasing any of the other stored preferences.
+    if (columns.length && columns.every(col => hidden[col.key])) {
+      hidden[(columns.find(col => !col.hidden) || columns[0]).key] = false;
+    }
+    return hidden;
+  }, [columns, stored.hiddenCols]);
   const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
   const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
-  const toggleColumn = key => setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
+  const toggleColumn = key => {
+    // A stored view must never render a table without any data column.
+    if (!hiddenCols[key] && columns.filter(col => !hiddenCols[col.key]).length <= 1) return;
+    setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
+  };
   const [linkedOnMount] = useState(() => !serverPaged && typeof window !== 'undefined' && new URLSearchParams(routeSearch ?? window.location.search).size > 0);
   const [page, setPage] = useState(() => ((!linkedOnMount || restoreLocationState) && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
   const [columnFilters, setColumnFilters] = useState(() => {
@@ -181,6 +193,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   }, [viewStorageKey, serverPaged, search, columnFilters, page]);
   const [showColMenu, setShowColMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const filterToggleRef = useRef(null);
+  const searchInputRef = useRef(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const viewScope = viewAnchor ? `${storageKey}:${viewAnchor.kind}:${viewAnchor.id}` : storageKey;
@@ -258,7 +272,9 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
 
     for (const col of columns) {
       const fv = columnFilters[col.key];
-      if (!fv) continue;
+      // Clearing both ends of a range must turn the filter OFF entirely,
+      // including for rows without a date or amount.
+      if (fv == null || fv === '' || (Array.isArray(fv) && fv.every(part => part === ''))) continue;
       if (col.filterType === 'select') {
         items = items.filter(row => String(row[col.key] ?? '') === fv);
       } else if (col.filterType === 'dateRange') {
@@ -273,8 +289,12 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       } else if (col.filterType === 'numberRange') {
         const [min, max] = fv;
         items = items.filter(row => {
-          const n = Number(row[col.key]);
-          if (isNaN(n)) return false;
+          // Number(null) and Number('') are 0, but a missing amount is not
+          // a legitimate zero-amount booking or balance.
+          const raw = row[col.key];
+          if (raw == null || raw === '') return false;
+          const n = Number(raw);
+          if (!Number.isFinite(n)) return false;
           if (min !== '' && n < Number(min)) return false;
           if (max !== '' && n > Number(max)) return false;
           return true;
@@ -384,16 +404,17 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     const opts = {};
     for (const col of columns) {
       if (col.filterType === 'select') {
-        const vals = new Set(data.map(r => r[col.key]).filter(Boolean));
-        opts[col.key] = [...vals].sort();
+        const vals = new Set(data.map(r => r[col.key]).filter(v => v != null && v !== ''));
+        opts[col.key] = [...vals].sort((a, b) => String(a).localeCompare(String(b), 'de', { numeric: true }));
       }
     }
     return opts;
   }, [columns, data]);
 
-  const hasActiveFilters = !serverPaged && Object.values(columnFilters).some(v => {
-    if (Array.isArray(v)) return v.some(x => x !== '');
-    return v !== '' && v != null;
+  const hasActiveFilters = !serverPaged && columns.some(col => {
+    if (!col.filterType) return false;
+    const v = columnFilters[col.key];
+    return Array.isArray(v) ? v.some(part => part !== '') : v != null && v !== '';
   });
 
   const hasActions = Boolean(onEdit || onDelete || rowActions);
@@ -447,8 +468,32 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     rowName: row => (rowName ? rowName(row) : String(row[visibleColumns[0]?.key] ?? row.id)),
   };
   const hasColumnFilters = !serverPaged && columns.some(c => c.filterType);
-  const activeFilterCount = Object.values(columnFilters).filter(v =>
-    Array.isArray(v) ? v.some(x => x !== '') : v !== '' && v != null).length;
+  // Show *every* active filter, including filters of columns that a saved
+  // view currently hides. Otherwise a row can disappear for no visible reason.
+  const activeColumnFilters = serverPaged ? [] : columns.flatMap(col => {
+    const value = columnFilters[col.key];
+    const active = Array.isArray(value) ? value.some(part => part !== '') : value != null && value !== '';
+    if (!active) return [];
+    const description = Array.isArray(value)
+      ? [value[0] ? `${tr('comp.dataTable.rangeStart', 'ab')} ${value[0]}` : null,
+        value[1] ? `${tr('comp.dataTable.rangeEnd', 'bis')} ${value[1]}` : null].filter(Boolean).join(' · ')
+      : String(codeLabel(value));
+    return [{ key: col.key, label: plainLabel(col.label), description }];
+  });
+  const activeFilterCount = activeColumnFilters.length;
+  const removeColumnFilter = key => {
+    setColumnFilters(current => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setPage(0);
+    filterToggleRef.current?.focus();
+  };
+  const clearTableFilters = () => {
+    setSearch(''); setColumnFilters({}); setPage(0);
+    if (new URLSearchParams(routeSearch ?? window.location.search).has('focus_id')) clearFocusedRow?.();
+  };
 
   return (
     <div className={`data-table-wrapper data-table-workspace${hideTitle ? ' table-title-hidden' : ''}`}>
@@ -456,6 +501,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
         <h2 id={titleId} className={hideTitle ? 'sr-only' : undefined}>{title}</h2>
         <div className="table-actions">
           {!serverPaged && <input
+            ref={searchInputRef}
             type="text"
             aria-label={`${title || 'Tabelle'} durchsuchen`}
             placeholder={`${t('ui.form.search')}...`}
@@ -465,14 +511,15 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
           />}
           <div className="table-btn-group">
             {hasColumnFilters && (
-              <button onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters || hasActiveFilters}
+              <button type="button" ref={filterToggleRef} onClick={() => setShowFilters(v => !v)} aria-pressed={showFilters || hasActiveFilters}
                       className={`btn btn-sm ${showFilters || hasActiveFilters ? 'btn-primary-soft' : 'btn-secondary'}`}>
                 {t('ui.buttons.filter')}{activeFilterCount ? ` (${activeFilterCount})` : ''}
               </button>
             )}
             {hasActiveFilters && (
-              <button onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-ghost"
-                      title={t('comp.dataTable.clearFilter')}>
+              <button type="button" onClick={() => { setColumnFilters({}); setPage(0); }} className="btn btn-sm btn-ghost"
+                      aria-label={tr('comp.dataTable.clearFilter', 'Spaltenfilter zurücksetzen')}
+                      title={tr('comp.dataTable.clearFilter', 'Spaltenfilter zurücksetzen')}>
                 ✕
               </button>
             )}
@@ -489,6 +536,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                         <input
                           type="checkbox"
                           checked={!hiddenCols[col.key]}
+                          disabled={!hiddenCols[col.key] && visibleColumns.length === 1}
+                          title={!hiddenCols[col.key] && visibleColumns.length === 1 ? tr('comp.dataTable.keepColumn', 'Mindestens eine Spalte muss sichtbar bleiben') : undefined}
                           onChange={() => toggleColumn(col.key)}
                         />
                         {col.label}
@@ -509,6 +558,25 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
         </div>
       </div>
 
+      {!serverPaged && (search || activeColumnFilters.length > 0) && (
+        <div className="table-active-filters" role="group"
+             aria-label={tr('comp.dataTable.activeFilters', 'Aktive Tabellenfilter')}>
+          <span className="table-filter-summary">{tr('comp.dataTable.activeFilters', 'Aktive Filter')}:</span>
+          {search && <button type="button" className="table-filter-chip"
+            aria-label={tr('comp.dataTable.removeSearch', 'Suche entfernen')}
+            onClick={() => { setSearch(''); setPage(0); searchInputRef.current?.focus(); }}>
+            {tr('ui.form.search', 'Suche')}: {search}<span aria-hidden="true">×</span>
+          </button>}
+          {activeColumnFilters.map(item => (
+            <button type="button" key={item.key} className="table-filter-chip"
+              aria-label={`${tr('comp.dataTable.removeFilter', 'Filter entfernen')}: ${item.label}`}
+              title={`${tr('comp.dataTable.removeFilter', 'Filter entfernen')}: ${item.label}`}
+              onClick={() => removeColumnFilter(item.key)}>
+              {item.label}: {item.description}<span aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
+      )}
       {(!serverPaged || onApplyView) && <NamedViews context={viewContext} config={namedConfig} onApply={applyView} anchor={viewAnchor} />}
       {!serverPaged && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id') && <p role="status">Ausgewählter Vorgang
         {clearFocusedRow && <button type="button" className="btn btn-sm btn-ghost" onClick={clearFocusedRow}>Alle Vorgänge anzeigen</button>}</p>}
@@ -562,42 +630,46 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                   <th key={`f-${col.key}`} className="filter-cell">
                     {col.filterType === 'select' ? (
                       <select
+                        aria-label={`${plainLabel(col.label)} ${tr('comp.dataTable.filterBy', 'filtern')}`}
                         value={columnFilters[col.key] || ''}
                         onChange={e => setFilter(col.key, e.target.value || '')}
                         className="filter-select"
                       >
                         <option value="">—</option>
                         {(selectOptions[col.key] || []).map(v => (
-                          <option key={v} value={v}>{codeLabel(v)}</option>
+                          <option key={String(v)} value={String(v)}>{String(codeLabel(v))}</option>
                         ))}
                       </select>
                     ) : col.filterType === 'dateRange' ? (
                       <div className="filter-date-range">
                         <input
                           type="date"
+                          aria-label={`${plainLabel(col.label)}: ${tr('comp.dataTable.filterFrom', 'Von')}`}
                           value={(columnFilters[col.key] || ['', ''])[0]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
                             setFilter(col.key, [e.target.value, cur[1]]);
                           }}
                           className="filter-date"
-                          title={t('comp.dataTable.filterFrom') || 'Von'}
+                          title={tr('comp.dataTable.filterFrom', 'Von')}
                         />
                         <input
                           type="date"
+                          aria-label={`${plainLabel(col.label)}: ${tr('comp.dataTable.filterTo', 'Bis')}`}
                           value={(columnFilters[col.key] || ['', ''])[1]}
                           onChange={e => {
                             const cur = columnFilters[col.key] || ['', ''];
                             setFilter(col.key, [cur[0], e.target.value]);
                           }}
                           className="filter-date"
-                          title={t('comp.dataTable.filterTo') || 'Bis'}
+                          title={tr('comp.dataTable.filterTo', 'Bis')}
                         />
                       </div>
                     ) : col.filterType === 'numberRange' ? (
                       <div className="filter-number-range">
                         <input
                           type="number"
+                          aria-label={`${plainLabel(col.label)}: ${tr('comp.dataTable.filterFrom', 'Von')}`}
                           placeholder={t('comp.dataTable.filterMin') || 'Min'}
                           value={(columnFilters[col.key] || ['', ''])[0]}
                           onChange={e => {
@@ -608,6 +680,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                         />
                         <input
                           type="number"
+                          aria-label={`${plainLabel(col.label)}: ${tr('comp.dataTable.filterTo', 'Bis')}`}
                           placeholder={t('comp.dataTable.filterMax') || 'Max'}
                           value={(columnFilters[col.key] || ['', ''])[1]}
                           onChange={e => {
@@ -620,6 +693,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                     ) : col.filterType === 'text' ? (
                       <input
                         type="text"
+                        aria-label={`${plainLabel(col.label)} ${tr('comp.dataTable.filterBy', 'filtern')}`}
                         placeholder={t('comp.dataTable.filterText') || 'Filter…'}
                         value={columnFilters[col.key] || ''}
                         onChange={e => setFilter(col.key, e.target.value)}
@@ -649,7 +723,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                     <div className="table-empty-state">
                       <span>{tr('comp.dataTable.noMatches', 'Keine Treffer für diese Suche oder diese Filter.')}</span>
                       <button type="button" className="btn btn-secondary btn-sm"
-                        onClick={() => { setSearch(''); setColumnFilters({}); setPage(0); }}>
+                        onClick={clearTableFilters}>
                         {tr('comp.dataTable.resetSearch', 'Suche und Filter zurücksetzen')}
                       </button>
                     </div>

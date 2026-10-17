@@ -175,3 +175,22 @@ describe('source-bound work lists', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('kind=task');
   });
 });
+
+
+it('lädt den persönlichen Eingang erst, wenn die eingeklappte Übersicht geöffnet wird', async () => {
+  api.get.mockImplementation(path => {
+    if (path.startsWith('/notifications/inbox?')) return Promise.resolve({
+      items: [], total: 0, unread_count: 0, snapshot: 'empty-work-center', next_cursor: null,
+    });
+    if (path.startsWith('/workspace/favorites/')) return Promise.reject(missing());
+    return Promise.resolve(empty());
+  });
+  show(<WorkCenter />, '/work-center');
+  await waitFor(() => expect(api.get.mock.calls.some(([url]) =>
+    url.startsWith('/work-center/items?'))).toBe(true));
+  expect(api.get.mock.calls.some(([url]) => url.startsWith('/notifications/inbox?'))).toBe(false);
+  fireEvent.click(screen.getByText('Persönliche Benachrichtigungen und Archiv'));
+  await waitFor(() => expect(api.get.mock.calls.some(([url]) =>
+    url.startsWith('/notifications/inbox?'))).toBe(true));
+  expect(await screen.findByText('Keine Hinweise in dieser Ansicht.')).toBeInTheDocument();
+});

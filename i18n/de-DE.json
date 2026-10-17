@@ -1285,6 +1285,13 @@
   },
   "comp": {
     "dataTable": {
+      "activeFilters": "Aktive Tabellenfilter",
+      "removeFilter": "Filter entfernen",
+      "removeSearch": "Suche entfernen",
+      "filterBy": "filtern",
+      "rangeStart": "ab",
+      "rangeEnd": "bis",
+      "keepColumn": "Mindestens eine Spalte muss sichtbar bleiben",
       "search": "Suchen…",
       "clearFilter": "Filter ✕",
       "columns": "Spalten",

@@ -72,3 +72,18 @@ describe('sichere globale Bestätigungen', () => {
     await waitFor(() => expect(outcome).toHaveBeenCalledWith('first', false));
   });
 });
+
+
+it('fokussiert auch bei der nächsten Frage nach einer Bestätigung wieder Abbrechen', async () => {
+  const outcome = vi.fn();
+  render(<ConfirmProvider><Requester outcome={outcome} /></ConfirmProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Erster Auftrag' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Zweiter Auftrag' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Bestätigen' }));
+  await waitFor(() => expect(outcome).toHaveBeenCalledWith('first', true));
+  const next = screen.getByRole('dialog');
+  expect(within(next).getByText('Zweiten Eintrag löschen?')).toBeInTheDocument();
+  expect(within(next).getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
+  fireEvent.click(within(next).getByRole('button', { name: 'Abbrechen' }));
+  await waitFor(() => expect(outcome).toHaveBeenCalledWith('second', false));
+});

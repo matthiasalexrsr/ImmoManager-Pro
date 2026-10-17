@@ -2045,6 +2045,13 @@
   },
   "comp": {
     "dataTable": {
+      "activeFilters": "Filtros activos de la tabla",
+      "removeFilter": "Quitar filtro",
+      "removeSearch": "Quitar búsqueda",
+      "filterBy": "filtrar",
+      "rangeStart": "desde",
+      "rangeEnd": "hasta",
+      "keepColumn": "Debe quedar visible al menos una columna",
       "search": "Buscar…",
       "clearFilter": "Filtro ✕",
       "columns": "Columnas",

@@ -32,6 +32,7 @@ export default function WorkCenter() {
   const [change, setChange] = useState(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
   const [conversation, setConversation] = useState(null);
+  const [inboxExpanded, setInboxExpanded] = useState(false);
   const query = new URLSearchParams();
   ['kind', 'property_id', 'due_before', 'deferred'].forEach(key => { if (params.get(key)) query.set(key, params.get(key)); });
   query.set('limit', '25');
@@ -43,7 +44,10 @@ export default function WorkCenter() {
   return <div className="page work-center">
     <header className="work-center-header"><div><h1>Arbeitszentrale</h1><p>Offene Vorgänge, persönliche Wiedervorlagen und Ihre zuletzt verwendeten Akten.</p></div>
       <Link className="btn btn-secondary" to="/review">Prüfliste öffnen</Link></header>
-    <details><summary>Persönliche Benachrichtigungen und Archiv</summary><NotificationInbox compact /></details>
+    <details onToggle={event => setInboxExpanded(event.currentTarget.open)}>
+      <summary>Persönliche Benachrichtigungen und Archiv</summary>
+      {inboxExpanded && <NotificationInbox compact />}
+    </details>
     {settingsError && <p role="alert">{settingsError}</p>}
     <EntityShelf />
     <WorkSummary query={summaryQuery.toString()} revision={summaryRevision} />

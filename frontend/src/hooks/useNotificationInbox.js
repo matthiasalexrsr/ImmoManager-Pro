@@ -28,8 +28,23 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
     if (severity) query.set('severity', severity);
     if (kind) query.set('kind', kind);
     api.get(`/notifications/inbox?${query}`).then(data => {
-      same(); if (live) setPage(data);
-    }).catch(failure => { if (live) setError(failure.message); });
+      same();
+      if (!live) return;
+      // Fail closed on an incomplete response. Treating a missing list,
+      // count or snapshot as an empty, confirmed inbox can hide pending work
+      // and previously crashed the whole message page at page.items.length.
+      if (!data || !Array.isArray(data.items)
+          || !Number.isSafeInteger(data.total) || data.total < 0
+          || !Number.isSafeInteger(data.unread_count) || data.unread_count < 0
+          || typeof data.snapshot !== 'string' || !data.snapshot
+          || !data.items.every(item => item && typeof item.id === 'string'
+            && typeof item.title === 'string')) {
+        throw new Error('Benachrichtigungen konnten nicht vollständig geladen werden. Bitte erneut laden.');
+      }
+      setPage(data);
+    }).catch(failure => {
+      if (live) setError(failure?.message || 'Benachrichtigungen konnten nicht geladen werden.');
+    });
     return () => { live = false; window.removeEventListener('workspace-owner', clear); window.removeEventListener('workspace-logout', clear); };
   }, [owner, status, cursor, limit, snapshot, severity, kind, attempt]);
   useEffect(() => {

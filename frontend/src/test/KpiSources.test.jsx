@@ -95,22 +95,51 @@ describe('exact KPI source lists', () => {
     expect(screen.getByText('Einzelabrechnung B')).toBeInTheDocument();
   });
 
-  it('opens the personal unread source and preserves it after a rejected archive receipt', async () => {
-    api.get.mockImplementation(async path => path.startsWith('/notifications/inbox?') ? {
-      items: [{ id: 'n1', title: 'Offener Hinweis', severity: 'warning', revision: 0, target: null,
-        target_error: 'Quelle nicht mehr vorhanden', created_at: '2026-10-15T09:00:00Z' }],
-      unread_count: 1, total: 1, snapshot: 'exact-source-snapshot', next_cursor: null,
-    } : {});
+  it('keeps unread notices visible after a rejected explicit receipt and retries the identical command', async () => {
+    const snapshot = 'inbox-snapshot-1';
+    api.get.mockImplementation(async url => url.startsWith('/notifications/inbox?')
+      ? { items: [{ id: 'n1', title: 'Offener Hinweis', content: 'Bitte prüfen',
+        severity: 'warning', target: null, created_at: '2026-10-15T10:00:00Z' }],
+        total: 1, unread_count: 1, snapshot, next_cursor: null } : {});
     api.post.mockRejectedValue(new Error('Lesestatus nicht gespeichert'));
     show(<Messages />, '/messages?status=unread');
-    await screen.findByText('Offener Hinweis');
+    expect(await screen.findByText('Offener Hinweis')).toBeInTheDocument();
+    // Opening the list is read-only. A separate, explicit receipt action is needed.
+    expect(api.post).not.toHaveBeenCalled();
+    expect(screen.getByText(/1 ungelesen/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Lesestatus nicht gespeichert');
-    expect(screen.queryByText('Gelesener Hinweis')).not.toBeInTheDocument();
-    expect(screen.getByText('1 ungelesen · 1 in dieser Ansicht')).toBeInTheDocument();
     expect(screen.getByText('Offener Hinweis')).toBeInTheDocument();
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/notifications/all/receipt', expect.objectContaining({
-      action: 'read_all', snapshot: 'exact-source-snapshot', idempotency_key: expect.any(String),
-    })));
+    expect(screen.getByText(/1 ungelesen/)).toBeInTheDocument();
+    const original = api.post.mock.calls[0][1];
+    expect(api.post.mock.calls[0][0]).toBe('/notifications/all/receipt');
+    expect(original).toEqual(expect.objectContaining({
+      action: 'read_all', snapshot, idempotency_key: expect.any(String),
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[1][1]).toEqual(original);
+    expect(api.patch).not.toHaveBeenCalled();
   });
 });
+
+
+  it('shows a recoverable error instead of crashing on an incomplete personal inbox response', async () => {
+    let reads = 0;
+    api.get.mockImplementation(async url => {
+      if (!url.startsWith('/notifications/inbox?')) return {};
+      reads += 1;
+      if (reads === 1) return { total: 1, unread_count: 1, snapshot: 'snap-1' }; // no items: invalid
+      return { items: [{ id: 'n1', title: 'Hinweis wieder sichtbar', content: 'Wichtiger Vorgang',
+        severity: 'warning', target: null, created_at: '2026-10-15T10:00:00Z' }],
+        total: 1, unread_count: 1, snapshot: 'snap-2', next_cursor: null };
+    });
+    show(<Messages />, '/messages?status=unread');
+    expect(await screen.findByRole('alert')).toHaveTextContent('nicht vollständig geladen');
+    expect(screen.queryByText('Keine Hinweise in dieser Ansicht.')).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Neu laden' }));
+    expect(await screen.findByText('Hinweis wieder sichtbar')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
