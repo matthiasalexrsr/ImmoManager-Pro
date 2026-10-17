@@ -35,8 +35,8 @@ jobs:
         run: npm audit --audit-level=low
       - name: Lint frontend
         run: npm run lint
-      - name: Run frontend tests
-        run: npm run test
+      - name: Run complete frontend regression (bounded workers, real assertions)
+        run: npm run test -- --maxWorkers=2 --testTimeout=15000 --reporter=dot
       - name: Build frontend
         run: npm run build
 
@@ -61,6 +61,10 @@ jobs:
           pip install ruff==0.15.20 pytest-cov==7.1.0 mypy==2.4.0 pdfplumber==0.11.10 -c constraints.txt
           # the audit tool stays current on purpose (it judges the pinned set above)
           pip install pip-audit
+      - name: Install pinned optional offline FinTS contract library
+        run: |
+          python -m pip install --target "$RUNNER_TEMP/fints-qa" -r requirements-bank.txt -c constraints.txt
+          PYTHONPATH="$RUNNER_TEMP/fints-qa" python -c "from importlib.metadata import version; assert version('fints') == '5.0.1'"
       - name: Lint (ruff)
         if: matrix.store-backend == 'memory'
         run: ruff check backend
@@ -73,6 +77,7 @@ jobs:
       - name: Run tests with coverage
         env:
           TEST_STORE_BACKEND: ${{ matrix.store-backend }}
+          PYTHONPATH: ${{ runner.temp }}/fints-qa
         run: pytest backend/tests -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=80
       - name: Import smoke check
         if: matrix.store-backend == 'memory'
