@@ -186,6 +186,127 @@ try {
       await page.getByRole('button', { name: 'Aktenübersicht schließen', exact: true }).click();
     }
   });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const taskPrefix = 'QA Sortierung ' + suffix;
+  const task2 = await call('POST', '/tasks', { title: taskPrefix + ' 2', due_date: '2030-01-02', status: 'open' });
+  const task10 = await call('POST', '/tasks', { title: taskPrefix + ' 10', due_date: '2030-01-10', status: 'open' });
+  await step('Actual task table: natural sorting, inclusive date filters, visible filter chips and complete CSV', async () => {
+    await page.goto(base.origin + '/tasks');
+    await page.getByRole('textbox', { name: 'Aufgaben durchsuchen', exact: true }).fill(taskPrefix);
+    const table = page.getByRole('table', { name: 'Aufgaben', exact: true });
+    await expect(table.locator('tbody tr')).toHaveCount(2);
+    await table.getByRole('button', { name: 'Titel', exact: true }).click();
+    await expect(table.locator('tbody tr').first()).toContainText(task2.title);
+    await expect(table.locator('tbody tr').last()).toContainText(task10.title);
+    await page.getByRole('button', { name: /^Filter/ }).click();
+    await page.getByLabel('Fällig am: Von', { exact: true }).fill('2030-01-10');
+    await page.getByLabel('Fällig am: Bis', { exact: true }).fill('2030-01-10');
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await expect(table.locator('tbody tr')).toContainText(task10.title);
+    await page.getByRole('button', { name: 'Filter entfernen: Fällig am', exact: true }).click();
+    await expect(table.locator('tbody tr')).toHaveCount(2);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'CSV', exact: true }).click();
+    const download = await downloadPromise;
+    const exported = path.join(output, 'tasks.csv');
+    await download.saveAs(exported);
+    const csv = await fs.readFile(exported, 'utf8');
+    assert.ok(csv.includes(task2.title) && csv.includes(task10.title));
+    await page.screenshot({ path: path.join(output, 'task-filters-1440.png') });
+  });
+  await step('Actual bulk action: one rejected row remains selected, retry changes only that row', async () => {
+    await page.getByRole('checkbox', { name: 'Auswählen: ' + task2.title, exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Auswählen: ' + task10.title, exact: true }).check();
+    const route = '**/api/v1/tasks/' + task10.id;
+    let rejected = 0;
+    await page.route(route, async request => {
+      if (request.request().method() === 'PATCH') {
+        rejected++;
+        await request.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ detail: 'QA bewusster Teilfehler' }) });
+      } else await request.continue();
+    });
+    const bulk = page.getByRole('region', { name: 'Auswahl', exact: true });
+    await bulk.getByRole('button', { name: 'Erledigen', exact: true }).click();
+    await expect(bulk.getByRole('alert')).toContainText('QA bewusster Teilfehler');
+    await expect(page.getByRole('checkbox', { name: 'Auswählen: ' + task2.title, exact: true })).not.toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Auswählen: ' + task10.title, exact: true })).toBeChecked();
+    assert.equal((await call('GET', '/tasks/' + task2.id)).status, 'completed');
+    assert.equal((await call('GET', '/tasks/' + task10.id)).status, 'open');
+    assert.equal(rejected, 1);
+    await page.screenshot({ path: path.join(output, 'bulk-partial-failure-1440.png') });
+    await page.unroute(route);
+    await bulk.getByRole('button', { name: 'Erledigen', exact: true }).click();
+    await expect.poll(async () => (await call('GET', '/tasks/' + task10.id)).status).toBe('completed');
+    await expect(page.getByRole('checkbox', { name: 'Auswählen: ' + task10.title, exact: true })).not.toBeChecked();
+  });
+  await step('Actual form: field-specific save failure, server draft recovery, protected discard and successful retry', async () => {
+    await page.getByRole('button', { name: 'Neu', exact: true }).click();
+    let form = page.getByRole('dialog', { name: 'Aufgabe erstellen', exact: true });
+    const title = 'QA Entwurf ' + suffix;
+    await expect(form.getByLabel('Titel', { exact: false })).toBeEnabled();
+    await form.getByLabel('Titel', { exact: false }).fill(title);
+    await form.getByLabel('Beschreibung', { exact: true }).fill('Diesen Text nach dem Neuladen erhalten.');
+    const route = '**/api/v1/tasks';
+    await page.route(route, async request => {
+      if (request.request().method() === 'POST') await request.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ detail: [
+        { loc: ['body', 'title'], msg: 'QA Titel bitte prüfen', type: 'value_error' },
+      ] }) });
+      else await request.continue();
+    });
+    await form.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(form.getByRole('alert').filter({ hasText: 'Ihre Eingaben bleiben erhalten' })).toBeFocused();
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveAttribute('aria-invalid', 'true');
+    await form.getByRole('button', { name: 'Eingaben prüfen', exact: true }).click();
+    await expect(form.getByLabel('Titel', { exact: false })).toBeFocused();
+    await expect.poll(async () => (await call('GET', '/workspace/drafts?context=tasks')).items.some(d => d.values?.title === title)).toBe(true);
+    page.once('dialog', dialog => dialog.accept());
+    await page.reload();
+    await page.getByRole('button', { name: 'Neu', exact: true }).click();
+    form = page.getByRole('dialog', { name: 'Aufgabe erstellen', exact: true });
+    await form.getByRole('button', { name: 'Entwurf verwerfen', exact: true }).click();
+    await expect(form.getByRole('group', { name: 'Entwurf verwerfen bestätigen', exact: true })).toBeVisible();
+    await form.getByRole('button', { name: 'Entwurf behalten', exact: true }).click();
+    await form.getByRole('button', { name: 'Entwurf wiederaufnehmen', exact: true }).click();
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
+    await expect(form.getByLabel('Titel', { exact: false })).toBeFocused();
+    await expect(form.getByLabel('Beschreibung', { exact: true })).toHaveValue('Diesen Text nach dem Neuladen erhalten.');
+    await page.screenshot({ path: path.join(output, 'recovered-form-1440.png') });
+    await page.unroute(route);
+    await form.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    const success = page.locator('.toast-success').filter({ hasText: 'Aufgabe gespeichert' });
+    await expect(success).toBeVisible();
+    await success.hover();
+    await success.getByRole('button').focus();
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(4500); // Must outlive the ordinary four-second dismissal.
+    await expect(success).toBeVisible();
+    await success.getByRole('button').press('Enter');
+    await expect(success).toHaveCount(0);
+    const savedTasks = await call('GET', '/tasks?limit=100');
+    assert.ok(Array.isArray(savedTasks));
+    assert.equal(savedTasks.filter(task => task.title === title).length, 1);
+    assert.ok(!(await call('GET', '/workspace/drafts?context=tasks')).items.some(d => d.values?.title === title));
+  });
+  await step('Actual notification inbox: bulk archive requires confirmation and preserves source tasks', async () => {
+    const notice = await call('POST', '/notifications', { notification_type: 'task_due', title: 'QA Sammelhinweis ' + suffix,
+      content: 'Nur persönlicher Empfangsbeleg', entity_type: 'task', entity_id: task2.id });
+    await page.goto(base.origin + '/notifications');
+    const inbox = page.getByRole('region', { name: 'Persönliche Benachrichtigungen', exact: true });
+    const opener = inbox.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren', exact: true });
+    await opener.click();
+    const confirmation = inbox.getByRole('group', { name: 'Sammelbestätigung', exact: true });
+    await expect(confirmation.getByRole('button', { name: 'Abbrechen', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    assert.ok((await call('GET', '/notifications/inbox?status=unread')).items.some(n => n.id === notice.id));
+    await opener.click();
+    await confirmation.getByRole('button', { name: /(?:Einen Hinweis|\d+ Hinweise) jetzt archivieren/ }).click();
+    await expect.poll(async () => (await call('GET', '/notifications/inbox?status=archived')).items.some(n => n.id === notice.id)).toBe(true);
+    assert.equal((await call('GET', '/notifications/' + notice.id)).status, 'unread');
+    assert.equal((await call('GET', '/tasks/' + task2.id)).status, 'completed');
+    await page.screenshot({ path: path.join(output, 'inbox-archive-1440.png') });
+  });
   assert.deepEqual(report.page_errors, []);
   assert.deepEqual(report.external, []);
 } finally {

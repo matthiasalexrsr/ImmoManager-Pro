@@ -45,7 +45,7 @@ export function ToastProvider({ children }) {
         timers.current.delete(id);
         setToasts(prev => prev.filter(toast => toast.id !== id));
       }, duration);
-      timers.current.set(id, { timeout, remaining: duration, started: Date.now() });
+      timers.current.set(id, { timeout, remaining: duration, started: Date.now(), pauses: new Set() });
     }
   }, []);
 
@@ -66,16 +66,20 @@ export function ToastProvider({ children }) {
 
   // Give people time to read longer errors: auto-dismiss pauses on hover and
   // while the keyboard is focused on the explicit close button.
-  const pauseToast = useCallback(id => {
+  const pauseToast = useCallback((id, reason) => {
     const timer = timers.current.get(id);
-    if (!timer || timer.timeout == null) return;
+    if (!timer) return;
+    timer.pauses.add(reason);
+    if (timer.timeout == null) return;
     clearTimeout(timer.timeout);
     timer.remaining = Math.max(1, timer.remaining - (Date.now() - timer.started));
     timer.timeout = null;
   }, []);
-  const resumeToast = useCallback(id => {
+  const resumeToast = useCallback((id, reason) => {
     const timer = timers.current.get(id);
-    if (!timer || timer.timeout != null) return;
+    if (!timer) return;
+    timer.pauses.delete(reason);
+    if (timer.pauses.size || timer.timeout != null) return;
     timer.started = Date.now();
     timer.timeout = setTimeout(() => {
       timers.current.delete(id);
@@ -101,11 +105,11 @@ export function ToastProvider({ children }) {
           return (
             <div key={item.id} className={`toast toast-${item.type}`}
               role={item.type === 'error' ? 'alert' : 'status'}
-              onMouseEnter={() => pauseToast(item.id)}
-              onMouseLeave={() => resumeToast(item.id)}
-              onFocus={() => pauseToast(item.id)}
+              onMouseEnter={() => pauseToast(item.id, 'pointer')}
+              onMouseLeave={() => resumeToast(item.id, 'pointer')}
+              onFocus={() => pauseToast(item.id, 'focus')}
               onBlur={event => {
-                if (!event.currentTarget.contains(event.relatedTarget)) resumeToast(item.id);
+                if (!event.currentTarget.contains(event.relatedTarget)) resumeToast(item.id, 'focus');
               }}>
               <span className="toast-icon" aria-hidden="true"><IconComp size={18} /></span>
               <span className="toast-message">{item.message}</span>

@@ -95,4 +95,25 @@ describe('Benachrichtigungen im Arbeitsalltag', () => {
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('bleibt pausiert, solange entweder Maus oder Tastatur die Meldung noch liest', () => {
+    vi.useFakeTimers();
+    render(<ToastProvider><ToastActions /></ToastProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Fehler zeigen' }));
+    const alert = screen.getByRole('alert');
+    const dismiss = within(alert).getByRole('button', { name: 'Meldung schließen' });
+    act(() => vi.advanceTimersByTime(2000));
+    fireEvent.mouseEnter(alert);
+    fireEvent.focus(dismiss);
+    fireEvent.mouseLeave(alert);
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.mouseEnter(alert);
+    fireEvent.blur(dismiss, { relatedTarget: null });
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.mouseLeave(alert);
+    act(() => vi.advanceTimersByTime(4000));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
