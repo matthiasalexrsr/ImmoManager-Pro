@@ -149,3 +149,65 @@ it('schließt die Spaltenauswahl beim Tab-Wechsel, ohne den externen Fokus zu ü
   expect(screen.queryByRole('group', { name: 'Spaltenauswahl' })).not.toBeInTheDocument();
   expect(search).toHaveFocus();
 });
+
+
+it('schließt ISO-Zeitstempel des ganzen lokalen Endtages ein, aber nicht den Folgetag', () => {
+  // Date-time columns such as appointment_at, scheduled_at and changed_at
+  // share the same day-range filter as date-only fields.
+  const dated = [
+    { id: '1', title: 'Früh am Endtag', changed_at: new Date(2026, 9, 17, 0, 15).toISOString() },
+    { id: '2', title: 'Spät am Endtag', changed_at: new Date(2026, 9, 17, 23, 40).toISOString() },
+    { id: '3', title: 'Erster Folgetag', changed_at: new Date(2026, 9, 18, 0, 5).toISOString() },
+    { id: '4', title: 'Kalendertag ohne Uhrzeit', changed_at: '2026-10-17' },
+    { id: '5', title: 'Ungültige Zeit', changed_at: 'kein-datum' },
+  ];
+  render(<DataTable title="Änderungshistorie" columns={[
+    { key: 'title', label: 'Vorgang' },
+    { key: 'changed_at', label: 'Geändert am', type: 'date', filterType: 'dateRange' },
+  ]} data={dated} />);
+  fireEvent.click(screen.getByRole('button', { name: /ui.buttons.filter|Filter/i }));
+  fireEvent.change(screen.getByLabelText('Geändert am: Bis'), { target: { value: '2026-10-17' } });
+  const table = screen.getByRole('table', { name: 'Änderungshistorie' });
+  expect(within(table).getByText('Früh am Endtag')).toBeInTheDocument();
+  expect(within(table).getByText('Spät am Endtag')).toBeInTheDocument();
+  expect(within(table).getByText('Kalendertag ohne Uhrzeit')).toBeInTheDocument();
+  expect(within(table).queryByText('Erster Folgetag')).not.toBeInTheDocument();
+  expect(within(table).queryByText('Ungültige Zeit')).not.toBeInTheDocument();
+});
+
+it('zeigt Auswahlwerte mit identischer Darstellung nur einmal an', () => {
+  render(<DataTable title="Statuswerte" columns={[
+    { key: 'title', label: 'Titel' },
+    { key: 'flag', label: 'Kennung', filterType: 'select' },
+  ]} data={[
+    { id: 'a', title: 'Numerisch', flag: 1 },
+    { id: 'b', title: 'Als Text', flag: '1' },
+    { id: 'c', title: 'Anders', flag: 2 },
+  ]} />);
+  fireEvent.click(screen.getByRole('button', { name: /ui.buttons.filter|Filter/i }));
+  const selector = screen.getByRole('combobox', { name: 'Kennung filtern' });
+  expect(within(selector).getAllByRole('option', { name: '1' })).toHaveLength(1);
+  fireEvent.change(selector, { target: { value: '1' } });
+  const table = screen.getByRole('table', { name: 'Statuswerte' });
+  expect(within(table).getByText('Numerisch')).toBeInTheDocument();
+  expect(within(table).getByText('Als Text')).toBeInTheDocument();
+  expect(within(table).queryByText('Anders')).not.toBeInTheDocument();
+});
+
+
+it('nennt Screenreadern den betroffenen Datensatz zu gleichnamigen Bearbeiten- und Löschen-Aktionen', () => {
+  const edit = vi.fn();
+  const remove = vi.fn();
+  render(<DataTable title="Objektliste" columns={[{ key: 'title', label: 'Immobilie' }]}
+    data={[{ id: 'p1', title: 'Haus West' }, { id: 'p2', title: 'Haus Ost' }]}
+    onEdit={edit} onDelete={remove} />);
+  const table = screen.getByRole('table', { name: 'Objektliste' });
+  for (const name of ['Haus West', 'Haus Ost']) {
+    const row = within(table).getByRole('row', { name: new RegExp(name) });
+    const buttons = within(row).getAllByRole('button');
+    const editButton = buttons.find(button => button.getAttribute('aria-label')?.includes('edit'));
+    const deleteButton = buttons.find(button => button.getAttribute('aria-label')?.includes('delete'));
+    expect(editButton).toHaveAccessibleDescription(name);
+    expect(deleteButton).toHaveAccessibleDescription(name);
+  }
+});

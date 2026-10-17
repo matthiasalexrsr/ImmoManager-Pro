@@ -140,6 +140,17 @@ function cellClass(col) {
   ].filter(Boolean).join(' ') || undefined;
 }
 
+// Date-only strings are already calendar dates. Full ISO timestamps are
+// instants and must be compared by the *local calendar day*, just like
+// formatDate() renders them; a "bis" bound includes the entire chosen day.
+function localCalendarDay(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (value == null || value === '') return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export default function DataTable(props) {
   const routed = useInRouterContext();
   return routed ? <RoutedDataTable {...props} /> : <TableWithKey {...props}
@@ -340,10 +351,10 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       } else if (col.filterType === 'dateRange') {
         const [from, to] = fv;
         items = items.filter(row => {
-          const d = row[col.key];
-          if (!d) return false;
-          if (from && d < from) return false;
-          if (to && d > to) return false;
+          const day = localCalendarDay(row[col.key]);
+          if (!day) return false;
+          if (from && day < from) return false;
+          if (to && day > to) return false;
           return true;
         });
       } else if (col.filterType === 'numberRange') {
@@ -470,8 +481,11 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     const opts = {};
     for (const col of columns) {
       if (col.filterType === 'select') {
-        const vals = new Set(data.map(r => r[col.key]).filter(v => v != null && v !== ''));
-        opts[col.key] = [...vals].sort((a, b) => String(a).localeCompare(String(b), 'de', { numeric: true }));
+        // UI option values are strings: 1 and "1" must not create two
+        // identical DOM option keys or two indistinguishable choices.
+        const vals = new Set(data.map(r => r[col.key])
+          .filter(v => v != null && v !== '').map(v => String(v)));
+        opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
       }
     }
     return opts;
@@ -837,17 +851,21 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {rowActions?.(row).map(action => (
                         <button key={action.label} onClick={event => action.onClick(row, event)} className="btn btn-sm btn-ghost"
-                                aria-label={action.label} title={action.label}>
+                                aria-label={action.label} aria-description={String(bulkWords.rowName(row))} title={action.label}>
                           {action.icon}
                         </button>
                       ))}
                       {onEdit && (
-                        <button onClick={() => { markRow(row); onEdit(row); }} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.edit')} title={t('ui.buttons.edit')}>
+                        <button onClick={() => { markRow(row); onEdit(row); }} className="btn btn-sm btn-ghost"
+                          aria-label={t('ui.buttons.edit')} aria-description={String(bulkWords.rowName(row))}
+                          title={t('ui.buttons.edit')}>
                           <EditIcon size={15} />
                         </button>
                       )}
                       {onDelete && (
-                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost" aria-label={t('ui.buttons.delete')} title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
+                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost"
+                          aria-label={t('ui.buttons.delete')} aria-description={String(bulkWords.rowName(row))}
+                          title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
                           <TrashIcon size={15} />
                         </button>
                       )}
