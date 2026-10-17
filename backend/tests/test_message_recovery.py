@@ -30,6 +30,7 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
         schema_state.initialise_empty(engine)
         monkeypatch.setattr(auth, "_user_store", auth.SQLUserStore(sessionmaker(bind=engine)))
         owner = auth.register_user("recovery-owner", "recovery@example.test", "Wiederherstellung", "Secret123", "eigentuemer")
+        assert auth.get_user_by_id(owner.id) is not None, "SQL account lost immediately after registration"
         with Session(engine) as db:
             source = SQLAlchemyStore(db)
             portfolio = source.create_portfolio(PortfolioCreate(name="Archivbestand"))
@@ -40,6 +41,7 @@ def test_full_archive_restores_internal_reply_without_duplicate_after_lost_succe
             command = MessageSubmission(thread_id=thread.id, body="Diese Nachricht darf nur einmal entstehen.",
                                         attachment_ids=document.id, idempotency_key=str(uuid4()),
                                         base_revision=thread.updated_at.isoformat())
+            assert auth.get_user_by_id(owner.id) is not None, "SQL account lost before message claim"
             saved = send_message(source, thread.id, command, owner.id)
             # Auth is owned by the synthetic SQLUserStore. A successful write
             # does not authorize a subsequent paginated read if the account

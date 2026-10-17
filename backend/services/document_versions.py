@@ -173,8 +173,19 @@ def work(store, actor_id: str, *, write_areas: Iterable[str] = ()) -> Iterator[U
 
     bind = store.db.get_bind()
     if areas:
-        from ..dependencies import release_request_read_connection
-        release_request_read_connection(store)
+        # The request-read releaser only operates on an already initialized
+        # application request-scoped session. Importing backend.dependencies
+        # here in a standalone restore/command script would INITIALIZE the
+        # app and replace its explicitly configured SQL auth store.
+        # Live HTTP requests already have dependencies loaded by their router,
+        # so they retain the same read-connection release safety invariant.
+        import sys
+
+        dependencies = sys.modules.get("backend.dependencies")
+        if dependencies is not None:
+            releaser = getattr(dependencies, "release_request_read_connection", None)
+            if releaser is not None:
+                releaser(store)
     gate = sqlite_write_gate(bind, "archive") if areas else nullcontext(None)
     with gate as timing:
         db = Session(bind=getattr(bind, "engine", bind), autoflush=False, expire_on_commit=False)
