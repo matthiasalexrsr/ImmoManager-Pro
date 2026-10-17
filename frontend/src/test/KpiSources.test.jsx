@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { api } from '../api';
@@ -23,7 +23,13 @@ beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear(); sessionStorage.clear();
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 15, 12));
   api.captureSession.mockReturnValue(() => {});
-  api.list.mockResolvedValue([]); api.get.mockResolvedValue({}); api.patch.mockResolvedValue({});
+  api.list.mockResolvedValue([]);
+  // The personal inbox mounted inside Messages has its own paginated API
+  // contract. It must not receive the unrelated generic {} fixture.
+  api.get.mockImplementation(async path => path.startsWith('/notifications/inbox?')
+    ? { items: [], total: 0, unread_count: 0, next_cursor: null, snapshot: 'synthetic-inbox' }
+    : {});
+  api.patch.mockResolvedValue({});
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -95,16 +101,24 @@ describe('exact KPI source lists', () => {
     expect(screen.getByText('Einzelabrechnung B')).toBeInTheDocument();
   });
 
-  it('opens unread notifications and keeps them unread after a rejected mark-read request', async () => {
-    api.list.mockImplementation(async path => path === '/notifications' ? [{ id: 'n1', title: 'Offener Hinweis', status: 'unread', severity: 'warning' },
-      { id: 'n2', title: 'Gelesener Hinweis', status: 'read', severity: 'info' }] : []);
-    api.patch.mockRejectedValue(new Error('Lesestatus nicht gespeichert'));
+  it('shows only unread personal notices and retains them after a failed receipt command', async () => {
+    const unread = { id: 'n1', title: 'Offener Hinweis', content: 'Synthetische Akte',
+      status: 'unread', severity: 'warning', email_eligible: false, archived_at: null,
+      created_at: '2026-10-15T08:00:00Z', target: null, target_error: 'Keine Quelle' };
+    api.get.mockImplementation(async path => path.startsWith('/notifications/inbox?')
+      ? { items: [unread], total: 1, unread_count: 1, snapshot: 'synthetic-scope-snapshot', next_cursor: null }
+      : {});
+    api.post.mockRejectedValue(new Error('Lesestatus nicht gespeichert'));
     show(<Messages />, '/messages?status=unread');
-    fireEvent.click(await screen.findByText('Offener Hinweis'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Lesestatus nicht gespeichert');
+    expect(await screen.findByText('Offener Hinweis')).toBeInTheDocument();
     expect(screen.queryByText('Gelesener Hinweis')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ungelesen (1)' })).toBeInTheDocument();
-    expect(within(document.querySelector('.messages-list')).getByText('Offener Hinweis')).toBeInTheDocument();
-    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/notifications/n1', { status: 'read' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Alle berechtigten Hinweise gelesen archivieren' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Lesestatus nicht gespeichert');
+    expect(screen.getByText('Offener Hinweis')).toBeInTheDocument();
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/notifications/all/receipt',
+      expect.objectContaining({ action: 'read_all', snapshot: 'synthetic-scope-snapshot',
+        base_revision: 0, idempotency_key: expect.any(String) })));
+    // An unconfirmed server write must not locally delete or archive a notice.
+    expect(screen.queryByText('Keine Hinweise in dieser Ansicht.')).not.toBeInTheDocument();
   });
 });

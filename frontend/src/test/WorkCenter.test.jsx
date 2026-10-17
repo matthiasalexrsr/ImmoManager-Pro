@@ -13,7 +13,7 @@ import WorkCenter from '../features/workCenter/WorkCenter';
 import DeferralControl from '../features/workCenter/DeferralControl';
 
 const auth = vi.hoisted(() => ({ user: { id: 'u1' }, write: null }));
-vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
+vi.mock('../api', () => ({ api: { captureSession: vi.fn(() => () => {}), get: vi.fn(), list: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => auth, useCanWrite: () => auth.write === null }));
 vi.mock('../contexts/DataStoreContext', () => ({ useDataStore: () => null, useEntities: () => ({ items: [] }) }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: 'de-DE' }) }));
@@ -27,6 +27,7 @@ const show = (content, path = '/') => render(<MemoryRouter initialEntries={[path
 
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear(); auth.user = { id: 'u1' }; auth.write = null;
+  api.captureSession.mockReturnValue(() => {});
   api.get.mockImplementation(path => path.startsWith('/workspace/favorites/') ? Promise.reject(missing()) : Promise.resolve(empty()));
   api.list.mockResolvedValue([]); api.post.mockResolvedValue({});
   api.put.mockImplementation(async (path, body) => ({ ...body, id: path.split('/').at(-1), revision: 1 }));

@@ -28,8 +28,18 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
     if (severity) query.set('severity', severity);
     if (kind) query.set('kind', kind);
     api.get(`/notifications/inbox?${query}`).then(data => {
-      same(); if (live) setPage(data);
-    }).catch(failure => { if (live) setError(failure.message); });
+      same();
+      // Fail visibly for incomplete/old provider responses. A fabricated
+      // empty list would hide unread notices; rendering undefined items can
+      // crash unrelated dashboard and tenant-workspace screens.
+      if (!data || !Array.isArray(data.items)
+          || !Number.isInteger(data.total) || data.total < 0
+          || !Number.isInteger(data.unread_count) || data.unread_count < 0
+          || data.items.some(item => !item || typeof item.id !== 'string')) {
+        throw new Error('Benachrichtigungen sind unvollständig. Bitte erneut laden.');
+      }
+      if (live) setPage(data);
+    }).catch(failure => { if (live) setError(failure.message || 'Benachrichtigungen konnten nicht geladen werden.'); });
     return () => { live = false; window.removeEventListener('workspace-owner', clear); window.removeEventListener('workspace-logout', clear); };
   }, [owner, status, cursor, limit, snapshot, severity, kind, attempt]);
   useEffect(() => {

@@ -36,7 +36,13 @@ it('keeps six everyday entries direct and exposes all other destinations through
   for (const button of within(navigation).getAllByRole('button')) {
     if (button.getAttribute('aria-expanded') === 'false') fireEvent.click(button);
   }
-  expect(within(navigation).getAllByRole('link')).toHaveLength(41);
+  // The existing groups now include the explicitly delivered DATEV/Tax
+  // workspace and private Connection workspace, without adding daily links.
+  expect(within(navigation).getAllByRole('link')).toHaveLength(43);
+  expect(within(navigation).getByRole('link', { name: 'Steueraufbereitung / DATEV' }))
+    .toHaveAttribute('href', '/tax-exports');
+  expect(within(navigation).getByRole('link', { name: 'Verbindungen und Vorgänge' }))
+    .toHaveAttribute('href', '/integration-connections');
 });
 
 it('opens the active group on direct entry and on subsequent route changes', () => {
