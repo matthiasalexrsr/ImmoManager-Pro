@@ -10,12 +10,15 @@ import { useConfirm } from '../components/ConfirmDialog';
 import useEffectiveSettings from '../hooks/useEffectiveSettings';
 import { defaultDueDate } from '../utils/settingDefaults';
 import { formatMoney } from '../utils/format';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { entityHref } from '../utils/entityLinks';
+import { dunningText } from '../features/dunning/dunningText';
+import './receivablesLinks.css';
 import ReceivableSettlement from '../features/ReceivableSettlement';
 
 export default function Receivables() {
   const [params, setParams] = useSearchParams();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const { prefs } = useEffectiveSettings(params.get('property_id'));
   const store = useDataStore();
@@ -76,7 +79,13 @@ export default function Receivables() {
 
   const COLUMNS = [
     { key: 'residual', label: 'Belegbarer Rest', render: (_, row) => <ReceivableSettlement receivable={row} onChanged={() => store.invalidateRelated('bookings', 'receivables', 'deposits', 'contracts')} /> },
-    { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text' },
+    { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text',
+      render: (value, row) => value !== '—' && row.contract_id
+        ? <span className="receivable-record-links">
+          <Link to={entityHref('contract', row.contract_id)}>{value}</Link>
+          {row.dunning_level && <Link className="receivable-record-links__secondary"
+            to={entityHref('dunningCase', row.contract_id)}>{dunningText(locale, 'openDunningCase')}</Link>}
+        </span> : value || '—' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import PdfPreview from '../components/PdfPreview';
@@ -47,6 +49,16 @@ function DunningCaseSession({ contractId }) {
   if (loading && !file) return <div className="page" role="status">{say('loading')}</div>;
   if (!file) return <div className="page"><Problem error={error} onRetry={reload} say={say} /></div>;
   const { contract, next } = file;
+  // The dunning API supplies contract and tenant IDs, but only display names
+  // for the property and unit. Never infer their IDs from those names.
+  const relatedItems = [
+    { to: entityHref('contract', contractId), label: say('openContract') },
+    { to: `/receivables?contract_id=${encodeURIComponent(contractId)}`, label: say('contractReceivables') },
+    ...(contract.tenant_id ? [
+      { to: entityHref('tenantAccount', contract.tenant_id), label: say('openTenantAccount') },
+      { to: `/bookings?tenant_id=${encodeURIComponent(contract.tenant_id)}`, label: say('tenantBookings') },
+    ] : []),
+  ];
   const createLetter = () => act(async () => {
     const scope = { contract_id: contractId, as_of: file.as_of };
     const preview = await dunningService.preview(scope);
@@ -58,6 +70,7 @@ function DunningCaseSession({ contractId }) {
       <p><Link to="/dunning">← {say('back')}</Link></p>
       <h1 className="page-title">{say('contractFile')} · {say('contract')} {contract.number}</h1>
       <p className="dn-muted">{contract.tenant_name} · {contract.property} · {contract.unit}</p>
+      <RelatedPageLinks items={relatedItems} label={say('relatedPages')} heading={say('nextPages')} />
       <Problem error={error} say={say} />
       <div className="dn-figures">
         <div className="dn-figure"><span className="dn-muted">{say('principal')}</span>

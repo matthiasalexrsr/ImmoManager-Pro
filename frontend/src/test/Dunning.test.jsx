@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import Dunning from '../pages/Dunning';
 import DunningCase from '../pages/DunningCase';
 import { api } from '../api';
@@ -26,7 +26,7 @@ const LETTER_DRAFT = { id: 'l2', case_id: 'c1', stage: 2, stage_label: '1. Mahnu
   earlier_charges: 0, fee: 2.5, interest: 3.78, total: 1006.28, outbox: { status: 'queued' } };
 
 const FILE = {
-  contract: { id: 'k1', number: 'V-1', property: 'Nordhaus', unit: 'W1', tenant_name: 'Max Muster' },
+  contract: { id: 'k1', number: 'V-1', property: 'Nordhaus', unit: 'W1', tenant_name: 'Max Muster', tenant_id: 't1' },
   as_of: '2026-07-26',
   claims: [{ key: 'rent:2026-07', kind: 'rent', description: 'Miete 07/2026', due_date: '2026-07-03', amount: 1000,
     paid: 0, outstanding: 1000 }],
@@ -45,9 +45,11 @@ const FILE = {
     excluded: [], letter: null },
 };
 
-function showCase() {
+function RouteMarker() { const location = useLocation(); return <span data-testid="dunning-route">{location.pathname + location.search}</span>; }
+
+function showCase(file = FILE, contractId = 'k1') {
   api.get.mockImplementation(path => {
-    if (path === '/dunning/contracts/k1') return Promise.resolve(FILE);
+    if (path === `/dunning/contracts/${encodeURIComponent(contractId)}`) return Promise.resolve(file);
     if (path === '/dunning/letters/l2') return Promise.resolve({ ...LETTER_DRAFT, draft_hash: 'a'.repeat(64) });
     if (path.startsWith('/dunning/cases/c1/timeline')) {
       const after = new URLSearchParams(path.split('?')[1]).get('after');
@@ -59,8 +61,11 @@ function showCase() {
     }
     return Promise.reject(new Error(`unexpected ${path}`));
   });
-  return render(<MemoryRouter initialEntries={['/dunning/contracts/k1']}>
-    <Routes><Route path="/dunning/contracts/:contractId" element={<DunningCase />} /></Routes></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={[`/dunning/contracts/${encodeURIComponent(contractId)}`]}>
+    <RouteMarker />
+    <Routes><Route path="/dunning/contracts/:contractId" element={<DunningCase />} />
+      <Route path="*" element={<p>Verknüpfte Zielseite</p>} /></Routes>
+  </MemoryRouter>);
 }
 
 beforeEach(() => {
@@ -144,6 +149,64 @@ describe('dunning overview', () => {
 });
 
 describe('dunning case file', () => {
+  it('links a dunning file to its exact contract, claims, tenant account and tenant transactions', async () => {
+    showCase();
+    await screen.findByRole('heading', { name: /Mahnakte/ });
+    const nav = screen.getByRole('navigation', { name: dunningText('de-DE', 'relatedPages') });
+    expect(within(nav).getByText('Direkt weiter')).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Mietvertrag öffnen' }))
+      .toHaveAttribute('href', '/contracts?contract_id=k1');
+    expect(within(nav).getByRole('link', { name: 'Forderungen dieses Vertrags' }))
+      .toHaveAttribute('href', '/receivables?contract_id=k1');
+    expect(within(nav).getByRole('link', { name: 'Mieterkonto öffnen' }))
+      .toHaveAttribute('href', '/tenants/t1/account');
+    expect(within(nav).getByRole('link', { name: 'Buchungen dieses Mieters' }))
+      .toHaveAttribute('href', '/bookings?tenant_id=t1');
+    expect(within(nav).getAllByRole('link')).toHaveLength(4);
+    fireEvent.click(within(nav).getByRole('link', { name: 'Forderungen dieses Vertrags' }));
+    expect(screen.getByTestId('dunning-route')).toHaveTextContent('/receivables?contract_id=k1');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('omits tenant-specific destinations when the backend has not supplied a tenant ID', async () => {
+    showCase({ ...FILE, contract: { ...FILE.contract, tenant_id: null } });
+    await screen.findByRole('heading', { name: /Mahnakte/ });
+    const nav = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(nav).getAllByRole('link')).toHaveLength(2);
+    expect(within(nav).queryByRole('link', { name: 'Mieterkonto öffnen' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Buchungen dieses Mieters' })).not.toBeInTheDocument();
+    // Property and unit display names are NOT their IDs in the dunning response.
+    expect(within(nav).queryByRole('link', { name: /Nordhaus|W1/ })).not.toBeInTheDocument();
+  });
+
+  it('URL-encodes unusual real contract and tenant IDs for contextual navigation', async () => {
+    const file = { ...FILE, contract: { ...FILE.contract, id: 'k /1', tenant_id: 't+#1' } };
+    showCase(file, 'k /1');
+    await screen.findByRole('heading', { name: /Mahnakte/ });
+    expect(api.get).toHaveBeenCalledWith('/dunning/contracts/k%20%2F1', expect.anything());
+    const nav = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(nav).getByRole('link', { name: 'Mietvertrag öffnen' }))
+      .toHaveAttribute('href', '/contracts?contract_id=k%20%2F1');
+    expect(within(nav).getByRole('link', { name: 'Forderungen dieses Vertrags' }))
+      .toHaveAttribute('href', '/receivables?contract_id=k%20%2F1');
+    expect(within(nav).getByRole('link', { name: 'Mieterkonto öffnen' }))
+      .toHaveAttribute('href', '/tenants/t%2B%231/account');
+    expect(within(nav).getByRole('link', { name: 'Buchungen dieses Mieters' }))
+      .toHaveAttribute('href', '/bookings?tenant_id=t%2B%231');
+  });
+
+  it.each(['de-DE', 'en-US', 'es-ES'])('localizes every related page link for %s', async locale => {
+    i18n.locale = locale;
+    showCase();
+    await screen.findByRole('heading', { name: new RegExp(dunningText(locale, 'contractFile')) });
+    const nav = screen.getByRole('navigation', { name: dunningText(locale, 'relatedPages') });
+    expect(within(nav).getByText(dunningText(locale, 'nextPages'))).toBeInTheDocument();
+    for (const key of ['openContract', 'contractReceivables', 'openTenantAccount', 'tenantBookings']) {
+      expect(within(nav).getByRole('link', { name: dunningText(locale, key) })).toBeInTheDocument();
+    }
+  });
+
   it('shows claims, exclusions and letters, and finalizes a draft only after confirmation', async () => {
     api.post.mockResolvedValue({});
     showCase();

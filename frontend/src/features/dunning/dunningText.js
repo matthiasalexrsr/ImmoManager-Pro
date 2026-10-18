@@ -52,6 +52,10 @@ export const COPY = {
     ratesHint: 'Bitte den veröffentlichten Basiszinssatz (§ 247 BGB) selbst eintragen; ohne Eintrag werden keine Zinsen berechnet.',
     saved: 'Gespeichert.', error: 'Fehler', back: 'Zurück zur Übersicht', contractFile: 'Mahnakte',
     unapplied: 'Nicht verrechnete Zahlungen',
+    relatedPages: 'Verknüpfte Seiten', nextPages: 'Direkt weiter',
+    openContract: 'Mietvertrag öffnen', openTenantAccount: 'Mieterkonto öffnen',
+    contractReceivables: 'Forderungen dieses Vertrags', tenantBookings: 'Buchungen dieses Mieters',
+    openDunningCase: 'Mahnakte öffnen',
   },
   'en-US': {
     title: 'Dunning', intro: 'Open claims through letter, payment and result. Nothing is sent automatically.',
@@ -105,6 +109,10 @@ export const COPY = {
     ratesHint: 'Enter the published base rate (§ 247 BGB) yourself; without it no interest is calculated.',
     saved: 'Saved.', error: 'Error', back: 'Back to overview', contractFile: 'Dunning file',
     unapplied: 'Unapplied payments',
+    relatedPages: 'Related pages', nextPages: 'Go to',
+    openContract: 'Open tenancy contract', openTenantAccount: 'Open tenant account',
+    contractReceivables: 'Claims for this contract', tenantBookings: 'Tenant transactions',
+    openDunningCase: 'Open dunning file',
   },
   'es-ES': {
     title: 'Reclamaciones', intro: 'Créditos abiertos hasta carta, pago y resultado. No se envía nada automáticamente.',
@@ -159,6 +167,10 @@ export const COPY = {
     ratesHint: 'Introduzca usted el tipo básico publicado (§ 247 BGB); sin él no se calculan intereses.',
     saved: 'Guardado.', error: 'Error', back: 'Volver al resumen', contractFile: 'Expediente',
     unapplied: 'Pagos no aplicados',
+    relatedPages: 'Páginas relacionadas', nextPages: 'Ir a',
+    openContract: 'Abrir contrato de alquiler', openTenantAccount: 'Abrir cuenta del inquilino',
+    contractReceivables: 'Créditos de este contrato', tenantBookings: 'Movimientos del inquilino',
+    openDunningCase: 'Abrir expediente de reclamación',
   },
 };
 
