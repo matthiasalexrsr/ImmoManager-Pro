@@ -100,9 +100,15 @@ def inventory(database) -> tuple[set[str], set[str]]:
         if "storage_bindings" in tables:
             references.update(row[0] for row in execute("SELECT storage_key FROM storage_bindings WHERE deleted = false"))
         if {"documents", "document_versions", "document_version_chunks"}.issubset(tables):
-            virtual = {validate_key(unquote(row[0].split("uploads/", 1)[1])) for row in execute(
-                "SELECT DISTINCT d.file_url FROM documents d JOIN document_versions v ON v.document_id=d.id "
-                "WHERE d.file_url LIKE '/uploads/assistant-archive/%'")}
+            query = ("SELECT DISTINCT d.file_url FROM documents d JOIN document_versions v ON v.document_id=d.id "
+                     "WHERE d.file_url LIKE ")
+            prefix = "/uploads/assistant-archive/%"
+            if is_file:
+                virtual_rows = conn.execute(query + "?", (prefix,))
+            else:
+                from sqlalchemy import text
+                virtual_rows = conn.execute(text(query + ":prefix"), {"prefix": prefix})
+            virtual = {validate_key(unquote(row[0].split("uploads/", 1)[1])) for row in virtual_rows}
             if virtual:
                 # These locators deliberately have no disk file. Exclude only
                 # exact URLs of proven DB originals, never the whole namespace.

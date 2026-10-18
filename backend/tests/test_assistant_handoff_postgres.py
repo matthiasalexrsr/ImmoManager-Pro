@@ -10,9 +10,17 @@ from backend.db.orm_models import UnitORM
 from backend.models import PortfolioCreate, PropertyCreate, UnitCreate
 from backend.repositories import SQLAlchemyStore
 from backend.services import assistant, assistant_handoff
+from backend.services.portable_runtime import inventory
 from backend.tests import test_assistant_handoff as helpers
 from backend.tests.test_assistant_handoff import prepared, save
 from backend.tests.test_document_versions_postgres import postgres as postgres  # noqa: F401
+
+
+def test_postgres_backup_inventory_binds_virtual_archive_prefix(postgres):
+    engine, _ = postgres
+    with engine.connect() as connection:
+        references, keys = inventory(connection)
+    assert references == set() and keys == set()
 
 
 def test_human_selected_unit_cannot_move_between_validation_and_insert(postgres, monkeypatch, request):
