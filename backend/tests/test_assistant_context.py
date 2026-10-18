@@ -188,7 +188,7 @@ def test_local_statistics_work_without_model_or_selected_sources(estate):
 def test_existing_documents_use_same_local_text_reader_as_chat_uploads(estate, extension):
     contents = "Vorhandener Vertragsbeleg mit eindeutiger Referenz V-2026"
     if extension == "docx":
-        from docx import Document
+        Document = pytest.importorskip('docx', reason='DOCX engine is mandatory in the document-tools gate').Document
         doc = Document()
         doc.add_paragraph(contents)
         doc.sections[0].header.paragraphs[0].text = "Kopfzeile geprüft"

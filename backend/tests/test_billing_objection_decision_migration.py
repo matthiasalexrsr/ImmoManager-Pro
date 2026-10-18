@@ -10,7 +10,7 @@ from backend.db.orm_models import Base
 from backend.db.schema_state import alembic_config, head_revision
 
 PARENT = "f016a1b2c001"
-HEAD = "f018a1b2c001"
+HEAD = head_revision()
 
 
 def test_prior_issued_objections_survive_upgrade_and_decision_keys_are_unique(tmp_path):

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from test_document_versions_postgres import postgres  # noqa: F401  (fixture: own database per test)
 
 from backend import auth
+from backend.db.schema_state import head_revision
 from backend.models import (
     AllocationKeyCreate,
     BillingObjectionRequest,
@@ -174,7 +175,7 @@ def test_prior_status_and_decision_evidence_refuse_downgrade_on_postgres(pg_stor
     with pytest.raises(RuntimeError, match="must not be discarded"):
         command.downgrade(config, "f016a1b2c001")
     with engine.connect() as db:
-        assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "f018a1b2c001"
+        assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == head_revision()
         assert db.execute(sa.text(
             "SELECT reason,source_period_status FROM billing_objections WHERE id='retained'"
         )).one() == ("Original reason", "delivered")

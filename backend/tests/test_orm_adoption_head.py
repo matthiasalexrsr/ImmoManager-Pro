@@ -10,7 +10,7 @@ import backend.models  # noqa: F401 (register every current UI/schema family)
 from backend.db.daily_models import SettingRuleORM
 from backend.db.document_work_models import DocumentWorkEventORM
 from backend.db.orm_models import Base, ContractORM, DocumentORM, PortfolioORM, PropertyORM, TenantORM, UnitORM
-from backend.db.schema_state import alembic_config
+from backend.db.schema_state import alembic_config, head_revision
 
 FAMILIES = {'bank_imports', 'receivable_settlements', 'annual_tax_sources', 'communication_items',
     'daily_user_state', 'daily_auth_sessions', 'daily_inbox_epoch', 'document_work_events',
@@ -58,7 +58,7 @@ def exercise_complete_adoption(engine, config):
     command.upgrade(config, 'head')
     with engine.connect() as connection:
         assert _snapshot(connection) == before
-        assert connection.scalar(sa.text('SELECT version_num FROM alembic_version')) == 'f018a1b2c001'
+        assert connection.scalar(sa.text('SELECT version_num FROM alembic_version')) == head_revision()
         rows = connection.execute(sa.text('SELECT cold_rent, source FROM contract_rent_periods WHERE contract_id=:id'),
             {'id': 'preserved-contract'}).all()
         assert [(float(row[0]), row[1]) for row in rows] == [(321.09, 'contract_start')]
@@ -110,6 +110,6 @@ def test_successor_validation_really_runs_instead_of_blanket_stamping_head(tmp_p
             command.upgrade(alembic_config(url), 'head')
         with engine.connect() as connection:
             if sa.inspect(connection).has_table('alembic_version'):
-                assert connection.scalar(sa.text('SELECT version_num FROM alembic_version')) != 'f018a1b2c001'
+                assert connection.scalar(sa.text('SELECT version_num FROM alembic_version')) != head_revision()
     finally:
         engine.dispose()
