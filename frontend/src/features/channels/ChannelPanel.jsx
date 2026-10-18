@@ -2,6 +2,7 @@
 import { api } from '../../api';
 import { useCanWrite } from '../../contexts/AuthContext';
 import './channels.css';
+import AppLink from '../../components/AppLink';
 
 const labels = { prepared: 'Vorbereitet', unknown: 'Ausgang unklar – Abgleich erforderlich', failed: 'Fehlgeschlagen',
   accepted: 'Von WhatsApp angenommen', sent: 'An WhatsApp übergeben', delivered: 'Zugestellt', read: 'Gelesen',
@@ -87,7 +88,7 @@ export default function ChannelPanel({ sourceId, mode }) {
         {preview.snapshot.assets.map(file => <p className="channel-hash" key={file.id}>{file.title} · {file.size} Bytes · {file.sha256}</p>)}</details>
       {channel !== 'post' && <label>Freigegebene Verbindung<select value={connectionId} onChange={event => setConnectionId(event.target.value)}>
         <option value="">Verbindung wählen</option>{connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-      {channel !== 'post' && !connections.length && <p>In den <a href="/integration-connections">Schnittstellen</a> eine passende Verbindung einrichten. Die lokale Vorbereitung des Inserats bleibt verfügbar.</p>}
+      {channel !== 'post' && !connections.length && <p>In den <AppLink to="/integration-connections">Schnittstellen</AppLink> eine passende Verbindung einrichten. Die lokale Vorbereitung des Inserats bleibt verfügbar.</p>}
       {channel === 'whatsapp' && <div className="channel-fields">
         {input('to', 'Mobilnummer mit Ländervorwahl', 'tel')}{input('template_name', 'Von Meta freigegebener Template-Name')}{input('language_code', 'Exakte Template-Sprache')}
         <label>Textparameter in Template-Reihenfolge (ein Wert je Zeile)<textarea value={fields.parameters || ''} onChange={event => update('parameters', event.target.value)} /></label>

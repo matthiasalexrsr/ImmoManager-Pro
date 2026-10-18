@@ -7,7 +7,10 @@ export const workspace = {
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null && value !== ''));
     return api.get(`${path(resource)}${params.size ? `?${params}` : ''}`, options);
   },
-  get: (resource, id, options) => api.get(path(resource, id), options),
+  get: (resource, id, options, query = {}) => {
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null && value !== ''));
+    return api.get(`${path(resource, id)}${params.size ? `?${params}` : ''}`, options);
+  },
   put: (resource, id, data, options) => api.put(path(resource, id), data, options),
   rebase: (id, data) => api.post(`${path('drafts', id)}/rebase`, data),
   remove: (resource, id, data, options = {}) => api.del(path(resource, id), { ...options, data }),

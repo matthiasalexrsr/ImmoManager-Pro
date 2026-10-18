@@ -121,3 +121,8 @@
   outline-offset: -2px;
   background: var(--color-primary-light, var(--color-bg));
 }
+
+/* Touch screens: column headers are tap targets of at least 40 px. */
+@media (pointer: coarse), (max-width: 640px) {
+  .data-table-workspace .table-sort-button { min-height: 40px; }
+}

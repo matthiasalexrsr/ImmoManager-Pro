@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..auth import require_auth
 from ..dependencies import store
@@ -135,8 +135,15 @@ def delete_recent(kind: str, entity_id: str, payload: WorkspaceMutation, actor: 
 
 
 @router.get("/view-state/{context:path}")
-def get_view_state(context: str, actor: Actor):
-    return workspace.get_record(store, actor.id, "view-state", contexts.context_identity(context))
+def get_view_state(context: str, actor: Actor, missing_ok: bool = False):
+    # A list's first visit has no saved state yet; missing_ok answers that with null
+    # instead of a 404, so the browser does not log a failed request on every new list.
+    try:
+        return workspace.get_record(store, actor.id, "view-state", contexts.context_identity(context))
+    except HTTPException as error:
+        if missing_ok and error.status_code == 404:
+            return None
+        raise
 
 
 @router.put("/view-state/{context:path}")

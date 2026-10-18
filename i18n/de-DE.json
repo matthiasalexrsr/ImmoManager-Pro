@@ -76,6 +76,11 @@
       "unit": "Neue Einheit",
       "lead": "Neuer Interessent",
       "contract": "Neuer Mietvertrag"
+    },
+    "sub": {
+      "documentQueue": "Dokumenteneingang",
+      "duplicateCheck": "Dubletten prüfen",
+      "teha": "TEHA Kundenportal"
     }
   },
   "topBar": {

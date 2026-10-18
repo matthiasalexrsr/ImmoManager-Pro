@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import BankMatch from './BankMatch';
+import AppLink from './AppLink';
 
 const key = () => crypto.randomUUID();
 const amount = cents => (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -128,7 +129,7 @@ export default function BankImport({ accounts, onImported }) {
       <p>{preview.row_count} Bewegungen · {preview.error_count} Fehler · Summe {amount(preview.total_cents)} · {preview.state === 'confirmed' ? 'Übernommen' : preview.state === 'invalid' ? 'Korrektur erforderlich' : 'Zur Prüfung bereit'}</p>
       <p>{preview.balance_verified ? 'Bank-Anfangs- und Abschlusssalden sind mit den Bewegungen abgestimmt.' : 'Kein erfolgreich abgestimmtes Anfangs-/Abschlusssaldenpaar vorhanden. Bitte die Summe mit dem Kontoauszug prüfen.'}</p>
       <button type="button" disabled={busy} onClick={download}>{preview.source_provenance === 'submitted_text_utf8' ? 'Übermittelten Text herunterladen' : 'Original herunterladen'}</button>
-      <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Zeile</th><th>Datum</th><th>Betrag</th><th>Verwendungszweck</th><th>Referenz / Buchung</th></tr></thead><tbody>{preview.rows.map((r, i) => <tr key={`${r.line}-${i}`}><td>{r.line}</td><td>{r.date}</td><td>{amount(r.cents)}</td><td>{r.text}</td><td>{r.reference} {preview.links?.[i]?.booking_id && <a href={`/bookings?booking_id=${encodeURIComponent(preview.links[i].booking_id)}`}>Buchung öffnen</a>}
+      <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Zeile</th><th>Datum</th><th>Betrag</th><th>Verwendungszweck</th><th>Referenz / Buchung</th></tr></thead><tbody>{preview.rows.map((r, i) => <tr key={`${r.line}-${i}`}><td>{r.line}</td><td>{r.date}</td><td>{amount(r.cents)}</td><td>{r.text}</td><td>{r.reference} {preview.links?.[i]?.booking_id && <AppLink to={`/bookings?booking_id=${encodeURIComponent(preview.links[i].booking_id)}`}>Buchung öffnen</AppLink>}
         {preview.links?.[i]?.booking_id && <BankMatch bookingId={preview.links[i].booking_id} onAssigned={onImported} />}
         <details><summary>Quelldaten und unbekannte Felder</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: 400 }}>{typeof r.raw === 'string' ? r.raw : JSON.stringify(r.raw, null, 2)}</pre></details>
         {preview.state === 'staged' && r.duplicate_candidates?.length > 0 && <label>Ähnliche Bewegung prüfen <select value={decisions[r.index] || ''} onChange={e => { setDecisions({ ...decisions, [r.index]: e.target.value }); setChecked(false); }}><option value="">Bitte vergleichen</option><option value="new">Eigenständige neue Bewegung</option>{r.duplicate_candidates.map(id => <option value={id} key={id}>Dieselbe Bewegung wie Buchung {id}</option>)}</select></label>}</td></tr>)}</tbody></table></div>

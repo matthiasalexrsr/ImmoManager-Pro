@@ -75,6 +75,11 @@
       "unit": "Nueva unidad",
       "lead": "Nuevo interesado",
       "contract": "Nuevo contrato de alquiler"
+    },
+    "sub": {
+      "documentQueue": "Entrada de documentos",
+      "duplicateCheck": "Comprobar duplicados",
+      "teha": "Portal de clientes TEHA"
     }
   },
   "topBar": {

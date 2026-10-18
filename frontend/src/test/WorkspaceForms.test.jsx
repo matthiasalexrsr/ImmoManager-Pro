@@ -332,6 +332,19 @@ describe('named views', () => {
   });
 });
 
+it('treats a null view state as a first visit without applying or failing', async () => {
+  vi.useFakeTimers();
+  workspace.get.mockResolvedValue(null);
+  workspace.put.mockResolvedValue({ id: 'tasks#first', revision: 1, state: { scroll_top: 5 } });
+  const apply = vi.fn();
+  renderHook(() => useWorkspaceViewState('tasks#first', { scroll_top: 5 }, apply));
+  await act(async () => {});
+  expect(workspace.get).toHaveBeenCalledWith('view-state', 'tasks#first', undefined, { missing_ok: true });
+  expect(apply).not.toHaveBeenCalled();
+  await act(async () => { vi.advanceTimersByTime(900); });
+  expect(workspace.put.mock.calls.at(-1)).toMatchObject(['view-state', 'tasks#first', { base_revision: 0, state: { scroll_top: 5 } }]);
+});
+
 it('ignores a late table-state response from a different context', async () => {
   vi.useFakeTimers();
   workspace.get.mockRejectedValue({ statusCode: 404 });

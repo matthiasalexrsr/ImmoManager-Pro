@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
@@ -120,6 +120,15 @@ export default function Meters() {
       setReadings(withConsumption);
     }).catch(() => setReadings([]));
   };
+
+  // The readings panel sits below the (long) list: bring it into view when a meter is chosen,
+  // otherwise "Bearbeiten" seems to do nothing.
+  const readingsPanel = useRef(null);
+  useEffect(() => {
+    if (!selectedMeter?.id || !readingsPanel.current) return;
+    readingsPanel.current.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    readingsPanel.current.querySelector('h3')?.focus({ preventScroll: true });
+  }, [selectedMeter?.id]);
 
   const noticeMeter = searchParams.get('notice_id') ? searchParams.get('focus_id') : null;
   useEffect(() => {
@@ -280,11 +289,11 @@ export default function Meters() {
 
       {/* Selected meter readings */}
       {selectedMeter && (
-        <div style={{ marginTop: '1.5rem' }}>
+        <div ref={readingsPanel} style={{ marginTop: '1.5rem', scrollMarginTop: '6rem' }}>
           <div className="panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h3 style={{ margin: 0 }}>
+                <h3 style={{ margin: 0 }} tabIndex={-1}>
                   Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
                 </h3>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>

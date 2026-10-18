@@ -2,6 +2,7 @@
 import { api } from '../../api';
 import './channels.css';
 import { useCanWrite } from '../../contexts/AuthContext';
+import AppLink from '../../components/AppLink';
 
 export default function MarketingPanel({ listingId }) {
   const [data, setData] = useState(null);
@@ -56,7 +57,7 @@ export default function MarketingPanel({ listingId }) {
       {lead && <label>Besichtigung<select value={fields.viewing_id || ''} onChange={event => set('viewing_id', event.target.value)}><option value="">Bitte wählen</option>
         {data.viewings.filter(item => item.lead_id === lead.id).map(item => <option key={item.id} value={item.id}>{new Date(item.scheduled_at).toLocaleString('de-DE')} · {item.status === 'completed' ? 'Durchgeführt' : item.status === 'scheduled' ? 'Geplant' : item.status}</option>)}</select></label>}
       {canWrite && viewing && viewing.status === 'scheduled' && <button disabled={busy} onClick={() => act('complete_viewing', { lead_id: lead.id, lead_revision: lead.updated_at, viewing_id: viewing.id, viewing_revision: viewing.updated_at, completed_confirmed: true })}>Tatsächlich durchgeführte Besichtigung bestätigen</button>}
-      {canWrite && viewing?.status === 'completed' && <><p>Den geprüften Vertrag in der <a href="/contracts">Vertragsakte</a> erstellen und anschließend hier ausdrücklich zuordnen.</p>
+      {canWrite && viewing?.status === 'completed' && <><p>Den geprüften Vertrag in der <AppLink to="/contracts">Vertragsakte</AppLink> erstellen und anschließend hier ausdrücklich zuordnen.</p>
         <label>Geprüfter Vertrag derselben Einheit<select value={fields.contract_id || ''} onChange={event => set('contract_id', event.target.value)}><option value="">Bitte wählen</option>
           {data.contracts.filter(item => item.status === 'active').map(item => <option key={item.id} value={item.id}>{item.contract_number}</option>)}</select></label>
         {contract && <p>Vertragspartei-ID: {contract.tenant_id}</p>}

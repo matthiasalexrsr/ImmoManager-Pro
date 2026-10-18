@@ -356,9 +356,16 @@ function DocumentsWorkspace() {
 
   return (
     <div className="page documents-page">
-      <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
-      <a className="btn btn-secondary" href="/teha">TEHA-Empfang und Originalhistorie</a>
-      <div className="toolbar" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="page-header">
+        <h1>{t('pages.documents.title') || 'Dokumente'}</h1>
+        <div className="page-header-actions">
+          {/* contracts, invoices, receipts for the document management system: package or hand-over */}
+          <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
+          <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
+          <Link className="btn btn-secondary" to="/teha">TEHA-Empfang und Originalhistorie</Link>
+        </div>
+      </div>
+      <div className="toolbar">
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>
         <select id="document-party" value={tenantId} disabled={uploading} onChange={event => {
@@ -370,9 +377,6 @@ function DocumentsWorkspace() {
         </select>
         </div>
         {tenantId && party && <button className="btn btn-secondary" onClick={() => party.openParty(tenantId)}>Parteienkarte öffnen</button>}
-        {/* contracts, invoices, receipts for the document management system: package or hand-over */}
-        <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
-        <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
       </div>
       {aktenwerkOpen && <AktenwerkDialog ready={aktenwerkReady} onClose={() => setAktenwerkOpen(false)} />}
       {tenantId && <p className="text-muted">Dokumente von {overview?.tenant.full_name || 'dieser Partei'} und ihren Mietverträgen. Neue Uploads werden dieser Partei zugeordnet.</p>}

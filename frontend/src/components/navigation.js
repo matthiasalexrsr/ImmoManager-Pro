@@ -116,3 +116,11 @@ export const QUICK_ACTIONS = [
   { to: '/leads?neu=1', area: '/leads', labelKey: 'navigation.actions.lead', fallback: 'Neuer Interessent', icon: TenantIcon },
   { to: '/contract-wizard', area: '/contracts', labelKey: 'navigation.actions.contract', fallback: 'Neuer Mietvertrag', icon: ContractIcon },
 ];
+
+// Pages without their own sidebar entry. The top bar names them and places them in the
+// section of the entry they are opened from (instead of "Arbeitsplatz / Dashboard").
+export const SUB_PAGES = [
+  { to: '/document-queue', parent: '/work-center', labelKey: 'navigation.sub.documentQueue', fallback: 'Dokumenteneingang' },
+  { to: '/duplicate-check', parent: '/work-center', labelKey: 'navigation.sub.duplicateCheck', fallback: 'Dubletten prüfen' },
+  { to: '/teha', parent: '/integration-connections', labelKey: 'navigation.sub.teha', fallback: 'TEHA Kundenportal' },
+];

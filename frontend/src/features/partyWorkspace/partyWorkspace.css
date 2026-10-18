@@ -124,3 +124,9 @@
 .party-entity-link { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 .party-entity-link:hover { color: var(--color-primary); text-decoration-style: solid; }
 .party-entity-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 2px; }
+
+/* Touch screens: the name link gets a taller tap area without changing the layout around it. */
+@media (pointer: coarse), (max-width: 640px) {
+  .party-link { position: relative; }
+  .party-link::after { content: ''; position: absolute; inset: -10px 0; }
+}

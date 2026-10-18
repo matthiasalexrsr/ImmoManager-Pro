@@ -902,10 +902,10 @@ export default function Statements() {
           </button>
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
-            <Link to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
             <span className="text-muted">
               {propMap[selectedPeriod.property_id]?.name || '—'} · {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
             </span>
+            <Link className="detail-title-link" to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <StatusBadge status={selectedPeriod.status} />

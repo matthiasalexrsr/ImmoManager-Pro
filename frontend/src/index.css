@@ -324,6 +324,7 @@ a:hover {
 :where(.main-content-body .page > h1, .main-content-body .page-header) { margin-bottom: var(--space-5); }
 :where(.main-content-body .page-header) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
 :where(.main-content-body .page-header > h1) { margin: 0; }
+.page-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
 .page-subtitle {
   color: var(--color-text-secondary);
@@ -2557,6 +2558,10 @@ table.data-table tbody tr:last-child td {
 .detail-title .text-muted {
   font-size: var(--text-sm);
 }
+
+/* Title, then context line, then links: each on its own line instead of running together. */
+.detail-title > :is(.text-muted, .detail-title-link) { display: block; margin-top: 2px; }
+.detail-title-link { font-size: var(--text-sm); }
 
 /* --- Tabs --- */
 .detail-tabs,

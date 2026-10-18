@@ -75,6 +75,11 @@
       "unit": "New unit",
       "lead": "New lead",
       "contract": "New rental contract"
+    },
+    "sub": {
+      "documentQueue": "Document intake",
+      "duplicateCheck": "Check duplicates",
+      "teha": "TEHA customer portal"
     }
   },
   "topBar": {
