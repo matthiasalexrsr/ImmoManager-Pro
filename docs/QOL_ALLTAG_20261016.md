@@ -52,7 +52,9 @@ enthält ausschließlich Bedienung, Auswertungen und belegte Fehlerkorrekturen.
   führen zum überprüfbaren Konflikt, statt andere Zahlen still zu exportieren.
   Unvollständige Antworten und fehlgeschlagene Abfragen erzeugen keine
   scheinbar erfolgreichen Nullberichte. Späte Antworten einer geschlossenen
-  Ansicht werden verworfen; fehlgeschlagene Eingaben und unklare
+  Ansicht oder einer inzwischen geänderten URL-Auswahl werden verworfen,
+  einschließlich später Exportantworten und Fehlermeldungen. Eine neue
+  Auswahl kann sofort erneut berechnet werden; fehlgeschlagene Eingaben und unklare
   Speicherungskommandos behalten ihren Wiederanlaufweg.
 - Widersprüchliche sichtbare Portfolio-/Objekt-/Einheitsfilter ergeben 422.
   Leistungsberichte prüfen auch implizite Jahresgrenzen. Eine zukünftige

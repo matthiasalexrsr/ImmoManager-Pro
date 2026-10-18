@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import FinanceReports from '../features/FinanceReports';
 import { api } from '../api';
 
@@ -12,7 +12,10 @@ const result = (extra = {}) => ({ basis: 'cash-v2', definition_hash: 'definition
   filters: { property_id: 'p1', unit_id: 'u1', date_from: '2026-01-01', date_to: '2026-01-31' },
   monthly: [{ month: '2026-01', income: '125.00', expense: '25.00', net: '100.00' }],
   totals: { income: '125.00', expense: '25.00', net: '100.00' }, warnings: [], sources: [], ...extra });
-function Location() { return <output data-testid="location">{useLocation().search}</output>; }
+function Location() {
+  const navigate = useNavigate();
+  return <><output data-testid="location">{useLocation().search}</output><button onClick={() => navigate('/reports')}>Auswertungen ohne Objektauswahl</button></>;
+}
 function mount(path = '/reports') { return render(<MemoryRouter initialEntries={[path]}><FinanceReports standalone /><Location /></MemoryRouter>); }
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear();
@@ -135,4 +138,54 @@ it('does not apply an old successful response after closing and reopening the re
   await act(async () => resolve(result()));
   expect(screen.queryByRole('region', { name: 'Berechneter Bericht' })).not.toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it.each(['success', 'failure'])('ignores a late %s after same-route navigation and allows a fresh calculation', async outcome => {
+  let resolve, reject;
+  api.get.mockImplementationOnce(() => new Promise((done, fail) => { resolve = done; reject = fail; }));
+  mount('/reports?kind=cash-v2&property_id=p1'); await ready();
+  fireEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Auswertungen ohne Objektauswahl' }));
+  expect(screen.getByLabelText('Immobilie')).toHaveValue('');
+  await ready();
+  api.get.mockResolvedValue(result({ result_hash: 'all-records', sources: [{ identity: 'new', label: 'Aktuelle Auswahl', amount: '5.00' }] }));
+  await calculate();
+  await act(async () => outcome === 'success' ? resolve(result({ sources: [{ identity: 'old', label: 'Alte Auswahl', amount: '1.00' }] })) : reject(new Error('Veralteter Fehler')));
+  expect(screen.getByText('Aktuelle Auswahl')).toBeInTheDocument();
+  expect(screen.queryByText('Alte Auswahl')).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('does not download a pending export after navigating to another report context', async () => {
+  let resolve;
+  api.getBlob.mockImplementation(() => new Promise(done => { resolve = done; }));
+  const createObjectURL = vi.fn();
+  vi.stubGlobal('URL', class extends URL { static createObjectURL = createObjectURL; });
+  try {
+    mount('/reports?kind=cash-v2&property_id=p1'); await ready(); await calculate();
+    fireEvent.click(screen.getByRole('button', { name: 'PDF herunterladen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Auswertungen ohne Objektauswahl' }));
+    await ready();
+    await act(async () => resolve(new Blob(['old report'])));
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDF herunterladen' })).toBeDisabled();
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('keeps an uncertain save across navigation and confirms it with the original repeat key', async () => {
+  let resolve;
+  api.post.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  mount('/reports?kind=cash-v2&property_id=p1'); await ready();
+  fireEvent.click(screen.getByRole('button', { name: 'Als neue Fassung speichern' }));
+  const request = api.post.mock.calls[0][1];
+  fireEvent.click(screen.getByRole('button', { name: 'Auswertungen ohne Objektauswahl' }));
+  await act(async () => resolve({ id: 'saved-1' }));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('workspace:reports-owner:finance-command:report-definition')).request).toEqual(request);
+  api.post.mockResolvedValue({ id: 'saved-1' });
+  fireEvent.click(screen.getByRole('button', { name: 'Speicherung prüfen und fortsetzen' }));
+  await screen.findByText('Definition gespeichert. Beim Öffnen gelten die aktuellen Rechte und Quellen.');
+  expect(api.post.mock.calls[1][1]).toEqual(request);
+  expect(localStorage.getItem('workspace:reports-owner:finance-command:report-definition')).toBeNull();
 });

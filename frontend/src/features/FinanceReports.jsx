@@ -53,16 +53,20 @@ function ReportEditor({ standalone = false }) {
   const [notice, setNotice] = useState('');
   const [saveKey, setSaveKey] = useState(() => crypto.randomUUID());
   const active = useRef(false);
+  const requestEpoch = useRef(0);
   const querySignature = params.toString();
+  const latestQuery = useRef(querySignature);
+  latestQuery.current = querySignature;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
     if (!standalone) return;
+    requestEpoch.current += 1;
     setDefinition(previous => {
       const next = { ...previous };
       queryKeys.forEach(key => delete next[key]);
       return { ...next, as_of: today(), ...queryDefinition(new URLSearchParams(querySignature)) };
     });
-    setResult(null); setError(''); setNotice('');
+    setResult(null); setError(''); setNotice(''); setBusy(false);
   }, [standalone, querySignature]);
   useEffect(() => {
     const changed = event => { if (event.key === commandKey) setPending({ key: commandKey, command: readFinanceCommand(commandKey) }); };
@@ -103,9 +107,12 @@ function ReportEditor({ standalone = false }) {
   };
   const run = async (action) => {
     const session = api.captureSession();
-    const current = () => { session(); if (!active.current) throw new Error('Die Berichtsansicht wurde geschlossen.'); };
+    const epoch = ++requestEpoch.current;
+    const actionQuery = querySignature;
+    const isCurrent = () => active.current && requestEpoch.current === epoch && (!standalone || latestQuery.current === actionQuery);
+    const current = () => { session(); if (!isCurrent()) throw new Error('Die Berichtsauswahl hat sich geändert.'); };
     setBusy(true); setError(''); setNotice('');
-    try { await action(current); current(); } catch (e) { if (active.current) setError(e.message); } finally { if (active.current) setBusy(false); }
+    try { await action(current); current(); } catch (e) { if (isCurrent()) setError(e.message); } finally { if (isCurrent()) setBusy(false); }
   };
   const saveReport = () => run(async current => {
     if (!owner) throw new Error('Die Anmeldung wird noch geprüft. Bitte erneut versuchen.');
