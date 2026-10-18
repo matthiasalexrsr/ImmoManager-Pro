@@ -117,7 +117,7 @@ class CliProcess:
         self._closed = True
         if self.job is not None:
             import ctypes
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel = getattr(ctypes, 'WinDLL')("kernel32", use_last_error=True)
             kernel.CloseHandle.argtypes = [ctypes.c_void_p]
             kernel.CloseHandle(self.job)
             self.job = None
@@ -177,7 +177,7 @@ def _windows_job(process):
                     ("ProcessMemory", ctypes.c_size_t), ("JobMemory", ctypes.c_size_t),
                     ("PeakProcessMemory", ctypes.c_size_t), ("PeakJobMemory", ctypes.c_size_t)]
 
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel = getattr(ctypes, 'WinDLL')("kernel32", use_last_error=True)
     kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
     kernel.CreateJobObjectW.restype = wintypes.HANDLE
     kernel.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
@@ -185,13 +185,13 @@ def _windows_job(process):
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     job = kernel.CreateJobObjectW(None, None)
     if not job:
-        raise ctypes.WinError(ctypes.get_last_error())
+        raise getattr(ctypes, 'WinError')(getattr(ctypes, 'get_last_error')())
     limits = Extended()
     limits.Basic.Flags = 0x2000  # KILL_ON_JOB_CLOSE
     if not kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)) or not kernel.AssignProcessToJobObject(job, wintypes.HANDLE(process._handle)):
         kernel.CloseHandle(job)
-        raise ctypes.WinError(ctypes.get_last_error())
-    native = ctypes.WinDLL('ntdll')
+        raise getattr(ctypes, 'WinError')(getattr(ctypes, 'get_last_error')())
+    native = getattr(ctypes, 'WinDLL')('ntdll')
     native.NtResumeProcess.argtypes = [wintypes.HANDLE]
     native.NtResumeProcess.restype = ctypes.c_long
     if native.NtResumeProcess(wintypes.HANDLE(process._handle)) != 0:

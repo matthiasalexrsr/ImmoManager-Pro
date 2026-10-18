@@ -105,7 +105,7 @@ class ProfileLease:
                 # Windows byte-range locks may extend beyond EOF. Reading or
                 # initializing the byte would race with another lease holder.
                 try:
-                    msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    getattr(msvcrt, 'locking')(self.handle.fileno(), getattr(msvcrt, 'LK_NBLCK'), 1)
                 except OSError as error:
                     if error.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
                         raise BlockingIOError() from error

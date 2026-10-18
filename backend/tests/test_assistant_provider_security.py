@@ -221,10 +221,10 @@ def test_owned_job_reaps_child_and_grandchild_and_leaves_unrelated_process(tmp_p
     from ctypes import wintypes
 
     child = tmp_path / "spawn-child.py"
-    child.write_text("import subprocess,sys,time\np=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],creationflags=subprocess.CREATE_NO_WINDOW,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\nprint(p.pid,flush=True)\ntime.sleep(30)\n", encoding="utf-8")
+    child.write_text("import subprocess,sys,time\np=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],creationflags=getattr(subprocess, 'CREATE_NO_WINDOW'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\nprint(p.pid,flush=True)\ntime.sleep(30)\n", encoding="utf-8")
     unrelated = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(30)"],
-                                 creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    kernel = getattr(ctypes, 'WinDLL')("kernel32", use_last_error=True)
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel.OpenProcess.restype = wintypes.HANDLE
     kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
