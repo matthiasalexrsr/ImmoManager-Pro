@@ -10,6 +10,8 @@
 .thread-message-body { overflow-wrap: anywhere; }
 .thread-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; min-width: 0; }
 .thread-composer label { grid-column: 1 / -1; font-weight: 600; overflow-wrap: anywhere; }
+.thread-composer .reply-draft-recovery { grid-column: 1 / -1; min-width: 0; }
+.thread-composer .reply-draft-recovery .btn { justify-self: auto; }
 .thread-composer textarea { width: 100%; min-width: 0; min-height: 110px; box-sizing: border-box; resize: vertical; }
 .thread-composer .btn { justify-self: end; min-width: 100px; }
 @media (max-width: 800px) {
