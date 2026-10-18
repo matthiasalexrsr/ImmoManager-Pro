@@ -158,6 +158,7 @@ export default function AssistantWorkspace({ owner }) {
           <FinancialProof finance={state.run?.financial_summary} report={state.run?.report} />
           {state.pollError && <div className="assistant-alert error" role="alert">Laufstatus konnte nicht aktualisiert werden: {state.pollError}<button type="button" className="btn btn-sm btn-secondary" disabled={state.busy} onClick={state.run ? state.refreshRun : state.retryLoad}>{state.run ? 'Status erneut abrufen' : 'Ansicht erneut laden'}</button></div>}
           <AssistantProposals owner={owner} proposals={state.proposals} perform={state.perform} disabled={locked} onChanged={proposal => { if (proposal) state.setProposals(previous => previous.map(item => item.id === proposal.id ? proposal : item)); }} />
+          {state.proposalCursor && <button type="button" className="btn btn-secondary" disabled={state.busy || state.loading || !state.record} onClick={state.moreProposals}>Weitere Vorschläge laden</button>}
         </section>
         <form className={`assistant-composer ${dragging ? 'dragging' : ''}`} aria-label="Nachricht verfassen" onSubmit={event => { event.preventDefault(); if (!locked && !sending && providerReady) state.submit(); }}
           onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false); }} onDrop={event => { event.preventDefault(); setDragging(false); upload(event.dataTransfer.files); }}>

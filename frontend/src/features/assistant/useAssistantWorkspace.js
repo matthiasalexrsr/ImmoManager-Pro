@@ -7,6 +7,7 @@ import { readAssistantDraft, writeAssistantDraft, readAssistantCommand, writeAss
 const emptyDraft = () => ({ body: '', attachments: [], context: [], web_research: false, report: null });
 const rejected = failure => [400, 403, 404, 409, 413, 415, 422].includes(failure.statusCode);
 const mergeRows = (first, next) => [...new Map([...first, ...next].map(row => [row.id, row])).values()];
+const proposalPageCursor = page => page?.has_more === false ? null : page?.next_cursor || null;
 
 export default function useAssistantWorkspace(owner) {
   const [params, setParams] = useSearchParams();
@@ -29,6 +30,8 @@ export default function useAssistantWorkspace(owner) {
   const [attachmentCursor, setAttachmentCursor] = useState(null);
   const [run, setRun] = useState(null);
   const [proposals, setProposals] = useState([]);
+  const [proposalCursor, setProposalCursor] = useState(null);
+  const proposalPagesLoaded = useRef(false);
   const [draft, setDraft] = useState(emptyDraft);
   const draftRef = useRef(draft);
   const [pending, setPending] = useState(null);
@@ -44,14 +47,14 @@ export default function useAssistantWorkspace(owner) {
   const connectionProvider = useRef('');
   const hideRevoked = useCallback(failure => {
     if (![401, 403, 404].includes(failure.statusCode)) return;
-    setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]);
+    setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false;
     draftRef.current = emptyDraft(); setDraft(emptyDraft()); setPending(null);
     setConversations(previous => previous.filter(item => item.id !== selectedId));
   }, [selectedId]);
 
   useEffect(() => {
     live.current = true;
-    const invalidate = () => { live.current = false; epoch.current += 1; setMessages([]); setDraft(emptyDraft()); setAttachments([]); setRecord(null); setRun(null); setProposals([]); setConversations([]); };
+    const invalidate = () => { live.current = false; epoch.current += 1; setMessages([]); setDraft(emptyDraft()); setAttachments([]); setRecord(null); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false; setConversations([]); };
     window.addEventListener('workspace-logout', invalidate);
     window.addEventListener('workspace-owner', invalidate);
     return () => { live.current = false; epoch.current += 1; window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
@@ -72,7 +75,7 @@ export default function useAssistantWorkspace(owner) {
   useEffect(() => {
     const generation = ++epoch.current; const controller = new AbortController(); const session = api.captureSession();
     operation.current = false;
-    setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]); setPending(null); setEditPending(null);
+    setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false; setPending(null); setEditPending(null);
     setError(''); setPollError(''); setNotice(''); setBusy(false); setUploading(false); setLoading(Boolean(selectedId));
     const current = () => { session(); return live.current && scope.current === identity && generation === epoch.current && !controller.signal.aborted; };
     if (!selectedId) {
@@ -89,6 +92,7 @@ export default function useAssistantWorkspace(owner) {
       setRecord(conversation); setMessages(page.items); setMessageCursor(page.next_cursor || null); setAttachments(files.items); setAttachmentCursor(files.next_cursor || null);
       setRun(runs.items.find(item => item.id === conversation.active_run_id) || runs.items[0] || null);
       setProposals(Array.isArray(suggested) ? suggested : suggested.items || []);
+      setProposalCursor(proposalPageCursor(suggested));
       const restored = readAssistantDraft(owner, selectedId);
       // Restore private buffers only after the server has authorized this conversation.
       draftRef.current = restored; setDraft(restored); setPending(readAssistantCommand(owner, selectedId));
@@ -128,7 +132,8 @@ export default function useAssistantWorkspace(owner) {
           const [page, conversation, suggestions] = await Promise.all([assistantApi.messages(selectedId), assistantApi.conversation(selectedId), assistantApi.proposals(selectedId)]); session();
           if (!live.current || scope.current !== token || controller.signal.aborted) return;
           setRun(next); setMessages(previous => mergeRows(previous, page.items)); setRecord(conversation);
-          setProposals(Array.isArray(suggestions) ? suggestions : suggestions.items || []);
+          setProposals(previous => mergeRows(previous, Array.isArray(suggestions) ? suggestions : suggestions.items || []));
+          if (!proposalPagesLoaded.current) setProposalCursor(proposalPageCursor(suggestions));
           setConversations(previous => mergeRows(previous, [conversation]));
         }
       } catch (failure) { if (live.current && scope.current === token && !controller.signal.aborted) { hideRevoked(failure); setPollError(failure.message); } }
@@ -236,7 +241,8 @@ export default function useAssistantWorkspace(owner) {
     if (!activeRun(next)) {
       const [page, fresh, suggestions] = await Promise.all([assistantApi.messages(selectedId), assistantApi.conversation(selectedId), assistantApi.proposals(selectedId)]); current();
       setMessages(previous => mergeRows(previous, page.items)); setRecord(fresh); setConversations(previous => mergeRows(previous, [fresh]));
-      setProposals(Array.isArray(suggestions) ? suggestions : suggestions.items || []);
+      setProposals(previous => mergeRows(previous, Array.isArray(suggestions) ? suggestions : suggestions.items || []));
+      if (!proposalPagesLoaded.current) setProposalCursor(proposalPageCursor(suggestions));
     }
   });
   const connect = action => perform(async current => {
@@ -257,6 +263,12 @@ export default function useAssistantWorkspace(owner) {
   const moreAttachments = () => perform(async current => {
     const page = await assistantApi.attachments(selectedId, undefined, attachmentCursor); current(); setAttachments(previous => mergeRows(previous, page.items)); setAttachmentCursor(page.next_cursor || null);
   });
+  const moreProposals = () => perform(async current => {
+    if (!proposalCursor) return;
+    const page = await assistantApi.proposals(selectedId, undefined, proposalCursor); current();
+    if (!Array.isArray(page.items)) throw new Error('Die Vorschlagsliste hat eine unvollständige Antwort geliefert.');
+    setProposals(previous => mergeRows(previous, page.items)); proposalPagesLoaded.current = true; setProposalCursor(proposalPageCursor(page));
+  });
   const editConversation = (patch, retry = false) => perform(async current => {
     if (!record) return;
     const key = `edit:${record.id}`;
@@ -270,7 +282,7 @@ export default function useAssistantWorkspace(owner) {
     } catch (failure) { current(); if (rejected(failure)) { clearAssistantCommand(owner, key, command); setEditPending(null); } throw failure; }
   });
   return { capabilities, conversations, nextCursor, provider: currentProvider, model: record?.model || model, connection,
-    record, messages, messageCursor, attachments, attachmentCursor, run, proposals, draft, pending, editPending, loading, busy, uploading, error, pollError, notice, selectedId,
+    record, messages, messageCursor, attachments, attachmentCursor, run, proposals, proposalCursor, draft, pending, editPending, loading, busy, uploading, error, pollError, notice, selectedId,
     setModel, chooseProvider, changeDraft, navigate, startConversation, submit, upload, runCommand, refreshRun, connect, moreConversations, moreMessages,
-    retryLoad: () => setAttempt(value => value + 1), setError, setNotice, perform, refresh: () => setAttempt(value => value + 1), setProposals, completeLogin, moreAttachments, editConversation };
+    retryLoad: () => setAttempt(value => value + 1), setError, setNotice, perform, refresh: () => setAttempt(value => value + 1), setProposals, completeLogin, moreAttachments, moreProposals, editConversation };
 }

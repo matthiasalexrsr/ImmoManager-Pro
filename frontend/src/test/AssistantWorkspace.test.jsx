@@ -372,6 +372,61 @@ describe('private conversations, durable runs and files', () => {
   });
 });
 
+describe('complete private proposal pagination', () => {
+  const item = index => ({ id: `proposal-${index}`, revision: 1, state: index >= 50 ? 'proposed' : 'rejected', payload: { kind: 'task', anchor: { kind: 'property', id: 'p1' }, evidence: [], values: { title: `Vorschlag ${index}` } } });
+
+  it('loads more than fifty proposals by cursor, merges duplicate IDs, reloads and honors false has_more', async () => {
+    const first = Array.from({ length: 50 }, (_, index) => item(index)); const base = api.get.getMockImplementation();
+    api.get.mockImplementation(path => {
+      if (path.startsWith('/assistant/conversations/a/proposals')) return Promise.resolve(path.includes('cursor=oldest')
+        ? { items: [item(52)], has_more: false, next_cursor: 'must-not-be-followed' }
+        : path.includes('cursor=older') ? { items: [{ ...item(49), revision: 2 }, item(50), item(51)], has_more: true, next_cursor: 'oldest' }
+          : { items: first, has_more: true, next_cursor: 'older' });
+      return base(path);
+    });
+    mount(); await ready(); expect(screen.getAllByRole('region', { name: 'Vorschlag prüfen: Aufgabe' })).toHaveLength(50);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' })); await screen.findByText('Vorschlag 51');
+    expect(screen.getAllByText('Vorschlag 49', { exact: true })).toHaveLength(1); expect(screen.getAllByRole('button', { name: 'Angaben und Quellen prüfen' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' })); await screen.findByText('Vorschlag 52');
+    expect(screen.getAllByRole('region', { name: 'Vorschlag prüfen: Aufgabe' })).toHaveLength(53); expect(screen.queryByRole('button', { name: 'Weitere Vorschläge laden' })).not.toBeInTheDocument();
+    cleanup(); mount(); await ready(); expect(screen.queryByText('Vorschlag 51')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' })); await screen.findByText('Vorschlag 51');
+    expect(api.get).toHaveBeenCalledWith('/assistant/conversations/a/proposals?limit=50&cursor=older', undefined);
+    expect(api.get.mock.calls.some(([path]) => path.includes('cursor=must-not-be-followed'))).toBe(false);
+  });
+
+  it('retains loaded proposal pages and the oldest cursor after a terminal run refresh', async () => {
+    state.runs['run-1'] = run(); state.conversations[0].active_run_id = 'run-1'; let completed = false; const base = api.get.getMockImplementation();
+    api.get.mockImplementation(path => {
+      if (path === '/assistant/runs/run-1') { completed = true; return Promise.resolve({ ...run(), state: 'completed' }); }
+      if (path.startsWith('/assistant/conversations/a/proposals')) return Promise.resolve(path.includes('cursor=oldest') ? { items: [item(52)], has_more: false }
+        : path.includes('cursor=older') ? { items: [item(50)], has_more: true, next_cursor: 'oldest' }
+          : { items: [item(0), ...(completed ? [item(51)] : [])], has_more: true, next_cursor: 'older' });
+      return base(path);
+    });
+    mount(); await ready(); fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' })); await screen.findByText('Vorschlag 50');
+    await screen.findByText('Vorschlag 51', {}, { timeout: 4000 }); expect(screen.getByText('Vorschlag 50')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' })); await screen.findByText('Vorschlag 52');
+    expect(api.get).toHaveBeenCalledWith('/assistant/conversations/a/proposals?limit=50&cursor=oldest', undefined);
+    expect(screen.getByText('Vorschlag 50')).toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Weitere Vorschläge laden' })).not.toBeInTheDocument();
+  });
+
+  it('discards loaded proposals, cursors and a late page response when the application owner changes', async () => {
+    const late = deferred(); const base = api.get.getMockImplementation();
+    api.get.mockImplementation(path => {
+      if (path.startsWith('/assistant/conversations/a/proposals')) {
+        if (state.owner === 'owner-b') return Promise.resolve({ items: [], has_more: false });
+        return path.includes('cursor=older') ? late.promise : Promise.resolve({ items: [item(0)], has_more: true, next_cursor: 'older' });
+      }
+      return base(path);
+    });
+    const view = mount(); await ready(); fireEvent.click(screen.getByRole('button', { name: 'Weitere Vorschläge laden' }));
+    state.owner = 'owner-b'; view.rerender(<MemoryRouter><App /></MemoryRouter>); await ready();
+    await act(async () => late.resolve({ items: [item(50)], has_more: true, next_cursor: 'private-oldest' }));
+    expect(screen.queryByText('Vorschlag 0')).not.toBeInTheDocument(); expect(screen.queryByText('Vorschlag 50')).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Weitere Vorschläge laden' })).not.toBeInTheDocument();
+  });
+});
+
 describe('reviewed proposal handoff to existing forms', () => {
   const proposal = kind => ({ id: 'proposal-1', revision: 1, state: 'proposed', run_id: 'run-1', payload: { kind, anchor: { kind: 'property', id: 'p1' }, evidence: [{ kind: 'property', id: 'p1', revision: 'source-r1', sha256: 'b'.repeat(64) }], values: kind === 'note' ? { body: 'Geprüfter Notizentwurf', conversation_kind: 'note' } : { title: 'Geprüfte Aufgabe', priority: 'medium', status: 'open', property_id: 'p1' } } });
   async function prepare(kind) {
