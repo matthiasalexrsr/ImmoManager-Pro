@@ -399,7 +399,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 }}>{recoverySource ? 'Verglichenen Entwurf übernehmen' : draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed' ? 'Aktuellen Stand vergleichen' : 'Entwurf wiederaufnehmen'}</button>}
                 <button ref={draftDiscardRef} type="button" className="btn btn-ghost" disabled={draftBusy}
                   aria-expanded={confirmDraftDiscard} aria-controls={confirmDraftDiscard ? 'form-draft-discard-confirm' : undefined}
-                  onClick={() => setConfirmDraftDiscard(true)}>Entwurf verwerfen</button>
+                  onClick={() => setConfirmDraftDiscard(true)}>{tr('ui.form.discardDraft', 'Entwurf verwerfen')}</button>
               </div>
               {confirmDraftDiscard && <div id="form-draft-discard-confirm" className="draft-discard-confirm" role="group" aria-label={tr('ui.form.confirmRecoveredDiscard', 'Entwurf verwerfen bestätigen')}>
                 <p role="alert">{tr('ui.form.recoveredDiscardWarning', 'Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.')}</p>

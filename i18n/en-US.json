@@ -159,6 +159,7 @@
       "confirmRecoveredDiscard": "Confirm draft discard",
       "recoveredDiscardWarning": "Discard the recovered draft permanently? Unsaved entries will be lost.",
       "keepRecoveredDraft": "Keep draft",
+      "discardDraft": "Discard draft",
       "discardRecoveredDraft": "Discard permanently"
     },
     "table": {

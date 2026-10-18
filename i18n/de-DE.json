@@ -160,6 +160,7 @@
       "confirmRecoveredDiscard": "Entwurf verwerfen bestätigen",
       "recoveredDiscardWarning": "Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.",
       "keepRecoveredDraft": "Entwurf behalten",
+      "discardDraft": "Entwurf verwerfen",
       "discardRecoveredDraft": "Endgültig verwerfen"
     },
     "table": {

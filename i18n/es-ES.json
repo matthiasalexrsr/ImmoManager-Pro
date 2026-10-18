@@ -159,6 +159,7 @@
       "confirmRecoveredDiscard": "Confirmar descarte del borrador",
       "recoveredDiscardWarning": "¿Descartar definitivamente el borrador recuperado? Se perderán los datos sin guardar.",
       "keepRecoveredDraft": "Conservar borrador",
+      "discardDraft": "Descartar borrador",
       "discardRecoveredDraft": "Descartar definitivamente"
     },
     "table": {
