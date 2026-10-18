@@ -34,6 +34,10 @@ Laden des Modellkatalogs allein konnten diesen Fehler nicht nachweisen.
   verweigert diese Übernahme weiterhin. Die Modellanweisung fordert jetzt
   ausdrücklich separate Belege für alle Zuordnungen; die Fehlermeldung nennt
   die fehlende Aktenart und den Korrekturweg im Chat.
+- Claude erzeugt unter Windows sehr lange temporäre Projektpfade. Die geprüfte
+  Profilbereinigung nutzt dafür nun die native Langpfadnotation. So werden auch
+  nach einem Abbruch ausschließlich die eigenen gesperrten Kontoprofile vollständig
+  entfernt; Namensraum-, Pfad- und Aliasprüfungen bleiben vorgeschaltet.
 
 Grundlage sind das vom installierten Client erzeugte Protokollschema und die
 offiziellen Dokumentationen zu

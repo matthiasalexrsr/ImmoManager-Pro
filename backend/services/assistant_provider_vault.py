@@ -81,6 +81,19 @@ def _private_directory(path: Path) -> None:
         raise ProviderError("Der geschützte Anmeldeordner konnte nicht eingerichtet werden.", "private_directory_unavailable")
 
 
+def _remove_profile_tree(path: Path) -> None:
+    """Remove a caller-validated profile, including native Windows long paths.
+
+    Claude derives a nested project-directory name from the absolute work path.
+    Even a short profile root can therefore contain paths beyond MAX_PATH.
+    Callers must first verify the account namespace, containment and aliases.
+    """
+    raw = os.fspath(path)
+    if os.name == "nt" and not raw.startswith("\\\\?\\"):
+        raw = "\\\\?\\UNC\\" + raw[2:] if raw.startswith("\\\\") else "\\\\?\\" + raw
+    shutil.rmtree(raw)
+
+
 class ProfileLease:
     """Nonblocking OS lease prevents concurrent refreshes from overwriting one account."""
     def __init__(self, actor_id: str, provider: str, *, restore: bool = True):
@@ -122,7 +135,7 @@ class ProfileLease:
                 resolved = previous.resolve()
                 if previous.is_dir() and resolved.is_relative_to(self.root) and resolved != self.root:
                     try:
-                        shutil.rmtree(resolved)
+                        _remove_profile_tree(resolved)
                     except OSError:
                         logger.warning('Private assistant crash-profile cleanup is incomplete')
             self.path = Path(tempfile.mkdtemp(prefix=prefix, dir=self.root))
@@ -166,7 +179,7 @@ class ProfileLease:
                         elif original.resolve() == original:
                             # Never pass a resolved alias into recursive delete;
                             # rmtree itself does not traverse directory symlinks.
-                            shutil.rmtree(original)
+                            _remove_profile_tree(original)
                     except FileNotFoundError:
                         pass
                     except OSError:

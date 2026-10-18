@@ -1,7 +1,9 @@
 """Local output and account-hub acceptance without external login/inference."""
 import json
+import os
 import queue
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -142,6 +144,28 @@ def test_crash_profile_cleanup_is_exactly_account_and_provider_scoped(private_ac
         (path / 'marker').write_text('synthetic')
     with vault.ProfileLease('actor-a', 'codex'):
         assert not stale.exists() and other_actor.exists() and other_provider.exists()
+
+
+def test_private_profile_cleanup_handles_native_long_project_paths(private_accounts):
+    def native_path(path):
+        raw = str(path)
+        return "\\\\?\\" + raw if os.name == 'nt' else raw
+
+    with vault.ProfileLease('long-path-owner', 'claude') as lease:
+        root = lease.path
+        assert root is not None
+        nested = root / 'projects' / ('project-' + 'x' * 180) / ('history-' + 'y' * 120)
+        assert len(str(nested)) > 260
+        os.makedirs(native_path(nested))
+        Path(native_path(nested / 'synthetic.txt')).write_text('Synthetic private scratch only')
+    assert not root.exists()
+
+    # Crash recovery must remove the same layout before opening a fresh lease.
+    nested = root / 'projects' / ('project-' + 'x' * 180) / ('history-' + 'y' * 120)
+    os.makedirs(native_path(nested))
+    Path(native_path(nested / 'synthetic.txt')).write_text('Synthetic private scratch only')
+    with vault.ProfileLease('long-path-owner', 'claude'):
+        assert not root.exists()
 
 
 def test_account_lease_is_nonblocking(private_accounts):
