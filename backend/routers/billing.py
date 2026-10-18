@@ -49,8 +49,9 @@ from ..models import (
     UtilityStatement,
     UtilityStatementPatch,
 )
+from ..services import business_qol as objection_commands
 from ..services.billing_writes import atomic_billing, billing_write
-from ..services.document_versions import check_account
+from ..services.document_versions import Unit, check_account
 from ..services.final_statements import (
     EDITABLE_STATUSES,
     FINAL_STATUSES,
@@ -938,7 +939,11 @@ def _save_objection(objection: BillingObjection, **changes: Any) -> BillingObjec
 
 @atomic_billing(lambda: store, period_arg="period_id")
 def _record_objection(period_id: str, request: BillingObjectionRequest) -> BillingObjection:
-    """Record a tenant's objection against an issued statement; the period becomes 'disputed'."""
+    """Internal legacy write, atomic but without an actor or creation receipt.
+
+    Authenticated HTTP callers use _record_objection_as_actor, including the old
+    query route. Existing direct-call workflows retain this trusted internal API.
+    """
     try:
         period = store.get_billing_period(period_id)
     except NotFoundError as exc:
@@ -974,25 +979,83 @@ def _record_objection(period_id: str, request: BillingObjectionRequest) -> Billi
     return objection
 
 
+def _record_objection_as_actor(period_id: str, payload: BillingObjectionRequest, actor_id: str) -> BillingObjection:
+    """One authorized creation and its durable receipt in the billing transaction."""
+    db = getattr(store, "db", None)
+    try:
+        with ExitStack() as stack:
+            # Match document work's memory account -> archive lock order. SQL
+            # needs BEGIN IMMEDIATE/period locks before locking the account row.
+            account = stack.enter_context(auth.locked_account(actor_id)) if db is None else None
+            stack.enter_context(billing_write(store, [period_id]))
+            if db is not None:
+                account = stack.enter_context(auth.locked_account(actor_id, db))
+            account = check_account(account, write_areas=("/billing/periods",))
+            refresh_scope(current_scope())
+            with scope_context(scope_from_user(account)):
+                # Authorize today's source before reading a private command
+                # receipt, including a retry after the source was corrected.
+                period = store.get_billing_period(period_id)
+                if payload.statement_id is not None:
+                    statement = store.get_utility_statement(payload.statement_id)
+                    if statement.billing_period_id != period_id:
+                        raise HTTPException(400, "Die Einzelabrechnung gehört nicht zu dieser Abrechnungsperiode")
+                if final_version_problems(period, _period_statements(period_id)):
+                    raise HTTPException(409, "Die Originalabrechnung stimmt nicht mit ihrer finalisierten Fassung überein")
+                unit = Unit(store, db, account, None)
+                try:
+                    operation = "billing:objection-create:" + period_id
+                    if payload.idempotency_key is not None:
+                        prior = objection_commands.replay(unit, actor_id, operation, payload)
+                        if prior is not None:
+                            existing = store.get_billing_objection(prior["objection_id"])
+                            if existing.billing_period_id != period_id or existing.statement_id != payload.statement_id:
+                                raise HTTPException(409, "Der gespeicherte Erfassungsbeleg passt nicht zur Abrechnung")
+                            return existing
+                    result = _record_objection(period_id, payload)
+                    if payload.idempotency_key is not None:
+                        objection_commands.save_command(unit, actor_id, operation, payload,
+                            {"kind": "billing_period", "entity_id": period.id, "property_id": period.property_id},
+                            {"objection_id": result.id})
+                    return result
+                except BaseException:
+                    # Roll back the Memory receipt while both account/archive
+                    # locks are still held. SQL rows share billing_write's commit.
+                    unit.rollback()
+                    raise
+    except NotFoundError as exc:
+        raise HTTPException(404, "Abrechnung oder Widerspruch nicht gefunden") from exc
+
+
 @router.post("/periods/{period_id}/dispute", response_model=BillingPeriod)
 def dispute_billing_period(
     period_id: str,
     reason: str = Query("", alias="reason"),
+    idempotency_key: str | None = Query(None, min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9:_.-]+$"),
+    actor: UserRead = Depends(require_role("eigentuemer", "verwalter")),
 ) -> BillingPeriod:
-    """Record an objection against the period as a whole and mark it as disputed.
+    """Legacy query compatibility; HTTP uses the same authorized creation path.
 
-    The issued statements stay unchanged; the objection is answered by a
-    correction (revision endpoint).
+    Supply idempotency_key for retry safety. Keyless direct calls remain the
+    trusted pre-existing internal API, including its default reason.
     """
     text = reason.strip() if isinstance(reason, str) else ""  # direct calls pass the Query default
-    _record_objection(period_id, BillingObjectionRequest(reason=text or "ohne Begründung"))
+    key = idempotency_key if isinstance(idempotency_key, str) else None
+    create_billing_objection(period_id, BillingObjectionRequest(reason=text or "ohne Begründung", idempotency_key=key), actor)
     return store.get_billing_period(period_id)
 
 
 @router.post("/periods/{period_id}/objections", response_model=BillingObjection,
              status_code=status.HTTP_201_CREATED)
-def create_billing_objection(period_id: str, payload: BillingObjectionRequest) -> BillingObjection:
-    """Record an objection (Widerspruch), optionally against one statement of the period."""
+def create_billing_objection(
+    period_id: str, payload: BillingObjectionRequest,
+    actor: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> BillingObjection:
+    """HTTP creation is authorized/replayable; keyless direct calls are internal."""
+    if isinstance(actor, UserRead):
+        return _record_objection_as_actor(period_id, payload, actor.id)
+    if payload.idempotency_key is not None:
+        raise HTTPException(401, "Ein Erfassungsbefehl benötigt ein angemeldetes Konto")
     return _record_objection(period_id, payload)
 
 

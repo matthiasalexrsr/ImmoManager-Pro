@@ -144,8 +144,22 @@ try {
     await dialog.getByLabel('Betroffene Abrechnung').selectOption(fixture.statement_ids[0]);
     await dialog.getByLabel('Eingangsdatum').fill('2026-10-18');
     await dialog.getByLabel('Begründung des Widerspruchs').fill(reason);
+    const creationRoute = `**/api/v1/billing/periods/${fixture.billing_period}/objections`;
+    let lostAcknowledgement = false;
+    await page.route(creationRoute, async route => {
+      if (route.request().method() === 'POST' && !lostAcknowledgement) {
+        lostAcknowledgement = true;
+        const committed = await route.fetch();
+        assert.ok(committed.ok(), 'The first creation committed before its response was lost');
+        await route.abort('failed');
+      } else await route.continue();
+    });
+    await dialog.getByRole('button', { name: 'Widerspruch speichern', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Widerspruch speichern', exact: true })).toBeEnabled();
+    assert.ok(lostAcknowledgement);
     await dialog.getByRole('button', { name: 'Widerspruch speichern', exact: true }).click();
     await expect(dialog).toHaveCount(0);
+    await page.unroute(creationRoute);
     await expect(page.getByRole('button', { name: 'Widerspruch zurückweisen: ' + reason, exact: true })).toBeVisible();
     const rows = await call('GET', '/billing/objections?billing_period_id=' + fixture.billing_period);
     assert.equal(rows.length, 1); assert.equal(rows[0].statement_id, fixture.statement_ids[0]);

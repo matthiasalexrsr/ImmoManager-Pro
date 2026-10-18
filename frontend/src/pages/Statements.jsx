@@ -103,6 +103,7 @@ function RejectionDialog({ objection, action, onConfirm, onCancel, busy }) {
 
 function ObjectionDialog({ statements, unitMap, onConfirm, onCancel, busy }) {
   const [reason, setReason] = useState('');
+  const commandKey = useRef(null);
   const [statementId, setStatementId] = useState('');
   const [receivedOn, setReceivedOn] = useState(() => {
     const today = new Date();
@@ -122,10 +123,16 @@ function ObjectionDialog({ statements, unitMap, onConfirm, onCancel, busy }) {
         <label>Eingangsdatum<input type="date" value={receivedOn} onChange={event => setReceivedOn(event.target.value)} disabled={busy} /></label>
         <label>Begründung des Widerspruchs<textarea value={reason} rows={4} maxLength={2000} autoFocus
           onChange={event => setReason(event.target.value)} disabled={busy} /></label>
+        <small>Bei unklarer Antwort mit unveränderten Angaben erneut speichern. Änderungen nach einem Versuch
+          benötigen einen neuen Vorgang: zuerst den gespeicherten Stand prüfen, dann abbrechen und neu öffnen.</small>
       </div>
       <div className="modal-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>Abbrechen</button>
         <button type="button" className="btn btn-primary" disabled={busy || !reason.trim() || !receivedOn}
-          onClick={() => onConfirm({ reason: reason.trim(), statement_id: statementId || null, received_on: receivedOn })}>
+          onClick={() => {
+            commandKey.current ||= crypto.randomUUID();
+            onConfirm({ reason: reason.trim(), statement_id: statementId || null, received_on: receivedOn,
+              idempotency_key: commandKey.current });
+          }}>
           {busy ? 'Widerspruch wird gespeichert …' : 'Widerspruch speichern'}
         </button></div>
     </div>
@@ -603,11 +610,18 @@ export default function Statements() {
     const session = api.captureSession();
     setDisputing(true);
     try {
-      await api.post(`/billing/periods/${encodeURIComponent(periodId)}/objections`, payload);
+      const saved = await api.post(`/billing/periods/${encodeURIComponent(periodId)}/objections`, payload);
       session();
       if (currentPeriod.current !== periodId) return;
+      if (!saved?.id || saved.billing_period_id !== periodId) throw new Error('Erfassungsbeleg ist unvollständig. Bitte denselben Vorgang erneut versuchen.');
+      const current = await api.get(`/billing/periods/${encodeURIComponent(periodId)}`);
+      session();
+      if (currentPeriod.current !== periodId) return;
+      if (current?.id !== periodId) throw new Error('Abrechnungsstand ist unvollständig. Bitte denselben Vorgang erneut versuchen.');
       setCreatingObjection(false);
-      setSelectedPeriod(previous => ({ ...previous, status: 'disputed' }));
+      // A lost creation answer may be replayed after a later decision. Read
+      // today's state rather than changing that issued period back to disputed.
+      setSelectedPeriod(current);
       await loadObjections(periodId);
       loadData();
       toast.show('Widerspruch gespeichert.', 'success');

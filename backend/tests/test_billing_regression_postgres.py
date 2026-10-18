@@ -151,3 +151,30 @@ def test_downgrade_is_refused_while_billing_history_exists_on_postgres(pg_store)
         columns = {c["name"] for c in sa.inspect(connection).get_columns("billing_periods")}
         assert "corrects_period_id" not in columns
     command.upgrade(config, "head")
+
+
+def test_decision_schema_roundtrip_without_objections_on_postgres(postgres):  # noqa: F811
+    engine, config = postgres
+    command.downgrade(config, "f016a1b2c001")
+    assert "decision_key" not in {c["name"] for c in sa.inspect(engine).get_columns("billing_objections")}
+    command.upgrade(config, "head")
+    assert "decision_key" in {c["name"] for c in sa.inspect(engine).get_columns("billing_objections")}
+
+
+def test_prior_status_and_decision_evidence_refuse_downgrade_on_postgres(pg_store):
+    engine, config, store = pg_store
+    house = _house(store, "Retained decision")
+    period_id = house["period"].id
+    store.db.close()
+    with engine.begin() as db:
+        db.execute(sa.text(
+            "INSERT INTO billing_objections(id,billing_period_id,received_on,reason,status,"
+            "source_period_status,created_at,updated_at) VALUES ('retained',:period,'2026-10-18',"
+            "'Original reason','open','delivered',now(),now())"), {"period": period_id})
+    with pytest.raises(RuntimeError, match="must not be discarded"):
+        command.downgrade(config, "f016a1b2c001")
+    with engine.connect() as db:
+        assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "f018a1b2c001"
+        assert db.execute(sa.text(
+            "SELECT reason,source_period_status FROM billing_objections WHERE id='retained'"
+        )).one() == ("Original reason", "delivered")

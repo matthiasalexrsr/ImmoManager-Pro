@@ -59,5 +59,21 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError(
-        "Issued billing objection decisions must not be discarded; restore a verified pre-upgrade backup")
+    connection = op.get_bind()
+    # Serialize the preflight with a concurrent decision before dropping any
+    # column. Legacy objections with no new evidence can safely be retained.
+    if connection.dialect.name == "postgresql":
+        connection.exec_driver_sql('LOCK TABLE "billing_objections" IN ACCESS EXCLUSIVE MODE')
+    elif connection.dialect.name == "sqlite":
+        driver = connection.connection.driver_connection
+        if driver is not None and not driver.in_transaction:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+    evidence = '"decision_revision" <> 0 OR ' + " OR ".join(
+        f'"{name}" IS NOT NULL' for name in COLS if name != "decision_revision")
+    if connection.execute(sa.text(
+            'SELECT 1 FROM "billing_objections" WHERE ' + evidence + ' LIMIT 1')).first():
+        raise RuntimeError(
+            "Issued billing objection decisions must not be discarded; restore a verified pre-upgrade backup")
+    op.drop_index(INDEX, table_name="billing_objections")
+    for name in reversed(COLS):
+        op.drop_column("billing_objections", name)

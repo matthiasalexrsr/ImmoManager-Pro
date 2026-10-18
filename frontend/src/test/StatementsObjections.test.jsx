@@ -90,7 +90,49 @@ describe('Statements objection decisions', () => {
     await act(async () => { fireEvent.click(within(dialog).getByText('Widerspruch speichern')); });
     expect(api.post).toHaveBeenCalledWith('/billing/periods/bp/objections', {
       statement_id: 's1', received_on: '2026-10-17', reason: 'Fläche im Beleg falsch',
+      idempotency_key: expect.any(String),
     });
+  });
+
+  it('retains the creation command and dialog input after a lost answer', async () => {
+    api.post.mockRejectedValueOnce(new TypeError('Erfassungsantwort verloren'));
+    render(page()); await openPeriod();
+    fireEvent.click(screen.getByText('pages.statements.dispute'));
+    fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Fläche laut Beleg abweichend' } });
+    await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
+    expect(screen.getByText('Erfassungsantwort verloren')).toBeInTheDocument();
+    expect(screen.getByLabelText('Begründung des Widerspruchs')).toHaveValue('Fläche laut Beleg abweichend');
+    const first = api.post.mock.calls[0];
+    expect(first[1].idempotency_key).toEqual(expect.any(String));
+    await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
+    expect(api.post.mock.calls[1]).toEqual(first);
+  });
+
+  it('keeps the creation key when inputs change after an uncertain answer instead of silently creating a new command', async () => {
+    api.post.mockRejectedValueOnce(new TypeError('Erfassungsantwort verloren'))
+      .mockRejectedValueOnce(Object.assign(new Error('Vorgangskennung mit anderen Angaben'), { statusCode: 409 }));
+    render(page()); await openPeriod();
+    fireEvent.click(screen.getByText('pages.statements.dispute'));
+    fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Ursprünglicher Einwand' } });
+    await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
+    fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Geänderter Einwand' } });
+    await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
+    expect(api.post.mock.calls[1][1].idempotency_key).toEqual(api.post.mock.calls[0][1].idempotency_key);
+    expect(api.post.mock.calls[1][1].reason).toBe('Geänderter Einwand');
+    expect(screen.getByRole('dialog', { name: 'Widerspruch erfassen' })).toBeInTheDocument();
+    expect(screen.getByText('Vorgangskennung mit anderen Angaben')).toBeInTheDocument();
+  });
+
+  it('uses the current period state after an old creation command is replayed', async () => {
+    api.post.mockResolvedValue({ ...objection, status: 'resolved' });
+    data['/billing/periods/bp'] = { ...original, status: 'corrected' };
+    render(page()); await openPeriod();
+    fireEvent.click(screen.getByText('pages.statements.dispute'));
+    fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Bereits erfasster Einwand' } });
+    await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
+    expect(screen.getAllByText('corrected').length).toBeGreaterThan(0);
+    expect(screen.queryByText('pages.statements.dispute')).not.toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   it('shows original reason and records the hash-bound rejection, author and timestamp', async () => {

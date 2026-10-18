@@ -23,6 +23,12 @@ Integration prüft zusätzlich gemeinsame Migration, Vollbackup und Browserablä
 
 - Eingang mit tatsächlichem Datum, ursprünglicher Begründung und optionaler
   Einzelabrechnung erfassen.
+- Die Erfassung schreibt einen dauerhaften Befehlsbeleg im vorhandenen
+  BusinessCommand-Journal atomar mit. Nach verlorener Erfolgsantwort erzeugt
+  Wiederholen genau einen Widerspruch; geänderte Angaben unter derselben
+  Kennung ergeben einen erklärten Konflikt. Heutige Rechte und Originale
+  werden vor jeder Wiederholung erneut geprüft. Die Oberfläche lädt danach
+  den heutigen Periodenstatus, auch nach einer zwischenzeitlichen Entscheidung.
 - Eine ausdrückliche, begründete Ablehnung mit Akteur, UTC-Zeit, Revision,
   Wiederholungsschlüssel und geprüftem Originalhash speichern.
 - Alternativ eine getrennte Korrekturfassung als Entwurf eröffnen. Alle damit
@@ -43,7 +49,20 @@ Integration prüft zusätzlich gemeinsame Migration, Vollbackup und Browserablä
 Neue additive Migration: `f018a1b2c001`, Vorgänger `f016a1b2c001`. Sie ergänzt
 Entscheidungsfelder und einen eindeutigen Entscheidungsindex. Partielle oder
 inkompatible Schemata werden ausdrücklich abgewiesen. Ein Downgrade verwirft
-keine gespeicherten Entscheidungen. Der normale Programmstart migriert nicht.
+keine gespeicherten Entscheidungen oder belegten Vorzustände. Ohne neue
+Nachweisdaten bleibt der Rückweg einschließlich der ursprünglichen offenen
+Einwände möglich. Beide Fälle werden unter SQLite und PostgreSQL geprüft.
+Der normale Programmstart migriert nicht.
+
+Die gemeinsame Prüfung deckte außerdem einen zu eng an den bisherigen Kopf
+gebundenen Übernahmepfad für ungestempelte Desktop-Datenbanken auf. Vollständig
+geprüfte ORM-Familien werden jetzt nur bis zum bekannten additiven Stand
+übernommen; historische Daten-Nacharbeiten und die echte Nachfolgermigration
+laufen weiterhin. Bereits akzeptierte dezimale Geldspalten behalten ihre Werte
+und Genauigkeit. Teilfamilien, geänderte Typen, Fremdspalten und fehlende
+Schlüssel/Indizes werden vor der Übernahme abgewiesen. Die historische
+Kommunikationsfamilie besitzt zusätzlich eine eingefrorene Schemaprüfung mit
+erneuter Installation ihres Originalschutzes.
 
 ## WISO Steuer Windows, Fachjahr 2026
 
@@ -115,6 +134,10 @@ Folgeauftragkennungen, Dokumentempfangsvorbereitung, Eingangsdatum,
 Einzelabrechnung, begründete Ablehnung und getrennte Überarbeitung einschließlich
 bytegleicher Original-PDFs sowie 320/360/1440-Pixel-Ansichten. Derselbe Ablauf
 läuft als verpflichtender Teil des Dokument-/Browserjobs in GitHub CI.
+Die Erfassungsprüfung unterbricht ausdrücklich eine bereits erfolgreiche
+POST-Antwort und wiederholt denselben Dialogbefehl; die Liste muss danach genau
+einen Eintrag enthalten. Der Gegenversuch auf dem ersten Kandidaten erzeugte
+zwei Einträge und wurde vor der Auslieferung korrigiert.
 
 Die genaue abschließende Quell-, Windows-Paket-, CI- und Installationsfreigabe
 wird separat mit Head/SHA-256 und tatsächlichen Laufverzeichnissen dokumentiert.

@@ -48,6 +48,16 @@ def test_prior_issued_objections_survive_upgrade_and_decision_keys_are_unique(tm
                 ("synthetic-1", "Unchanged tenant reason 1", "open", 0, None),
                 ("synthetic-2", "Unchanged tenant reason 2", "open", 0, None),
             ]
+        # An old, undecided objection contains no evidence in the new fields.
+        # Its original reason must also survive a safe round trip.
+        command.downgrade(cfg, PARENT)
+        with eng.connect() as db:
+            assert db.execute(text(
+                "SELECT id,reason,status FROM billing_objections ORDER BY id")).all() == [
+                ("synthetic-1", "Unchanged tenant reason 1", "open"),
+                ("synthetic-2", "Unchanged tenant reason 2", "open"),
+            ]
+        command.upgrade(cfg, "head")
         with eng.begin() as db:
             db.execute(text("UPDATE billing_objections SET decision_key='synthetic-key' WHERE id='synthetic-1'"))
         with pytest.raises(IntegrityError):
@@ -81,6 +91,52 @@ def test_complete_unversioned_orm_decision_family_is_adopted_without_rewrite(tmp
         with engine.connect() as db:
             assert db.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
             assert db.scalar(text("SELECT decision_reason FROM billing_objections WHERE id='already'")) == "confirmed"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("decision_revision", 1),
+    ("decision_reason", "Retain original decision rationale"),
+    ("decision_actor_id", "actor"),
+    ("decision_key", "command-key"),
+    ("decided_at", "2026-10-18 12:00:00"),
+    ("decision_source_sha256", "a" * 64),
+    ("source_period_status", "delivered"),
+])
+def test_each_piece_of_decision_or_prior_status_evidence_blocks_downgrade(tmp_path, field, value):
+    url = "sqlite:///" + (tmp_path / "evidence.sqlite").as_posix()
+    engine = create_engine(url)
+    try:
+        Base.metadata.create_all(engine)
+        cfg = alembic_config(url)
+        command.stamp(cfg, HEAD)
+        with engine.begin() as db:
+            db.execute(text(
+                "INSERT INTO billing_objections(id,billing_period_id,received_on,reason,status,"
+                "created_at,updated_at) VALUES ('retained','legacy','2026-01-01','original','open',"
+                "'2026-01-01','2026-01-01')"))
+            db.execute(text(f"UPDATE billing_objections SET {field}=:value WHERE id='retained'"),
+                       {"value": value})
+        with pytest.raises(RuntimeError, match="must not be discarded"):
+            command.downgrade(cfg, PARENT)
+        with engine.connect() as db:
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
+            assert db.scalar(text(f"SELECT {field} FROM billing_objections WHERE id='retained'")) == value
+    finally:
+        engine.dispose()
+
+
+def test_empty_database_can_downgrade_and_upgrade_the_decision_schema(tmp_path):
+    url = "sqlite:///" + (tmp_path / "empty.sqlite").as_posix()
+    cfg = alembic_config(url)
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, PARENT)
+    engine = create_engine(url)
+    try:
+        assert "decision_key" not in {col["name"] for col in inspect(engine).get_columns("billing_objections")}
+        command.upgrade(cfg, "head")
+        assert "decision_key" in {col["name"] for col in inspect(engine).get_columns("billing_objections")}
     finally:
         engine.dispose()
 

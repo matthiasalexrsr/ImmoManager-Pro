@@ -968,6 +968,10 @@ class BillingObjectionRequest(BaseModel):
     statement_id: Optional[str] = None
     received_on: Optional[date] = None  # default: today
     reason: str = Field(min_length=1)
+    # Older internal callers and clients remain valid. The current dialog
+    # always supplies a durable creation command key, including on a retry.
+    idempotency_key: Optional[str] = Field(default=None, min_length=8, max_length=120,
+                                          pattern=r"^[a-zA-Z0-9:_.-]+$")
 
     @field_validator("reason")
     @classmethod

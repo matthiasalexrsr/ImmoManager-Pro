@@ -79,6 +79,7 @@ jobs:
           path: |
             artifacts/document-browser
             artifacts/daily-browser
+            artifacts/interfaces-browser
             artifacts/qol-browser
             artifacts/pro-tests
 

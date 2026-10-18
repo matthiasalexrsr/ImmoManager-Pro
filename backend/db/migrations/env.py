@@ -12,7 +12,7 @@ from logging.config import fileConfig
 from alembic import context
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import create_engine, inspect, pool, text
+from sqlalchemy import Float, Numeric, create_engine, inspect, pool, text
 
 from backend.db.orm_models import Base
 
@@ -31,6 +31,18 @@ target_metadata = Base.metadata
 # schema-sync migration, which then adds whatever their version lacks.
 ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 ORM_ADOPTION_HEAD = "f016a1b2c001"
+ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001"})
+
+
+def _current_addition_names():
+    modules = {
+        'bank_models', 'finance_models', 'datev_models', 'tax_models',
+        'communication_models', 'daily_models', 'document_work_models',
+        'teha_models', 'channel_models', 'integration_attempt_models',
+    }
+    names = {getattr(mapper.local_table, 'name') for mapper in Base.registry.mappers
+             if mapper.class_.__module__.rsplit('.', 1)[-1] in modules}
+    return names | {'registration_quotas', 'plugin_installations', 'storage_bindings'}
 
 
 def _current_additions_are_present(connection) -> bool:
@@ -41,19 +53,36 @@ def _current_additions_are_present(connection) -> bool:
     completely: a partial or altered PRO schema is never silently stamped.
     This allowlist is tied to one reviewed head, not future data migrations.
     """
-    modules = {
-        'bank_models', 'finance_models', 'datev_models', 'tax_models',
-        'communication_models', 'daily_models', 'document_work_models',
-        'teha_models', 'channel_models', 'integration_attempt_models',
-    }
-    additions = {getattr(mapper.local_table, 'name') for mapper in Base.registry.mappers
-                 if mapper.class_.__module__.rsplit('.', 1)[-1] in modules}
-    additions.update({'registration_quotas', 'plugin_installations', 'storage_bindings'})
-    comparison = MigrationContext.configure(connection, opts={'compare_type': True})
+    additions = _current_addition_names()
+    inspector = inspect(connection)
+    if not additions <= set(inspector.get_table_names()):
+        return False
+    for name in additions:
+        declared = target_metadata.tables.get(name)
+        if declared is None or inspector.get_pk_constraint(name)['constrained_columns'] != [column.name for column in declared.primary_key]:
+            return False
+
+    def compare_type(context_, reflected, declared, existing_type, declared_type):
+        # d7a2f9c4e681 deliberately retains existing legacy NUMERIC precision
+        # and scale. A wider money column must not force re-creation of unrelated
+        # PRO tables. New additive-family types still use exact comparison.
+        if (reflected.table.name not in additions and isinstance(existing_type, Numeric)
+                and not isinstance(existing_type, Float) and isinstance(declared_type, Numeric)
+                and not isinstance(declared_type, Float)):
+            return False
+        return None
+
+    comparison = MigrationContext.configure(connection, opts={'compare_type': compare_type})
     for difference in compare_metadata(comparison, target_metadata):
         if not isinstance(difference, tuple):
             return False
         action, item, *_ = difference
+        # These fields are owned by the reviewed successor migration. It must
+        # run after the additive families are adopted, including its validation.
+        if (action == 'add_column' and difference[2] == 'billing_objections'
+                and difference[3].name in {'decision_revision', 'decision_reason', 'decision_actor_id',
+                    'decision_key', 'decided_at', 'decision_source_sha256', 'source_period_status'}):
+            continue
         if action == 'add_table' and item.name not in additions:
             continue
         if action == 'add_index' and item.table.name not in additions:
@@ -78,13 +107,15 @@ def _adopt_unversioned_database(connection) -> bool:
     # A current ORM-created desktop schema already contains the new private
     # families. Historical missing tables still take the data backfills below.
     head = context.script.get_current_head()
-    if head == ORM_ADOPTION_HEAD and context.get_revision_argument() == head:
+    if head in ORM_ADOPTION_TARGETS and context.get_revision_argument() == head:
         if _current_additions_are_present(connection):
             # Run the historical data backfills first (rent history, legacy
             # account access, etc.). Only the later purely additive PRO schema
             # already exists; it is adopted after those backfills complete.
             context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
             return True
+        if set(inspector.get_table_names()) & _current_addition_names():
+            raise RuntimeError("Partial or altered current ORM adoption schema; verify the original database before upgrading")
     context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
     return False
 
@@ -123,9 +154,15 @@ def run_migrations_online() -> None:
                 target_metadata.create_all(connection, checkfirst=True)
                 for table in target_metadata.sorted_tables:
                     table.dispatch.after_create(table, connection, checkfirst=True)
+                # The allowlist describes only the purely additive families
+                # through f016. Successors can contain data work and must run.
+                context.get_context().stamp(context.script, ORM_ADOPTION_HEAD)
                 head = context.script.get_current_head()
-                assert head is not None
-                context.get_context().stamp(context.script, head)
+                assert head in ORM_ADOPTION_TARGETS
+                if head != ORM_ADOPTION_HEAD:
+                    context.configure(connection=connection, target_metadata=target_metadata,
+                                      fn=lambda rev, ctx: context.script._upgrade_revs(head, rev))
+                    context.run_migrations()
         # SQLite's nontransactional-DDL mode has no per-step transaction when
         # an exact current schema was only stamped. Persist that explicit
         # adoption too; closing the connection must not roll the stamp back.
