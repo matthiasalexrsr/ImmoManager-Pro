@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import MaintenanceProject from '../features/maintenanceProject/MaintenanceProject';
 import { de, en, es } from '../features/maintenanceProject/text';
 import { api } from '../api';
@@ -59,15 +59,23 @@ function project(abilities = ALL) {
   };
 }
 
-function show(abilities) {
+function TestRoute() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <><span data-testid="maintenance-route">{location.pathname + location.search}</span>
+    <button type="button" onClick={() => navigate(-1)}>History rückwärts</button>
+    <button type="button" onClick={() => navigate(1)}>History vorwärts</button></>;
+}
+
+function show(abilities, initialPath = '/maintenance/c1', data = project(abilities)) {
   api.get.mockImplementation(path => {
-    if (path.endsWith('/project')) return Promise.resolve(project(abilities));
+    if (path.endsWith('/project')) return Promise.resolve(data);
     if (path.includes('/payments/candidates')) return Promise.resolve({ items: [
       { id: 'b9', booking_date: '2026-05-20', amount: -500, payment_text: 'Dach Müller Rest', free: 500 }], has_more: false });
     return Promise.resolve({ items: [], has_more: false });
   });
   api.list.mockResolvedValue([{ id: 'k1', company_name: 'Dach Müller GmbH', contact_type: 'supplier' }]);
-  return render(<MemoryRouter><MaintenanceProject caseId="c1" /></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={[initialPath]}><TestRoute /><MaintenanceProject caseId="c1" /></MemoryRouter>);
 }
 
 const tab = name => fireEvent.click(screen.getByRole('tab', { name }));
@@ -76,6 +84,92 @@ beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); localStorage.clea
 afterEach(cleanup);
 
 describe('maintenance project file', () => {
+  it('opens project sections from real URLs, keeps query context and supports Back/Forward', async () => {
+    show(ALL, '/maintenance/c1?source=property&tab=protocols');
+    await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' });
+    const protocols = screen.getByRole('tab', { name: 'Protokolle' });
+    expect(protocols).toHaveAttribute('aria-selected', 'true');
+    expect(protocols).toHaveAttribute('tabindex', '0');
+    expect(screen.getByTestId('maintenance-route')).toHaveTextContent('/maintenance/c1?source=property&tab=protocols');
+    fireEvent.click(screen.getByRole('tab', { name: 'Dokumente' }));
+    expect(screen.getByTestId('maintenance-route')).toHaveTextContent('/maintenance/c1?source=property&tab=documents');
+    fireEvent.click(screen.getByRole('button', { name: 'History rückwärts' }));
+    expect(protocols).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'History vorwärts' }));
+    expect(screen.getByRole('tab', { name: 'Dokumente' })).toHaveAttribute('aria-selected', 'true');
+
+    const documents = screen.getByRole('tab', { name: 'Dokumente' });
+    documents.focus();
+    fireEvent.keyDown(documents, { key: 'Home' });
+    const overview = screen.getByRole('tab', { name: 'Übersicht' });
+    expect(overview).toHaveFocus();
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('maintenance-route')).toHaveTextContent('/maintenance/c1?source=property');
+    fireEvent.keyDown(overview, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { name: 'Dokumente' })).toHaveFocus();
+    expect(screen.getByTestId('maintenance-route')).toHaveTextContent('/maintenance/c1?source=property&tab=documents');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Dokumente' }), { key: 'ArrowRight' });
+    expect(overview).toHaveFocus();
+  });
+
+  it('exposes precise property, unit, and filtered booking links without domain actions', async () => {
+    show();
+    await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' });
+    const nav = screen.getByRole('navigation', { name: de.relatedPages });
+    expect(within(nav).getByRole('link', { name: de.openProperty })).toHaveAttribute('href', '/properties/p1?tab=maintenance');
+    expect(within(nav).getByRole('link', { name: de.openUnit })).toHaveAttribute('href', '/units/u1');
+    expect(within(nav).getByRole('link', { name: de.propertyBookings })).toHaveAttribute('href', '/bookings?property_id=p1');
+    fireEvent.click(within(nav).getByRole('link', { name: de.openUnit }));
+    expect(screen.getByTestId('maintenance-route')).toHaveTextContent('/units/u1');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.patch).not.toHaveBeenCalled();
+    expect(api.del).not.toHaveBeenCalled();
+  });
+
+  it('encodes unusual property and unit IDs in record and booking deep links', async () => {
+    const data = project();
+    data.case = { ...data.case, property_id: 'p/1 ?', unit_id: 'u +1' };
+    show(ALL, '/maintenance/c1', data);
+    await screen.findByRole('heading', { name: data.case.title });
+    const nav = screen.getByRole('navigation', { name: de.relatedPages });
+    expect(within(nav).getByRole('link', { name: de.openProperty }))
+      .toHaveAttribute('href', '/properties/p%2F1%20%3F?tab=maintenance');
+    expect(within(nav).getByRole('link', { name: de.openUnit }))
+      .toHaveAttribute('href', '/units/u%20%2B1');
+    expect(within(nav).getByRole('link', { name: de.propertyBookings }))
+      .toHaveAttribute('href', '/bookings?property_id=p%2F1%20%3F');
+  });
+
+  it('links an assigned invoice by ID and only links a payment when its booking ID exists', async () => {
+    const data = project();
+    data.invoices[0].payments = [
+      { id: 'pay1', amount: 800, booking: { id: 'b? 2', booking_date: '2026-05-03', payment_text: 'Abschlag' } },
+      { id: 'pay2', amount: 200, booking: { booking_date: '2026-05-04', payment_text: 'Ohne ID' } },
+    ];
+    show(ALL, '/maintenance/c1?tab=costs', data);
+    await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' });
+    expect(screen.getByRole('tab', { name: 'Rechnungen & Kosten' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('link', { name: de.openInvoiceReview })).toHaveAttribute('href', '/invoice-review/i1');
+    expect(screen.getByRole('link', { name: de.openBooking })).toHaveAttribute('href', '/bookings?booking_id=b%3F%202');
+    expect(screen.getByText(/Ohne ID/)).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: de.openBooking })).toHaveLength(1);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('does not manufacture context destinations for unlinked records and accepts unknown tab safely', async () => {
+    const data = project(Object.fromEntries(Object.keys(ALL).map(key => [key, false])));
+    data.case = { ...data.case, property_id: null, unit_id: null };
+    data.invoices[0].invoice = { ...data.invoices[0].invoice, id: null };
+    show(data.abilities, '/maintenance/c1?tab=not-a-section', data);
+    await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' });
+    expect(screen.getByRole('tab', { name: de.tabOverview })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('navigation', { name: de.relatedPages })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: de.tabCosts }));
+    expect(screen.queryByRole('link', { name: de.openInvoiceReview })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: de.openBooking })).not.toBeInTheDocument();
+    expect(screen.getByText(/Nur Lesen/)).toBeInTheDocument();
+  });
+
   it('advances through server document pages even when every visible row was filtered out', async () => {
     const detail = project();
     const linked = Array.from({ length: 25 }, (_, index) => ({

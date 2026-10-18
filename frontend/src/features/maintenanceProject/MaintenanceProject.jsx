@@ -1,8 +1,10 @@
 import NotificationArrival from '../../components/NotificationArrival';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import FormModal from '../../components/FormModal';
 import StatusBadge from '../../components/StatusBadge';
+import RelatedPageLinks from '../../components/RelatedPageLinks';
+import { entityHref } from '../../utils/entityLinks';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { projectApi } from './projectApi';
 import { Pill } from './ProjectUi';
@@ -17,15 +19,36 @@ const TABS = [
   ['overview', 'tabOverview'], ['work', 'tabWork'], ['appointments', 'tabAppointments'],
   ['procurement', 'tabProcurement'], ['costs', 'tabCosts'], ['protocols', 'tabProtocols'], ['documents', 'tabDocuments'],
 ];
+const TAB_KEYS = TABS.map(([key]) => key);
 
 /** The project file of one maintenance case (Schaden → Projektakte). */
 export default function MaintenanceProject({ caseId }) {
   const { tx } = useProjectText();
   const confirm = useConfirm();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const requestedTab = new URLSearchParams(location.search).get('tab');
+  const tab = TAB_KEYS.includes(requestedTab) ? requestedTab : 'overview';
+  const selectTab = key => {
+    if (!TAB_KEYS.includes(key) || key === tab) return;
+    const query = new URLSearchParams(location.search);
+    if (key === 'overview') query.delete('tab'); else query.set('tab', key);
+    navigate({ pathname: location.pathname, search: query.size ? `?${query}` : '', hash: location.hash },
+      { state: location.state });
+  };
+  const onTabKey = (event, key) => {
+    const index = TAB_KEYS.indexOf(key);
+    const next = event.key === 'ArrowRight' ? TAB_KEYS[(index + 1) % TAB_KEYS.length]
+      : event.key === 'ArrowLeft' ? TAB_KEYS[(index - 1 + TAB_KEYS.length) % TAB_KEYS.length]
+        : event.key === 'Home' ? TAB_KEYS[0] : event.key === 'End' ? TAB_KEYS.at(-1) : null;
+    if (!next) return;
+    event.preventDefault();
+    selectTab(next);
+    event.currentTarget.parentElement?.querySelector(`[data-tab-key="${next}"]`)?.focus();
+  };
   const [project, setProject] = useState(null);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [tab, setTab] = useState('overview');
   const [notice, setNotice] = useState(null);
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -88,6 +111,13 @@ export default function MaintenanceProject({ caseId }) {
 
   const { case: record, workflow, costs, abilities: can } = project;
   const ctx = { project, caseId, tx, can, act, openForm, contactOptions, busy, reload };
+  const relatedItems = [
+    ...(record.property_id ? [
+      { to: `${entityHref('property', record.property_id)}?tab=maintenance`, label: tx.openProperty },
+      { to: `/bookings?property_id=${encodeURIComponent(record.property_id)}`, label: tx.propertyBookings },
+    ] : []),
+    ...(record.unit_id ? [{ to: entityHref('unit', record.unit_id), label: tx.openUnit }] : []),
+  ];
   const readOnly = !Object.values(can).some(Boolean);
 
   const changeStatus = target => {
@@ -117,6 +147,8 @@ export default function MaintenanceProject({ caseId }) {
         </div>
         <StatusBadge status={record.status} />
       </div>
+
+      <RelatedPageLinks items={relatedItems} label={tx.relatedPages} heading={tx.nextPages} />
 
       {can.transition && workflow.allowed.length > 0 && (
         <div className="mp-workflow" aria-label={tx.reasonTitle}>
@@ -162,9 +194,10 @@ export default function MaintenanceProject({ caseId }) {
 
       <div className="detail-tabs mp-tabs" role="tablist" aria-label={tx.sections}>
         {TABS.map(([key, label]) => (
-          <button key={key} type="button" role="tab" id={`mp-tab-${key}`} aria-selected={tab === key}
+          <button key={key} type="button" role="tab" id={`mp-tab-${key}`} data-tab-key={key}
+            aria-selected={tab === key} tabIndex={tab === key ? 0 : -1}
             aria-controls={`mp-panel-${key}`} className={`detail-tab ${tab === key ? 'active' : ''}`}
-            onClick={() => setTab(key)}>
+            onClick={() => selectTab(key)} onKeyDown={event => onTabKey(event, key)}>
             {tx[label]}
           </button>
         ))}

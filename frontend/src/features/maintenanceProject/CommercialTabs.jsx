@@ -1,4 +1,6 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { entityHref } from '../../utils/entityLinks';
 import { projectApi } from './projectApi';
 import { day, money } from './projectFormat';
 import { Empty, Fact, Pill, PickerDialog, Section } from './ProjectUi';
@@ -270,6 +272,7 @@ export function CostsTab({ ctx }) {
                   <div className="mp-row-main">
                     <strong>{[row.invoice?.invoice_number, row.invoice?.supplier].filter(Boolean).join(' · ')}</strong>
                     <span className="text-muted">{day(row.invoice?.invoice_date)} · {tx.order} {orderName[row.order_id]}</span>
+                    {row.invoice?.id && <Link className="mp-context-link" to={entityHref('invoiceReview', row.invoice.id)}>{tx.openInvoiceReview}</Link>}
                   </div>
                   <Pill tone={row.invoice?.status === 'cancelled' ? 'gray' : 'blue'}>{tx[`invoice_${row.invoice?.status}`] || row.invoice?.status}</Pill>
                 </div>
@@ -287,6 +290,7 @@ export function CostsTab({ ctx }) {
                           <span className="text-muted">
                             {[day(payment.booking?.booking_date), payment.booking?.payment_text].filter(Boolean).join(' · ')}
                           </span>
+                          {payment.booking?.id && <Link className="mp-context-link" to={entityHref('booking', payment.booking.id)}>{tx.openBooking}</Link>}
                         </div>
                         {can.allocate_payments && (
                           <button type="button" className="btn btn-ghost btn-sm"

@@ -43,3 +43,12 @@ it('renders no empty navigation area when there is no suitable target', () => {
   const { container } = render(<MemoryRouter><RelatedPageLinks items={[]} /></MemoryRouter>);
   expect(container).toBeEmptyDOMElement();
 });
+
+it('supports localized navigation and heading without replacing normal router links', () => {
+  render(<MemoryRouter><RelatedPageLinks label="Related pages" heading="Go to"
+    items={[{ to: '/maintenance/m1?tab=costs', label: 'Maintenance costs' }]} /></MemoryRouter>);
+  const nav = screen.getByRole('navigation', { name: 'Related pages' });
+  expect(within(nav).getByText('Go to')).toBeInTheDocument();
+  expect(within(nav).getByRole('link', { name: 'Maintenance costs' }))
+    .toHaveAttribute('href', '/maintenance/m1?tab=costs');
+});
