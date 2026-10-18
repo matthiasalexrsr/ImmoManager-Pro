@@ -32,6 +32,9 @@ describe('links between records', () => {
     expect(entityHref('invoiceReview', 'i1')).toBe('/invoice-review/i1');
     expect(entityHref('contact', null, 'Müller & Co')).toBe('/contacts?suche=M%C3%BCller%20%26%20Co');
     expect(entityHref('contract', null, 'MV-2025-001')).toBe('/contracts?suche=MV-2025-001');
+    expect(entityHref('contract', 'c/1 ?#')).toBe('/contracts?contract_id=c%2F1%20%3F%23');
+    expect(entityHref('booking', 'b?1#')).toBe('/bookings?booking_id=b%3F1%23');
+    expect(entityHref('tenantAccount', 't 1')).toBe('/tenants/t%201/account');
     expect(entityHref('property', null)).toBeNull();
   });
 

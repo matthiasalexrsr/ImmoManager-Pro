@@ -73,3 +73,41 @@ describe('party navigation in unit and account pages', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+it('connects an occupied unit to its property sections, exact contract and tenant account', async () => {
+  api.get.mockImplementation(path => {
+    if (path === '/units/u1') return Promise.resolve({ id: 'u1', property_id: 'p1', label: 'EG links', status: 'occupied' });
+    if (path === '/properties/p1') return Promise.resolve({ id: 'p1', name: 'Haus Alpha', address_line: 'Am Park 1' });
+    if (path === '/tenants/t1') return Promise.resolve({ id: 't1', full_name: 'Anna Beispiel' });
+    return Promise.reject(new Error('Unerwartete Akte: ' + path));
+  });
+  api.list.mockImplementation(path => Promise.resolve(path.startsWith('/contracts?unit_id=')
+    ? [{ id: 'c 1', unit_id: 'u1', property_id: 'p1', tenant_id: 't1', contract_number: 'MV/2026',
+      status: 'active', start_date: '2026-01-01' }] : []));
+  render(<MemoryRouter initialEntries={['/units/u1']}>
+    <Routes><Route path="/units/:id" element={<UnitOverview />} /></Routes>
+  </MemoryRouter>);
+  await screen.findByRole('heading', { name: 'EG links' });
+  const related = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+  expect(related.querySelector('a[href="/properties/p1?tab=contracts"]')).not.toBeNull();
+  expect(screen.getByRole('link', { name: 'Verträge des Objekts' })).toHaveAttribute('href', '/properties/p1?tab=contracts');
+  expect(screen.getByRole('link', { name: 'Finanzen des Objekts' })).toHaveAttribute('href', '/properties/p1?tab=finance');
+  expect(screen.getByRole('link', { name: 'Mietvertrag öffnen' })).toHaveAttribute('href', '/contracts?contract_id=c%201');
+  expect(screen.getByRole('link', { name: 'Mieterkonto öffnen' })).toHaveAttribute('href', '/tenants/t1/account');
+  const numbered = screen.getAllByRole('link', { name: 'MV/2026' });
+  expect(numbered).toHaveLength(2);
+  numbered.forEach(link => expect(link).toHaveAttribute('href', '/contracts?contract_id=c%201'));
+  expect(screen.getByRole('link', { name: /Zur Immobilie/ })).toHaveAttribute('href', '/properties/p1');
+  expect(context.openParty).not.toHaveBeenCalled();
+});
+
+it('does not manufacture a linked contract or tenant account for a vacant unit', async () => {
+  api.get.mockResolvedValue({ id: 'u1', property_id: null, label: 'Leerstand', status: 'vacant' });
+  api.list.mockResolvedValue([]);
+  render(<MemoryRouter initialEntries={['/units/u1']}>
+    <Routes><Route path="/units/:id" element={<UnitOverview />} /></Routes>
+  </MemoryRouter>);
+  await screen.findByRole('heading', { name: 'Leerstand' });
+  expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Mieterkonto öffnen' })).not.toBeInTheDocument();
+});

@@ -27,6 +27,11 @@ describe('TenantAccount', () => {
     expect(await screen.findByText('MV-Garage')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Mieterkonto Familie Yilmaz' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Familie Yilmaz' })).toHaveAttribute('href', '/tenants/t1/account');
+    expect(screen.getByRole('link', { name: 'MV-Whg' })).toHaveAttribute('href', '/contracts?contract_id=w');
+    expect(screen.getByRole('link', { name: 'MV-Garage' })).toHaveAttribute('href', '/contracts?contract_id=g');
+    expect(screen.getByRole('link', { name: 'Nachzahlung' })).toHaveAttribute('href', '/bookings?booking_id=b');
+    expect(screen.getByRole('link', { name: 'Buchungen dieses Mieters' })).toHaveAttribute('href', '/bookings?tenant_id=t1');
+    expect(screen.getByRole('link', { name: 'Alle Mietverträge' })).toHaveAttribute('href', '/contracts');
     expect(screen.getByText('Nachzahlung')).toBeInTheDocument();
     expect(screen.getByText(/15\.700,00/)).toBeInTheDocument();  // open in total
     expect(screen.getByLabelText('Stichtag')).toHaveValue('2026-10-15');

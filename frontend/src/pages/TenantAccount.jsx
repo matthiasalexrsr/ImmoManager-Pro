@@ -4,6 +4,8 @@ import { api } from '../api';
 import { useToast } from '../components/Toast';
 import { formatDate as day, formatMoney } from '../utils/format';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 
 const eur = v => formatMoney(v || 0);
 
@@ -60,6 +62,11 @@ export default function TenantAccount() {
         {party && <button className="btn btn-sm btn-secondary" onClick={() => party.openParty(id, { tab: 'documents' })}>Dokumente der Partei</button>}
       </div>
 
+      <RelatedPageLinks items={[
+        { to: '/contracts', label: 'Alle Mietverträge' },
+        { to: `/bookings?tenant_id=${encodeURIComponent(id)}`, label: 'Buchungen dieses Mieters' },
+      ]} />
+
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}><div className="stat-label">Soll</div><div className="stat-value">{eur(totals.expected)}</div></button>
         <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}><div className="stat-label">Gezahlt (zugeordnet)</div><div className="stat-value">{eur(totals.paid)}</div></button>
@@ -78,7 +85,9 @@ export default function TenantAccount() {
             <tbody>
               {account.contracts.map(c => (
                 <tr key={c.contract_id}>
-                  <td>{c.contract_number}
+                  <td>{c.contract_id && c.contract_number
+                    ? <Link to={entityHref('contract', c.contract_id)}>{c.contract_number}</Link>
+                    : c.contract_number || '—'}
                     {c.ledger_start && <div className="td-sub">Konto ab {day(c.ledger_start)} übernommen
                       {c.carried_balance ? ` · Saldo ${eur(c.carried_balance)}` : ''}</div>}</td>
                   <td className="text-right td-num">{eur(c.expected)}</td>
@@ -105,7 +114,9 @@ export default function TenantAccount() {
                   {account.unassigned.map(b => (
                     <tr key={b.booking_id}>
                       <td>{day(b.booking_date)}</td>
-                      <td className="td-wrap">{b.payment_text || '—'}</td>
+                      <td className="td-wrap">{b.booking_id
+                        ? <Link to={entityHref('booking', b.booking_id)}>{b.payment_text || 'Buchung öffnen'}</Link>
+                        : b.payment_text || '—'}</td>
                       <td className="text-right td-num">{eur(b.amount)}</td>
                       <td className="text-right td-num">{eur(b.unassigned)}</td>
                     </tr>

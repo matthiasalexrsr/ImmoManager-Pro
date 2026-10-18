@@ -11,6 +11,15 @@
 .detail-tabs [role="tab"]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -3px; }
 .detail-tab-content[role="tabpanel"]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 
+/* Direct-linkable sections keep readable, keyboard-visible tabs on small screens. */
+.property-dossier .detail-tabs { scroll-padding-inline: .5rem; scrollbar-width: thin; }
+.property-dossier .detail-tabs .detail-tab { min-height: 44px; }
+.property-dossier .detail-tabs .detail-tab:focus-visible {
+  outline: 2px solid var(--color-primary, #326cbd);
+  outline-offset: -4px;
+  border-radius: 4px;
+}
+
 .property-dossier .detail-overview-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
 }

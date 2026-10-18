@@ -1,7 +1,7 @@
 import PhotoDropZone from '../components/PhotoDropZone';
 import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -21,6 +21,8 @@ import EntityActions from '../features/workCenter/EntityActions';
 import EntityTimeline from '../features/workCenter/EntityTimeline';
 import DossierTabs from '../components/DossierTabs';
 import { currentContractsOn, localDay, occupancyMapOn } from '../utils/occupancy';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -69,12 +71,14 @@ function PropertyDossier({ id }) {
   const [loading, setLoading] = useState(true);
   const [params, setParams] = useSearchParams();
   const tab = TAB_KEYS.includes(params.get('tab')) ? params.get('tab') : 'overview';
-  const setTab = (value, filters = {}) => setParams(current => {
-    const next = new URLSearchParams(current);
+  const setTab = (value, filters = {}) => {
+    if (!TAB_KEYS.includes(value)) return;
+    const next = new URLSearchParams(params);
     if (value === 'overview') next.delete('tab'); else next.set('tab', value);
     Object.entries(filters).forEach(([key, filter]) => next.set(key, filter));
-    return next;
-  }, { replace: true });
+    if (next.toString() !== params.toString()) navigate({ pathname: location.pathname,
+      search: next.size ? `?${next}` : '', hash: location.hash }, { state: location.state, preventScrollReset: true });
+  };
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const [viewerFile, setViewerFile] = useState(null);
@@ -96,6 +100,7 @@ function PropertyDossier({ id }) {
   const focusRentSources = () => { rentSources.current?.focus(); rentSources.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); };
   const canEdit = useCanWrite('/properties');
   const navigate = useNavigate();
+  const location = useLocation();
   // a New form of another list, prefilled with this property
   const startNew = path => () => { const link = newEntryLink(path, { property_id: id }); navigate(link.to, { state: link.state }); };
 
@@ -186,7 +191,9 @@ function PropertyDossier({ id }) {
   const tenantName = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
   const unitName = Object.fromEntries(units.map(u => [u.id, u.label || u.unit_number]));
   const CONTRACT_COLUMNS = [
-    { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+    { key: 'contract_number', label: 'Vertrag', filterType: 'text',
+      render: (value, contract) => value && contract.id
+        ? <Link to={entityHref('contract', contract.id)}>{value}</Link> : value || '—' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (value, contract) => <PartyLink tenantId={contract.tenant_id}>{value || '—'}</PartyLink> },
     { key: 'unit_name', label: 'Einheit', filterType: 'text',
@@ -214,7 +221,8 @@ function PropertyDossier({ id }) {
   ];
 
   const MAINT_COLUMNS = [
-    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text' },
+    { key: 'title', label: t('pages.propertyDetail.docTitle') || 'Titel', filterType: 'text',
+      render: (value, item) => value && item.id ? <Link to={entityHref('maintenance', item.id)}>{value}</Link> : value || '—' },
     { key: 'priority', label: t('pages.propertyDetail.priority') || 'Priorität', type: 'status' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
     { key: 'due_date', label: t('pages.propertyDetail.dueDate') || 'Fällig', type: 'date' },
@@ -242,6 +250,13 @@ function PropertyDossier({ id }) {
             onChanged={() => setActivityRevision(value => value + 1)} />
         </div>
       </div>
+
+      {tab !== 'finance' && <RelatedPageLinks items={[
+        { to: `/bookings?property_id=${encodeURIComponent(id)}`, label: 'Buchungen dieser Immobilie' },
+        { to: '/rent-overview', label: 'Mietübersicht' },
+        { to: '/units', label: 'Alle Einheiten' },
+        { to: '/contracts', label: 'Alle Verträge' },
+      ]} />}
 
       {/* KPI Summary */}
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>

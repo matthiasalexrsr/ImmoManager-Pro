@@ -56,6 +56,11 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+function CurrentRoute() {
+  const location = useLocation();
+  return <output data-testid="current-route">{location.pathname + location.search}</output>;
+}
+
 function NewFormTarget() {
   const location = useLocation();
   return <pre data-testid="new-form-target">{JSON.stringify({ path: location.pathname + location.search, state: location.state })}</pre>;
@@ -68,6 +73,9 @@ function RoutesUnderTest() {
     <output data-testid="location">{location.pathname + location.search}</output>
     <button onClick={() => navigate('/properties/p2')}>Anderes Objekt</button>
     <button onClick={() => navigate(-1)}>Browser zurück</button>
+    <button onClick={() => navigate(-1)}>Test-History-Zurück</button>
+    <button onClick={() => navigate(1)}>Test-History-Vorwärts</button>
+    <CurrentRoute />
     <Routes>
       <Route path="/properties/:id" element={<PropertyDetail />} />
       <Route path="/units/:id" element={<UnitOverview />} />
@@ -285,6 +293,47 @@ describe('property page as the place to act on a property', () => {
     expect(await screen.findByRole('tab', { name: 'Mieter & Verträge (1)' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('button', { name: 'Aktive Verträge' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('MV-7')).toBeInTheDocument();
+  });
+
+  it('opens property sections from links, preserves other query parameters and supports Back/Forward', async () => {
+    show('/properties/p1?source=unit&tab=contracts');
+    await screen.findByRole('heading', { name: 'Haus Alpha' });
+    expect(screen.getByRole('tab', { name: 'Mieter & Verträge (0)' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/properties/p1?source=unit&tab=contracts');
+    fireEvent.click(screen.getByRole('tab', { name: 'Finanzen' }));
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/properties/p1?source=unit&tab=finance');
+    expect(screen.getByRole('tab', { name: 'Finanzen' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Test-History-Zurück' }));
+    expect(screen.getByRole('tab', { name: 'Mieter & Verträge (0)' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Test-History-Vorwärts' }));
+    expect(screen.getByRole('tab', { name: 'Finanzen' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Übersicht' }));
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/properties/p1?source=unit');
+    expect(screen.getByRole('tab', { name: 'Übersicht' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('shows a safe overview on unknown tabs and offers links to related areas', async () => {
+    show('/properties/p1?tab=not-a-tab');
+    await screen.findByRole('heading', { name: 'Haus Alpha' });
+    expect(screen.getByRole('tab', { name: 'Übersicht' })).toHaveAttribute('aria-selected', 'true');
+    const related = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(related).getByRole('link', { name: 'Buchungen dieser Immobilie' })).toHaveAttribute('href', '/bookings?property_id=p1');
+    expect(within(related).getByRole('link', { name: 'Mietübersicht' })).toHaveAttribute('href', '/rent-overview');
+    expect(within(related).getByRole('link', { name: 'Alle Einheiten' })).toHaveAttribute('href', '/units');
+    expect(within(related).getByRole('link', { name: 'Alle Verträge' })).toHaveAttribute('href', '/contracts');
+  });
+
+  it('links contract identities and maintenance titles to the actual record pages', async () => {
+    withContract();
+    const previous = api.list.getMockImplementation();
+    api.list.mockImplementation(path => path.startsWith('/maintenance?')
+      ? Promise.resolve([{ id: 'm-1', title: 'Heizung prüfen', status: 'open', priority: 'high' }])
+      : previous(path));
+    show('/properties/p1?tab=contracts');
+    await screen.findByRole('heading', { name: 'Haus Alpha' });
+    expect(screen.getByRole('link', { name: 'MV-7' })).toHaveAttribute('href', '/contracts?contract_id=c1');
+    fireEvent.click(screen.getByRole('tab', { name: 'Wartung (1)' }));
+    expect(screen.getByRole('link', { name: 'Heizung prüfen' })).toHaveAttribute('href', '/maintenance/m-1');
   });
 
   it('opens exactly the active contracts and open maintenance behind their counts', async () => {

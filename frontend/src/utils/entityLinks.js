@@ -7,6 +7,8 @@ const TARGETS = {
   serviceContract: id => `/service-contracts/${encodeURIComponent(id)}`,
   invoiceReview: id => `/invoice-review/${encodeURIComponent(id)}`,
   tenantAccount: id => `/tenants/${encodeURIComponent(id)}/account`,
+  contract: id => `/contracts?contract_id=${encodeURIComponent(id)}`,
+  booking: id => `/bookings?booking_id=${encodeURIComponent(id)}`,
   dunningCase: id => `/dunning/contracts/${encodeURIComponent(id)}`,
 };
 const SEARCH_TARGETS = {

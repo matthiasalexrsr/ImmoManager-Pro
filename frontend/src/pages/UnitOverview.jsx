@@ -14,6 +14,8 @@ import NewForMenu from '../components/NewForMenu';
 import { newEntryLink } from '../utils/newEntry';
 import EntityActions from '../features/workCenter/EntityActions';
 import EntityTimeline from '../features/workCenter/EntityTimeline';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 import './propertyDossier.css';
 
 // What can be started from a unit, each opened prefilled with the unit and its property.
@@ -87,6 +89,15 @@ export default function UnitOverview() {
         </div>
       </div>
 
+      <RelatedPageLinks items={[
+        ...(unit.property_id ? [
+          { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=contracts`, label: 'Verträge des Objekts' },
+          { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=finance`, label: 'Finanzen des Objekts' },
+        ] : []),
+        ...(activeContract?.id ? [{ to: entityHref('contract', activeContract.id), label: 'Mietvertrag öffnen' }] : []),
+        ...(activeContract?.tenant_id ? [{ to: entityHref('tenantAccount', activeContract.tenant_id), label: 'Mieterkonto öffnen' }] : []),
+      ]} />
+
       <details className="panel dossier-media" open={photosOpen} onToggle={event => setPhotosOpen(event.currentTarget.open)}>
         <summary className="panel-header">Fotos der Einheit</summary>
         {photosOpen && <div className="panel-body"><PhotoDropZone entityType="unit" entityId={id} /></div>}
@@ -121,7 +132,10 @@ export default function UnitOverview() {
           <div className="panel-body">
             {activeContract ? (
               <dl className="overview-dl">
-                <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt><dd>{activeContract.contract_number}</dd>
+                <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt>
+                <dd>{activeContract.id && activeContract.contract_number
+                  ? <Link to={entityHref('contract', activeContract.id)}>{activeContract.contract_number}</Link>
+                  : activeContract.contract_number || '—'}</dd>
                 <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd><PartyLink tenantId={tenant?.id}>{tenant?.full_name || '—'}</PartyLink></dd>
                 <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{formatDate(activeContract.start_date)}</dd>
                 <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date ? formatDate(activeContract.end_date) : t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
@@ -145,7 +159,9 @@ export default function UnitOverview() {
               <ul className="overview-list">
                 {contracts.map(c => (
                   <li key={c.id}>
-                    <span>{c.contract_number} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})
+                    <span>{c.id && c.contract_number
+                      ? <Link to={entityHref('contract', c.id)}>{c.contract_number}</Link>
+                      : c.contract_number || '—'} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})
                       {c.tenant_id && <> · <PartyLink tenantId={c.tenant_id}>Parteiakte</PartyLink></>}</span>
                     <StatusBadge status={c.status} />
                   </li>
