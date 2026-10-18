@@ -54,10 +54,64 @@
 
   --transition: 0.2s ease;
   --transition-slow: 0.3s ease;
+
+  /* One scale for every component: spacing, type, control heights. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+
+  --control-height: 38px;
+  --control-height-sm: 32px;
+
+  /* Older modules use these names. They were never defined (a property without a
+     fallback became invalid), so they point at the tokens above, also in dark mode. */
+  --primary: var(--color-primary);
+  --teal: var(--color-primary);
+  --accent: var(--color-primary);
+  --danger: var(--color-danger);
+  --color-error: var(--color-danger);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --warning-text: var(--color-warning);
+  --info: var(--color-info);
+  --border: var(--color-border);
+  --border-color: var(--color-border);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --muted: var(--color-text-muted);
+  --bg-primary: var(--color-surface);
+  --bg-secondary: var(--color-bg);
+  --card-bg: var(--color-surface);
+  --color-bg-card: var(--color-surface);
+  --color-bg-input: var(--color-surface);
+  --hover-bg: var(--color-primary-50);
+  --highlight-bg: var(--color-primary-50);
+  --danger-bg: var(--color-danger-light);
+  --color-error-bg: var(--color-danger-light);
+  --warning-bg: var(--color-warning-light);
+  --success-bg: var(--color-success-light);
+  --color-success-bg: var(--color-success-light);
+  --rounded-lg: var(--radius-lg);
 }
 
 html {
-  font-size: 15px;
+  font-size: var(--text-md);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -78,6 +132,116 @@ button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea, [tabindex] { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 fieldset { min-inline-size: 0; }
+
+/* --- Native controls: the app's look wherever a component sets none ---
+   :where() keeps these at zero specificity, so every component style still wins.
+   Without them, fields outside .form-group fell back to the browser (16 px, black
+   border) and looked different on almost every page. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"],
+  [type="hidden"], [type="submit"], [type="button"], [type="reset"], [type="image"]), select, textarea) {
+  min-height: var(--control-height);
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: 1.4;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+:where(textarea) { min-height: 80px; resize: vertical; }
+:where(input, select, textarea)::placeholder { color: var(--color-text-muted); opacity: 1; }
+:where(input, select, textarea):focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+:where(input, select, textarea):disabled {
+  background-color: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+:where(input[type="checkbox"], input[type="radio"]) {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  vertical-align: middle;
+  cursor: pointer;
+}
+:where(label) { font-size: var(--text-sm); }
+/* A label around its field puts the text above the field, like .form-group. */
+:where(label:has(> select, > textarea, > input:not([type="checkbox"], [type="radio"], [type="hidden"]))) {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  vertical-align: top;
+  font-weight: 550;
+  color: var(--color-text);
+}
+/* A label around a checkbox or radio: the box, then the text on the same line. */
+:where(label:has(> input[type="checkbox"], > input[type="radio"])) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+:where(fieldset) {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+:where(legend) {
+  padding: 0 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* A button without any class gets the secondary button look. */
+:where(button:not([class])) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 550;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+:where(button:not([class])):hover:not(:disabled) { background: var(--color-bg); border-color: var(--color-text-muted); }
+:where(button:not([class])):disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Disclosures: a chevron instead of the browser triangle, a readable summary. */
+:where(summary) {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--color-text);
+}
+:where(summary)::-webkit-details-marker { display: none; }
+:where(summary)::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 10px 2px 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+  vertical-align: middle;
+}
+:where(details[open] > summary)::before { transform: rotate(45deg); margin-bottom: 4px; }
 
 a {
   color: var(--color-primary);
@@ -145,7 +309,7 @@ a:hover {
 
 .page-subtitle {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-base);
   margin-bottom: 1.25rem;
 }
 
@@ -155,7 +319,7 @@ a:hover {
   justify-content: center;
   padding: 4rem;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   gap: 0.5rem;
 }
 
@@ -191,8 +355,9 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 0.65rem 1rem;
-  font-size: 14px;
+  min-height: var(--control-height);
+  padding: 6px 16px;
+  font-size: var(--text-base);
   font-weight: 550;
   font-family: inherit;
   border-radius: var(--radius-sm);
@@ -257,8 +422,9 @@ a:hover {
 }
 
 .btn-sm {
-  padding: 0.4rem 0.7rem;
-  font-size: 13px;
+  min-height: var(--control-height-sm);
+  padding: 4px 12px;
+  font-size: var(--text-sm);
   border-radius: var(--radius-sm);
 }
 
@@ -312,8 +478,39 @@ a:hover {
   gap: 1rem;
   padding: 0.9rem 1.25rem;
   border-bottom: 1px solid var(--color-border);
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
+
+/* A card that opens (bank file import, online banking): the summary is its header,
+   the content keeps the card padding, fields line up in rows. */
+details.card > summary {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-base);
+  border-radius: var(--radius);
+}
+details.card > summary:hover { background: var(--color-primary-50); }
+details.card[open] > summary {
+  border-bottom: 1px solid var(--color-border-light);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+details.card > :not(summary) { margin: var(--space-4) var(--space-5); }
+details.card > :last-child:not(summary) { margin-bottom: var(--space-5); }
+details.card p { color: var(--color-text-secondary); font-size: var(--text-base); }
+details.card fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+}
+details.card fieldset > p,
+details.card fieldset > div { flex-basis: 100%; }
+details.card section > * + * { margin-top: var(--space-3); }
+details.card table { font-size: var(--text-sm); }
+details.card th,
+details.card td { padding: 8px 10px; border-bottom: 1px solid var(--color-border-light); text-align: left; vertical-align: top; }
 
 /* =============================================================
    DATA TABLE
@@ -337,7 +534,7 @@ a:hover {
 }
 
 .table-header h2 {
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text);
 }
@@ -353,7 +550,7 @@ a:hover {
   padding-left: 2.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   width: 240px;
   outline: none;
@@ -375,7 +572,7 @@ a:hover {
 table.data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .data-table-wrapper thead,
@@ -389,7 +586,7 @@ table.data-table th {
   padding: 0.7rem 0.75rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid var(--color-border);
@@ -436,7 +633,7 @@ table.data-table td.td-stacked {
   font-weight: 500;
 }
 .td-sub {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   margin-top: 0.1rem;
 }
@@ -451,7 +648,7 @@ table.data-table td.td-stacked {
 }
 .toolbar label,
 .toolbar-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -460,7 +657,7 @@ table.data-table td.td-stacked {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   background: var(--color-surface);
   color: var(--color-text);
 }
@@ -471,17 +668,37 @@ table.data-table td.td-stacked {
 .documents-page .toolbar input, .documents-page .toolbar select {
   width: 100%; min-width: 0; max-width: 100%; padding: .55rem .7rem;
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-  font: inherit; font-size: .875rem; background: var(--color-surface); color: var(--color-text);
+  font: inherit; font-size: var(--text-sm); background: var(--color-surface); color: var(--color-text);
 }
 .documents-page .text-muted { overflow-wrap: anywhere; }
 
-/* Quick filter buttons above a list. */
+/* Quick filter buttons above a list: quiet tabs, the chosen one tinted
+   (the same look as the property and tenant lists). */
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 6px;
+  margin-bottom: var(--space-4);
 }
+.filter-chips > .btn {
+  min-height: 34px;
+  padding: 6px 14px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+.filter-chips > .btn:hover:not(:disabled) { background: var(--color-surface); border-color: var(--color-border); color: var(--color-text); }
+.filter-chips > .btn-primary,
+.filter-chips > .btn[aria-pressed="true"] {
+  background: var(--color-primary-light);
+  border-color: transparent;
+  color: var(--color-primary);
+  font-weight: 650;
+}
+.filter-chips > .btn-primary:hover:not(:disabled) { background: var(--color-primary-light); color: var(--color-primary); }
 
 .data-table-wrapper td.table-empty,
 table.data-table td.table-empty {
@@ -541,6 +758,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .action-cell .btn {
+  min-height: 0;
   font-size: 0;
   padding: 0.35rem;
   width: 30px;
@@ -561,12 +779,12 @@ table.data-table tbody tr:last-child td {
   text-align: center;
   padding: 2.5rem 1rem !important;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 
 .table-footer {
   padding: 0.65rem 1.25rem;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-border-light);
   background: var(--color-bg);
@@ -582,7 +800,7 @@ table.data-table tbody tr:last-child td {
   gap: 0.3rem;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -667,7 +885,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .modal-header h3 {
-  font-size: 20px;
+  font-size: var(--text-2xl);
   font-weight: 650;
   letter-spacing: -.025em;
   color: var(--color-text);
@@ -692,7 +910,7 @@ table.data-table tbody tr:last-child td {
   color: var(--color-text-muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 1.2rem;
+  font-size: var(--text-xl);
   transition: all var(--transition);
 }
 .btn-close:hover {
@@ -719,7 +937,7 @@ table.data-table tbody tr:last-child td {
 .modal-footer .modal-shortcut-hint {
   margin-right: auto;
   align-self: center;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
 }
 
@@ -751,7 +969,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .form-section-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
   padding: 0 0.4rem;
@@ -767,7 +985,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .step-indicator-item {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
   background: var(--color-bg);
@@ -791,7 +1009,7 @@ table.data-table tbody tr:last-child td {
 
 .step-indicator-sep {
   color: var(--color-text-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
 }
 
 .form-group {
@@ -801,7 +1019,7 @@ table.data-table tbody tr:last-child td {
 .form-hint {
   display: block;
   margin-top: 0.3rem;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
   line-height: 1.35;
 }
@@ -830,7 +1048,7 @@ table.data-table tbody tr:last-child td {
 .form-group label {
   display: block;
   margin-bottom: 0.35rem;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 550;
   color: var(--color-text);
 }
@@ -839,10 +1057,11 @@ table.data-table tbody tr:last-child td {
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 0.7rem 0.85rem;
+  min-height: var(--control-height);
+  padding: 7px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-family: inherit;
   outline: none;
   transition: all var(--transition);
@@ -872,7 +1091,7 @@ table.data-table tbody tr:last-child td {
   color: var(--color-text);
   padding: 0.65rem 0.85rem;
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin-bottom: 1rem;
   border: 1px solid var(--color-info);
 }
@@ -882,7 +1101,7 @@ table.data-table tbody tr:last-child td {
   color: var(--color-danger);
   padding: 0.65rem 0.85rem;
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin-bottom: 1rem;
   border: 1px solid #fecaca;
   display: flex;
@@ -928,13 +1147,13 @@ table.data-table tbody tr:last-child td {
   justify-content: center;
   color: #fff;
   font-weight: 800;
-  font-size: 1.5rem;
+  font-size: 22px;
   margin: 0 auto 1rem;
   box-shadow: 0 4px 16px rgba(13, 148, 136, 0.25);
 }
 
 .login-header h1 {
-  font-size: 1.4rem;
+  font-size: 22px;
   font-weight: 700;
   color: var(--color-text);
   letter-spacing: -0.02em;
@@ -947,7 +1166,7 @@ table.data-table tbody tr:last-child td {
 
 .login-header p {
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   margin-top: 0.25rem;
 }
 
@@ -955,7 +1174,7 @@ table.data-table tbody tr:last-child td {
   width: 100%;
   justify-content: center;
   padding: 0.65rem;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-weight: 600;
   margin-top: 0.5rem;
 }
@@ -963,7 +1182,7 @@ table.data-table tbody tr:last-child td {
 .login-toggle {
   text-align: center;
   margin-top: 1.25rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -1044,7 +1263,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 22px;
   font-weight: 700;
   color: var(--color-text);
   line-height: 1.2;
@@ -1054,7 +1273,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .stat-label {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   font-weight: 500;
   margin-top: 0.15rem;
@@ -1073,47 +1292,50 @@ table.data-table tbody tr:last-child td {
   transform: none;
 }
 .stat-card:not(:has(.stat-icon)) .stat-value {
-  font-size: 1.3rem;
+  font-size: var(--text-2xl);
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 /* Key figures above a list: compact cards in a row. */
+/* Key figures: one strip with dividers (the same look as the property and tenant
+   lists), the figures share the width and long amounts keep their room. */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-}
-
-.kpi {
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  margin-bottom: var(--space-5);
+  padding: var(--space-2);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-xs);
-  padding: 0.8rem 1rem;
-  min-width: 0;
 }
 
+.kpi {
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+.kpi-row > .kpi + .kpi { box-shadow: inset 1px 0 0 var(--color-border-light); }
+
 .kpi-value {
-  font-size: 1.3rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.01em;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
 }
 
 .kpi-label {
-  margin-top: 0.15rem;
-  font-size: 0.78rem;
+  margin-top: 4px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .dashboard-panels {
@@ -1133,7 +1355,7 @@ table.data-table tbody tr:last-child td {
 .panel-header {
   padding: 0.9rem 1.25rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   border-bottom: 1px solid var(--color-border-light);
   color: var(--color-text);
 }
@@ -1141,7 +1363,7 @@ table.data-table tbody tr:last-child td {
 .panel h3 {
   padding: 1rem 1.25rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   border-bottom: 1px solid var(--color-border-light);
   color: var(--color-text);
 }
@@ -1158,7 +1380,7 @@ table.data-table tbody tr:last-child td {
   gap: 0.75rem;
   padding: 0.7rem 1.25rem;
   border-bottom: 1px solid var(--color-border-light);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   transition: background var(--transition);
 }
 
@@ -1177,13 +1399,13 @@ table.data-table tbody tr:last-child td {
 }
 
 .activity-date {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
 }
 
 .empty-text {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 1.5rem 1.25rem;
   text-align: center;
 }
@@ -1191,7 +1413,7 @@ table.data-table tbody tr:last-child td {
 .panel-link {
   display: block;
   padding: 0.75rem 1.25rem;
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-primary);
   border-top: 1px solid var(--color-border-light);
@@ -1240,10 +1462,12 @@ table.data-table tbody tr:last-child td {
 .search-bar-input {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   width: 100%;
+  padding: 0;
   border: none;
   outline: none;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   background: transparent;
   color: var(--color-text);
   font-family: inherit;
@@ -1252,9 +1476,11 @@ table.data-table tbody tr:last-child td {
 .search-bar-input::placeholder {
   color: var(--color-text-muted);
 }
+/* the wrapper shows the focus ring */
+.search-bar-input:focus-visible { box-shadow: none; }
 
 .search-bar-shortcut {
-  font-size: 0.68rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -1309,7 +1535,7 @@ table.data-table tbody tr:last-child td {
 .search-bar-loading,
 .search-bar-empty {
   padding: 1rem 1.25rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   text-align: center;
 }
@@ -1347,14 +1573,14 @@ table.data-table tbody tr:last-child td {
 }
 
 .search-bar-result-title {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
   display: block;
 }
 
 .search-bar-result-detail {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
   display: block;
   margin-top: 0.1rem;
@@ -1362,7 +1588,7 @@ table.data-table tbody tr:last-child td {
 
 .search-bar-group-header {
   padding: 0.4rem 1.25rem 0.25rem;
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1383,7 +1609,7 @@ table.data-table tbody tr:last-child td {
   border: none;
   background: none;
   color: var(--color-primary, inherit);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
 }
@@ -1409,7 +1635,7 @@ table.data-table tbody tr:last-child td {
   background: none;
   padding: 0;
   color: var(--color-primary, inherit);
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   text-transform: none;
   letter-spacing: 0;
   cursor: pointer;
@@ -1484,14 +1710,14 @@ table.data-table tbody tr:last-child td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border-light);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 
 .notification-mark-all {
   background: none;
   border: none;
   color: var(--color-primary);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   font-weight: 500;
   font-family: inherit;
@@ -1510,7 +1736,7 @@ table.data-table tbody tr:last-child td {
   padding: 2rem 1rem;
   text-align: center;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .notification-item {
@@ -1530,13 +1756,13 @@ table.data-table tbody tr:last-child td {
 }
 
 .notification-item-title {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
 }
 
 .notification-item-content {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   margin-top: 0.15rem;
 }
@@ -1569,7 +1795,7 @@ table.data-table tbody tr:last-child td {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-md);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   pointer-events: auto;
   animation: toast-in 0.3s ease;
   min-width: min(280px, calc(100vw - 2rem));
@@ -1645,7 +1871,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .error-boundary-content h1 {
-  font-size: 1.5rem;
+  font-size: 22px;
   margin-bottom: 0.75rem;
 }
 
@@ -1665,7 +1891,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .error-boundary-content pre {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   overflow-x: auto;
   margin-top: 0.5rem;
 }
@@ -1680,7 +1906,7 @@ table.data-table tbody tr:last-child td {
   justify-content: center;
   padding: 3rem;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 
 .error-message {
@@ -1689,7 +1915,7 @@ table.data-table tbody tr:last-child td {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
   border: 1px solid #fecaca;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 /* =============================================================
@@ -1758,7 +1984,7 @@ table.data-table tbody tr:last-child td {
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   background: var(--color-surface);
   color: var(--color-text);
   outline: none;
@@ -1824,7 +2050,7 @@ table.data-table tbody tr:last-child td {
   align-items: center;
   gap: 0.4rem;
   padding: 0.3rem 0.4rem;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   border-radius: 3px;
   white-space: nowrap;
@@ -1840,7 +2066,7 @@ table.data-table tbody tr:last-child td {
 
 /* Pagination footer info */
 .table-footer-info {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
 }
 
@@ -1854,7 +2080,7 @@ table.data-table tbody tr:last-child td {
   padding: 0.2rem 0.4rem;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   background: var(--color-surface);
   color: var(--color-text);
 }
@@ -1869,11 +2095,11 @@ table.data-table tbody tr:last-child td {
   min-width: 28px;
   justify-content: center;
   padding: 0.2rem 0.4rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .page-indicator {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 0 0.5rem;
   white-space: nowrap;
 }
@@ -1911,7 +2137,7 @@ table.data-table tbody tr:last-child td {
 
 .chart-empty {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -1992,7 +2218,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .message-item-title {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2001,7 +2227,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .message-item-preview {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2009,7 +2235,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .message-item-date {
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   color: var(--color-text-muted);
   margin-top: 0.2rem;
 }
@@ -2031,7 +2257,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .message-detail-header h2 {
-  font-size: 1.15rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   flex: 1;
 }
@@ -2039,7 +2265,7 @@ table.data-table tbody tr:last-child td {
 .message-detail-meta {
   display: flex;
   gap: 1rem;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
@@ -2047,7 +2273,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .message-detail-body {
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -2058,7 +2284,7 @@ table.data-table tbody tr:last-child td {
   justify-content: center;
   height: 100%;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 
 /* =============================================================
@@ -2094,7 +2320,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .settings-row label {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -2301,7 +2527,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .detail-title .text-muted {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 /* --- Tabs --- */
@@ -2320,7 +2546,7 @@ table.data-table tbody tr:last-child td {
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -2355,7 +2581,7 @@ table.data-table tbody tr:last-child td {
   justify-content: space-between;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--color-border-light);
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 
 .detail-field:last-child {
@@ -2371,7 +2597,7 @@ table.data-table tbody tr:last-child td {
 .simple-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   margin-top: 0.5rem;
 }
 
@@ -2385,7 +2611,7 @@ table.data-table tbody tr:last-child td {
 .simple-table th {
   font-weight: 600;
   color: var(--color-text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -2418,7 +2644,7 @@ table.data-table tbody tr:last-child td {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.35rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .thread-message-header strong {
@@ -2426,7 +2652,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .thread-message-body {
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -2447,7 +2673,7 @@ table.data-table tbody tr:last-child td {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   background: var(--color-surface);
   color: var(--color-text);
   transition: border-color var(--transition);
@@ -2526,7 +2752,7 @@ table.data-table tbody tr:last-child td {
   padding: 0.25rem 0.5rem;
   background: rgba(0, 0, 0, 0.6);
   color: white;
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
 }
 .photo-delete-btn {
   position: absolute;
@@ -2569,11 +2795,11 @@ table.data-table tbody tr:last-child td {
 .overview-dl dt {
   font-weight: 600;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .overview-dl dd {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
 }
 .overview-stats {
   display: grid;
@@ -2585,12 +2811,12 @@ table.data-table tbody tr:last-child td {
 }
 .overview-stat-value {
   display: block;
-  font-size: 1.5rem;
+  font-size: 22px;
   font-weight: 700;
   color: var(--primary);
 }
 .overview-stat-label {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 .overview-list {
@@ -2655,7 +2881,7 @@ table.data-table tbody tr:last-child td {
   overflow: auto;
   padding: 1rem;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   white-space: pre-wrap;
   line-height: 1.6;
   user-select: text;
@@ -2675,7 +2901,7 @@ table.data-table tbody tr:last-child td {
   align-items: center;
   gap: 0.25rem;
   padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   border-radius: 999px;
   background: rgba(217, 119, 6, 0.15);
   color: #d97706;
@@ -2686,14 +2912,14 @@ table.data-table tbody tr:last-child td {
   margin: 0;
 }
 .integration-features li {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 0.15rem 0;
   color: var(--muted);
 }
 
 /* ─── Form hint ─────────────────────────────────────────────────────── */
 .form-hint {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--muted);
   margin-top: 0.25rem;
 }
@@ -2723,7 +2949,7 @@ table.data-table tbody tr:last-child td {
   justify-content: space-between;
   padding: 0 16px;
   z-index: 10000;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-family: 'SF Mono', 'Fira Code', monospace;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
@@ -2741,7 +2967,7 @@ table.data-table tbody tr:last-child td {
   padding: 2px 8px;
   border-radius: 3px;
   font-weight: 700;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   letter-spacing: 1px;
 }
 
@@ -2751,7 +2977,7 @@ table.data-table tbody tr:last-child td {
 
 .dev-mode-page-count {
   color: #fbbf24;
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 
 /* Dev buttons */
@@ -2760,12 +2986,12 @@ table.data-table tbody tr:last-child td {
   cursor: pointer;
   border-radius: 4px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-xs);
   transition: background 0.15s, color 0.15s;
 }
 
 .dev-btn-sm { padding: 4px 10px; }
-.dev-btn-xs { padding: 2px 8px; font-size: 11px; }
+.dev-btn-xs { padding: 2px 8px; font-size: var(--text-2xs); }
 
 .dev-btn-primary {
   background: #7c3aed;
@@ -2805,7 +3031,7 @@ table.data-table tbody tr:last-child td {
   color: #e0e7ff;
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -2837,7 +3063,7 @@ table.data-table tbody tr:last-child td {
 
 .dev-panel-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-base);
   margin-bottom: 12px;
   color: #c7d2fe;
 }
@@ -2860,7 +3086,7 @@ table.data-table tbody tr:last-child td {
   border-radius: 4px;
   background: #312e81;
   color: #e0e7ff;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-family: inherit;
   outline: none;
 }
@@ -2902,7 +3128,7 @@ table.data-table tbody tr:last-child td {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: #a5b4fc;
   cursor: pointer;
   margin-left: auto;
@@ -2934,7 +3160,7 @@ table.data-table tbody tr:last-child td {
   display: inline-block;
   padding: 1px 6px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: white;
   text-transform: uppercase;
@@ -2947,13 +3173,13 @@ table.data-table tbody tr:last-child td {
 }
 
 .dev-note-item-location {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: #818cf8;
   margin-bottom: 4px;
 }
 
 .dev-note-item-desc {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #a5b4fc;
   margin-bottom: 6px;
   white-space: pre-wrap;
@@ -2987,7 +3213,7 @@ table.data-table tbody tr:last-child td {
 .dev-log-preview-content {
   padding: 16px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #c7d2fe;
   overflow: auto;
@@ -3019,7 +3245,7 @@ table.data-table tbody tr:last-child td {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: #c7d2fe;
   transition: background 0.15s;
 }
@@ -3049,7 +3275,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .diag-stat {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #a5b4fc;
   font-weight: 500;
 }
@@ -3083,7 +3309,7 @@ table.data-table tbody tr:last-child td {
 .diag-test-header:hover { background: #2a2566; }
 
 .diag-test-status {
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 700;
   width: 18px;
   text-align: center;
@@ -3092,7 +3318,7 @@ table.data-table tbody tr:last-child td {
 .diag-test-status.fail { color: #f87171; }
 
 .diag-test-name {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #e0e7ff;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -3100,7 +3326,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .diag-test-meta {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: #818cf8;
   display: flex;
   gap: 6px;
@@ -3110,7 +3336,7 @@ table.data-table tbody tr:last-child td {
 .diag-badge-error, .diag-badge-warn, .diag-badge-info {
   padding: 1px 6px;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
 }
 .diag-badge-error { background: #7f1d1d; color: #fca5a5; }
@@ -3119,7 +3345,7 @@ table.data-table tbody tr:last-child td {
 
 .diag-expand {
   color: #6366f1;
-  font-size: 10px;
+  font-size: var(--text-2xs);
 }
 
 .diag-issues {
@@ -3138,7 +3364,7 @@ table.data-table tbody tr:last-child td {
 }
 
 .diag-issue-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 700;
   min-width: 16px;
   text-align: center;
@@ -3146,7 +3372,7 @@ table.data-table tbody tr:last-child td {
 
 .diag-issue-content {
   flex: 1;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: #c7d2fe;
 }
 
@@ -3159,7 +3385,7 @@ table.data-table tbody tr:last-child td {
 .diag-issue-id {
   color: #818cf8;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   margin-right: 6px;
 }
 
@@ -3172,7 +3398,7 @@ table.data-table tbody tr:last-child td {
   padding: 6px 8px;
   background: #0f0d2e;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #a5b4fc;
   overflow-x: auto;
@@ -3181,7 +3407,7 @@ table.data-table tbody tr:last-child td {
 .diag-empty {
   padding: 24px 16px;
   color: #818cf8;
-  font-size: 13px;
+  font-size: var(--text-sm);
   text-align: center;
   line-height: 1.6;
 }
@@ -3190,7 +3416,7 @@ table.data-table tbody tr:last-child td {
   padding: 10px 16px;
   background: #7f1d1d;
   color: #fca5a5;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* Push app content down when dev bar is visible */
@@ -3254,7 +3480,7 @@ table.data-table tbody tr:last-child td {
   background: var(--color-warning-light);
   color: #92400e;
   border: 1px solid #fcd34d;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -3299,7 +3525,7 @@ table.data-table tbody tr:last-child td {
   margin: 0 auto;
 }
 .tour-kicker {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3307,7 +3533,7 @@ table.data-table tbody tr:last-child td {
   margin-bottom: 0.35rem;
 }
 .tour-title {
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   margin: 0 0 0.5rem;
   line-height: 1.35;
 }
@@ -3315,7 +3541,7 @@ table.data-table tbody tr:last-child td {
   margin: 0 0 0.9rem;
   line-height: 1.55;
   color: var(--color-text-secondary);
-  font-size: 0.92rem;
+  font-size: var(--text-base);
 }
 .tour-progress {
   height: 4px;
@@ -3381,7 +3607,7 @@ table.data-table tbody tr:last-child td {
   border-radius: var(--radius);
   background: var(--color-primary-light);
   color: var(--color-primary);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -3394,7 +3620,7 @@ table.data-table tbody tr:last-child td {
   border-radius: 999px;
   background: var(--color-primary-light);
   color: var(--color-primary);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 

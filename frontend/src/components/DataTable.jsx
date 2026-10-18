@@ -1,5 +1,5 @@
 import NotificationArrival from './NotificationArrival';
-import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { useInRouterContext, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -572,15 +572,25 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     setPage(0);
     filterToggleRef.current?.focus();
   };
+  // A table titled like its page ("Buchungen" under "Buchungen") shows the title to
+  // screen readers only: the same words twice add nothing on screen.
+  const wrapperRef = useRef(null);
+  const [repeatsPageTitle, setRepeatsPageTitle] = useState(false);
+  useLayoutEffect(() => {
+    const page = wrapperRef.current?.closest('main, .main-content, [role="main"]') || document;
+    const heading = page.querySelector('h1');
+    setRepeatsPageTitle(Boolean(title) && heading?.textContent?.trim() === String(title).trim());
+  }, [title]);
+  const titleHidden = hideTitle || repeatsPageTitle;
   const clearTableFilters = () => {
     setSearch(''); setColumnFilters({}); setPage(0);
     if (new URLSearchParams(routeSearch ?? window.location.search).has('focus_id')) clearFocusedRow?.();
   };
 
   return (
-    <div className={`data-table-wrapper data-table-workspace${hideTitle ? ' table-title-hidden' : ''}`}>
+    <div ref={wrapperRef} className={`data-table-wrapper data-table-workspace${titleHidden ? ' table-title-hidden' : ''}`}>
       <div className="table-header">
-        <h2 id={titleId} className={hideTitle ? 'sr-only' : undefined}>{title}</h2>
+        <h2 id={titleId} className={titleHidden ? 'sr-only' : undefined}>{title}</h2>
         <div className="table-actions">
           {!serverPaged && <input
             ref={searchInputRef}

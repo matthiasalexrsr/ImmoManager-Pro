@@ -184,12 +184,12 @@ export default function Messages() {
                 >
                   <div className="message-item-header">
                     <span className="message-item-title">{thr.subject}</span>
-                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                    <span className="text-muted" style={{ fontSize: 'var(--text-2xs)' }}>
                       {thr.message_count} {t('pages.messages.messagesCount') || 'Nachrichten'}
                     </span>
                   </div>
                   {resolveThreadRef(thr) && (
-                    <div className="text-muted" style={{ fontSize: '0.7rem' }}>
+                    <div className="text-muted" style={{ fontSize: 'var(--text-2xs)' }}>
                       📎 {resolveThreadRef(thr)}
                     </div>
                   )}

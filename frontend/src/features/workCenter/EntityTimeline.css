@@ -1,5 +1,5 @@
 .work-timeline { min-width: 0; overflow-wrap: anywhere; }
 .work-timeline-change { display: grid; gap: .6rem; margin: .65rem 0; }
 .work-timeline-change > div { min-width: 0; }
-.work-timeline-change dt { font-size: .85rem; color: var(--color-text-muted, var(--text-secondary)); }
+.work-timeline-change dt { font-size: var(--text-sm); color: var(--color-text-muted, var(--text-secondary)); }
 .work-timeline-change dd { margin: .15rem 0 0; }

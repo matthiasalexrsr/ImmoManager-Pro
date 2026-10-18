@@ -250,7 +250,7 @@ export default function Listings() {
               padding: '1rem',
               borderRadius: '6px',
               whiteSpace: 'pre-wrap',
-              fontSize: '0.9rem',
+              fontSize: 'var(--text-base)',
               lineHeight: 1.6,
               maxHeight: '400px',
               overflow: 'auto',

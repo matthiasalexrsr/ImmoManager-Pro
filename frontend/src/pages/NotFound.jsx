@@ -6,7 +6,7 @@ export default function NotFound() {
   return (
     <div className="page" style={{ textAlign: 'center', paddingTop: '4rem' }}>
       <h1 style={{ fontSize: '3rem', marginBottom: '1rem' }}>404</h1>
-      <p className="text-muted" style={{ fontSize: '1.1rem', marginBottom: '2rem' }}>
+      <p className="text-muted" style={{ fontSize: 'var(--text-lg)', marginBottom: '2rem' }}>
         {t('pages.notFound.message')}
       </p>
       <Link to="/" className="btn btn-primary">{t('pages.notFound.back')}</Link>

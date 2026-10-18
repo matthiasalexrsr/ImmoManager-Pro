@@ -73,14 +73,14 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
     <div className="panel" style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <button className="btn btn-sm btn-secondary" onClick={prevMonth}>&lsaquo;</button>
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>{monthNames[month]} {year}</h3>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-md)' }}>{monthNames[month]} {year}</h3>
         <button className="btn btn-sm btn-secondary" onClick={nextMonth}>&rsaquo;</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr>
             {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(d => (
-              <th key={d} style={{ padding: '4px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{d}</th>
+              <th key={d} style={{ padding: '4px', textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>{d}</th>
             ))}
           </tr>
         </thead>
@@ -107,7 +107,7 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
                       height: '36px',
                     }}
                   >
-                    <div style={{ fontSize: '0.85rem', fontWeight: isToday(day) ? 700 : 'normal' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: isToday(day) ? 700 : 'normal' }}>
                       {day || ''}
                     </div>
                     {dayViewings.length > 0 && (
@@ -286,11 +286,11 @@ export default function Viewings() {
 
             {/* Legend */}
             <div className="panel" style={{ padding: '0.75rem', marginTop: '1rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Legende</div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: '0.5rem' }}>Legende</div>
               {Object.entries(STATUS_COLORS).map(([status, color]) => (
                 <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
-                  <span style={{ fontSize: '0.8rem' }}>{statusLabels[status] || status}</span>
+                  <span style={{ fontSize: 'var(--text-xs)' }}>{statusLabels[status] || status}</span>
                 </div>
               ))}
             </div>
@@ -321,11 +321,11 @@ export default function Viewings() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                               {v.unit_label} &bull; {v.scheduled_at}
                             </div>
-                            {v.agent && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Betreuer: {v.agent}</div>}
-                            {v.notes && <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{v.notes}</div>}
+                            {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Betreuer: {v.agent}</div>}
+                            {v.notes && <div style={{ fontSize: 'var(--text-xs)', marginTop: '0.25rem' }}>{v.notes}</div>}
                           </div>
                           <StatusBadge status={v.status} />
                         </div>
@@ -355,10 +355,10 @@ export default function Viewings() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                               {v.unit_label} &bull; {v.scheduled_at}
                             </div>
-                            {v.agent && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Betreuer: {v.agent}</div>}
+                            {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Betreuer: {v.agent}</div>}
                           </div>
                           <StatusBadge status={v.status} />
                         </div>

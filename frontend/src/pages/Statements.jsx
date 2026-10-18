@@ -1095,7 +1095,7 @@ export default function Statements() {
                 )}
                 <div>
                   <strong>{t('pages.statements.metrics')}</strong>
-                  <div className="text-muted" style={{ fontSize: '0.9rem' }}>
+                  <div className="text-muted" style={{ fontSize: 'var(--text-base)' }}>
                     {t('pages.statements.metricsContracts')}: {preflight.metrics?.contracts_in_period ?? 0} · {t('pages.statements.metricsCostItems')}: {preflight.metrics?.cost_items ?? 0} ·
                     {t('pages.statements.metricsMissingKeys')}: {preflight.metrics?.allocation_keys_missing ?? 0} · {t('pages.statements.metricsMissingArea')}: {preflight.metrics?.area_missing_units ?? 0}
                   </div>
@@ -1170,7 +1170,7 @@ export default function Statements() {
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><strong>{t('pages.statements.revisionHistory')}</strong></div>
             <div className="card-body billing-table-scroll" role="region" aria-label="Abrechnungsfassungen" tabIndex={0}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-base)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
                     <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.statements.colLabel')}</th>
@@ -1247,7 +1247,7 @@ export default function Statements() {
                 {ocrDraft.ocr_fields && (
                   <div>
                     <strong>Erkannte Felder</strong>
-                    <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                    <table style={{ width: '100%', fontSize: 'var(--text-base)', borderCollapse: 'collapse' }}>
                       <tbody>
                         {ocrDraft.ocr_fields.supplier && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Lieferant</td>
@@ -1281,7 +1281,7 @@ export default function Statements() {
                 {ocrDraft.ocr_text_preview && (
                   <div>
                     <strong>Textvorschau</strong>
-                    <pre style={{ fontSize: '0.8rem', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                    <pre style={{ fontSize: 'var(--text-xs)', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
                       {ocrDraft.ocr_text_preview}
                     </pre>
                   </div>

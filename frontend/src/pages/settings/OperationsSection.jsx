@@ -75,7 +75,7 @@ function SecondTarget({ backup, canChange, busy, onSaved, t }) {
         <span className="text-muted" style={{ wordBreak: 'break-all' }} data-testid="second-target">
           {backup.second_target || t('settings.operations.notConfigured')}
         </span>
-        {fixed && <span className="text-muted" style={{ fontSize: '0.8rem' }}>{t('settings.operations.secondTargetFixed')}</span>}
+        {fixed && <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>{t('settings.operations.secondTargetFixed')}</span>}
         {canChange && !fixed && (
           <button type="button" className="btn btn-sm btn-secondary" disabled={busy}
                   onClick={() => setDraft(backup.second_target || '')}>
@@ -92,7 +92,7 @@ function SecondTarget({ backup, canChange, busy, onSaved, t }) {
              aria-label={t('settings.operations.secondTarget')}
              placeholder={t('settings.operations.secondTargetPlaceholder')}
              onChange={(event) => setDraft(event.target.value)} />
-      <span className="text-muted" style={{ fontSize: '0.8rem' }}>{t('settings.operations.secondTargetHint')}</span>
+      <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>{t('settings.operations.secondTargetHint')}</span>
       {problem && <span role="alert" style={{ color: 'var(--danger)' }}>{problem}</span>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         <button type="submit" className="btn btn-sm btn-primary" disabled={saving || !draft.trim()}>
@@ -182,7 +182,7 @@ export default function OperationsSection() {
               <div className="settings-control" style={COLUMN}>
                 <Status event={lastBackup} t={t} />
                 {lastBackup?.ok && (
-                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                  <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                     {lastBackup.archive} · {formatBytes(lastBackup.size)}
                   </span>
                 )}
@@ -220,7 +220,7 @@ export default function OperationsSection() {
                 <span className="text-muted">{t('settings.operations.archivesValue', {
                   count: backup.archives.length, size: formatBytes(backup.total_size_bytes),
                 })}</span>
-                <span className="text-muted" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{backup.directory}</span>
+                <span className="text-muted" style={{ fontSize: 'var(--text-xs)', wordBreak: 'break-all' }}>{backup.directory}</span>
               </div>
             </div>
             <div className="settings-row">
@@ -233,7 +233,7 @@ export default function OperationsSection() {
                 <span className="text-muted">{t('settings.operations.keysValue', {
                   key: secrets?.active_key_id || '—', sealed: secrets?.sealed ?? 0, plaintext: secrets?.plaintext ?? 0,
                 })}</span>
-                <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                   {backup.passphrase_protected ? t('settings.operations.passphraseOn') : t('settings.operations.passphraseOff')}
                 </span>
               </div>
@@ -253,7 +253,7 @@ export default function OperationsSection() {
                 <label>{t('settings.operations.failures')}</label>
                 <div className="settings-control" style={COLUMN}>
                   {data.failures.slice(0, 5).map((failure) => (
-                    <span key={`${failure.event}-${failure.at}`} className="text-muted" style={{ fontSize: '0.8rem' }}>
+                    <span key={`${failure.event}-${failure.at}`} className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                       {formatDateTime(failure.at)} · {failure.event} · {failure.error}
                     </span>
                   ))}

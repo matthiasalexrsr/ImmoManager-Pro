@@ -26,7 +26,7 @@
   .connection-layout { grid-template-columns: minmax(0, 1fr); }
   .connection-detail { padding: .85rem; }
   .connection-dialog { padding: 1rem; }
-  .connection-field input, .connection-field select, .connection-field textarea { font-size: 16px; }
+  .connection-field input, .connection-field select, .connection-field textarea { font-size: var(--text-lg); }
   .connection-facts { grid-template-columns: minmax(0, 1fr); }
   .connection-facts dd { margin-bottom: .5rem; }
   .connection-workspace .page-title { font-size: clamp(1.5rem, 7vw, 2rem); }

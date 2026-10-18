@@ -162,7 +162,7 @@ export default function Portfolios() {
               borderLeft: `4px solid ${OWNER_COLORS[owner] || 'var(--border-color)'}`,
             }}>
               <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{owner}</div>
-              <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <div className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                 {data.count} Portfolio{data.count !== 1 ? 's' : ''} · {data.properties} Immobilien · {data.units} Einheiten
               </div>
             </div>

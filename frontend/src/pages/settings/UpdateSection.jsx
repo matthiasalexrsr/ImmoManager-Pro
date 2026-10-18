@@ -98,7 +98,7 @@ export default function UpdateSection({ versionInfo }) {
                     marginLeft: '0.5rem',
                     color: 'var(--success, #22c55e)',
                     fontWeight: 600,
-                    fontSize: '0.85rem',
+                    fontSize: 'var(--text-sm)',
                   }}>
                     {tr('settings.update.available', 'Update verfügbar!')}
                   </span>
@@ -107,7 +107,7 @@ export default function UpdateSection({ versionInfo }) {
                   <span style={{
                     marginLeft: '0.5rem',
                     color: 'var(--text-muted)',
-                    fontSize: '0.85rem',
+                    fontSize: 'var(--text-sm)',
                   }}>
                     {tr('settings.update.upToDate', 'Bereits aktuell')}
                   </span>
@@ -119,7 +119,7 @@ export default function UpdateSection({ versionInfo }) {
               <div className="settings-row">
                 <label>{tr('settings.update.releaseNotes', 'Release-Hinweise')}</label>
                 <div className="settings-control">
-                  <details style={{ fontSize: '0.85rem', maxWidth: '100%' }}>
+                  <details style={{ fontSize: 'var(--text-sm)', maxWidth: '100%' }}>
                     <summary style={{ cursor: 'pointer', color: 'var(--primary)' }}>
                       {tr('settings.update.showNotes', 'Anzeigen')}
                     </summary>
@@ -132,7 +132,7 @@ export default function UpdateSection({ versionInfo }) {
                       marginTop: '0.5rem',
                       maxHeight: '200px',
                       overflow: 'auto',
-                      fontSize: '0.8rem',
+                      fontSize: 'var(--text-xs)',
                     }}>
                       {updateInfo.release_notes}
                     </pre>
@@ -163,7 +163,7 @@ export default function UpdateSection({ versionInfo }) {
                       {tr('settings.update.download', 'Neue Version herunterladen')}
                     </a>
                   )}
-                  {updateInfo.download_hint && <span className="text-muted" style={{ fontSize: '0.85rem' }}>{updateInfo.download_hint}</span>}
+                  {updateInfo.download_hint && <span className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>{updateInfo.download_hint}</span>}
                 </div>
               </div>
             )}
@@ -174,7 +174,7 @@ export default function UpdateSection({ versionInfo }) {
           <div className="settings-row">
             <label>{tr('settings.update.error', 'Fehler')}</label>
             <div className="settings-control">
-              <span style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>{updateInfo.error}</span>
+              <span style={{ color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>{updateInfo.error}</span>
             </div>
           </div>
         )}
@@ -186,12 +186,12 @@ export default function UpdateSection({ versionInfo }) {
               <span style={{
                 fontWeight: 600,
                 color: updateResult.success ? 'var(--success, #22c55e)' : 'var(--danger)',
-                fontSize: '0.85rem',
+                fontSize: 'var(--text-sm)',
               }}>
                 {updateResult.message}
               </span>
               {updateResult.steps && updateResult.steps.length > 0 && (
-                <details style={{ marginTop: '0.5rem', fontSize: '0.8rem', width: '100%' }}>
+                <details style={{ marginTop: '0.5rem', fontSize: 'var(--text-xs)', width: '100%' }}>
                   <summary style={{ cursor: 'pointer', color: 'var(--primary)' }}>
                     {tr('settings.update.showSteps', 'Schritte anzeigen')} ({updateResult.steps.length})
                   </summary>
@@ -209,7 +209,7 @@ export default function UpdateSection({ versionInfo }) {
                   background: 'var(--warning-bg, #fef3c7)',
                   color: 'var(--warning-text, #92400e)',
                   borderRadius: '4px',
-                  fontSize: '0.85rem',
+                  fontSize: 'var(--text-sm)',
                 }}>
                   {tr('settings.update.restartRequired', 'Bitte starten Sie die Anwendung neu, um das Update zu aktivieren.')}
                 </span>
@@ -221,7 +221,7 @@ export default function UpdateSection({ versionInfo }) {
                   background: 'var(--danger-bg, #fef2f2)',
                   color: 'var(--danger, #dc2626)',
                   borderRadius: '4px',
-                  fontSize: '0.85rem',
+                  fontSize: 'var(--text-sm)',
                 }}>
                   {tr('settings.update.rolledBack', 'Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.')}
                 </span>
@@ -241,7 +241,7 @@ export default function UpdateSection({ versionInfo }) {
         {updateHistory && updateHistory.length > 0 && (
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
             <label></label>
-            <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start', fontSize: '0.8rem' }}>
+            <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start', fontSize: 'var(--text-xs)' }}>
               {updateHistory.slice(0, 5).map((entry, i) => (
                 <span key={i} className="text-muted" style={{ marginBottom: '0.2rem' }}>
                   {entry.timestamp?.slice(0, 10)} &mdash; {entry.from_version} &rarr; {entry.to_version}
@@ -255,7 +255,7 @@ export default function UpdateSection({ versionInfo }) {
           <div className="settings-row">
             <label></label>
             <div className="settings-control">
-              <span className="text-muted" style={{ fontSize: '0.85rem' }}>
+              <span className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
                 {tr('settings.update.noHistory', 'Noch keine Updates durchgeführt')}
               </span>
             </div>

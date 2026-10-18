@@ -248,7 +248,7 @@ export default function Meters() {
             key={opt.value}
             className={`btn btn-sm ${groupBy === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
-            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+            style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
           >
             {opt.label}
           </button>
@@ -259,7 +259,7 @@ export default function Meters() {
       {grouped.map((group, gi) => (
         <div key={gi} style={{ marginBottom: group.label ? '2rem' : 0 }}>
           {group.label && (
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
               {group.label} ({group.meters.length})
             </h3>
           )}
@@ -287,7 +287,7 @@ export default function Meters() {
                 <h3 style={{ margin: 0 }}>
                   Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
                 </h3>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                   {selectedMeter.property_name !== '—' && <span>{selectedMeter.property_name} &rarr; </span>}
                   {selectedMeter.unit_label}
                   {selectedMeter.supplier && <span> | Versorger: {selectedMeter.supplier}</span>}

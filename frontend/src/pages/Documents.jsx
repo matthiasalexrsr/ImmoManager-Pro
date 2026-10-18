@@ -444,7 +444,7 @@ function DocumentsWorkspace() {
           />
           <PlusIcon size={24} />
           <span>{uploading ? (t('pages.documents.upload.uploading') || 'Wird hochgeladen...') : (t('pages.documents.upload.dropHint') || 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)')}</span>
-          <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+          <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
             {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs'}
           </span>
           {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
@@ -456,7 +456,7 @@ function DocumentsWorkspace() {
       {uploadQueue.length > 0 && (
         <div role="status" style={{ marginBottom: '0.5rem' }}>
           {uploadQueue.map((q, i) => (
-            <div key={i} className="text-muted" style={{ fontSize: '0.85rem' }}>
+            <div key={i} className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
               {q.status === 'uploading' ? '⏳' : q.status === 'done' ? '✓' : q.status === 'failed' ? '✗' : '○'} {q.name}
               {q.status === 'done' && ' — Gespeichert'}
               {q.error && <span className="text-red"> — {q.error}. Vor erneutem Import prüfen, ob die Datei bereits gespeichert wurde.</span>}

@@ -89,11 +89,11 @@
 }
 
 .sc-small {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
 }
 
 .sc-note {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin: 0.5rem 0 1rem;
 }
 
@@ -105,7 +105,7 @@
 
 .sc-subtitle {
   margin: 1rem 0 0.5rem;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
 }
 
 .sc-kpis {
@@ -113,7 +113,7 @@
 }
 
 .sc-kpi-text {
-  font-size: 1.15rem;
+  font-size: var(--text-xl);
   overflow-wrap: anywhere;
 }
 
@@ -126,7 +126,7 @@
 }
 
 .sc-deadline-card strong {
-  font-size: 1.3rem;
+  font-size: var(--text-2xl);
 }
 
 .sc-deadline-card.is-urgent {

@@ -1,6 +1,6 @@
 .teha-workspace { max-width: 1150px; margin: auto; }
 .teha-workspace fieldset { border: 0; padding: 0; min-width: 0; }
-.teha-workspace h2 { font-size: 1.15rem; }
+.teha-workspace h2 { font-size: var(--text-xl); }
 .teha-panel { border: 1px solid var(--border-color, #cbd5e1); border-radius: 8px; padding: 1rem; margin: 1rem 0; min-width: 0; }
 .teha-workspace label { display: grid; gap: .4rem; margin: .7rem 0; }
 .teha-workspace input, .teha-workspace select { width: 100%; max-width: 36rem; padding: .5rem; }

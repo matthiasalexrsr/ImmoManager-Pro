@@ -5,7 +5,7 @@
 .message-detail-header h2 { overflow-wrap: anywhere; hyphens: auto; font-size: clamp(1.15rem, 2vw, 1.5rem); }
 .message-item[role="button"]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -3px; }
 .thread-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
-.thread-pagination span { flex: 1 1 130px; font-size: .85rem; }
+.thread-pagination span { flex: 1 1 130px; font-size: var(--text-sm); }
 .thread-message-header { flex-wrap: wrap; gap: .3rem; }
 .thread-message-body { overflow-wrap: anywhere; }
 .thread-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; min-width: 0; }
@@ -20,7 +20,7 @@
   .thread-message { padding: .65rem; }
   .thread-pagination .btn, .thread-composer .btn { min-height: 44px; white-space: normal; }
   .thread-composer { grid-template-columns: minmax(0, 1fr); padding: .75rem 0; }
-  .thread-composer textarea { font-size: 16px; }
+  .thread-composer textarea { font-size: var(--text-lg); }
   .messages-page .tab-bar { flex-wrap: wrap; overflow: visible; }
   .messages-page .tab-bar .detail-tab { flex: 1 1 auto; white-space: normal; }
 }
