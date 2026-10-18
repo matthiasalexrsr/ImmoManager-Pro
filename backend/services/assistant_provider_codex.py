@@ -22,6 +22,10 @@ def public_error(error, *, uncertain=False):
         return ProviderError("Die Auswahl ist für dieses Modell zu umfangreich. Dateien oder Verlauf eingrenzen und erneut senden.", "context_too_large", uncertain=uncertain)
     if "model" in message and any(value in message for value in ("available", "support", "access", "found")):
         return ProviderError("Das gewählte Modell ist mit diesem Konto nicht verfügbar. Bitte ein anderes Modell wählen.", "model_unavailable", uncertain=uncertain)
+    if 'timed out' in message or 'timeout' in message:
+        return ProviderError('Die KI-Verbindung hat das Zeitlimit erreicht. Bitte den Ergebnisstatus prüfen und bei Bedarf bewusst erneut versuchen.', 'provider_timeout', uncertain=True)
+    if isinstance(error, dict) and error.get('code') in (-32600, -32601, -32602):
+        return ProviderError('Der installierte Codex-Client unterstützt das benötigte Protokoll nicht. Bitte die KI-Verbindung und Clientversion prüfen.', 'protocol_incompatible', uncertain=uncertain)
     return ProviderError("ChatGPT konnte den Vorgang nicht abschließen. Bitte den Ergebnisstatus prüfen und anschließend erneut versuchen.", "provider_error", uncertain=uncertain)
 
 
@@ -43,7 +47,16 @@ class CodexRpc:
                   'tools.view_image = false\n'
                   'apps._default.enabled = false\n'
                   'mcp_servers = {}\n'
-                  + 'web_search = ' + ('"live"' if research else '"disabled"') + '\n')
+                  + 'web_search = ' + ('"live"' if research else '"disabled"') + '\n'
+                  # Restricted reads now use named permission profiles. Do not
+                  # send a legacy sandbox override that would replace this
+                  # profile with filesystem-wide read access.
+                  'default_permissions = "immomanager"\n'
+                  '\n[permissions.immomanager.filesystem]\n'
+                  '":root" = "deny"\n'
+                  + json.dumps(str(profile.path / 'work')) + ' = "read"\n'
+                  '\n[permissions.immomanager.network]\n'
+                  'enabled = false\n')
         if mcp is not None:
             config = config.replace('mcp_servers = {}\n', '')
             config += ('\n[mcp_servers.immomanager]\nurl = ' + json.dumps(mcp['url'])
@@ -54,7 +67,7 @@ class CodexRpc:
         self.transport = CliProcess([*executable, 'app-server', '--listen', 'stdio://'], profile.path)
         try:
             self.call('initialize', {'clientInfo': {'name': 'immomanager_pro', 'title': 'ImmoManager Pro', 'version': '1'},
-                                     'capabilities': {'experimentalApi': False}}, timeout=20)
+                                     'capabilities': {'experimentalApi': True}}, timeout=20)
             self.transport.write_line(json.dumps({'method': 'initialized', 'params': {}}))
         except BaseException:
             self.close()
@@ -230,10 +243,14 @@ def execute(profile, executable, request, emit, cancelled):
             raise ProviderError('Bitte zuerst das ChatGPT-Konto verbinden.', 'authentication_required')
         model = checked_model(request.get('model'))
         work = profile.path / 'work'
-        params = {'cwd': str(work), 'approvalPolicy': 'never', 'sandbox': 'read-only', 'ephemeral': True,
+        params = {'cwd': str(work), 'approvalPolicy': 'never', 'permissions': 'immomanager', 'ephemeral': True,
                   'baseInstructions': SYSTEM_PROMPT, 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
                   'model': model}
-        thread = rpc.call('thread/start', params).get('thread', {})
+        started = rpc.call('thread/start', params)
+        active = started.get('activePermissionProfile')
+        if not isinstance(active, dict) or active.get('id') != 'immomanager' or active.get('extends'):
+            raise ProviderError('Der Kontoclient hat das private Berechtigungsprofil nicht bestätigt.', 'provider_isolation_failed')
+        thread = started.get('thread', {})
         if not thread.get('id'):
             raise ProviderError('Codex konnte das Gespräch nicht beginnen.', 'protocol_incompatible')
         if mcp:
@@ -256,8 +273,7 @@ def execute(profile, executable, request, emit, cancelled):
             raise ProviderError('Die Antwort wurde abgebrochen.', 'cancelled')
         turn = rpc.call('turn/start', {'threadId': thread['id'], 'input': inputs, 'model': model,
                         'effort': request.get('effort') or 'high', 'approvalPolicy': 'never',
-                        'sandboxPolicy': {'type': 'readOnly', 'access': {'type': 'restricted',
-                             'includePlatformDefaults': False, 'readableRoots': [str(work)]}}}).get('turn', {})
+                        'permissions': 'immomanager'}).get('turn', {})
         if not turn.get('id'):
             raise ProviderError('Der Ergebnisstatus der Anfrage ist unklar. Bitte prüfen.', 'unknown_result', uncertain=True)
         finals: dict[str, dict] = {}

@@ -109,7 +109,7 @@ class ScenarioRpc:
         if method == "account/read":
             return {"account": {"type": "chatgpt"}}
         if method == "thread/start":
-            return {"thread": {"id": "thread-current"}}
+            return {"thread": {"id": "thread-current"}, "activePermissionProfile": {"id": "immomanager"}}
         if method == "turn/start":
             return {"turn": {"id": "turn-current"}}
         if method == "account/login/start":
@@ -126,6 +126,20 @@ class ScenarioRpc:
 
     def __exit__(self, *_):
         self.closed = True
+
+
+@pytest.mark.parametrize('code', [-32600, -32601, -32602])
+def test_codex_native_request_rejection_is_a_protocol_error_without_raw_details(code):
+    error = codex.public_error({'code': code, 'message':
+        'Invalid request: readOnly.access is no longer supported; use permissionProfile for restricted reads'})
+    assert error.code == 'protocol_incompatible'
+    assert 'readOnly.access' not in str(error) and 'permissionProfile' not in str(error)
+
+
+def test_codex_routing_timeout_keeps_an_explicit_recoverable_result_state():
+    error = codex.public_error({'code': -32603, 'message': 'workspace routing discovery timed out'})
+    assert error.code == 'provider_timeout' and error.uncertain
+    assert 'workspace routing' not in str(error)
 
 
 def test_codex_already_cancelled_request_never_starts_a_model_turn(monkeypatch, tmp_path):

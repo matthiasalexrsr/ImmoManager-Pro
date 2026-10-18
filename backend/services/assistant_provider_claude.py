@@ -83,7 +83,10 @@ def _events(process: CliProcess, cancelled: Callable[[], bool], timeout: int, *,
                 closed.add(channel)
             elif channel in ("stdout", "stderr"):
                 yield channel, line
-        if {"stdout_closed", "stderr_closed"}.issubset(closed) and process.process.poll() is not None:
+        # Browser descendants can inherit a pipe after the official client
+        # exits. Drain buffered lines, then use the client's exit status;
+        # waiting for those descendants would discard a successful login.
+        if process.process.poll() is not None and (item is None or {"stdout_closed", "stderr_closed"}.issubset(closed)):
             return
 
 
@@ -162,7 +165,7 @@ def login(profile: ProfileLease, executable: list[str], emit_state: Callable[[di
                         code = None
                         emit_state({"state": "checking", "can_submit_code": False,
                                     "message": "Claude prüft die Anmeldung."})
-                if {"stdout_closed", "stderr_closed"}.issubset(closed) and process.process.poll() is not None:
+                if process.process.poll() is not None and (item is None or {"stdout_closed", "stderr_closed"}.issubset(closed)):
                     break
             if process.process.returncode != 0:
                 raise ProviderError("Die Claude-Anmeldung wurde nicht bestätigt. Bitte erneut verbinden.", "authentication_failed")

@@ -33,7 +33,7 @@ class Child:
     def __init__(self, argv, path, script):
         self.argv, self.path = argv, path
         self.pending = deque(script.get("events", []))
-        if not script.get("hang"):
+        if not script.get("hang") and not script.get('inherited_pipes'):
             self.pending.extend([("stdout_closed", ""), ("stderr_closed", "")])
         self.returncode = script.get("returncode", 0)
         self.hang = script.get("hang", False)
@@ -113,6 +113,24 @@ def test_login_forwards_one_time_code_only_to_stdin_and_rechecks_auth(transport)
     assert public[0]["can_submit_code"] is True and public[1]["can_submit_code"] is False
     assert secret not in str(public) + str(result)
     assert "DO-NOT-PUBLISH" not in str(public) + str(result)
+
+
+def test_native_login_completion_does_not_wait_for_browser_descendant_pipe(transport, monkeypatch):
+    monkeypatch.setattr(claude, 'LOGIN_TIMEOUT', .05)
+    transport.scripts.extend([
+        {'events': [('stderr', 'https://claude.ai/oauth/authorize?state=synthetic\n')], 'inherited_pipes': True},
+        {'events': [frame(loggedIn=True, authMethod='claude.ai', apiProvider='firstParty')]},
+    ])
+    result = claude.login(transport.profile, transport.executable, lambda event: None, lambda: False, queue.Queue())
+    assert result['connected'] and all(child.closed for child in transport.children)
+
+
+def test_native_auth_status_drains_buffered_result_without_waiting_for_inherited_pipe(transport, monkeypatch):
+    monkeypatch.setattr(claude, 'STATUS_TIMEOUT', .05)
+    transport.scripts.append({'events': [frame(loggedIn=True, authMethod='claude.ai', apiProvider='firstParty')],
+                              'inherited_pipes': True})
+    result = claude.status(transport.profile, transport.executable, lambda: False)
+    assert result['connected'] and transport.children[0].closed
     assert "PRIVATE-PATH" not in str(result)
     assert all(child.closed for child in transport.children)
 

@@ -82,7 +82,12 @@ def test_codex_private_native_configuration_has_exact_application_server(monkeyp
     assert server['url'] == broker()['url'] and server['http_headers'] == broker()['headers']
     assert server['enabled'] and server['required'] and set(server['enabled_tools']) == APPLICATION_TOOLS
     assert config['features']['shell_tool'] is False and config['features']['plugins'] is False
-    assert json.loads(writes[0])['params']['capabilities']['experimentalApi'] is False
+    assert config['default_permissions'] == 'immomanager'
+    profile = config['permissions']['immomanager']
+    assert profile['filesystem'] == {':root': 'deny', str(tmp_path / 'work'): 'read'}
+    assert profile['network']['enabled'] is False and 'extends' not in profile
+    assert 'sandbox_mode' not in config
+    assert json.loads(writes[0])['params']['capabilities']['experimentalApi'] is True
     assert 'SYNTHETIC-EPHEMERAL' not in str(writes)
 
 
@@ -95,6 +100,33 @@ def test_codex_accepts_only_exact_scoped_application_tool(monkeypatch, tmp_path,
     monkeypatch.setattr(codex, 'CodexRpc', lambda *args, **kwargs: rpc)
     result = codex.execute(SimpleNamespace(path=tmp_path), ['synthetic'], {'_application_mcp': broker()}, lambda event: None, lambda: False)
     assert result['text'] == 'Geprüfte Antwort' and rpc.closed
+    # Native clients reject readOnly.access. A legacy override would also
+    # replace the restricted profile with broader filesystem read access.
+    for method, params in rpc.calls:
+        if method == 'thread/start':
+            assert 'sandbox' not in params and params['permissions'] == 'immomanager'
+        if method == 'turn/start':
+            assert 'sandboxPolicy' not in params and params['permissions'] == 'immomanager'
+
+
+@pytest.mark.parametrize('active', [None, {'id': ':read-only'}, {'id': 'other'},
+    {'id': 'immomanager', 'extends': ':workspace'}])
+def test_codex_never_submits_a_turn_without_confirmed_private_permissions(monkeypatch, tmp_path, active):
+    rpc = ApplicationRpc()
+    original = rpc.call
+
+    def call(method, params=None, **kwargs):
+        result = original(method, params, **kwargs)
+        if method == 'thread/start':
+            result['activePermissionProfile'] = active
+        return result
+
+    rpc.call = call
+    monkeypatch.setattr(codex, 'CodexRpc', lambda *args, **kwargs: rpc)
+    with pytest.raises(ProviderError) as rejected:
+        codex.execute(SimpleNamespace(path=tmp_path), ['synthetic'], {'_application_mcp': broker()}, lambda event: None, lambda: False)
+    assert rejected.value.code == 'provider_isolation_failed' and rpc.closed
+    assert not any(method == 'turn/start' for method, _ in rpc.calls)
 
 
 @pytest.mark.parametrize('item', [{'type': 'mcpToolCall', 'server': 'other', 'tool': 'immo_read'},
