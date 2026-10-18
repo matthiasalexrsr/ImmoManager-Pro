@@ -160,3 +160,11 @@ synthetische Transportantworten, native Clientstatusprüfungen ohne Konto,
 lokale Browserabläufe und tatsächlich authentifizierte Anbieterantworten.
 Eine native Statusprüfung mit leerem Profil ist kein Nachweis einer echten
 ChatGPT-/Claude-Anmeldung oder einer erfolgreichen Modellantwort.
+
+Abbruchbefehle adressieren genau die unveränderliche Laufkennung. Eine seit
+dem letzten Statusabruf durch Streaming fortgeschriebene Revision verhindert
+den Abbruch nicht; zukünftige Revisionen und bereits beendete Läufe werden
+weiterhin abgewiesen. Die Ausnahme gilt ausschließlich für den Abbruch.
+Wiederholungen nach späteren Gesprächsschritten stellen die ursprüngliche
+Frage samt Anhängen wieder ans Gesprächsende. Ein unmittelbarer neuer Versuch
+erzeugt keine doppelte Benutzerblase und übernimmt keinen fremden Prompt.

@@ -184,7 +184,11 @@ def cancel(store, actor_id, identifier, command):
         row = db.owned_child(unit, Run, identifier, lock=True)
         if db.replay(unit, operation, command):
             return run_public(unit, row)
-        db.revision(row, command.expected_revision)
+        # Cancel targets this immutable run ID. Streaming may have advanced its
+        # revision since the last poll; only an impossible future stand conflicts.
+        # owned_child(lock=True) holds both the run and conversation locks.
+        if command.expected_revision > row.revision:
+            db.revision(row, command.expected_revision)
         if row.state not in ACTIVE:
             raise HTTPException(409, "Dieser Auftrag ist bereits beendet.")
         data = db.payload(row)
@@ -222,6 +226,13 @@ def retry(store, actor_id, identifier, command):
         for key in ("usage", "provider_session_id", "provider_turn_id", "_lease", "_submitted", "financial_summary", "_report_hash"):
             data.pop(key, None)
         row = db.put(unit, Run, data, conversation_id=old.conversation_id, state="queued")
+        latest = db.page(unit, Message, conversation_id=old.conversation_id, limit=1)["items"]
+        if (not latest or latest[0].get("role") != "user" or latest[0].get("content") != data["content"]
+                or latest[0].get("attachment_ids", []) != data["attachment_ids"]):
+            # A retry after later turns must restore its own question as the
+            # final prompt. Immediate retries reuse the existing user bubble.
+            db.put(unit, Message, {"role": "user", "content": data["content"], "run_id": row.id,
+                "attachment_ids": data["attachment_ids"]}, conversation_id=old.conversation_id)
         conversation_data["active_run_id"] = row.id
         db.put(unit, Conversation, conversation_data, row=conversation)
         db.receipt(unit, operation, command, row)

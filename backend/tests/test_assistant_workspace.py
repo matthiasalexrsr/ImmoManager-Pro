@@ -149,6 +149,49 @@ def test_unknown_provider_result_requires_explicit_new_run(actor):
     assert assistant.get_run(store, actor.id, repeated["id"])["state"] == "completed"
 
 
+@pytest.mark.parametrize("intervening_turn", [False, True])
+def test_retry_keeps_original_question_last_without_duplicate_immediate_user_message(actor, intervening_turn):
+    from backend.services.assistant_provider_protocol import ProviderError
+
+    chat = conversation(actor)
+    attached = assistant.add_attachment(store, actor.id, chat["id"], b"Erste Quelle", "Quelle.txt")
+    first = assistant.submit(store, actor.id, chat["id"], RunCreate(**command(
+        expected_revision=chat["revision"], content="Frage 1 zum Original", attachment_ids=[attached["id"]])))
+
+    def fail(*args):
+        raise ProviderError("Synthetic failure", "rate_limited", uncertain=False)
+
+    assistant_runner.run(store, first["id"], actor.id, execute=fail)
+    failed = assistant.get_run(store, actor.id, first["id"])
+    assert failed["state"] == "failed"
+    if intervening_turn:
+        current = assistant.get_conversation(store, actor.id, chat["id"])
+        second = assistant.submit(store, actor.id, chat["id"], RunCreate(**command(
+            expected_revision=current["revision"], content="Frage 2 zu etwas anderem")))
+        assistant_runner.run(store, second["id"], actor.id, execute=lambda *args: {"text": "Antwort 2"})
+        assert assistant.get_run(store, actor.id, second["id"])["state"] == "completed"
+
+    retry_command = RevisionCommand(**command(expected_revision=failed["revision"]))
+    retried = assistant.retry(store, actor.id, first["id"], retry_command)
+    assert assistant.retry(store, actor.id, first["id"], retry_command)["id"] == retried["id"]
+    messages = assistant.list_records(store, actor.id, assistant.Message, conversation_id=chat["id"])["items"]
+    assert len(messages) == (4 if intervening_turn else 1)
+    assert messages[-1]["role"] == "user" and messages[-1]["content"] == "Frage 1 zum Original"
+    assert messages[-1]["attachment_ids"] == [attached["id"]]
+    if intervening_turn:
+        assert messages[-1]["run_id"] == retried["id"]
+    requests = []
+
+    def answer(actor_id, provider, request, emit, cancelled):
+        requests.append(request)
+        return {"text": "Antwort auf Frage 1"}
+
+    assistant_runner.run(store, retried["id"], actor.id, execute=answer)
+    assert requests[0]["messages"][-1] == {"role": "user", "content": "Frage 1 zum Original"}
+    assert requests[0]["attachments"][0]["id"] == attached["id"]
+    assert assistant.get_run(store, actor.id, retried["id"])["state"] == "completed"
+
+
 def test_recovery_never_resubmits_expired_running_inference(actor):
     chat = conversation(actor)
     run = submit(actor, chat)
@@ -217,6 +260,49 @@ def test_cancellation_during_stream_cannot_publish_a_completed_answer(actor):
     final = assistant.get_run(store, actor.id, run["id"])
     assert final["state"] == "cancelled" and final["response"] == "Unvollständig"
     assert len(assistant.list_records(store, actor.id, assistant.Message, conversation_id=chat["id"])["items"]) == 1
+
+
+def test_cancel_observed_revision_during_stream_preserves_retry_identity(actor):
+    chat = conversation(actor)
+    first = submit(actor, chat)
+    client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(actor.id)})
+    observed_cancel = command(expected_revision=first["revision"])
+    responses = []
+    stopped = []
+
+    def streaming(actor_id, provider, request, emit, cancelled):
+        emit({"type": "delta", "text": "Erster Teil. "})
+        emit({"type": "delta", "text": "Zweiter Teil."})
+        current = assistant.get_run(store, actor.id, first["id"])
+        assert current["revision"] > first["revision"]
+        future = client.post(f'/api/v1/assistant/runs/{first["id"]}/cancel',
+                             json=command(expected_revision=current["revision"] + 1))
+        assert future.status_code == 409
+        assert assistant.get_run(store, actor.id, first["id"])["state"] == "running"
+        responses.append(client.post(f'/api/v1/assistant/runs/{first["id"]}/cancel', json=observed_cancel))
+        stopped.append(cancelled())
+        return {"text": "Diese verspätete Antwort darf nicht veröffentlicht werden."}
+
+    assistant_runner.run(store, first["id"], actor.id, execute=streaming)
+    assert responses[0].status_code == 200, responses[0].text
+    assert stopped == [True]
+    finished = assistant.get_run(store, actor.id, first["id"])
+    assert finished["state"] == "cancelled" and finished["response"] == "Erster Teil. Zweiter Teil."
+    assert len(assistant.list_records(store, actor.id, assistant.Message, conversation_id=chat["id"])["items"]) == 1
+
+    retry = assistant.retry(store, actor.id, first["id"], RevisionCommand(**command(expected_revision=finished["revision"])))
+    assert retry["id"] != first["id"] and retry["state"] == "queued"
+    replay = client.post(f'/api/v1/assistant/runs/{first["id"]}/cancel', json=observed_cancel)
+    assert replay.status_code == 200 and replay.json()["id"] == first["id"]
+    for revision in (first["revision"], finished["revision"]):
+        rejected = client.post(f'/api/v1/assistant/runs/{first["id"]}/cancel',
+                               json=command(expected_revision=revision))
+        assert rejected.status_code == 409
+    with pytest.raises(HTTPException) as stale_retry:
+        assistant.retry(store, actor.id, first["id"], RevisionCommand(**command(expected_revision=first["revision"])))
+    assert stale_retry.value.status_code == 409
+    assert assistant.get_run(store, actor.id, retry["id"])["state"] == "queued"
+    assert assistant.get_conversation(store, actor.id, chat["id"])["active_run_id"] == retry["id"]
 
 
 def test_private_payload_is_encrypted_and_json_snapshot_refuses_loss(actor):
