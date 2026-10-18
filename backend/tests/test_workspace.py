@@ -265,6 +265,10 @@ def test_first_visit_view_state_is_null_with_missing_ok_and_404_without(estate):
     assert first.status_code == 200 and first.json() is None
     assert owner.put(path, json=command(state={"search": "Erstbesuch"})).status_code == 200
     assert owner.get(path, params={"missing_ok": "true"}).json()["state"]["search"] == "Erstbesuch"
+    favorite = f"{API}/favorites/property/{estate[2].id}"
+    assert owner.get(favorite).status_code == 404
+    unmarked = owner.get(favorite, params={"missing_ok": "true"})
+    assert unmarked.status_code == 200 and unmarked.json() is None
 
 
 def test_cursor_lists_continue_through_every_record_without_total_cap(estate):

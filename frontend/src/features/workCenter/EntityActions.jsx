@@ -32,8 +32,9 @@ function Controls({ auth, entityType, entityId, entityRevision, title, onChanged
   useEffect(() => {
     active.current = true;
     const request = new AbortController();
-    workspace.get(resource, entityId, { signal: request.signal }).then(result => {
-      if (!request.signal.aborted) { setFavorite(result); setLoaded(true); }
+    // null: not marked (a 404 from an older server means the same).
+    workspace.get(resource, entityId, { signal: request.signal }, { missing_ok: true }).then(result => {
+      if (!request.signal.aborted) { setFavorite(result || null); setLoaded(true); }
     }).catch(failure => {
       if (request.signal.aborted) return;
       if (failure.statusCode === 404) { setFavorite(null); setLoaded(true); }

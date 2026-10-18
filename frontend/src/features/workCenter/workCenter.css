@@ -28,6 +28,7 @@
    row's hover or keyboard focus (always on touch screens), so rows keep one height. */
 .work-inline { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
 .work-inline > .btn-ghost { width: 26px; min-height: 26px; padding: 0; opacity: 0; transition: opacity var(--transition); }
+@media (pointer: coarse), (max-width: 640px) { .work-inline > .btn-ghost { width: 36px; min-height: 36px; } }
 tr:hover .work-inline > .btn-ghost,
 .work-inline:focus-within > .btn-ghost { opacity: 1; }
 @media (hover: none) { .work-inline > .btn-ghost { opacity: 1; } }
