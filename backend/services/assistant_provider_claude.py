@@ -276,7 +276,13 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
         # Native 2.1.302 blocks even command-line MCP servers in safe mode.
         # Replace that blanket switch with explicit context/hook isolation.
         argv.remove('--safe-mode')
-        argv += ['--settings', '{"disableAllHooks":true,"autoMemoryEnabled":false,"enabledPlugins":{}}']
+    # Native 2.1.302 enables these bundled plugins after account login, even
+    # with installed plugins disabled. Disable them for this invocation; keep
+    # rejecting every plugin in the actual init envelope. --bare cannot be
+    # used here because that mode intentionally does not read OAuth logins.
+    argv += ['--settings', json.dumps({'disableAllHooks': True, 'autoMemoryEnabled': False,
+        'enabledPlugins': {'cc-plugin-agents-md@builtin': False,
+                           'cc-plugin-plugin-authoring@builtin': False}}, separators=(',', ':'))]
     model = checked_model(request.get("model"))
     if model:
         argv += ["--model", model]
@@ -294,6 +300,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
     environment.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS='1', CLAUDE_CODE_DISABLE_ATTACHMENTS='1',
                        CLAUDE_CODE_DISABLE_POLICY_SKILLS='1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS='1',
                        CLAUDE_CODE_DISABLE_CRON='1', CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL='1',
+                       CLAUDE_CODE_DISABLE_BUNDLED_SKILLS='1', ENABLE_CLAUDEAI_MCP_SERVERS='false',
                        ENABLE_TOOL_SEARCH='false')
     try:
         with CliProcess(argv, _path(profile), env=environment) as process:

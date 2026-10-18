@@ -23,6 +23,12 @@ Laden des Modellkatalogs allein konnten diesen Fehler nicht nachweisen.
 - Claude verarbeitet bereits gepufferte Ausgaben eines beendeten Clients, ohne
   auf geerbte Browser-Ausgabekanäle zu warten. Eine erfolgreiche Anmeldung muss
   anschließend weiterhin durch den offiziellen Kontostatus bestätigt werden.
+- Der angemeldete Claude-Client aktiviert zusätzlich zwei eingebaute Plugins.
+  Diese werden ausschließlich für den Anwendungsaufruf ausdrücklich deaktiviert;
+  die Startprüfung lehnt weiterhin sämtliche gemeldeten Plugins ab. Automatisch
+  übernommene Claude-Kontokonnektoren und gebündelte Skills bleiben deaktiviert.
+  Der Modus `--bare` wird nicht verwendet, da der installierte Client darin keine
+  OAuth-Kontoanmeldungen liest.
 
 Grundlage sind das vom installierten Client erzeugte Protokollschema und die
 offiziellen Dokumentationen zu

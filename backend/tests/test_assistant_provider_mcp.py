@@ -121,7 +121,7 @@ def test_codex_never_submits_a_turn_without_confirmed_private_permissions(monkey
             result['activePermissionProfile'] = active
         return result
 
-    rpc.call = call
+    monkeypatch.setattr(rpc, 'call', call)
     monkeypatch.setattr(codex, 'CodexRpc', lambda *args, **kwargs: rpc)
     with pytest.raises(ProviderError) as rejected:
         codex.execute(SimpleNamespace(path=tmp_path), ['synthetic'], {'_application_mcp': broker()}, lambda event: None, lambda: False)
@@ -150,6 +150,13 @@ def test_claude_all_application_tools_and_only_private_mcp_config_are_accepted(t
     config = json.loads((transport.profile.path / 'application-mcp.json').read_text())
     assert set(config['mcpServers']) == {'immomanager'} and config['mcpServers']['immomanager']['headers'] == broker()['headers']
     assert '--safe-mode' not in child.argv and '--restricted' in child.argv and '--strict-mcp-config' in child.argv
+    assert '--bare' not in child.argv
+    settings = json.loads(child.argv[child.argv.index('--settings') + 1])
+    assert settings['disableAllHooks'] and not settings['autoMemoryEnabled']
+    assert settings['enabledPlugins']['cc-plugin-agents-md@builtin'] is False
+    assert settings['enabledPlugins']['cc-plugin-plugin-authoring@builtin'] is False
+    assert child.environment['ENABLE_CLAUDEAI_MCP_SERVERS'] == 'false'
+    assert child.environment['CLAUDE_CODE_DISABLE_BUNDLED_SKILLS'] == '1'
     assert set(child.argv[child.argv.index('--allowedTools') + 1].split(',')) == {'mcp__immomanager__' + name for name in APPLICATION_TOOLS}
     assert child.argv[child.argv.index('--tools') + 1] == ''
     assert 'SYNTHETIC-EPHEMERAL' not in str(child.argv) + str(child.writes)

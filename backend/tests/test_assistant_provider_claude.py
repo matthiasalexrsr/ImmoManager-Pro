@@ -40,6 +40,7 @@ class Child:
         self.writes = []
         self.closed = self.input_closed = False
         self.process = self
+        self.environment: dict[str, str] = {}
 
     def poll(self):
         return None if self.pending or self.hang else self.returncode
@@ -70,6 +71,7 @@ def transport(monkeypatch, tmp_path):
 
     def create(argv, profile, **kwargs):
         child = Child(argv, profile, scripts.popleft())
+        child.environment = kwargs.get('env') or {}
         children.append(child)
         return child
 
@@ -213,7 +215,9 @@ def test_explicit_web_research_enables_only_websearch(transport):
     assert argv[argv.index("--allowedTools") + 1] == "WebSearch"
 
 
-@pytest.mark.parametrize("loaded", [{"tools": ["Bash"]}, {"tools": ["Read"]}, {"mcp_servers": [{"name": "unapproved"}]}, {"plugins": ["unexpected"]}])
+@pytest.mark.parametrize("loaded", [{"tools": ["Bash"]}, {"tools": ["Read"]}, {"mcp_servers": [{"name": "unapproved"}]}, {"plugins": ["unexpected"]},
+    {"plugins": [{"name": "cc-plugin-agents-md", "source": "builtin", "path": "builtin"}]},
+    {"plugins": [{"name": "cc-plugin-plugin-authoring", "source": "builtin", "path": "builtin"}]}])
 def test_unexpected_tools_mcp_or_plugins_abort_and_close_process(transport, loaded):
     event = {"type": "system", "subtype": "init", "tools": [], "mcp_servers": [], "plugins": [], **loaded}
     transport.scripts.append({"events": [frame(**event), final()]})
