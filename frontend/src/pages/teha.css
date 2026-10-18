@@ -13,5 +13,7 @@
 .teha-workspace pre { overflow: auto; max-height: 25rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .teha-target { padding: .5rem; border: 1px solid var(--border-color, #cbd5e1); margin: .5rem 0; }
 .teha-workspace summary { cursor: pointer; }
+.teha-workspace .teha-check { display: flex; align-items: center; gap: .6rem; }
+.teha-workspace .teha-check input { width: auto; flex-shrink: 0; }
 .teha-workspace :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
 @media (max-width: 400px) { .teha-panel { padding: .65rem; } .teha-actions > * { width: 100%; } }

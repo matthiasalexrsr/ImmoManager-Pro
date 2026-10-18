@@ -910,14 +910,14 @@ class UtilityStatementPatch(BaseModel):
 STATEMENT_WORKFLOW_FIELDS = frozenset({"status", "delivery_status", "delivered_at", "delivery_channel",
                                        "updated_at"})
 
-OBJECTION_STATUSES = {"open", "correction", "resolved"}
+OBJECTION_STATUSES = {"open", "correction", "resolved", "rejected"}
 
 
 class BillingObjectionCreate(BaseModel):
     """A tenant's objection (Widerspruch) against an issued statement.
 
-    It never changes the issued version; it is answered by a correction, a new
-    version of the period that names the version it corrects.
+    It never changes the issued version; a documented decision either rejects
+    the objection or starts a separate correction of the original period.
     """
 
     billing_period_id: str
@@ -926,6 +926,27 @@ class BillingObjectionCreate(BaseModel):
     reason: str = Field(min_length=1)
     status: str = "open"
     correction_period_id: Optional[str] = None
+    # Separate, additive decision evidence. The tenant's ORIGINAL
+    # objection text is never overwritten to store a decision rationale.
+    decision_revision: int = Field(default=0, ge=0)
+    decision_reason: Optional[str] = None
+    decision_actor_id: Optional[str] = None
+    decision_key: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    decision_source_sha256: Optional[str] = None
+    # The actual status before the FIRST objection. An older disputed period
+    # without this evidence must not be labelled delivered by guessing.
+    source_period_status: Optional[Literal["finalized", "delivered"]] = None
+
+    @field_validator("decided_at")
+    @classmethod
+    def decision_time_is_utc(cls, value: Optional[datetime]) -> Optional[datetime]:
+        # SQL DateTime stores the application's UTC clock without its offset.
+        # Return an explicit offset so browsers display the same decision time
+        # on the memory and SQL backends.
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
     @field_validator("status")
     @classmethod
@@ -947,6 +968,32 @@ class BillingObjectionRequest(BaseModel):
     statement_id: Optional[str] = None
     received_on: Optional[date] = None  # default: today
     reason: str = Field(min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def require_objection_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Eine Begründung des Widerspruchs ist erforderlich")
+        return value.strip()
+
+
+class BillingObjectionRejection(BaseModel):
+    """Explicit, revision-bound decision of one issued-statement objection.
+
+    An operator cannot accidentally reject with a blank explanation; the
+    idempotency key must be retained by a retry after losing its HTTP response.
+    """
+    expected_revision: int = Field(ge=0)
+    expected_source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9:_.-]+$")
+    rationale: str = Field(min_length=12, max_length=2000)
+
+    @field_validator("rationale")
+    @classmethod
+    def require_real_reason(cls, value: str) -> str:
+        if not value.strip() or len(value.strip()) < 12:
+            raise ValueError("Eine ausdrückliche sachliche Begründung ist erforderlich")
+        return value.strip()
 
 
 class BillingPreflightIssue(BaseModel):

@@ -566,8 +566,19 @@ class BillingObjectionORM(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     correction_period_id: Mapped[str | None] = mapped_column(ForeignKey("billing_periods.id", ondelete="SET NULL"))
+    # Only metadata describing an immutable decision is appended. The issued
+    # UtilityStatement and the original objection reason are never modified.
+    decision_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    decision_actor_id: Mapped[str | None] = mapped_column(String(36))
+    decision_key: Mapped[str | None] = mapped_column(String(120))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    decision_source_sha256: Mapped[str | None] = mapped_column(String(64))
+    source_period_status: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("ux_billing_objection_decision_key", "decision_key", unique=True),)
 
 
 class DepositORM(Base):

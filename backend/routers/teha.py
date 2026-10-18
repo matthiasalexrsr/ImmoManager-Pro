@@ -81,6 +81,14 @@ def preview(connection: str, item_id: str, response: Response, user: UserRead = 
     return service().preview(connection, item_id, user.id)
 
 
+@router.get("/{connection}/items/{item_id}/follow-up-users")
+def follow_up_users(connection: str, item_id: str, response: Response,
+                    cursor: str | None = Query(None, max_length=4096),
+                    limit: int = Query(50, ge=1, le=250), user: UserRead = Depends(require_auth)):
+    _private(response)
+    return service().follow_up_users(connection, item_id, user.id, cursor=cursor, limit=limit)
+
+
 @router.post("/{connection}/items/{item_id}/confirm")
 async def confirm(connection: str, item_id: str, request: Request, response: Response, user: UserRead = Depends(require_auth)):
     _private(response)
@@ -107,6 +115,22 @@ def returns(connection: str, response: Response, cursor: str | None = Query(None
             limit: int = Query(50, ge=1, le=250), user: UserRead = Depends(require_auth)):
     _private(response)
     return service().returns(connection, user.id, cursor=cursor, limit=limit)
+
+
+@router.get("/{connection}/evidence")
+def evidence(connection: str, response: Response, user: UserRead = Depends(require_auth)):
+    _private(response)
+    return service().evidence(connection, user.id)
+
+
+@router.get("/{connection}/returns/{draft_id}/export")
+def return_export(connection: str, draft_id: str,
+                  snapshot_sha256: str = Query(..., pattern=r"^[a-f0-9]{64}$"),
+                  user: UserRead = Depends(require_auth)):
+    raw, filename = service().return_export(connection, draft_id, snapshot_sha256, user.id)
+    return Response(raw, media_type="application/json", headers={"Cache-Control": "private, no-store",
+        "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename),
+        "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/{connection}/receipts/{receipt_id}/original")

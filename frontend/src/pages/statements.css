@@ -1,0 +1,32 @@
+.billing-workspace .card-header {
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.billing-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.billing-table-scroll:focus-visible {
+  outline: 2px solid var(--accent, #15756f);
+  outline-offset: 2px;
+}
+
+.objection-dialog .modal-footer {
+  flex-wrap: wrap;
+}
+
+.objection-dialog .modal-footer .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (max-width: 480px) {
+  .objection-dialog .modal-footer .btn {
+    width: 100%;
+    margin: 0;
+  }
+}

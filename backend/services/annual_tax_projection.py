@@ -226,6 +226,9 @@ def compile_projection(store, profile, command, *, parent=None):
         request = command.model_dump(mode="json", exclude={"preview_hash", "idempotency_key", "previous_projection_id", "revision_reason"})
         manifest["preview_hash"] = fingerprint({"profile": profile["sha256"], "source": manifest["source_sha256"],
             "request": request, "totals": manifest["totals"], "groups": manifest["groups"], "issues": manifest["blocking_issue_counts"]})
+        if spec.get("wiso_preparation"):
+            from .wiso_preparation import prepare
+            manifest["wiso_preparation"] = prepare(profile, manifest)
         refresh_scope(current_scope())
         return CompiledProjection(manifest, path, cleanup)
     except BaseException:

@@ -77,7 +77,23 @@ def get_profile(store, identifier):
     if row is None:
         raise HTTPException(404, "annual_tax_profile_not_found")
     store.get_portfolio(row.portfolio_id)
-    return read_profile(row)
+    profile = read_profile(row)
+    check_preparation_objects(store, profile)
+    return profile
+
+
+def check_preparation_objects(store, profile):
+    """Current object rights also cover stored manual target-object labels."""
+    for item in (profile["spec"].get("wiso_preparation") or {}).get("objects", []):
+        identifier = item["property_id"]
+        # Session filtering covers Core too. A connection-only existence read
+        # discloses no fields and distinguishes foreign from deleted originals.
+        exists = (store.db.connection().scalar(select(PropertyORM.__table__.c.id).where(PropertyORM.__table__.c.id == identifier)) if hasattr(store, "db")
+            else identifier in object.__getattribute__(store, "__dict__")["properties"])
+        if exists:
+            prop = store.get_property(identifier)
+            if prop.portfolio_id != profile["portfolio_id"]:
+                raise HTTPException(404, "annual_tax_preparation_object_not_accessible")
 
 
 def list_profiles(store, portfolio_id, tax_year=None, offset=0, limit=100):
@@ -92,7 +108,10 @@ def list_profiles(store, portfolio_id, tax_year=None, offset=0, limit=100):
         rows = [row for row in memory_state(store).profiles.values() if row.portfolio_id == portfolio_id and (tax_year is None or row.tax_year == tax_year)]
         rows.sort(key=lambda row: (row.created_at, row.id), reverse=True)
         total, rows = len(rows), rows[offset:offset + limit]
-    return {"total": total, "items": [read_profile(row) for row in rows]}
+    items = [read_profile(row) for row in rows]
+    for profile in items:
+        check_preparation_objects(store, profile)
+    return {"total": total, "items": items}
 
 
 @finance_write
@@ -105,11 +124,19 @@ def create_profile(store, command, actor_id):
             raise HTTPException(422, "annual_tax_mapping_account_portfolio")
         if rule.category_id and store.get_category(rule.category_id).portfolio_id != command.portfolio_id:
             raise HTTPException(422, "annual_tax_mapping_category_portfolio")
+    if command.wiso_preparation:
+        for item in command.wiso_preparation.objects:
+            if store.get_property(item.property_id).portfolio_id != command.portfolio_id:
+                raise HTTPException(422, "annual_tax_preparation_object_portfolio")
     if command.previous_version_id:
         previous = get_profile(store, command.previous_version_id)
         if (previous["portfolio_id"], previous["tax_year"]) != (command.portfolio_id, command.tax_year):
             raise HTTPException(422, "annual_tax_profile_revision_year_portfolio")
     spec = command.model_dump(mode="json", exclude={"idempotency_key", "previous_version_id"})
+    if spec.get("wiso_preparation") is None:
+        # Preserve legacy profile hashes/idempotent command replays across this
+        # additive upgrade; absence is the existing neutral-profile contract.
+        spec.pop("wiso_preparation", None)
     encoded, key = canonical(spec).decode("ascii"), actor_id + ":" + command.idempotency_key
     digest = fingerprint(spec)
 
@@ -187,6 +214,9 @@ def projection_row(store, identifier):
     if row is None:
         raise HTTPException(404, "annual_tax_projection_not_found")
     store.get_portfolio(row.portfolio_id)
+    # Preparation labels are part of the manifest returned by ordinary history
+    # routes too; their current object rights must cover those routes as well.
+    get_profile(store, row.profile_version_id)
     return row
 
 
@@ -202,7 +232,11 @@ def list_projections(store, portfolio_id, tax_year=None, offset=0, limit=100):
         rows = [row for row in memory_state(store).projections.values() if row.portfolio_id == portfolio_id and (tax_year is None or row.tax_year == tax_year)]
         rows.sort(key=lambda row: (row.created_at, row.id), reverse=True)
         total, rows = len(rows), rows[offset:offset + limit]
-    return {"total": total, "items": [read_projection(row) for row in rows]}
+    items = []
+    for row in rows:
+        get_profile(store, row.profile_version_id)
+        items.append(read_projection(row))
+    return {"total": total, "items": items}
 
 
 @finance_write

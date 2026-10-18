@@ -11,7 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 from fastapi import HTTPException
 
 from .annual_tax_projection import canonical
-from .annual_tax_storage import projection_row, read_projection, saved_sources
+from .annual_tax_storage import get_profile, projection_row, read_projection, saved_sources
 from .portfolio_scope import current_scope, refresh_scope
 from .tax_support import csv_cell, private_workspace
 
@@ -29,6 +29,13 @@ class TaxDownload:
 
 def prepare_download(store, projection_id, *, parent=None):
     manifest = read_projection(projection_row(store, projection_id))
+    profile = get_profile(store, manifest["profile_version_id"])
+    if profile["sha256"] != manifest["profile_sha256"]:
+        raise HTTPException(503, "annual_tax_saved_profile_integrity_failed")
+    preparation = None
+    if profile["spec"].get("wiso_preparation"):
+        from .wiso_preparation import saved_preparation
+        preparation = saved_preparation(store, projection_id)
     cleanup = ExitStack()
     try:
         workspace, _ = cleanup.enter_context(private_workspace(parent))
@@ -80,6 +87,21 @@ def prepare_download(store, projection_id, *, parent=None):
             info.compress_type = ZIP_DEFLATED
             info.external_attr = 0o600 << 16
             archive.writestr(info, canonical(manifest))
+            extras = {}
+            if preparation:
+                from .wiso_preparation import worksheet_bytes
+                extras.update({"reviewed-profile.json": canonical(profile),
+                    "wiso-manual-preparation.json": canonical(preparation),
+                    "manual-transfer-worksheet.csv": worksheet_bytes(preparation),
+                    "README-manual-transfer.txt": (preparation["boundary"] + "\r\n"
+                        "Geldquelle: gespeicherte bestätigte Buchungen, je Zahlung einmal. Geldwerte sind Centwerte.\r\n"
+                        "Fehlende Zuordnungen und Teiljahre bleiben im Prüfbericht sichtbar.\r\n"
+                        "Keine XML-Importdatei enthalten; Hersteller-Serializer und Zielimport weiterhin offen.\r\n").encode("utf-8")})
+            for name, content in extras.items():
+                info = ZipInfo(name, timestamp)
+                info.compress_type = ZIP_DEFLATED
+                info.external_attr = 0o600 << 16
+                archive.writestr(info, content)
         with ZipFile(path) as archive:
             if archive.testzip() is not None:
                 raise HTTPException(503, "annual_tax_archive_integrity_failed")

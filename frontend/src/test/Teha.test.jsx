@@ -25,6 +25,8 @@ beforeEach(() => {
   api.get.mockImplementation(url => {
     const override = custom?.(url); if (override !== undefined) return override;
     if (url.startsWith('/teha/connections?')) return Promise.resolve(page([connection]));
+    if (url.endsWith('/evidence')) return Promise.resolve({ observed_on: '2026-10-18', source_sha256: 'e'.repeat(64),
+      message: 'Öffentliche Portaldatei anonym geprüft; Schreibabnahme offen.', candidates: [], missing_acceptance: ['Portalbeleg und Ergebnisabgleich'] });
     if (url.includes('/runs?')) return Promise.resolve(page(runs));
     if (url.includes('/batches?')) return Promise.resolve(page([{ id: 'batch1', state: 'ready', next_index: 1, total: 1, revision: 2 }]));
     if (url.includes('/items?')) return Promise.resolve(page([item]));
@@ -127,4 +129,56 @@ it('shows the typed expired-auth error and never retries automatically', async (
   open(); await screen.findByText('Die TEHA-Anmeldung ist abgelaufen.');
   expect(screen.getByRole('button', { name: 'Lesenden Empfang erneut versuchen' })).toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();
+});
+
+it('prepares an original from the exact directory identity and leaves dispatch explicit', async () => {
+  const directory = { ...item, content_sha256: null };
+  custom = url => url.includes('/items?') ? Promise.resolve(page([directory])) : undefined;
+  api.post.mockResolvedValue({ id: 'original-run', revision: 1 });
+  await review();
+  fireEvent.click(screen.getByRole('button', { name: 'Originalempfang vorbereiten' }));
+  await screen.findByRole('button', { name: 'Lesenden Empfang ausdrücklich starten' });
+  expect(api.post).toHaveBeenCalledTimes(1);
+  expect(api.post.mock.calls[0][1]).toMatchObject({ action: 'document', payload: { lieg_nr: '00017', reference: 'ref-a' } });
+});
+
+it('downloads the exact frozen return hash and displays its stale-source validation', async () => {
+  const draft = { id: 'draft1', snapshot_sha256: 'f'.repeat(64), source_changed: true, snapshot: { kind: 'cost_user_data' },
+    validation: { local_valid: false, issues: [{ code: 'source_changed', message: 'Quelle verändert – neu vorbereiten.' }],
+      warnings: [{ code: 'unverified', message: 'Kein Portalbeleg.' }], summary: { cost_count: 2, contract_count: 1, user_count: 1, total_decimal: '123.46', currency: 'EUR' } } };
+  custom = url => url.includes('/returns?') ? Promise.resolve(page([draft])) : undefined;
+  api.getBlob.mockResolvedValue(new Blob(['{}'], { type: 'application/json' }));
+  URL.createObjectURL = vi.fn(() => 'blob:teha-packet'); URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  open(); await screen.findByText('Quelle verändert – neu vorbereiten.');
+  expect(screen.getByText('Summe lokaler Kosten: 123.46 EUR')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Lokales Prüfpaket herunterladen' }));
+  await act(async () => {});
+  expect(api.getBlob).toHaveBeenCalledWith('/teha/c1/returns/draft1/export?snapshot_sha256=' + 'f'.repeat(64));
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+it('prepares a local follow-up using explicitly selected received users and no provider write', async () => {
+  const order = { ...item, id: 'order1', kind: 'technical_order', content_sha256: null,
+    source: { title: 'Techniktermin', identity: { termin_id: 41 }, raw: { auftragNummer: 501, liegenschaftsnummer: '00017' } } };
+  currentPreview = { ...preview, state: 'unchanged', publication: { project_id: 'project1' } };
+  custom = url => {
+    if (url.includes('/items?')) return Promise.resolve(page([order]));
+    if (url.includes('/follow-up-users?')) return Promise.resolve(page([{ id: 'user-item', source_sha256: 'd'.repeat(64), external_user_id: 23, name: 'Testperson', selectable: true }]));
+    if (url === '/workspace/source/maintenance/project1') return Promise.resolve({ id: 'project1', revision: 'project-revision' });
+    return undefined;
+  };
+  api.post.mockResolvedValue({ id: 'draft-order', snapshot_sha256: 'f'.repeat(64) });
+  open(); fireEvent.click(await screen.findByRole('button', { name: 'Techniktermin · Techniktermin' }));
+  const toggle = await screen.findByRole('checkbox', { name: 'Belegte Folgeauftrag-Feldstruktur in die lokale Vorschau aufnehmen' });
+  fireEvent.click(toggle);
+  expect(screen.getByRole('button', { name: 'Rückübertragung lokal vorbereiten (ohne Versand)' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Auftraggebername'), { target: { value: 'Testauftraggeber' } });
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Testperson · TEHA-Nutzer 23' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Rückübertragung lokal vorbereiten (ohne Versand)' }));
+  await act(async () => {});
+  expect(api.post).toHaveBeenCalledTimes(1);
+  expect(api.post.mock.calls[0][0]).toBe('/teha/c1/items/order1/prepare-return');
+  expect(api.post.mock.calls[0][1]).toMatchObject({ follow_up: { orderer_name: 'Testauftraggeber', orderer_email: '',
+    users: [{ item_id: 'user-item', source_sha256: 'd'.repeat(64) }] }, source: { kind: 'maintenance', id: 'project1', revision: 'project-revision' } });
 });

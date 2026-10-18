@@ -47,6 +47,8 @@ export default function TaxExports() {
   const [revisionReason, setRevisionReason] = useState('');
   const [overrides, setOverrides] = useState([]);
   const [preview, setPreview] = useState(null);
+  const [savedPreparation, setSavedPreparation] = useState(null);
+  const [wisoEvidence, setWisoEvidence] = useState(null);
   const [sourcePage, setSourcePage] = useState(null);
   const [sourceOffset, setSourceOffset] = useState(0);
   const [error, setError] = useState('');
@@ -106,6 +108,8 @@ export default function TaxExports() {
 
   function resetContext() {
     epoch.current += 1; setSelected(''); setPrevious(null); setPreview(null); setRevision(null); setPropertyIds([]);
+    setSavedPreparation(null); setWisoEvidence(null);
+    setDraft(old => ({ ...old, wiso_preparation: null }));
     setRules([emptyRule()]); setOverrides([]); setConfirmed(false); setProfiles({ items: [], total: 0 });
     setHistory({ items: [], total: 0 }); setProfileOffset(0); setHistoryOffset(0); setError('');
   }
@@ -150,7 +154,10 @@ export default function TaxExports() {
     const result = await action(async () => {
       const common = { portfolio_id: portfolio, name: draft.name, reviewed_by: draft.reviewed_by,
         review_confirmed: confirmed, currency: 'EUR', previous_version_id: previous };
-      const body = annual ? { ...common, tax_year: Number(draft.tax_year), rules: rules.map(r => ({
+      const body = annual ? { ...common, tax_year: Number(draft.tax_year),
+        ...(draft.wiso_preparation ? { wiso_preparation: { ...draft.wiso_preparation,
+          objects: draft.wiso_preparation.objects.map(obj => ({ ...obj, object_number: Number(obj.object_number) })) } } : {}),
+        rules: rules.map(r => ({
         account_id: r.account_id, category_id: r.category_id || null, treatment: r.treatment,
         form_line: r.treatment === 'excluded' ? null : r.form_line, reason: r.reason,
         exclusion_kind: r.treatment === 'excluded' ? r.exclusion_kind : null,
@@ -193,6 +200,33 @@ export default function TaxExports() {
     link.href = url; link.download = `${annual ? 'Jahressteuer-neutral' : 'DATEV'}-${item.id}.zip`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  function editPreparation(change) {
+    setDraft(old => ({ ...old, wiso_preparation: { ...old.wiso_preparation, ...change } }));
+    setConfirmed(false);
+  }
+  async function viewSavedPreparation(item) {
+    const report = await action(() => api.get(`${base}/projections/${item.id}/wiso-preparation`));
+    if (report) setSavedPreparation({ id: item.id, report });
+  }
+  const preparationIssues = { partial_year: 'Teiljahr: Der Zahlungsstichtag erreicht den 31. Dezember noch nicht.',
+    annual_sources_unresolved: 'Die Jahresquellen enthalten offene Prüfpunkte.', unsupported_tax_year: 'Der Nachweis gilt ausschließlich für Fachjahr 2026.',
+    mapping_incomplete: 'Objektzuordnung oder manuelle Zielbezeichnung fehlt.' };
+  function preparationView(report) {
+    return <div className="tax-preparation"><h3>WISO-Vorbereitung · manueller Übertragungsbogen</h3>
+      <p role="status">{report.manual_transfer_ready ? 'Manueller Übertragungsbogen vollständig zugeordnet' : 'Übertragungsbogen enthält offene Punkte'} · Fachjahr {report.tax_year} · Stichtag {report.period_end}</p>
+      <p>{report.boundary}</p>
+      <p>Herstellerdatei: nicht verfügbar · Zielimport: nicht nachgewiesen · {report.reconciled ? 'Cent-Summen abgeglichen' : 'Cent-Abgleich offen'}</p>
+      <dl>{['income_cents', 'expense_cents'].map(name => <div key={name}><dt>{name === 'income_cents' ? 'Einnahmen' : 'Ausgaben'}: zugeordnet / offen</dt>
+        <dd>{money(report.mapped_totals[name])} / {money(report.unmapped_totals[name])}</dd></div>)}</dl>
+      {report.issues.map((issue, index) => <p key={index}>{preparationIssues[issue.code] || issue.code}{issue.form_line ? ` · ${issue.form_line}` : ''}{issue.property_id ? ` · Objekt ${issue.property_id}` : ''}</p>)}
+      {report.rows.map(row => <details key={JSON.stringify([row.property_id, row.treatment, row.form_line])}><summary>
+        {row.object_number ? `Objekt ${row.object_number}` : 'Objektzuordnung fehlt'} · {row.target_object_label || row.property_name} · {row.target_label || 'Zielbezeichnung fehlt'} · {money(row.amount_cents)}</summary>
+        <p>Quelle: {row.property_name} · {labels[row.treatment]} · {row.form_line} · {row.source_parts} Quellanteile</p><p>{row.review_reason}</p>
+      </details>)}
+      {(report.unused_object_ids.length > 0 || report.unused_line_mappings.length > 0) && <p>In dieser Fassung unbenutzte Zuordnungen: {report.unused_object_ids.length} Objekte und {report.unused_line_mappings.length} Formularzeilen. Es werden dafür keine zusätzlichen Geldbeträge erzeugt.</p>}
+      <p>Profilfassung: {report.profile_version_id} · Quellenhash: {report.source_sha256}</p>
+    </div>;
+  }
   function changeRule(index, name, value) { setRules(old => old.map((r, i) => i === index ? { ...r, [name]: value } : r)); setConfirmed(false); }
   function field(name, label, type = 'text') { return <label>{label}<input required type={type} value={draft[name]}
     onChange={e => { setDraft({ ...draft, [name]: e.target.value }); setConfirmed(false); }} /></label>; }
@@ -205,7 +239,13 @@ export default function TaxExports() {
       <option value="annual-tax">Jahressteuerbasis (neutral)</option><option value="datev">DATEV EXTF ohne Umsatzsteuerautomatik</option></select></label>
     <label>Portfolio<select value={portfolio} disabled={busy} onChange={e => { resetContext(); setPortfolio(e.target.value); }}><option value="">Bitte wählen</option>
       {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label></div>
-    <aside>WISO Steuer Windows, Fachjahr 2026: Herstellerfelder und Zielimport sind noch nicht durch synthetische Producerbelege bestätigt. Die neutrale Jahressteuerbasis ist keine WISO-Datei. Keine automatische AfA oder Eigentümerquote.</aside>
+    <aside>WISO Steuer Windows, Fachjahr 2026: Historische Musterexporte aus WISO Hausverwalter 365 belegen XML-Struktur und Feldschlüssel. Vollständige fachliche Feldzuordnung und Zielimport fehlen. Die neutrale Jahressteuerbasis ist keine WISO-Datei. Keine automatische AfA oder Eigentümerquote.
+      {annual && <button disabled={busy} onClick={async () => { const evidence = await action(() => api.get('/reports/annual-tax/wiso/evidence')); if (evidence) setWisoEvidence(evidence); }}>Herstellernachweise anzeigen</button>}
+      {annual && wisoEvidence && <details open><summary>Nachweisgrenze: {wisoEvidence.producer_product} {wisoEvidence.producer_version}</summary>
+        <p>{wisoEvidence.boundary}</p><ul>{wisoEvidence.missing_evidence.map(item => <li key={item}>{item}</li>)}</ul>
+        {wisoEvidence.samples.map(sample => <p key={`${sample.tax_year}-${sample.case}`}>{sample.tax_year} · {sample.case} · {sample.bytes} Bytes · SHA-256 {sample.sha256}</p>)}
+      </details>}
+    </aside>
     {error && <p role="alert">{error} Eingaben bleiben für Korrektur und Wiederholung erhalten.</p>}
     {recovered && <p role="status">Lokaler Entwurf wiederhergestellt. Bitte vor dem Speichern erneut fachlich prüfen.</p>}
     {busy && <p role="status">Daten werden vollständig geprüft …</p>}
@@ -213,7 +253,7 @@ export default function TaxExports() {
       <section><h2>Profilfassungen</h2><label>Profil für die Vorschau<select value={selected} disabled={busy} onChange={e => { setSelected(e.target.value); setPreview(null); }}><option value="">Bitte wählen</option>
         {profiles.items.map(p => <option key={p.id} value={p.id}>{p.spec.name} · {p.tax_year || 'DATEV'} · {p.created_at}</option>)}</select></label>
         {pager(profileOffset, setProfileOffset, profiles.total, 'Profilseiten')}
-        {canWrite && <><button disabled={!selected || busy} onClick={() => { const p = profiles.items.find(p => p.id === selected); if (p) { setDraft({ ...draft, ...p.spec }); setRules(p.spec.rules); setPrevious(p.id); setConfirmed(false); } }}>Gewähltes Profil als neue Fassung bearbeiten</button>
+        {canWrite && <><button disabled={!selected || busy} onClick={() => { const p = profiles.items.find(p => p.id === selected); if (p) { setDraft({ ...draft, ...p.spec, wiso_preparation: p.spec.wiso_preparation || null }); setRules(p.spec.rules); setPrevious(p.id); setConfirmed(false); } }}>Gewähltes Profil als neue Fassung bearbeiten</button>
         <form onSubmit={saveProfile}><h3>{previous ? 'Neue Profilfassung' : 'Neues Profil'}</h3><fieldset disabled={busy}><div className="tax-grid">
           {field('name', 'Profilname')}{field('reviewed_by', 'Fachlich geprüft durch')}
           {annual ? field('tax_year', 'Steuerjahr', 'number') : <>{field('adviser', 'Beraternummer', 'number')}{field('client', 'Mandantennummer', 'number')}{field('gl_length', 'Sachkontenlänge', 'number')}
@@ -233,6 +273,27 @@ export default function TaxExports() {
           {!annual && <label>Gegenkontotyp<select value={r.counter_kind || 'general'} onChange={e => changeRule(index, 'counter_kind', e.target.value)}><option value="general">Sachkonto</option><option value="person">Personenkonto</option></select></label>}
         </div><button type="button" disabled={rules.length === 1} onClick={() => { setRules(rules.filter((_, i) => i !== index)); setConfirmed(false); }}>Zuordnung entfernen</button></div>)}
         <button type="button" onClick={() => setRules([...rules, emptyRule()])}>Zuordnung hinzufügen</button>
+        {annual && <div className="tax-preparation"><label className="tax-check"><input type="checkbox" checked={!!draft.wiso_preparation}
+          disabled={Number(draft.tax_year) !== 2026 && !draft.wiso_preparation}
+          onChange={e => { setDraft({ ...draft, wiso_preparation: e.target.checked ? { target_product: 'WISO Steuer Windows', tax_year: 2026,
+            evidence_version: 'hv365-21.02.1530-observed-2026-v1', objects: [], lines: [] } : null }); setConfirmed(false); }} />Manuellen WISO-Übertragungsbogen für Fachjahr 2026 vorbereiten</label>
+          {draft.wiso_preparation && <><p>Diese Zuordnungen werden mit der Profilfassung archiviert. Freie Zielbezeichnungen dienen dem manuellen Übertrag; sie bestätigen keine WISO-Feldnummer.</p>
+            <h4>Objekte im Zielprogramm</h4>
+            {draft.wiso_preparation.objects.map((obj, index) => <div key={index} className="tax-grid">
+              <label>Quellobjekt {index + 1}<select required value={obj.property_id} onChange={e => editPreparation({ objects: draft.wiso_preparation.objects.map((value, i) => i === index ? { ...value, property_id: e.target.value } : value) })}><option value="">Bitte wählen</option>{options.properties.map(prop => <option key={prop.id} value={prop.id}>{prop.name}</option>)}</select></label>
+              { [['object_number', 'Objektnummer im Übertragungsbogen'], ['target_object_label', 'Geprüfte Objektbezeichnung im Ziel']].map(([name, label]) => <label key={name}>{label} {index + 1}<input required type={name === 'object_number' ? 'number' : 'text'} min={name === 'object_number' ? 1 : undefined} value={obj[name]} onChange={e => editPreparation({ objects: draft.wiso_preparation.objects.map((value, i) => i === index ? { ...value, [name]: e.target.value } : value) })} /></label>)}
+              <button type="button" onClick={() => editPreparation({ objects: draft.wiso_preparation.objects.filter((_, i) => i !== index) })}>Zielobjekt {index + 1} entfernen</button>
+            </div>)}
+            <button type="button" onClick={() => editPreparation({ objects: [...draft.wiso_preparation.objects, { property_id: '', object_number: Math.max(0, ...draft.wiso_preparation.objects.map(obj => Number(obj.object_number) || 0)) + 1, target_object_label: '' }] })}>Zielobjekt hinzufügen</button>
+            <h4>Manuelle Zielzeilen</h4>
+            {draft.wiso_preparation.lines.map((line, index) => <div key={index} className="tax-grid">
+              <label>Behandlung der Zielzeile {index + 1}<select value={line.treatment} onChange={e => editPreparation({ lines: draft.wiso_preparation.lines.map((value, i) => i === index ? { ...value, treatment: e.target.value } : value) })}><option value="income">Einnahme</option><option value="expense">Ausgabe</option></select></label>
+              {[['form_line', 'Quell-Formularzeile exakt'], ['target_label', 'Manuelle Zielbezeichnung'], ['review_reason', 'Begründung der Zielzuordnung']].map(([name, label]) => <label key={name}>{label} {index + 1}<input required value={line[name]} onChange={e => editPreparation({ lines: draft.wiso_preparation.lines.map((value, i) => i === index ? { ...value, [name]: e.target.value } : value) })} /></label>)}
+              <button type="button" onClick={() => editPreparation({ lines: draft.wiso_preparation.lines.filter((_, i) => i !== index) })}>Zielzeile {index + 1} entfernen</button>
+            </div>)}
+            <button type="button" onClick={() => editPreparation({ lines: [...draft.wiso_preparation.lines, { treatment: 'income', form_line: '', target_label: '', review_reason: '' }] })}>Manuelle Zielzeile hinzufügen</button>
+          </>}
+        </div>}
         <label className="tax-check"><input required type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />{annual ? 'Zuordnungen und Ausschlüsse fachlich geprüft' : 'EUR, Kalenderjahr, nicht automatische Konten ohne Umsatzsteuer und Kontierung fachlich geprüft'}</label>
         <button type="submit">Profilfassung speichern</button></fieldset></form></>}
       </section>
@@ -244,6 +305,7 @@ export default function TaxExports() {
       </div><button disabled={!selected} onClick={check}>Vollständige Quellen prüfen</button></fieldset>
       {!annual && <fieldset disabled={busy}><legend>Objektfilter (leer: alle berechtigten Objekte)</legend>{options.properties?.map(p => <label className="tax-check" key={p.id}><input type="checkbox" checked={propertyIds.includes(p.id)} onChange={e => { setPropertyIds(old => e.target.checked ? [...old, p.id] : old.filter(id => id !== p.id)); setPreview(null); }} />{p.name}</label>)}</fieldset>}
       {preview && <><p role="status">{annual ? preview.ready ? 'Zur Bestätigung bereit' : 'Bitte fehlende Angaben bearbeiten' : 'Vollständig geprüfter Export gespeichert'} · {annual ? preview.source_rows : preview.rows} Buchungsquellen</p>
+        {annual && preview.wiso_preparation && preparationView(preview.wiso_preparation)}
         {annual ? <><dl>{Object.entries(preview.totals).map(([name, cents]) => <div key={name}><dt>{{ cash_cents: 'Zahlungen gesamt', income_cents: 'Einnahmen', expense_cents: 'Ausgaben', excluded_cash_cents: 'Ausgeschlossen', unclassified_cash_cents: 'Noch zu prüfen' }[name]}</dt><dd>{money(cents)}</dd></div>)}</dl>
           {preview.blocking_issues.map((issue, i) => <p key={i}>{issue.booking_id || 'Gesamtprüfung'}: {issueNames[issue.code] || `Quelle muss geprüft werden (${issue.code})`}</p>)}
           <p>Objektaufteilungen und Korrekturen: Die Summe der Teilbeträge muss dem vorzeichenbehafteten Buchungsbetrag in Cent entsprechen.</p>
@@ -269,8 +331,10 @@ export default function TaxExports() {
       </section>
       <section><h2>Gesicherte Historie</h2>{history.items.length === 0 && <p>Für dieses Portfolio ist noch keine Fassung gespeichert.</p>}
         {history.items.map(item => <article key={item.id}><p>{item.tax_year || `${item.start_date} bis ${item.end_date}`} · {item.created_at || item.generated_at} · {item.id}</p>
-          <button disabled={busy} onClick={() => download(item)}>{annual ? 'Neutrale Quellen und Steuerzeilen' : 'Originale DATEV-Exportdateien'} herunterladen</button>
+          <button disabled={busy} onClick={() => download(item)}>{annual ? item.wiso_preparation ? 'Neutrale Quellen und manuellen Übertragungsbogen' : 'Neutrale Quellen und Steuerzeilen' : 'Originale DATEV-Exportdateien'} herunterladen</button>
+          {annual && item.wiso_preparation && <button disabled={busy} onClick={() => viewSavedPreparation(item)}>Gesicherten Übertragungsbogen prüfen</button>}
           {annual && canWrite && <button disabled={busy} onClick={() => { setRevision(item.id); setRevisionReason(''); setSelected(item.profile_version_id); setAsOf(item.review_request.as_of); setOverrides(item.review_request.overrides || []); setPendingReason(item.review_request.pending_review_reason || ''); setEmptyReason(item.review_request.empty_cash_review_reason || ''); setPreview(null); }}>Als neue Jahresrevision prüfen</button>}</article>)}
+        {savedPreparation && <article><h3>Gesicherter Beleg {savedPreparation.id}</h3>{preparationView(savedPreparation.report)}<button disabled={busy} onClick={() => setSavedPreparation(null)}>Belegvorschau schließen</button></article>}
         {pager(historyOffset, setHistoryOffset, history.total, 'Historienseiten')}</section>
     </>}
   </main>;

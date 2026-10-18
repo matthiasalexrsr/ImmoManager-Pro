@@ -5,7 +5,7 @@ from ..integrations.base import IntegrationActionResult, IntegrationManifest
 from .teha_transport import TehaTransport
 from .teha_types import TEHA_PORTAL_CONTRACT_VERSION, TehaError
 
-EVIDENCE_GAP = "Kein belegter Portalvertrag für Kosten-/Nutzerdaten oder Wartungsaufträge: Methode, Endpunkt, Feldschema, Idempotenz und Ergebnisabgleich fehlen. Übertragung gesperrt."
+EVIDENCE_GAP = "Portalpfade für Kosten-/Nutzerdaten und Wartungsaufträge sind statisch belegt. Ein aktuell abgenommener Schreibvertrag mit vollständigem Feldschema, Idempotenz und Ergebnisabgleich fehlt. Übertragung gesperrt."
 
 
 class TehaProvider:

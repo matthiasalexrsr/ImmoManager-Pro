@@ -24,6 +24,26 @@ function RunProblem({ connection, run }) {
   return message ? <p role="alert">{message}</p> : null;
 }
 
+function PortalEvidence({ connection }) {
+  const [evidence, setEvidence] = useState(null), [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const current = api.captureSession();
+    api.get(`/teha/${connection}/evidence`).then(value => { current(); if (active) { setEvidence(value); setError(''); } })
+      .catch(failure => { if (active && failure.code !== 'SESSION_CHANGED') setError(failure.message); });
+    return () => { active = false; };
+  }, [connection, attempt]);
+  return <section className="teha-panel"><h2>Portalvertrag und Nachweise</h2>
+    {error && <p role="alert">{error} <button onClick={() => setAttempt(v => v + 1)}>Nachweise erneut laden</button></p>}
+    {evidence && <><p>{evidence.message}</p><p>Öffentliche Quelle geprüft am {evidence.observed_on}. SHA-256: <code>{evidence.source_sha256}</code></p>
+      <details><summary>Belegte Schnittstellen und offene Abnahme prüfen</summary>
+        <ul>{evidence.candidates.map(row => <li key={row.path}><code>{row.method} {row.path}</code><p>Direkte Felder: {row.direct_keys.join(', ')}</p></li>)}</ul>
+        <ul>{evidence.binding_notes?.map(note => <li key={note}>{note}</li>)}</ul>
+        <p>Für die externe Abnahme fehlen:</p><ul>{evidence.missing_acceptance.map(note => <li key={note}>{note}</li>)}</ul>
+      </details></>}
+  </section>;
+}
+
 function Page({ url, render, refresh = 0, title }) {
   const [page, setPage] = useState(null), [error, setError] = useState(''), [cursor, setCursor] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -40,7 +60,7 @@ function Page({ url, render, refresh = 0, title }) {
   return <section className="teha-panel"><h2>{title}</h2>
     {error ? <p role="alert">{error} <button onClick={() => setAttempt(v => v + 1)}>Erneut laden</button></p> :
       !page ? <p role="status">Wird geladen …</p> : <>
-        <p>{page.total} Einträge insgesamt</p>{page.items.length ? <ul className="teha-list">{page.items.map(render)}</ul> : <p>Keine Einträge vorhanden.</p>}
+        <p>{page.total} {page.count_scope === 'received_user_inventory' ? 'empfangene Nutzereinträge insgesamt; angezeigt werden die aktuellen Nutzer dieses Termins' : 'Einträge insgesamt'}</p>{page.items.length ? <ul className="teha-list">{page.items.map(render)}</ul> : <p>Keine Einträge auf dieser Seite vorhanden.</p>}
         <div className="teha-actions"><button disabled={!cursor} onClick={() => setCursor('')}>Erste Seite</button>
           <button disabled={!page.next_cursor} onClick={() => setCursor(page.next_cursor)}>Weitere Einträge</button></div>
       </>}
@@ -56,9 +76,13 @@ function TargetPicker({ connection, kind, propertyId, selected, onSelect, disabl
   </details>;
 }
 
-function ItemReview({ connection, item, initialTargets, mutate, busy, onPublished }) {
+function ItemReview({ connection, item, initialTargets, mutate, busy, onPublished, onFollowUp }) {
   const [preview, setPreview] = useState(null), [targets, setTargets] = useState(initialTargets || {}), [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [followUp, setFollowUp] = useState(false), [ordererName, setOrdererName] = useState(''), [ordererEmail, setOrdererEmail] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState({});
+  const activeReview = useRef(true);
+  useEffect(() => { activeReview.current = true; return () => { activeReview.current = false; }; }, []);
   useEffect(() => {
     let active = true;
     setPreview(null); setError('');
@@ -82,16 +106,28 @@ function ItemReview({ connection, item, initialTargets, mutate, busy, onPublishe
       let source = preview.targets.find(t => t.kind === 'billing_period');
       if (item.kind === 'technical_order') {
         const value = await api.get(`/workspace/source/maintenance/${preview.publication.project_id}`); current();
+        if (!activeReview.current) return;
         source = { kind: 'maintenance', id: value.id, revision: value.revision };
       }
       await mutate(`/teha/${connection}/items/${item.id}/prepare-return`, {
         idempotency_key: key(), kind: item.kind === 'period' ? 'cost_user_data' : 'maintenance_order',
         mapping_revision: preview.mapping_revision, source, confirm: true,
-      });
+        ...(followUp ? { follow_up: { orderer_name: ordererName, orderer_email: ordererEmail,
+          users: Object.values(selectedUsers).map(row => ({ item_id: row.id, source_sha256: row.source_sha256 })) } } : {}),
+      }, () => setError(''));
     } catch (failure) { if (failure.code !== 'SESSION_CHANGED') setError(failure.message); }
   }
   return <section className="teha-panel" aria-label="Zuordnung und Vorschau">
     <h2>{item.source.title}</h2><p>{labels[item.kind]} · Quellkennung <code>{JSON.stringify(item.source.identity)}</code></p>
+    {item.kind === 'document' && !item.content_sha256 && <button disabled={busy} onClick={() => onFollowUp('document', {
+      lieg_nr: item.source.identity.lieg_nr, reference: item.source.identity.reference,
+    })}>Originalempfang vorbereiten</button>}
+    {item.kind === 'period' && item.source.raw.liegenschaftenNummer && <button disabled={busy} onClick={() => onFollowUp('documents', {
+      lieg_nr: item.source.raw.liegenschaftenNummer,
+    })}>Dokumentverzeichnis dieser Liegenschaft vorbereiten</button>}
+    {item.kind === 'technical_order' && item.source.raw.liegenschaftsnummer && <button disabled={busy} onClick={() => onFollowUp('users', {
+      lieg_nr: item.source.raw.liegenschaftsnummer, termin_id: item.source.identity.termin_id,
+    })}>Nutzer dieses Techniktermins empfangen – vorbereiten</button>}
     {error && <p role="alert">{error} <button onClick={() => setAttempt(v => v + 1)}>Vorschau erneut laden</button></p>}
     {preview && <>
       <p><strong>{labels[preview.state]}</strong></p>{preview.errors.map(message => <p role="alert" key={message}>{message}</p>)}
@@ -107,8 +143,22 @@ function ItemReview({ connection, item, initialTargets, mutate, busy, onPublishe
       <p>Originalhash: <code>{item.content_sha256 || 'Keine Originalbytes empfangen'}</code></p>
       <details><summary>Unveränderte Quellfelder prüfen</summary><pre>{JSON.stringify(item.source.raw, null, 2)}</pre></details>
       <p className="text-muted">{preview.evidence_gap}</p>
+      {item.kind === 'technical_order' && preview.publication?.project_id && <details className="teha-target"><summary>Restarbeitsauftrag lokal vorbereiten</summary>
+        <label className="teha-check"><input type="checkbox" checked={followUp} disabled={busy} onChange={event => setFollowUp(event.target.checked)} />
+          Belegte Folgeauftrag-Feldstruktur in die lokale Vorschau aufnehmen</label>
+        {followUp && <><label>Auftraggebername<input value={ordererName} disabled={busy} onChange={event => setOrdererName(event.target.value)} /></label>
+          <label>Auftraggeber-E-Mail (optional)<input type="email" value={ordererEmail} disabled={busy} onChange={event => setOrdererEmail(event.target.value)} /></label>
+          <p>Nutzer zunächst ausdrücklich über den Techniktermin empfangen und vollständig aufbereiten. Nur ausgewählte aktuelle Nutzer werden ins lokale Paket aufgenommen.</p>
+          <Page title="Empfangene Nutzer für den Restarbeitsauftrag" url={`/teha/${connection}/items/${item.id}/follow-up-users`} render={row => <li key={row.id}>
+            <label className="teha-check"><input type="checkbox" disabled={busy || !row.selectable} checked={Boolean(selectedUsers[row.id])} onChange={event => {
+              const checked = event.target.checked;
+              setSelectedUsers(old => { const next = { ...old }; if (checked) next[row.id] = row; else delete next[row.id]; return next; });
+            }} />{row.name} · TEHA-Nutzer {row.external_user_id}{row.selectable ? '' : ' (erledigt oder gelöscht)'}</label></li>} />
+          <p>{Object.keys(selectedUsers).length} Nutzer ausdrücklich ausgewählt.</p></>}
+      </details>}
       {(item.kind === 'period' && preview.targets.some(t => t.kind === 'billing_period') || item.kind === 'technical_order' && preview.publication?.project_id) &&
-        <button disabled={busy || !preview.mapping_revision} onClick={prepareReturn}>Rückübertragung lokal vorbereiten (ohne Versand)</button>}
+        <button disabled={busy || !preview.mapping_revision || preview.state === 'conflict' || (followUp && (!ordererName.trim() || !Object.keys(selectedUsers).length))}
+          onClick={prepareReturn}>Rückübertragung lokal vorbereiten (ohne Versand)</button>}
     </>}
   </section>;
 }
@@ -160,12 +210,18 @@ export default function Teha() {
   }
   async function prepare(event) {
     event.preventDefault();
+    const payload = action === 'document' ? { lieg_nr: lieg, reference } : action === 'documents' ? { lieg_nr: lieg } : action === 'users' ? { termin_id: Number(termin), lieg_nr: lieg } : {};
+    await prepareRead(action, payload);
+  }
+  async function prepareRead(nextAction, payload) {
+    if (busy || uncertain) return;
+    setPrepared(null);
     const current = api.captureSession(), captured = epoch.current;
     try {
       const config = await api.get(`/integration-connections/${connection}`); current();
       if (!mounted.current || captured !== epoch.current) return;
-      const payload = action === 'document' ? { lieg_nr: lieg, reference } : action === 'documents' ? { lieg_nr: lieg } : action === 'users' ? { termin_id: Number(termin), lieg_nr: lieg } : {};
-      await mutate(`/integration-connections/${connection}/runs`, { idempotency_key: key(), config_revision: config.revision, action, payload }, setPrepared);
+      setAction(nextAction); setLieg(payload.lieg_nr || ''); setReference(payload.reference || ''); setTermin(payload.termin_id || '');
+      await mutate(`/integration-connections/${connection}/runs`, { idempotency_key: key(), config_revision: config.revision, action: nextAction, payload }, setPrepared);
     } catch (failure) { if (failure.code !== 'SESSION_CHANGED') setError(failure.message); }
   }
   async function download(row) {
@@ -174,6 +230,14 @@ export default function Teha() {
       const blob = await api.getBlob(`/teha/${connection}/receipts/${row.id}/original`); current();
       const url = URL.createObjectURL(blob), anchor = document.createElement('a');
       anchor.href = url; anchor.download = 'TEHA-Original.pdf'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (failure) { if (failure.code !== 'SESSION_CHANGED') setError(failure.message); }
+  }
+  async function downloadReturn(row) {
+    const current = api.captureSession();
+    try {
+      const blob = await api.getBlob(`/teha/${connection}/returns/${row.id}/export?${query({ snapshot_sha256: row.snapshot_sha256 })}`); current();
+      const url = URL.createObjectURL(blob), anchor = document.createElement('a');
+      anchor.href = url; anchor.download = `TEHA-Pruefpaket-${row.id}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (failure) { if (failure.code !== 'SESSION_CHANGED') setError(failure.message); }
   }
   const historyRow = row => <li key={row.id}><code>{row.content_sha256 || row.source_sha256}</code>
@@ -192,6 +256,7 @@ export default function Teha() {
           setParams(old => { const next = new URLSearchParams(old); next.set('connection', row.id); next.delete('batch'); return next; });
         }}>{row.name}{row.enabled && !row.archived ? '' : ' (deaktiviert)'}</button></li>} />
       {connection && <>
+        <PortalEvidence key={connection} connection={connection} />
         {canWrite && <section className="teha-panel"><h2>Neuen Empfang vorbereiten</h2><form onSubmit={prepare}>
           <label>Quelle<select value={action} onChange={e => { setAction(e.target.value); setPrepared(null); }}>
             <option value="inventory">Immobilien und Perioden</option><option value="documents">Dokumentverzeichnis</option>
@@ -228,15 +293,23 @@ export default function Teha() {
         {batch && <Page title="Empfangene Einträge" url={`/teha/${connection}/batches/${batch}/items`} refresh={refresh}
           render={row => <li key={row.id}><button onClick={() => { setReceipt(null); setItem(row); }}>{row.source.title} · {labels[row.kind]}</button></li>} />}
         {item && canWrite && <ItemReview key={item.id} connection={connection} item={item} initialTargets={initialTargets} mutate={mutate}
-          busy={busy || uncertain} onPublished={setReceipt} />}
+          busy={busy || uncertain} onPublished={setReceipt} onFollowUp={prepareRead} />}
         {receipt && <section className="teha-panel" role="status"><h2>Übernahme bestätigt</h2><ul className="teha-list">{historyRow(receipt)}</ul></section>}
         <Page title="Unveränderliche Übernahmehistorie" url={`/teha/${connection}/history`} refresh={refresh} render={historyRow} />
         <Page title="Lokal vorbereitete Rückübertragungen" url={`/teha/${connection}/returns`} refresh={refresh} render={row => <li key={row.id}>
           <strong>{row.snapshot.kind === 'cost_user_data' ? 'Kosten-/Nutzerdaten' : 'Wartungsvorgang'}</strong> · {row.source_changed ? 'Quelle inzwischen geändert – neu vorbereiten' : 'Quellstand eingefroren'}
           <p>Nicht versandt; kein freigegebener TEHA-Schreibvertrag.</p><code>{row.snapshot_sha256}</code>
+          {row.validation && <><p>{row.validation.local_valid ? 'Lokale Quellenprüfung ohne Konflikt.' : 'Lokale Quellenprüfung erfordert neue Vorbereitung.'}</p>
+            {row.validation.issues.map(issue => <p role="alert" key={issue.code}>{issue.message}</p>)}
+            {row.snapshot.kind === 'cost_user_data' ? <p>{row.validation.summary.cost_count} Kostenpositionen · {row.validation.summary.contract_count} Mietverträge · {row.validation.summary.user_count} lokale Nutzer</p> :
+              <p>{row.validation.summary.selected_teha_user_count || 0} empfangene TEHA-Nutzer für die Folgeauftrag-Vorschau ausgewählt.</p>}
+            {row.validation.summary.total_decimal != null && <p>Summe lokaler Kosten: {row.validation.summary.total_decimal} {row.validation.summary.currency}</p>}
+            <details><summary>Prüfhinweise</summary><ul>{row.validation.warnings.map(note => <li key={note.code}>{note.message}</li>)}</ul></details></>}
+          <button onClick={() => downloadReturn(row)}>Lokales Prüfpaket herunterladen</button>
+          {row.snapshot.portal_preview && <details><summary>Belegte Folgeauftrag-Vorschau (ohne Versand)</summary><pre>{JSON.stringify(row.snapshot.portal_preview, null, 2)}</pre></details>}
           <details><summary>Vorbereitete lokale Daten prüfen</summary><pre>{JSON.stringify(row.snapshot, null, 2)}</pre></details></li>} />
         <section className="teha-panel"><h2>Rückübertragung</h2><p>Kosten-/Nutzerdaten und Wartungsaufträge können noch nicht an TEHA übertragen werden.
-          Es fehlen belegte Endpunkte, Feldverträge, Wiederholungsschutz und Ergebnisabgleich. Lokale Übernahmebelege sind keine Portalbestätigung.</p>
+          Öffentliche Portalpfade und Teile ihrer Feldstruktur sind belegt. Vollständige Feldverträge, Wiederholungsschutz und Ergebnisabgleich sind noch nicht abgenommen. Lokale Übernahmebelege sind keine Portalbestätigung.</p>
           <button disabled>Kosten-/Nutzerdaten übertragen</button> <button disabled>Wartungsauftrag senden</button></section>
       </>}
     </fieldset>

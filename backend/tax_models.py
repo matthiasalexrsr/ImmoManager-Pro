@@ -30,6 +30,39 @@ class AnnualTaxRule(TaxClassification):
     category_id: str | None = Field(default=None, min_length=1)
 
 
+class WisoObjectPreparation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    property_id: str = Field(min_length=1)
+    object_number: int = Field(ge=1, le=9999, strict=True)
+    target_object_label: str = Field(min_length=1, max_length=200)
+
+
+class WisoLinePreparation(BaseModel):
+    """A reviewed manual destination label is never a vendor field identifier."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    treatment: Literal["income", "expense"]
+    form_line: str = Field(min_length=1, max_length=200)
+    target_label: str = Field(min_length=1, max_length=200)
+    review_reason: str = Field(min_length=1, max_length=1000)
+
+
+class WisoPreparation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_product: Literal["WISO Steuer Windows"] = "WISO Steuer Windows"
+    tax_year: Literal[2026] = 2026
+    evidence_version: Literal["hv365-21.02.1530-observed-2026-v1"] = "hv365-21.02.1530-observed-2026-v1"
+    objects: list[WisoObjectPreparation] = Field(default_factory=list)
+    lines: list[WisoLinePreparation] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def unique_preparation(self):
+        for keys in ([item.property_id for item in self.objects], [item.object_number for item in self.objects],
+                     [(item.treatment, item.form_line) for item in self.lines]):
+            if len(keys) != len(set(keys)):
+                raise ValueError("WISO preparation needs unique object IDs, object numbers and treatment/form-line mappings")
+        return self
+
+
 class AnnualTaxProfileCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     portfolio_id: str = Field(min_length=1)
@@ -39,6 +72,7 @@ class AnnualTaxProfileCreate(BaseModel):
     reviewed_by: str = Field(min_length=1, max_length=200)
     review_confirmed: StrictBool
     rules: list[AnnualTaxRule] = Field(min_length=1)
+    wiso_preparation: WisoPreparation | None = None
     previous_version_id: str | None = None
     idempotency_key: str = Field(min_length=1, max_length=100)
 
@@ -49,6 +83,8 @@ class AnnualTaxProfileCreate(BaseModel):
         keys = [(rule.account_id, rule.category_id) for rule in self.rules]
         if len(set(keys)) != len(keys):
             raise ValueError("Each account/category pair needs exactly one classification")
+        if self.wiso_preparation and self.tax_year != self.wiso_preparation.tax_year:
+            raise ValueError("The observed WISO preparation contract is limited to tax year 2026")
         return self
 
 

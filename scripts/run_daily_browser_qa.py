@@ -56,7 +56,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--playwright', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/daily-browser')
-    parser.add_argument('--suite', choices=('daily', 'qol'), default='daily')
+    parser.add_argument('--suite', choices=('daily', 'qol', 'interfaces'), default='daily')
     parser.add_argument('--binary', type=Path, help='Optional built application inside this checkout')
     options = parser.parse_args()
     module = options.playwright.resolve(strict=True)
@@ -84,6 +84,15 @@ def main() -> int:
         environment = {**os.environ, 'QA_BASE_URL': server.base.removesuffix('/api/v1'),
             'QA_ALLOW_TEST_WRITES': '1', 'QA_PASSWORD': PASSWORD, 'QA_OUTPUT': str(output / 'checks'),
             'QA_PLAYWRIGHT_PATH': str(module)}
+        if options.suite == 'interfaces':
+            fixture_file = output / 'interface-fixture.json'
+            seeded = subprocess.run([sys.executable, str(ROOT / 'tools/interface_browser_seed.py'), str(fixture_file)],
+                cwd=ROOT, env={**server.env(), 'QA_ALLOW_TEST_WRITES': '1'}, capture_output=True, text=True,
+                encoding='utf-8', timeout=120)
+            (output / 'seed.log').write_text(seeded.stdout + seeded.stderr, encoding='utf-8')
+            if seeded.returncode:
+                raise RuntimeError(f'Interface fixture failed; inspect {output / "seed.log"}')
+            environment['QA_INTERFACE_FIXTURE'] = str(fixture_file)
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
             process, job = start_owned(['node', str(ROOT / 'scripts' / f'{options.suite}_browser_qa.mjs')],
                 cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT)

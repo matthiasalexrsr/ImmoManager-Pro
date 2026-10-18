@@ -13,3 +13,6 @@
 .tax-exports dl > div { display: flex; justify-content: space-between; gap: .7rem; }
 .tax-exports [role=alert] { border: 1px solid #b33; padding: .8rem; }
 .tax-exports :focus-visible { outline: 3px solid #4677c4; outline-offset: 2px; }
+.tax-preparation { border: 1px solid var(--border-color, #bbb); border-radius: .4rem; margin: 1rem 0; padding: .8rem; min-width: 0; }
+.tax-preparation details { padding: .4rem 0; }
+.tax-preparation summary { cursor: pointer; }

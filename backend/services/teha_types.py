@@ -37,8 +37,22 @@ class BatchDecision(ConnectionCommand):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class FollowUpUserSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item_id: str = Field(min_length=1, max_length=120)
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class FollowUpPreparation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    orderer_name: str = Field(min_length=1, max_length=200)
+    orderer_email: str = Field(default="", max_length=320)
+    users: list[FollowUpUserSource] = Field(min_length=1)
+
+
 class PrepareReturn(ConnectionCommand):
     kind: Literal["cost_user_data", "maintenance_order"]
     mapping_revision: int = Field(ge=1)
     source: Target
+    follow_up: FollowUpPreparation | None = None
     confirm: Literal[True]

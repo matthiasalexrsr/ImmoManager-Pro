@@ -14,15 +14,20 @@ contracts, meters and names (the shown document is frozen at finalization).
 A correction is a new period that names the version it corrects.
 """
 
+import hashlib
 import logging
 import re
-from datetime import date, timedelta
+from contextlib import ExitStack
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError as ModelValidationError
+from sqlalchemy.exc import IntegrityError
 
+from .. import auth
+from ..auth import require_role
 from ..dependencies import store
 from ..models import (
     AllocationKey,
@@ -30,6 +35,7 @@ from ..models import (
     AllocationKeyPatch,
     BillingObjection,
     BillingObjectionCreate,
+    BillingObjectionRejection,
     BillingObjectionRequest,
     BillingPeriod,
     BillingPeriodCreate,
@@ -39,10 +45,12 @@ from ..models import (
     CostItem,
     CostItemCreate,
     CostItemPatch,
+    UserRead,
     UtilityStatement,
     UtilityStatementPatch,
 )
-from ..services.billing_writes import atomic_billing
+from ..services.billing_writes import atomic_billing, billing_write
+from ..services.document_versions import check_account
 from ..services.final_statements import (
     EDITABLE_STATUSES,
     FINAL_STATUSES,
@@ -50,6 +58,7 @@ from ..services.final_statements import (
     json_safe,
     statement_snapshot_hash,
 )
+from ..services.portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user
 from ..services.service_contracts import check_cost_item_origin
 from ..services.utility_billing import compute_period_billing
 from ..storage import NotFoundError, ValidationError
@@ -186,6 +195,10 @@ def delete_billing_period(period_id: str) -> None:
     try:
         existing = store.get_billing_period(period_id)
         _assert_period_mutable(existing)
+        if any(o.correction_period_id == period_id and o.decision_key
+               for o in store.list_billing_objections()):
+            raise HTTPException(409, "Diese Korrektur gehört zu einer dokumentierten Entscheidung; "
+                                     "bitte den Entwurf weiter bearbeiten und den Entscheidungsbeleg erhalten")
         store.delete_billing_period(period_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -535,7 +548,7 @@ def _close_corrected_version(correction: BillingPeriod) -> None:
     if source.status in _CORRECTABLE_STATUSES:
         _set_period_status(source.id, "corrected")
     for objection in store.list_billing_objections(source.id):
-        if objection.status != "resolved":
+        if objection.status not in {"resolved", "rejected"}:
             _save_objection(objection, status="resolved", correction_period_id=correction.id)
 
 
@@ -916,6 +929,8 @@ def create_period_revision(
 
 
 def _save_objection(objection: BillingObjection, **changes: Any) -> BillingObjection:
+    if changes.get("status", objection.status) != objection.status:
+        changes.setdefault("decision_revision", objection.decision_revision + 1)
     data = BillingObjectionCreate(**{**objection.model_dump(include=set(BillingObjectionCreate.model_fields)),
                                      **changes})
     return store.update_billing_objection(objection.id, data)
@@ -936,11 +951,21 @@ def _record_objection(period_id: str, request: BillingObjectionRequest) -> Billi
                    f"(aktuell: '{period.status}')",
         )
     try:
+        existing = store.list_billing_objections(period_id)
+        first_status: Literal["finalized", "delivered"] | None
+        if period.status == "finalized":
+            first_status = "finalized"
+        elif period.status == "delivered":
+            first_status = "delivered"
+        else:
+            first_status = next((entry.source_period_status for entry in existing
+                                 if entry.source_period_status is not None), None)
         objection = store.create_billing_objection(BillingObjectionCreate(
             billing_period_id=period_id,
             statement_id=request.statement_id,
             received_on=request.received_on or date.today(),
             reason=request.reason,
+            source_period_status=first_status,
         ))
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -969,6 +994,155 @@ def dispute_billing_period(
 def create_billing_objection(period_id: str, payload: BillingObjectionRequest) -> BillingObjection:
     """Record an objection (Widerspruch), optionally against one statement of the period."""
     return _record_objection(period_id, payload)
+
+
+def _decision_source(period: BillingPeriod) -> str:
+    originals = _period_statements(period.id)
+    if not originals or any(not source.snapshot_hash for source in originals):
+        raise HTTPException(409, "Originalabrechnung fehlt oder ist nicht als unveränderliche Fassung belegt")
+    if final_version_problems(period, originals):
+        raise HTTPException(409, "Originalabrechnung stimmt nicht mit der finalisierten Fassung überein")
+    return statement_snapshot_hash(originals)
+
+
+@router.get("/objections/{objection_id}/decision-preview")
+def objection_decision_preview(objection_id: str) -> dict:
+    try:
+        objection = store.get_billing_objection(objection_id)
+        period = store.get_billing_period(objection.billing_period_id)
+    except NotFoundError:
+        raise HTTPException(404, "Widerspruch nicht gefunden") from None
+    return {"objection": objection, "source_sha256": _decision_source(period),
+            "period_status": period.status}
+
+
+def decide_issued_objection(objection_id, payload, actor_id, *, action="reject"):
+    if action not in {"reject", "revise"}:
+        raise HTTPException(422, "Unbekannte Widerspruchsentscheidung")
+    try:
+        return _decide_issued_objection(objection_id, payload, actor_id, action=action)
+    except (IntegrityError, ValidationError) as exc:
+        # A concurrent decision on another period may claim the command key
+        # after our precheck. The surrounding write has rolled back by now.
+        raise HTTPException(409, "Der Entscheidungsbefehl steht im Konflikt; bitte erneut laden") from exc
+
+
+def _decide_issued_objection(
+    objection_id: str, payload: BillingObjectionRejection, actor_id: str, *, action: str = "reject",
+) -> BillingObjection:
+    """Bind a documented decision to the shown original and current account rights.
+
+    The period lock covers revision/source checks and the whole correction or
+    rejection. Account rights are held until the transaction is complete. Neither
+    action creates receivables, cancellations, replacement PDFs or deliveries.
+    """
+    try:
+        initial = store.get_billing_objection(objection_id)
+    except NotFoundError:
+        raise HTTPException(404, "Widerspruch nicht gefunden") from None
+    db = getattr(store, "db", None)
+    with ExitStack() as stack:
+        # Memory follows the same account -> archive lock order as document work.
+        account = stack.enter_context(auth.locked_account(actor_id)) if db is None else None
+        stack.enter_context(billing_write(store, [initial.billing_period_id]))
+        if db is not None:
+            account = stack.enter_context(auth.locked_account(actor_id, db))
+        account = check_account(account, write_areas=("/billing/objections",))
+        if account.get("role") not in {"eigentuemer", "verwalter"}:
+            raise HTTPException(403, "Keine Berechtigung, einen Widerspruch zu entscheiden")
+        refresh_scope(current_scope())
+        with scope_context(scope_from_user(account)):
+            return _decide_locked_objection(initial, payload, actor_id, action)
+
+
+def _decide_locked_objection(initial, payload, actor_id, action):
+    try:
+        current = store.get_billing_objection(initial.id)
+        period = store.get_billing_period(initial.billing_period_id)
+    except NotFoundError:
+        raise HTTPException(404, "Widerspruch oder Abrechnungsperiode nicht gefunden") from None
+    if current.billing_period_id != initial.billing_period_id:
+        raise HTTPException(409, "Die Zuordnung wurde geändert; bitte erneut laden")
+    target_statuses = {"rejected"} if action == "reject" else {"correction", "resolved"}
+    if current.decision_key is not None:
+        expected_result_revision = payload.expected_revision + (2 if current.status == "resolved" else 1)
+        if (current.status in target_statuses and current.decision_key == payload.idempotency_key
+                and current.decision_actor_id == actor_id and current.decision_reason == payload.rationale
+                and current.decision_source_sha256 == payload.expected_source_sha256
+                and current.decision_revision == expected_result_revision):
+            if _decision_source(period) != current.decision_source_sha256:
+                raise HTTPException(409, "Die Originalfassung stimmt nicht mehr mit dem Entscheidungsbeleg überein")
+            return current
+        raise HTTPException(409, "Dieser Widerspruch wurde bereits anders entschieden")
+    if (current.status != "open" or period.status != "disputed"
+            or current.correction_period_id is not None or current.decision_revision != payload.expected_revision):
+        raise HTTPException(409, "Widerspruch oder Abrechnungsstand wurden geändert; bitte Vorschau erneut laden")
+    source_hash = _decision_source(period)
+    if source_hash != payload.expected_source_sha256:
+        raise HTTPException(409, "Die angezeigte Originalfassung ist veraltet; bitte Vorschau erneut laden")
+    pending = [p for p in store.list_billing_periods()
+               if p.corrects_period_id == period.id and p.status in EDITABLE_STATUSES]
+    if pending:
+        raise HTTPException(409, "Eine Überarbeitung läuft bereits; bitte die vorhandene Korrektur öffnen")
+    # Check key reuse before writing: memory and SQL must reject it alike.
+    objections = store.list_billing_objections()
+    if not hasattr(store, "db"):
+        # This is a storage uniqueness invariant, including rows outside a
+        # restricted actor's view; no foreign record or decision is disclosed.
+        objections = object.__getattribute__(store, "__dict__")["billing_objections"].values()
+    if any(o.decision_key == payload.idempotency_key for o in objections):
+        raise HTTPException(409, "Dieser Entscheidungsbefehl gehört bereits zu einem anderen Widerspruch")
+    if action == "revise":
+        correction = create_period_revision(period.id, payload.rationale)
+        # The existing correction workflow answers every open objection of
+        # this version. Record the same rationale/actor/time for each of them,
+        # with distinct command keys, without changing a tenant's own text.
+        evidence = _decision_evidence(payload, actor_id, source_hash)
+        result = store.get_billing_objection(current.id)
+        for linked in store.list_billing_objections(period.id):
+            if linked.correction_period_id == correction["new_period_id"] and linked.status == "correction":
+                command_key = payload.idempotency_key if linked.id == current.id else hashlib.sha256(
+                    (payload.idempotency_key + ":" + linked.id).encode("utf-8")).hexdigest()
+                updated = _save_objection(linked, **{**evidence, "decision_key": command_key})
+                if linked.id == current.id:
+                    result = updated
+    else:
+        result = _save_objection(current, status="rejected", **_decision_evidence(payload, actor_id, source_hash))
+        siblings = store.list_billing_objections(period.id)
+        if not any(o.status in {"open", "correction"} for o in siblings):
+            previous = current.source_period_status or next((o.source_period_status for o in siblings
+                       if o.source_period_status in {"finalized", "delivered"}), None)
+            if previous in {"finalized", "delivered"}:
+                _set_period_status(period.id, previous)
+    if _compute_snapshot_hash(period.id) != source_hash:
+        raise HTTPException(503, "Die eingefrorene Originalabrechnung wurde unerwartet verändert")
+    return result
+
+
+def _decision_evidence(payload, actor_id, source_hash):
+    return dict(decision_reason=payload.rationale, decision_actor_id=actor_id,
+                decision_key=payload.idempotency_key, decided_at=datetime.now(timezone.utc),
+                decision_source_sha256=source_hash)
+
+
+def reject_issued_objection(objection_id, payload, actor_id):
+    return decide_issued_objection(objection_id, payload, actor_id)
+
+
+@router.post("/objections/{objection_id}/reject", response_model=BillingObjection)
+def reject_billing_objection(
+    objection_id: str, payload: BillingObjectionRejection,
+    actor: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> BillingObjection:
+    return decide_issued_objection(objection_id, payload, actor.id)
+
+
+@router.post("/objections/{objection_id}/revise", response_model=BillingObjection)
+def revise_billing_objection(
+    objection_id: str, payload: BillingObjectionRejection,
+    actor: UserRead = Depends(require_role("eigentuemer", "verwalter")),
+) -> BillingObjection:
+    return decide_issued_objection(objection_id, payload, actor.id, action="revise")
 
 
 @router.get("/objections", response_model=list[BillingObjection])

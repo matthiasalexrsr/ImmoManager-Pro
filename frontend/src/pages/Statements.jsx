@@ -1,4 +1,6 @@
 import NotificationArrival from '../components/NotificationArrival';
+import { useAuth } from '../contexts/AuthContext';
+import { mayWrite } from '../utils/permissions';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -8,6 +10,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { formatMoney } from '../utils/format';
 import { Link, useSearchParams } from 'react-router-dom';
+import './statements.css';
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -26,7 +29,7 @@ function useToast() {
       style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999,
                padding: '0.75rem 1.25rem', borderRadius: '8px', cursor: 'pointer',
                background: toast.type === 'success' ? 'var(--teal, #0d9488)' : 'var(--color-error, #dc2626)',
-               color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: '400px' }}
+               color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxWidth: 'min(400px, calc(100vw - 3rem))' }}
     >
       {toast.message}
     </div>
@@ -63,6 +66,72 @@ function PromptModal({ title, defaultValue, onConfirm, onCancel }) {
     </div>
   );
 }
+
+function RejectionDialog({ objection, action, onConfirm, onCancel, busy }) {
+  const title = action === 'revise' ? 'Abrechnung begründet überarbeiten' : 'Widerspruch begründet zurückweisen';
+  const [reason, setReason] = useState('');
+  const valid = reason.trim().length >= 12;
+  return <div className="modal-overlay" onClick={() => { if (!busy) onCancel(); }}>
+    <div className="modal objection-dialog" role="dialog" aria-modal="true" aria-label={title}
+      onClick={event => event.stopPropagation()} style={{ maxWidth: '550px', minWidth: 0 }}>
+      <div className="modal-header">
+        <h3>{title}</h3>
+        <button className="btn-close" aria-label="Schließen" onClick={onCancel} disabled={busy}>&times;</button>
+      </div>
+      <div className="modal-body">
+        <p>Der ursprüngliche Einwand und die ausgestellte Abrechnung bleiben unverändert.
+          Die Entscheidung wird getrennt und nachvollziehbar gespeichert.</p>
+        <p><strong>Einwand:</strong> {objection.reason}</p>
+        {action === 'revise' && <p>Eine neue Korrekturfassung wird als Entwurf geöffnet. Alle offenen Widersprüche dieser Fassung werden dieser Überarbeitung zugeordnet. Forderungen und Zahlungen ändern sich erst durch die gesonderten Arbeitsschritte.</p>}
+        <label htmlFor="objection-decision-reason">Sachliche Begründung (mindestens 12 Zeichen)</label>
+        <textarea id="objection-decision-reason" value={reason} maxLength={2000} rows={4}
+          onChange={event => setReason(event.target.value)} disabled={busy} autoFocus
+          style={{ width: '100%', maxWidth: '100%' }} />
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-secondary" onClick={onCancel}
+          disabled={busy}>Abbrechen</button>
+        <button type="button" className="btn btn-primary" disabled={!valid || busy}
+          onClick={() => onConfirm(reason)}>
+          {busy ? 'Entscheidung wird gespeichert …' : action === 'revise' ? 'Überarbeitung mit Begründung starten' : 'Ablehnung mit Begründung bestätigen'}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
+
+function ObjectionDialog({ statements, unitMap, onConfirm, onCancel, busy }) {
+  const [reason, setReason] = useState('');
+  const [statementId, setStatementId] = useState('');
+  const [receivedOn, setReceivedOn] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });
+  return <div className="modal-overlay" onClick={() => { if (!busy) onCancel(); }}>
+    <div className="modal objection-dialog" role="dialog" aria-modal="true" aria-label="Widerspruch erfassen" onClick={event => event.stopPropagation()}>
+      <div className="modal-header"><h3>Widerspruch erfassen</h3>
+        <button className="btn-close" aria-label="Schließen" disabled={busy} onClick={onCancel}>&times;</button></div>
+      <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>
+        <label>Betroffene Abrechnung<select value={statementId} onChange={event => setStatementId(event.target.value)} disabled={busy}>
+          <option value="">Gesamter Abrechnungszeitraum</option>
+          {statements.filter(row => row.party !== 'vacancy').map(row => <option key={row.id} value={row.id}>
+            {unitMap[row.unit_id]?.label || row.unit_id} · {row.tenant_name || row.contract_id || row.id}
+          </option>)}
+        </select></label>
+        <label>Eingangsdatum<input type="date" value={receivedOn} onChange={event => setReceivedOn(event.target.value)} disabled={busy} /></label>
+        <label>Begründung des Widerspruchs<textarea value={reason} rows={4} maxLength={2000} autoFocus
+          onChange={event => setReason(event.target.value)} disabled={busy} /></label>
+      </div>
+      <div className="modal-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>Abbrechen</button>
+        <button type="button" className="btn btn-primary" disabled={busy || !reason.trim() || !receivedOn}
+          onClick={() => onConfirm({ reason: reason.trim(), statement_id: statementId || null, received_on: receivedOn })}>
+          {busy ? 'Widerspruch wird gespeichert …' : 'Widerspruch speichern'}
+        </button></div>
+    </div>
+  </div>;
+}
+
 
 function getColumns(t) {
   return [
@@ -221,6 +290,10 @@ export default function Statements() {
   const openCostSources = filter => { setCostSourceFilter(filter); setSourceDrilldown(value => value + 1); costSources.current?.focus(); costSources.current?.scrollIntoView?.({ block: 'center' }); };
   const openStatementSources = filter => { setStatementSourceFilter(filter); setSourceDrilldown(value => value + 1); statementSourceTable.current?.focus(); statementSourceTable.current?.scrollIntoView?.({ block: 'center' }); };
   const { t } = useTranslation();
+  const auth = useAuth();
+  const canRejectObjections = ['eigentuemer', 'verwalter'].includes(auth?.user?.role)
+    && mayWrite(auth?.write, '/billing/objections');
+  const canRecordObjections = !auth?.user || canRejectObjections;
   const toast = useToast();
   const [periods, setPeriods] = useState([]);
   const [costItems, setCostItems] = useState([]);
@@ -253,11 +326,38 @@ export default function Statements() {
   const [disputing, setDisputing] = useState(false);
   const [promptModal, setPromptModal] = useState(null);
   const [objections, setObjections] = useState([]);
+  const [rejectingObjection, setRejectingObjection] = useState(null);
+  const [rejectingBusy, setRejectingBusy] = useState(false);
+  const rejectionCommands = useRef(new Map());
+  const [creatingObjection, setCreatingObjection] = useState(false);
+  const [objectionsError, setObjectionsError] = useState(null);
+  const [decisionLoading, setDecisionLoading] = useState(false);
+  const objectionsRequest = useRef(0);
+  const decisionRequest = useRef(0);
 
-  const loadObjections = (periodId) => {
-    api.get(`/billing/objections?billing_period_id=${encodeURIComponent(periodId)}`)
-      .then(list => setObjections(Array.isArray(list) ? list : []))
-      .catch(() => setObjections([]));
+  useEffect(() => {
+    rejectionCommands.current.clear();
+    setRejectingObjection(null);
+    setCreatingObjection(false);
+    decisionRequest.current += 1;
+    setDecisionLoading(false);
+  }, [selectedPeriod?.id, auth?.user?.id, auth?.user?.role, canRejectObjections]);
+
+  const loadObjections = async (periodId) => {
+    const request = ++objectionsRequest.current;
+    const session = api.captureSession();
+    setObjectionsError(null);
+    try {
+      const list = await api.get(`/billing/objections?billing_period_id=${encodeURIComponent(periodId)}`);
+      session();
+      if (currentPeriod.current === periodId && request === objectionsRequest.current) {
+        setObjections(Array.isArray(list) ? list : []);
+      }
+    } catch (error) {
+      if (currentPeriod.current === periodId && request === objectionsRequest.current) {
+        setObjectionsError(error.message || 'Widersprüche konnten nicht geladen werden');
+      }
+    }
   };
 
   const loadData = () => {
@@ -495,28 +595,110 @@ export default function Statements() {
     });
   };
 
-  const handleDispute = () => {
-    if (!selectedPeriod) return;
-    setPromptModal({
-      title: t('pages.statements.disputeReason') || 'Grund für Widerspruch:',
-      onConfirm: async (reason) => {
-        setPromptModal(null);
-        setDisputing(true);
-        try {
-          const updated = await api.post(
-            `/billing/periods/${selectedPeriod.id}/dispute?reason=${encodeURIComponent(reason)}`,
-            {}
-          );
-          setSelectedPeriod(updated);
-          loadObjections(selectedPeriod.id);
-          await loadData();
-        } catch (err) {
-          toast.show(err.message || 'Widerspruch konnte nicht eingelegt werden');
-        } finally {
-          setDisputing(false);
+  const handleDispute = () => { if (selectedPeriod && canRecordObjections) setCreatingObjection(true); };
+
+  const handleSaveObjection = async payload => {
+    if (!selectedPeriod || !canRecordObjections || disputing) return;
+    const periodId = selectedPeriod.id;
+    const session = api.captureSession();
+    setDisputing(true);
+    try {
+      await api.post(`/billing/periods/${encodeURIComponent(periodId)}/objections`, payload);
+      session();
+      if (currentPeriod.current !== periodId) return;
+      setCreatingObjection(false);
+      setSelectedPeriod(previous => ({ ...previous, status: 'disputed' }));
+      await loadObjections(periodId);
+      loadData();
+      toast.show('Widerspruch gespeichert.', 'success');
+    } catch (error) {
+      if (currentPeriod.current === periodId) toast.show(error.message || 'Widerspruch konnte nicht erfasst werden');
+    } finally { setDisputing(false); }
+  };
+
+  const handleOpenDecision = async (objection, action) => {
+    if (!selectedPeriod || !canRejectObjections) return;
+    const periodId = selectedPeriod.id;
+    const request = ++decisionRequest.current;
+    const session = api.captureSession();
+    setDecisionLoading(true);
+    try {
+      const preview = await api.get(`/billing/objections/${encodeURIComponent(objection.id)}/decision-preview`);
+      session();
+      if (currentPeriod.current !== periodId || request !== decisionRequest.current) return;
+      if (preview?.objection?.id !== objection.id || preview.objection.billing_period_id !== periodId
+          || preview.objection.status !== 'open' || preview.period_status !== 'disputed' || !preview.source_sha256) {
+        throw new Error('Widerspruch wurde geändert. Bitte die Liste erneut laden.');
+      }
+      setRejectingObjection({ ...preview.objection, action, source_sha256: preview.source_sha256 });
+    } catch (error) {
+      if (currentPeriod.current === periodId && request === decisionRequest.current) {
+        toast.show(error.message || 'Entscheidungsvorschau konnte nicht geladen werden');
+        loadObjections(periodId);
+      }
+    } finally { if (request === decisionRequest.current) setDecisionLoading(false); }
+  };
+
+  const handleRejectObjection = async rationale => {
+    const objection = rejectingObjection;
+    if (!objection || !selectedPeriod || !canRejectObjections || rejectingBusy) return;
+    const text = rationale.trim();
+    if (text.length < 12) {
+      toast.show('Für eine Zurückweisung ist eine sachliche Begründung erforderlich.');
+      return;
+    }
+    const periodId = selectedPeriod.id;
+    const revision = objection.decision_revision || 0;
+    const previous = rejectionCommands.current.get(objection.id);
+    const action = objection.action;
+    const command = previous?.text === text && previous?.revision === revision && previous?.action === action && previous?.source === objection.source_sha256
+      ? previous
+      : { text, revision, action, source: objection.source_sha256, key: crypto.randomUUID() };
+    rejectionCommands.current.set(objection.id, command);
+    const currentSession = api.captureSession();
+    setRejectingBusy(true);
+    try {
+      const result = await api.post(`/billing/objections/${encodeURIComponent(objection.id)}/${action}`, {
+        expected_revision: command.revision,
+        expected_source_sha256: command.source,
+        idempotency_key: command.key,
+        rationale: command.text,
+      });
+      currentSession();
+      if (currentPeriod.current !== periodId) return;
+      if (result?.id !== objection.id || result?.status !== (action === 'revise' ? 'correction' : 'rejected')) {
+        throw new Error('Entscheidungsbeleg ist unvollständig. Bitte Originalzustand erneut prüfen.');
+      }
+      rejectionCommands.current.delete(objection.id);
+      setObjections(previousRows => previousRows.map(item => item.id === result.id ? result : item));
+      setRejectingObjection(null);
+      loadObjections(periodId);
+      const period = await api.get(`/billing/periods/${encodeURIComponent(periodId)}`);
+      currentSession();
+      if (currentPeriod.current === periodId && period?.id === periodId) {
+        setSelectedPeriod(period);
+        loadData();
+      }
+      if (action === 'revise' && result.correction_period_id) {
+        const correction = await api.get(`/billing/periods/${encodeURIComponent(result.correction_period_id)}`);
+        currentSession();
+        if (currentPeriod.current === periodId && correction?.id === result.correction_period_id) handleSelectPeriod(correction);
+      }
+      toast.show('Begründete Entscheidung gespeichert. Das Original bleibt unverändert.', 'success');
+    } catch (error) {
+      if (currentPeriod.current === periodId) {
+        toast.show(error.message || 'Entscheidung nicht bestätigt. Mit demselben Befehl erneut versuchen.');
+        if ([401, 403, 404, 409].includes(error.statusCode)) {
+          setRejectingObjection(null);
+          rejectionCommands.current.delete(objection.id);
+          loadObjections(periodId);
         }
-      },
-    });
+      }
+      // Keep both the editor and exactly the same idempotency key after a
+      // lost success response. Never trigger an automatic second write.
+    } finally {
+      setRejectingBusy(false);
+    }
   };
 
   const handleOcrUpload = async (e) => {
@@ -654,6 +836,12 @@ export default function Statements() {
   };
 
   const COLUMNS = getColumns(t);
+  const openSourceRow = row => {
+    if (sourceFilter !== 'statements') { handleSelectPeriod(row); return; }
+    const period = periods.find(item => item.id === row.billing_period_id);
+    if (period) handleSelectPeriod(period);
+    else toast.show('Der Abrechnungszeitraum ist nicht verfügbar. Bitte neu laden.');
+  };
   const COST_COLUMNS = getCostColumns(t);
   const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg));
   const statementSources = statements.map(row => ({ ...row, unit_label: unitMap[row.unit_id]?.label || '—',
@@ -688,7 +876,7 @@ export default function Statements() {
     const workflowStep = getWorkflowStep(selectedPeriod, periodCosts.length, periodStmts.length);
 
     return (
-      <div className="page">
+      <div className="page billing-workspace">
         {toast.Toast}
         {/* Workflow step indicator */}
         <StepIndicator currentStep={workflowStep} t={t} />
@@ -793,7 +981,7 @@ export default function Statements() {
                 {exporting ? t('pages.statements.exporting') : t('pages.statements.zipExport')}
               </button>
             )}
-            {canCorrect && (
+            {canCorrect && canRecordObjections && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleDispute}
@@ -903,10 +1091,11 @@ export default function Statements() {
           </div>
         </div>
 
+        {objectionsError && <p role="alert">{objectionsError} <button type="button" onClick={() => loadObjections(selectedPeriod.id)}>Widersprüche erneut laden</button></p>}
         {objections.length > 0 && (
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><strong>{t('pages.statements.objections')}</strong></div>
-            <div className="card-body">
+            <div className="card-body billing-table-scroll" role="region" aria-label="Widerspruchsliste" tabIndex={0}>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -926,7 +1115,13 @@ export default function Statements() {
                         <td>{stmt ? (unitMap[stmt.unit_id]?.label || '—') : t('pages.statements.objectionWholePeriod')}</td>
                         <td>{o.reason}</td>
                         <td>
-                          {t(`pages.statements.objectionStatusValues.${o.status}`)}
+                          {o.status === 'rejected' ? (
+                            <div>
+                              <strong>Begründet zurückgewiesen</strong>
+                              <p style={{ margin: '0.25rem 0', overflowWrap: 'anywhere' }}>{o.decision_reason}</p>
+                              <small>Entscheidung: {o.decided_at ? new Date(o.decided_at).toLocaleString('de-DE') : '—'} · Autor: {o.decision_actor_id || '—'} · Original unverändert</small>
+                            </div>
+                          ) : <>{t(`pages.statements.objectionStatusValues.${o.status}`)}{o.decision_reason && <p>{o.decision_reason}<br /><small>Entscheidung: {o.decided_at ? new Date(o.decided_at).toLocaleString('de-DE') : '—'} · Autor: {o.decision_actor_id || '—'}</small></p>}</>}
                           {correction && (
                             <>
                               {' · '}
@@ -934,6 +1129,17 @@ export default function Statements() {
                                 {correction.label}
                               </button>
                             </>
+                          )}
+                          {canRejectObjections && selectedPeriod.status === 'disputed' && o.status === 'open' && (
+                            <> <button type="button" className="btn btn-sm btn-secondary"
+                              aria-label={`Widerspruch zurückweisen: ${o.reason}`}
+                              disabled={decisionLoading || rejectingBusy}
+                              onClick={() => handleOpenDecision(o, 'reject')}>
+                              Begründet zurückweisen
+                            </button>
+                            <button type="button" className="btn btn-sm btn-secondary"
+                              aria-label={`Abrechnung überarbeiten: ${o.reason}`} disabled={decisionLoading || rejectingBusy}
+                              onClick={() => handleOpenDecision(o, 'revise')}>Begründet überarbeiten</button></>
                           )}
                         </td>
                       </tr>
@@ -949,7 +1155,7 @@ export default function Statements() {
         {revisionHistory.length > 1 && (
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><strong>{t('pages.statements.revisionHistory')}</strong></div>
-            <div className="card-body">
+            <div className="card-body billing-table-scroll" role="region" aria-label="Abrechnungsfassungen" tabIndex={0}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
@@ -1105,6 +1311,20 @@ export default function Statements() {
           />
         )}
 
+        {creatingObjection && canRecordObjections && <ObjectionDialog statements={periodStmts} unitMap={unitMap}
+          busy={disputing} onConfirm={handleSaveObjection} onCancel={() => setCreatingObjection(false)} />}
+
+        {rejectingObjection && canRejectObjections && (
+          <RejectionDialog
+            key={rejectingObjection.id}
+            objection={rejectingObjection}
+            action={rejectingObjection.action}
+            onConfirm={handleRejectObjection}
+            onCancel={() => setRejectingObjection(null)}
+            busy={rejectingBusy}
+          />
+        )}
+
         {promptModal && (
           <PromptModal
             title={promptModal.title}
@@ -1118,7 +1338,7 @@ export default function Statements() {
   }
 
   return (
-    <div className="page">
+    <div className="page billing-workspace">
       {toast.Toast}
       <div className="filter-chips"><label>Quelle <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
@@ -1145,8 +1365,8 @@ export default function Statements() {
         onApplyView={config => setParams(current => { const next = new URLSearchParams(current); const value = config.column_filters?.source_filter;
           if (['statements', 'preflight_blockers'].includes(value)) next.set('filter', value); else next.delete('filter'); return next; })}
         onAdd={sourceFilter === 'statements' ? undefined : () => setModal('create')}
-        onEdit={sourceFilter === 'statements' ? row => { const period = periods.find(item => item.id === row.billing_period_id);
-          if (period) handleSelectPeriod(period); else toast.show('Der Abrechnungszeitraum ist nicht verfügbar. Bitte neu laden.'); } : handleSelectPeriod}
+        onEdit={openSourceRow}
+        onRowClick={openSourceRow}
       />
       {(modal === 'create' || modal === 'copy') && (
         <FormModal

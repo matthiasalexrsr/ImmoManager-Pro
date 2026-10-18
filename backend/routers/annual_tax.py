@@ -10,11 +10,22 @@ from ..services import annual_tax_storage as service
 from ..services.annual_tax_export import prepare_download
 from ..services.annual_tax_projection import compile_projection
 from ..services.portfolio_scope import current_scope
+from ..services.wiso_preparation import evidence_catalog, saved_preparation
 from ..tax_models import AnnualTaxPreflightCreate, AnnualTaxProfileCreate, AnnualTaxProjectionCreate
 from .datev import PrivateDownloadResponse
 
 router = APIRouter(prefix="/reports/annual-tax", tags=["Jährliche Steueraufbereitung"])
 FinanceActor = Annotated[UserRead, Depends(require_role("eigentuemer", "verwalter", "buchhaltung"))]
+
+
+@router.get("/wiso/evidence")
+def wiso_evidence():
+    return evidence_catalog()
+
+
+@router.get("/projections/{projection_id}/wiso-preparation")
+def wiso_preparation(projection_id: str):
+    return saved_preparation(store, projection_id)
 
 
 @router.get("/options")

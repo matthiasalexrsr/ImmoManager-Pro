@@ -201,6 +201,12 @@ class TehaReceive:
                     total=len(records), created_at=s.now()))
             else:
                 self._batch(unit, connection, batch.id, active=True)
+                if command.batch_revision == 0:
+                    # Opening an already staged run is a safe local read, even
+                    # with a new command key. Advancing still needs its revision.
+                    response = self.public_batch(batch)
+                    s.receipt(unit, operation, command, connection, response)
+                    return response
                 s.revision(batch, command.batch_revision)
             if batch.source_sha256 != run.result_sha256 or batch.total != len(records):
                 conflict("Die Quelle hat sich geändert. Empfang neu prüfen.")
@@ -607,21 +613,23 @@ class TehaReceive:
         Existing cost items, contracts and project are sources, never a new
         ledger. There is deliberately no dispatch method for these drafts.
         """
-        from decimal import Decimal
-
-        from ..db.orm_models import ContractORM, CostItemORM
         operation = "teha-return:" + item_id
         with self.work(actor, write=True) as unit:
             self._connection(unit, connection, active=True)
-            _, item = self._item(unit, connection, item_id, active=True)
+            # An identical acknowledged command remains readable after source
+            # edits/deletion. Do not revalidate a new source before replay.
+            prior = s.replay(unit, operation, command)
+            if prior:
+                return prior
+            batch, item = self._item(unit, connection, item_id, active=True)
+            newest = self._newest_source(unit, connection, item)
+            if batch.state != "ready" or (newest and newest.id != item.id):
+                conflict("Nur die neueste vollständig aufbereitete Empfangsfassung kann für eine Rückübertragung vorbereitet werden.")
             mapping = s.find_one(unit, Mapping, connection_id=connection, identity_sha256=item.identity_sha256, lock=True)
             if not mapping:
                 conflict("Vorbereitung benötigt eine bestätigte externe Zuordnung.")
             s.revision(mapping, command.mapping_revision)
             source = resolve_context(unit.store, command.source.kind, command.source.id, actor, lock=True)
-            prior = s.replay(unit, operation, command)
-            if prior:
-                return prior
             s.commands.check_revision(command.source.revision, source["revision"])
             targets = s.unseal(mapping.target_token, f"teha-mapping/{mapping.id}", self.box)
             contexts = self._targets(unit, targets)
@@ -630,30 +638,31 @@ class TehaReceive:
                 conflict("Die Vorbereitung gehört nicht zur zugeordneten Immobilie oder Quellart.")
             if command.kind == "cost_user_data" and contexts.get("billing_period", {}).get("entity_id") != source["entity_id"]:
                 conflict("Die Abrechnungsperiode muss ausdrücklich dieser externen Periode zugeordnet sein.")
+            if command.kind == "cost_user_data" and item.kind != "period":
+                conflict("Kosten-/Nutzerdaten benötigen eine ausdrücklich zugeordnete externe Periode.")
+            if command.follow_up is not None and command.kind != "maintenance_order":
+                raise HTTPException(422, "Eine Folgeauftrag-Vorschau gehört ausschließlich zu einem Techniktermin.")
             if command.kind == "maintenance_order":
                 published = self._latest(unit, connection, item)
                 if item.kind != "technical_order" or not published or published.project_id != source["entity_id"]:
                     conflict("Wartungsvorbereitung benötigt den tatsächlich mit diesem TEHA-Termin verknüpften Projektvorgang.")
-            snapshot = {"format": "immomanager-teha-local-preparation/1", "kind": command.kind,
+            snapshot = {"format": "immomanager-teha-local-preparation/2", "kind": command.kind,
                 "source": s.commands.dump(source), "external_source": self._public_item(item)["source"],
                 "targets": targets, "mapping_revision": mapping.revision, "external_write_enabled": False,
                 "evidence_gap": EVIDENCE_GAP, "portal_contract": None}
             snapshot["currency"] = unit.store.get_portfolio(contexts["property"]["values"]["portfolio_id"]).currency
             if command.kind == "cost_user_data":
-                period = source["values"]
-                if unit.db is None:
-                    costs = [c.model_dump(mode="json") for c in unit.store.cost_items.values() if c.billing_period_id == source["entity_id"]]
-                    contracts = [c.model_dump(mode="json") for c in unit.store.contracts.values() if c.property_id == source["property_id"]]
-                else:
-                    costs = [dict(row) for row in unit.db.execute(select(CostItemORM.__table__).where(CostItemORM.billing_period_id == source["entity_id"]).with_for_update()).mappings()]
-                    contracts = [dict(row) for row in unit.db.execute(select(ContractORM.__table__).where(ContractORM.property_id == source["property_id"]).with_for_update()).mappings()]
-                costs.sort(key=lambda c: c["id"])
-                for cost in costs:
-                    cost["amount_decimal"] = format(Decimal(str(cost["amount"])).quantize(Decimal('.01')), '.2f')
-                # Only contracts intersecting the actual billing period, no invented portal user IDs.
-                contracts = [c for c in contracts if str(c["start_date"]) <= str(period["end_date"]) and
-                             (not c.get("end_date") or str(c["end_date"]) >= str(period["start_date"]))]
-                snapshot.update(cost_items=s.commands.dump(costs), contracts=s.commands.dump(sorted(contracts, key=lambda c: c["id"])))
+                snapshot.update(self._return_cost_data(unit, source, lock=True))
+            if command.follow_up is not None:
+                from .teha_follow_up import follow_up_preview
+                if len({entry.item_id for entry in command.follow_up.users}) != len(command.follow_up.users):
+                    raise HTTPException(422, "Jeden empfangenen Nutzer nur einmal auswählen.")
+                sources = []
+                for entry in command.follow_up.users:
+                    sources.append(self._follow_up_source(unit, connection, item, entry.item_id, entry.source_sha256, active=True))
+                snapshot["follow_up_sources"] = [{"item_id": entry.item_id, "source_sha256": entry.source_sha256, "source": value}
+                                                 for entry, value in zip(command.follow_up.users, sources)]
+                snapshot["portal_preview"] = follow_up_preview(snapshot["external_source"], command.follow_up, sources)
             identifier = str(uuid4())
             digest = s.digest(snapshot)
             s.put(unit, ReturnDraft, dict(id=identifier, connection_id=connection, item_id=item_id, actor_id=actor,
@@ -662,33 +671,164 @@ class TehaReceive:
             s.receipt(unit, operation, command, connection, response)
             return response
 
+    def _follow_up_source(self, unit, connection, order, user_id, source_sha256, *, active=False):
+        batch, item = self._item(unit, connection, user_id, active=active)
+        source = self._public_item(item)["source"]
+        order_source = self._public_item(order)["source"]
+        newest = self._newest_source(unit, connection, item)
+        if (batch.state != "ready" or item.kind != "user" or item.source_sha256 != source_sha256
+                or source["identity"].get("termin_id") != order_source["identity"].get("termin_id")
+                or (newest and newest.id != item.id)):
+            conflict("Ausgewählter Nutzer gehört nicht zur aktuellen bestätigten Empfangsfassung dieses Techniktermins.")
+        return source
+
+    def follow_up_users(self, connection, item_id, actor, *, cursor=None, limit=50):
+        with self.work(actor) as unit:
+            _, order = self._item(unit, connection, item_id)
+            if order.kind != "technical_order":
+                raise HTTPException(422, "Nutzer für Folgeaufträge benötigen einen Techniktermin.")
+            # Paginate the complete received user inventory; do not silently
+            # truncate users to the first 50. Only matching latest rows display.
+            result = s.page(unit, Item, actor, connection_id=connection, kind="user", cursor=cursor, limit=limit)
+            output = []
+            for item in result["items"]:
+                source = self._public_item(item)["source"]
+                if source["identity"].get("termin_id") != self._public_item(order)["source"]["identity"].get("termin_id"):
+                    continue
+                try:
+                    self._follow_up_source(unit, connection, order, item.id, item.source_sha256)
+                except HTTPException as error:
+                    if error.status_code in {404, 409}:
+                        continue
+                    raise
+                raw = source["raw"]
+                output.append({"id": item.id, "source_sha256": item.source_sha256, "external_user_id": source["identity"]["user_id"],
+                               "name": raw.get("bewohnerName") or source["title"], "sequence_number": raw.get("lfdNr"),
+                               "selectable": raw.get("deleted") is not True and raw.get("erledigt") is not True})
+            result["items"] = output
+            result["count_scope"] = "received_user_inventory"
+            return result
+
+    def _return_cost_data(self, unit, source, *, lock=False, include_users=True):
+        """One canonical collector for creation AND content drift checks."""
+        from decimal import Decimal, InvalidOperation
+
+        from ..db.orm_models import CostItemORM
+        from ..domain.money import money
+        if unit.db is None:
+            costs = [c.model_dump(mode="json") for c in unit.store.cost_items.values() if c.billing_period_id == source["entity_id"]]
+            contracts = [c.model_dump(mode="json") for c in unit.store.contracts.values() if c.property_id == source["property_id"]]
+        else:
+            def rows(model, criterion):
+                query = select(model.__table__).where(criterion)
+                return [dict(row) for row in unit.db.execute(query.with_for_update() if lock else query).mappings()]
+            costs = rows(CostItemORM, CostItemORM.billing_period_id == source["entity_id"])
+            contracts = rows(ContractORM, ContractORM.property_id == source["property_id"])
+        costs.sort(key=lambda c: c["id"])
+        try:
+            for cost in costs:
+                amount = Decimal(str(cost["amount"]))
+                if not amount.is_finite():
+                    raise ValueError
+                cost["amount_decimal"] = format(money(amount), '.2f')
+        except (InvalidOperation, ValueError, TypeError):
+            raise HTTPException(422, "Ein lokaler Kostenbetrag kann nicht als endlicher Centbetrag vorbereitet werden.") from None
+        period = source["values"]
+        contracts = sorted((c for c in contracts if str(c["start_date"]) <= str(period["end_date"]) and
+                            (not c.get("end_date") or str(c["end_date"]) >= str(period["start_date"]))), key=lambda c: c["id"])
+        data = {"cost_items": s.commands.dump(costs), "contracts": s.commands.dump(contracts)}
+        if include_users:
+            users = []
+            for contract in contracts:
+                tenant = resolve_context(unit.store, "tenant", contract["tenant_id"], unit.actor_id, lock=lock)
+                dwelling = resolve_context(unit.store, "unit", contract["unit_id"], unit.actor_id, lock=lock)
+                # Local identities remain explicitly local. Keep unrelated bank
+                # and contact fields out of this review export.
+                users.append({"contract_id": contract["id"],
+                              "tenant": {"id": tenant["entity_id"], "name": tenant["title"], "revision": tenant["revision"]},
+                              "unit": {"id": dwelling["entity_id"], "label": dwelling["title"], "revision": dwelling["revision"]}})
+            data["users"] = users
+        return data
+
+    def evidence(self, connection, actor):
+        from .providers.teha_evidence import portal_evidence
+        with self.work(actor) as unit:
+            self._connection(unit, connection)
+            return portal_evidence()
+
+    def _return_view(self, unit, connection, row):
+        from .teha_return_validation import validate_local_return
+        # Enforce the existing run's private visibility before opening any
+        # frozen resident data. A missing business source is recoverable below.
+        access_item = s.row(unit, Item, row.item_id)
+        access_batch = s.row(unit, Batch, access_item.batch_id)
+        self.runs._access(unit, s.row(unit, IntegrationActionRunORM, access_batch.run_id))
+        snapshot = s.unseal(row.snapshot_token, f"teha-return/{row.id}", self.box)
+        if (s.digest(snapshot) != row.snapshot_sha256 or snapshot.get("kind") != row.kind
+                or snapshot.get("external_write_enabled") is not False or snapshot.get("portal_contract") is not None):
+            raise HTTPException(503, "Vorbereitung und Quellhash stimmen nicht überein.")
+        source, issues = snapshot["source"], []
+        def issue(code, message):
+            issues.append({"code": code, "message": message})
+        try:
+            batch, item = self._item(unit, connection, row.item_id)
+            if batch.state != "ready":
+                issue("receive_inactive", "Die Empfangsquelle wurde abgebrochen oder zurückgezogen.")
+            newest = self._newest_source(unit, connection, item)
+            if newest and newest.id != item.id:
+                issue("receive_superseded", "Eine neuere vollständige TEHA-Empfangsfassung liegt vor. Neu vorbereiten.")
+            mapping = s.find_one(unit, Mapping, connection_id=connection, identity_sha256=item.identity_sha256)
+            if (not mapping or mapping.revision != snapshot["mapping_revision"] or
+                    s.unseal(mapping.target_token, f"teha-mapping/{mapping.id}", self.box) != snapshot["targets"]):
+                issue("mapping_changed", "Die externe Zuordnung wurde inzwischen geändert. Neu vorbereiten.")
+            # Check every explicitly mapped context, including property/unit,
+            # instead of checking only the billing period's timestamp.
+            self._targets(unit, snapshot["targets"])
+            for entry in snapshot.get("follow_up_sources", []):
+                self._follow_up_source(unit, connection, item, entry["item_id"], entry["source_sha256"])
+        except HTTPException as error:
+            if error.status_code not in {404, 409}:
+                raise
+            issue("mapping_source_unavailable", "Empfang oder zugeordnete Akte ist verändert oder nicht mehr vorhanden. Neu prüfen.")
+        try:
+            current = resolve_context(unit.store, source["kind"], source["entity_id"], unit.actor_id)
+            if s.commands.dump(current) != source:
+                issue("source_changed", "Die lokale Quellakte wurde inzwischen geändert. Neu vorbereiten.")
+            if row.kind == "cost_user_data":
+                data = self._return_cost_data(unit, current, include_users="users" in snapshot)
+                if any(data[key] != snapshot.get(key) for key in data):
+                    issue("related_data_changed", "Kosten, Verträge, Parteien oder Einheiten wurden inzwischen geändert. Neu vorbereiten.")
+            prop = resolve_context(unit.store, "property", source["property_id"], unit.actor_id)
+            if unit.store.get_portfolio(prop["values"]["portfolio_id"]).currency != snapshot.get("currency"):
+                issue("currency_changed", "Die Portfoliowährung wurde inzwischen geändert. Neu vorbereiten.")
+        except HTTPException as error:
+            if error.status_code not in {404, 409, 422}:
+                raise
+            issue("local_source_unavailable", "Eine lokale Quelle fehlt oder ist nicht mehr prüfbar. Das eingefrorene Paket bleibt erhalten.")
+        validation = validate_local_return(snapshot, issues=issues)
+        return {"id": row.id, "item_id": row.item_id, "snapshot_sha256": row.snapshot_sha256, "snapshot": snapshot,
+                "source_changed": bool(issues), "validation": validation, "external_write_enabled": False}
+
+    def return_export(self, connection, draft_id, expected_sha256, actor):
+        from .providers.teha_evidence import portal_evidence
+        with self.work(actor) as unit:
+            self._connection(unit, connection)
+            row = s.row(unit, ReturnDraft, draft_id)
+            if row.connection_id != connection:
+                raise HTTPException(404, "Vorbereitung nicht gefunden.")
+            # Private visibility precedes even a hash-mismatch response so a
+            # foreign actor cannot probe whether another packet/hash exists.
+            value = self._return_view(unit, connection, row)
+            if row.snapshot_sha256 != expected_sha256:
+                conflict("Der angezeigte Pakethash stimmt nicht mit der gespeicherten Vorbereitung überein. Neu laden.")
+            envelope = {"format": "immomanager-teha-review-export/1", **value, "portal_evidence": portal_evidence(),
+                        "message": "Lokales Prüfpaket; nicht versandt. Keine Portalbestätigung und kein freigegebenes TEHA-Importformat."}
+            return s.canonical(envelope, enforce_budget=False), f"TEHA-Pruefpaket-{row.id}.json"
+
     def returns(self, connection, actor, **page):
         with self.work(actor) as unit:
             self._connection(unit, connection)
-            result = s.page(unit, ReturnDraft, actor, connection_id=connection, **page)
-            output = []
-            for row in result["items"]:
-                snapshot = s.unseal(row.snapshot_token, f"teha-return/{row.id}", self.box)
-                if s.digest(snapshot) != row.snapshot_sha256:
-                    raise HTTPException(503, "Vorbereitung und Quellhash stimmen nicht überein.")
-                source = snapshot["source"]
-                current = resolve_context(unit.store, source["kind"], source["entity_id"], actor)
-                changed = s.digest(s.commands.dump(current)) != s.digest(source)
-                if row.kind == "cost_user_data":
-                    from ..db.orm_models import ContractORM, CostItemORM
-                    if unit.db is None:
-                        costs = [c.model_dump(mode="json") for c in unit.store.cost_items.values() if c.billing_period_id == source["entity_id"]]
-                        contracts = [c.model_dump(mode="json") for c in unit.store.contracts.values() if c.property_id == source["property_id"]]
-                    else:
-                        costs = list(unit.db.execute(select(CostItemORM.__table__).where(CostItemORM.billing_period_id == source["entity_id"])).mappings())
-                        contracts = list(unit.db.execute(select(ContractORM.__table__).where(ContractORM.property_id == source["property_id"])).mappings())
-                    period = source["values"]
-                    contracts = [c for c in contracts if str(c["start_date"]) <= str(period["end_date"]) and
-                                 (not c.get("end_date") or str(c["end_date"]) >= str(period["start_date"]))]
-                    def revisions(records):
-                        return {r["id"]: str(r["updated_at"]).replace('T', ' ').replace('+00:00', '') for r in records}
-                    changed = changed or revisions(costs) != revisions(snapshot["cost_items"]) or revisions(contracts) != revisions(snapshot["contracts"])
-                output.append({"id": row.id, "snapshot_sha256": row.snapshot_sha256, "snapshot": snapshot,
-                               "source_changed": changed, "external_write_enabled": False})
-            result["items"] = output
+            visibility = {} if unit.user["role"] == "eigentuemer" else {"actor_id": actor}
+            result = s.page(unit, ReturnDraft, actor, connection_id=connection, **visibility, **page)
+            result["items"] = [self._return_view(unit, connection, row) for row in result["items"]]
             return result
