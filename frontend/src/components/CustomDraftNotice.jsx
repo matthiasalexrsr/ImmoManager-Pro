@@ -9,6 +9,18 @@ const LABELS = { body: 'Notiz', notes: 'Notizen', protocol_date: 'Übergabedatum
   tenant_present: 'Mieter anwesend', landlord_present: 'Vermieter anwesend', overall_condition: 'Gesamtzustand', name: 'Name', condition: 'Zustand',
   description: 'Beschreibung', responsible: 'Zuständig', remedy: 'Maßnahme', due_date: 'Fälligkeit', key_type: 'Schlüsselart', label: 'Bezeichnung', handed_over: 'Übergeben', returned: 'Zurückgegeben',
   meter_type: 'Zählerart', meter_number: 'Zählernummer', unit: 'Maßeinheit', value: 'Wert', last_reading: 'Letzte Ablesung', amount: 'Betrag', booking_date: 'Buchungsdatum', payment_text: 'Buchungstext' };
+// The editable controls follow the recovery notice in the shared form layouts.
+// Do not search globally: another dialog, toolbar or hidden form must not get focus.
+function nextEditableField(notice) {
+  const query = 'input:not([type="hidden"]), select, textarea, [contenteditable="true"]';
+  for (let sibling = notice?.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+    const elements = sibling.matches(query) ? [sibling] : [...sibling.querySelectorAll(query)];
+    const field = elements.find(element => !element.matches(':disabled') && !element.readOnly
+      && element.tabIndex !== -1 && !element.closest('[inert], [hidden], [aria-hidden="true"], [aria-disabled="true"]'));
+    if (field) return field;
+  }
+  return null;
+}
 function DraftValues({ value }) {
   if (Array.isArray(value)) return <ol>{value.map((item, index) => <li key={index}><DraftValues value={item} /></li>)}</ol>;
   if (value && typeof value === 'object') return <dl className="draft-values">{Object.entries(value).filter(([key]) => key !== 'id' && key !== 'key' && !key.endsWith('_id') && !key.startsWith('_') && key !== 'correction_of').map(([key, item]) => <div key={key}><dt>{LABELS[key] || key.replaceAll('_', ' ')}</dt><dd><DraftValues value={item} /></dd></div>)}</dl>;
@@ -23,19 +35,34 @@ export default function CustomDraftNotice({ draft, onRestore, currentValues, bef
   const [error, setError] = useState('');
   const [compared, setCompared] = useState(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [focusHandoffTick, setFocusHandoffTick] = useState(0);
+  const focusHandoffRef = useRef(false);
   const noticeRef = useRef(null);
   const discardRef = useRef(null);
   const keepRef = useRef(null);
   const busyRef = useRef(false);
   const generation = useRef(0);
   useLayoutEffect(() => {
-    generation.current += 1; busyRef.current = false;
+    generation.current += 1; busyRef.current = false; focusHandoffRef.current = false;
     setBusy(false); setError(''); setCompared(null); setConfirmDiscard(false);
     return () => { generation.current += 1; };
   }, [draft.sessionKey]);
   useLayoutEffect(() => {
     if (confirmDiscard && !busy && !locked) keepRef.current?.focus();
   }, [confirmDiscard, busy, locked]);
+  // A resumed or discarded draft may remove the active action button. Return
+  // focus to the following editable form, once its recovered state is ready.
+  useLayoutEffect(() => {
+    if (!focusHandoffRef.current || busy || locked || draft.recovery || draft.status === 'changed'
+      || draft.blocked || draft.ready === false) return;
+    const notice = noticeRef.current;
+    if (!notice) return;
+    focusHandoffRef.current = false;
+    const active = document.activeElement;
+    // Do not override an explicit focus decision made by the calling form.
+    if (active && active !== document.body && !notice.contains(active)) return;
+    (nextEditableField(notice) || notice).focus();
+  }, [focusHandoffTick, busy, locked, draft.recovery, draft.status, draft.blocked, draft.ready]);
   if (!draft.enabled) return null;
   const cancelDiscard = () => {
     if (busyRef.current || locked) return;
@@ -81,7 +108,11 @@ export default function CustomDraftNotice({ draft, onRestore, currentValues, bef
             if (current()) setCompared(fresh || currentValues || {}); return;
           }
           await draft.recover(recovery.values);
-          if (current()) onRestore(recovery.values);
+          if (current()) {
+            onRestore?.(recovery.values);
+            focusHandoffRef.current = true;
+            setFocusHandoffTick(tick => tick + 1);
+          }
         })}>{changed && !compared ? 'Aktuellen Stand vergleichen' : 'Entwurf übernehmen'}</button>}
         <button ref={discardRef} type="button" className="btn btn-ghost" disabled={busy || locked}
           aria-expanded={confirmDiscard} aria-controls={confirmDiscard ? confirmId : undefined}
@@ -96,7 +127,14 @@ export default function CustomDraftNotice({ draft, onRestore, currentValues, bef
           <button type="button" className="btn btn-danger" disabled={busy || locked}
             onClick={() => run(async current => {
               await draft.clear();
-              if (current()) { setConfirmDiscard(false); noticeRef.current?.focus(); }
+              if (current()) {
+                setConfirmDiscard(false);
+                // Keep focus accessible even if the server recovery snapshot has
+                // not disappeared yet; transfer to the editor when it does.
+                noticeRef.current?.focus();
+                focusHandoffRef.current = true;
+                setFocusHandoffTick(tick => tick + 1);
+              }
             })}>{tr('ui.form.discardRecoveredDraft', 'Endgültig verwerfen')}</button>
         </div>
       </div>}
