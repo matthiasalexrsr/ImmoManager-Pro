@@ -38,6 +38,10 @@ Laden des Modellkatalogs allein konnten diesen Fehler nicht nachweisen.
   Profilbereinigung nutzt dafür nun die native Langpfadnotation. So werden auch
   nach einem Abbruch ausschließlich die eigenen gesperrten Kontoprofile vollständig
   entfernt; Namensraum-, Pfad- und Aliasprüfungen bleiben vorgeschaltet.
+- Ein aufgelöstes Aliasziel wird niemals zur Crashbereinigung weitergereicht.
+  Ein nativer Windows-Junction-Test prüft die Kontotrennung auch ohne die erst
+  ab Python 3.12 verfügbare Junction-Erkennung. Fehlende Quellen werden zusätzlich
+  über den tatsächlichen HTTP-Fehlerhandler als lesbare Meldung geprüft.
 
 Grundlage sind das vom installierten Client erzeugte Protokollschema und die
 offiziellen Dokumentationen zu

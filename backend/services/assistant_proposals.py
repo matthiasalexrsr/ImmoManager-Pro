@@ -140,11 +140,9 @@ def validate_proposal(store, proposal: Proposal | dict, actor_id: str, *, contex
                if values.get(field) and (kind, values[field]) not in references]
     if missing:
         labels = {"property": "Immobilie", "unit": "Einheit"}
-        raise HTTPException(422, {"code": "assistant_reference_evidence_missing",
-            "message": "Für folgende Zuordnungen fehlen ausdrücklich belegte Quellen: "
+        raise HTTPException(422, "Für folgende Zuordnungen fehlen ausdrücklich belegte Quellen: "
                 + ", ".join(labels[kind] for kind in missing)
-                + ". Bitte im Chat einen korrigierten Vorschlag mit diesen Quellen anfordern.",
-            "missing_kinds": missing})
+                + ". Bitte im Chat einen korrigierten Vorschlag mit diesen Quellen anfordern.")
     if values.get("unit_id"):
         unit = workspace_contexts.resolve_context(store, "unit", values["unit_id"], actor_id)
         if values.get("property_id") and unit["values"]["property_id"] != values["property_id"]:

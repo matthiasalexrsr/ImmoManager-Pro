@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..paths import get_data_dir, get_uploads_dir
 from .assistant_provider_protocol import ProviderError
+from .filesystem_paths import filesystem_path
 from .secret_box import SecretError, default_secret_box, write_private_file
 
 AUTH_FILES = {"codex": {"auth.json"}, "claude": {".credentials.json", ".claude.json"}}
@@ -88,10 +89,7 @@ def _remove_profile_tree(path: Path) -> None:
     Even a short profile root can therefore contain paths beyond MAX_PATH.
     Callers must first verify the account namespace, containment and aliases.
     """
-    raw = os.fspath(path)
-    if os.name == "nt" and not raw.startswith("\\\\?\\"):
-        raw = "\\\\?\\UNC\\" + raw[2:] if raw.startswith("\\\\") else "\\\\?\\" + raw
-    shutil.rmtree(raw)
+    shutil.rmtree(filesystem_path(path))
 
 
 class ProfileLease:
@@ -133,7 +131,10 @@ class ProfileLease:
                 if previous.is_symlink() or getattr(previous, 'is_junction', lambda: False)():
                     continue
                 resolved = previous.resolve()
-                if previous.is_dir() and resolved.is_relative_to(self.root) and resolved != self.root:
+                # Never delete a resolved alias target. This also protects
+                # Windows junctions on Python 3.11 without Path.is_junction.
+                if (previous.is_dir() and resolved == previous.absolute()
+                        and resolved.is_relative_to(self.root) and resolved != self.root):
                     try:
                         _remove_profile_tree(resolved)
                     except OSError:

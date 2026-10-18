@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from collections import deque
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -208,6 +209,33 @@ def test_crash_cleanup_stays_with_exact_actor_and_provider(private_vault):
     with vault.ProfileLease("actor-a", "codex", restore=False):
         assert not stale.exists()
         assert (foreign / "sentinel").exists() and (other_provider / "sentinel").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows root junction regression")
+def test_crash_cleanup_never_deletes_resolved_junction_target_on_legacy_python(private_vault, monkeypatch):
+    root = private_vault.data / "assistant-runtime"
+    root.mkdir()
+    foreign = root / (vault.actor_key("actor-b") + "-claude-active")
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    sentinel.write_text("foreign synthetic profile", encoding="utf-8")
+    alias = root / (vault.actor_key("actor-a") + "-claude-crash")
+    assert alias.absolute().is_relative_to(private_vault.data.resolve())
+    assert foreign.resolve().is_relative_to(private_vault.data.resolve())
+    created = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+        "New-Item -ItemType Junction -Path $env:IMMO_TEST_ALIAS -Target $env:IMMO_TEST_TARGET -ErrorAction Stop | Out-Null"],
+        env={**os.environ, "IMMO_TEST_ALIAS": str(alias), "IMMO_TEST_TARGET": str(foreign)},
+        capture_output=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert created.returncode == 0, "Could not create the synthetic native junction"
+    assert alias.resolve() == foreign.resolve()
+    # Python 3.11 lacks this API. Keep the actual native junction/resolve/rmtree
+    # behavior while removing only the newer version's early detection.
+    monkeypatch.delattr(Path, "is_junction", raising=False)
+    try:
+        with vault.ProfileLease("actor-a", "claude", restore=False):
+            assert sentinel.read_text(encoding="utf-8") == "foreign synthetic profile"
+    finally:
+        alias.rmdir()  # Remove the link itself, never its target recursively.
 
 
 def test_close_never_follows_profile_link_into_another_account(private_vault):

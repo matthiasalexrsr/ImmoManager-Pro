@@ -134,9 +134,7 @@ def test_references_and_unit_property_relationship_need_explicit_evidence(estate
     with pytest.raises(HTTPException) as no_evidence:
         proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)
     assert no_evidence.value.status_code == 422
-    assert isinstance(no_evidence.value.detail, dict)
-    assert no_evidence.value.detail["code"] == "assistant_reference_evidence_missing"
-    assert no_evidence.value.detail["missing_kinds"] == ["unit"]
+    assert "Einheit" in no_evidence.value.detail
 
 
 def test_unit_anchor_does_not_implicitly_attest_property(estate):
@@ -150,10 +148,26 @@ def test_unit_anchor_does_not_implicitly_attest_property(estate):
     with pytest.raises(HTTPException) as missing:
         proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)
     assert missing.value.status_code == 422
-    assert isinstance(missing.value.detail, dict)
-    assert missing.value.detail["missing_kinds"] == ["property"]
-    assert "Immobilie" in missing.value.detail["message"]
-    assert "korrigierten Vorschlag" in missing.value.detail["message"]
+    assert "Immobilie" in missing.value.detail
+    assert "korrigierten Vorschlag" in missing.value.detail
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from backend.exceptions import register_exception_handlers
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    blocked = missing.value
+
+    @app.get("/proposal-preview")
+    def preview():
+        raise blocked
+
+    with TestClient(app) as api:
+        response = api.get("/proposal-preview")
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == blocked.detail
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     proposal["evidence"] = [{key: source[key] for key in ("kind", "id", "revision", "sha256")}
                             for source in bundle["sources"]]
     assert proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)["allowed"]
