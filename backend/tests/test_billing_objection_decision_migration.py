@@ -7,10 +7,10 @@ from sqlalchemy.exc import IntegrityError
 
 import backend.models  # noqa: F401 (register the complete SQL schema)
 from backend.db.orm_models import Base
-from backend.db.schema_state import alembic_config, head_revision
+from backend.db.schema_state import alembic_config
 
 PARENT = "f016a1b2c001"
-HEAD = head_revision()
+HEAD = "f018a1b2c001"
 
 
 def test_prior_issued_objections_survive_upgrade_and_decision_keys_are_unique(tmp_path):
@@ -35,8 +35,7 @@ def test_prior_issued_objections_survive_upgrade_and_decision_keys_are_unique(tm
                     "VALUES (?,?,?,?,?,?,?)",
                     (f"synthetic-{i}", "b", "2026-05-01", f"Unchanged tenant reason {i}",
                      "open", "2026-05-01", "2026-05-01"))
-        command.upgrade(cfg, "head")
-        assert head_revision() == HEAD
+        command.upgrade(cfg, HEAD)
         with eng.connect() as db:
             names = {column["name"] for column in inspect(db).get_columns("billing_objections")}
             assert {"decision_revision", "decision_reason", "decision_key", "decision_actor_id",
@@ -57,7 +56,7 @@ def test_prior_issued_objections_survive_upgrade_and_decision_keys_are_unique(tm
                 ("synthetic-1", "Unchanged tenant reason 1", "open"),
                 ("synthetic-2", "Unchanged tenant reason 2", "open"),
             ]
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, HEAD)
         with eng.begin() as db:
             db.execute(text("UPDATE billing_objections SET decision_key='synthetic-key' WHERE id='synthetic-1'"))
         with pytest.raises(IntegrityError):
@@ -87,7 +86,7 @@ def test_complete_unversioned_orm_decision_family_is_adopted_without_rewrite(tmp
                 "'2026-01-01','2026-01-01')")
         cfg = alembic_config(url)
         command.stamp(cfg, PARENT)
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, HEAD)
         with engine.connect() as db:
             assert db.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
             assert db.scalar(text("SELECT decision_reason FROM billing_objections WHERE id='already'")) == "confirmed"
