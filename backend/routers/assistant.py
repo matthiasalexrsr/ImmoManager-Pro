@@ -2,7 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..assistant_models import (
@@ -21,6 +21,7 @@ from ..models import UserRead
 from ..services import assistant as service
 from ..services.assistant import Attachment, Message, Proposal, Run
 from ..services.assistant_context import ContextSelection, local_analysis
+from ..services.assistant_handoff import ProposalSave
 from ..services.private_file_response import private_bytes
 
 
@@ -86,6 +87,11 @@ def cancel_login(provider: str, payload: LoginCancel, actor: Actor):
 @router.post("/connections/{provider}/disconnect")
 def disconnect(provider: str, actor: Actor):
     return provider_call("disconnect", actor.id, provider)
+
+
+@router.post("/connections/{provider}/probe")
+def probe_connection(provider: str, actor: Actor):
+    return provider_call("probe_connection", actor.id, provider)
 
 
 @router.post("/connections/{provider}/login/{login_id}/complete")
@@ -189,3 +195,18 @@ def apply(identifier: str, payload: ProposalApply, actor: Actor):
 @router.post("/proposals/{identifier}/reject")
 def reject(identifier: str, payload: ProposalReject, actor: Actor):
     return service.decide_proposal(store, actor.id, identifier, payload, reject=True)
+
+
+@router.get("/proposals/{identifier}")
+def get_proposal(identifier: str, actor: Actor):
+    from ..services.assistant_handoff import get_proposal as operation
+    return operation(store, actor.id, identifier)
+
+
+@router.post("/proposals/{identifier}/save")
+def save_proposal(identifier: str, payload: ProposalSave, actor: Actor):
+    from ..services.assistant_handoff import save_proposal as operation
+    try:
+        return operation(store, actor.id, identifier, payload)
+    except ValidationError:
+        raise HTTPException(422, "Bitte Pflichtangaben, Beträge und Datumsangaben im Fachformular prüfen.") from None

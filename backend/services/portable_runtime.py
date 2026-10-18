@@ -99,6 +99,17 @@ def inventory(database) -> tuple[set[str], set[str]]:
                               if not row[0].startswith(ARCHIVED_PREFIXES))
         if "storage_bindings" in tables:
             references.update(row[0] for row in execute("SELECT storage_key FROM storage_bindings WHERE deleted = false"))
+        if {"documents", "document_versions", "document_version_chunks"}.issubset(tables):
+            virtual = {validate_key(unquote(row[0].split("uploads/", 1)[1])) for row in execute(
+                "SELECT DISTINCT d.file_url FROM documents d JOIN document_versions v ON v.document_id=d.id "
+                "WHERE d.file_url LIKE '/uploads/assistant-archive/%'")}
+            if virtual:
+                # These locators deliberately have no disk file. Exclude only
+                # exact URLs of proven DB originals, never the whole namespace.
+                # The MIME-aware archived_upload reader remains authoritative.
+                from .document_version_validation import verify_document_versions
+                verify_document_versions(conn)
+                references.difference_update(virtual)
     from .backup_extensions import extensions
     for extension in extensions():
         references.update(validate_key(key) for key in extension.references(database))

@@ -62,6 +62,8 @@ def connection_status(actor_id: str, provider: str) -> dict:
     key = _identity(actor_id, provider)
     if provider == 'local':
         return {'provider': provider, 'connected': True, 'status': 'connected', 'models': [], 'pending_login': None,
+                'client_available': True, 'model_discovery_status': 'unknown', 'auth_probe_status': 'verified',
+                'account_access_verified_by_inference': False,
                 'reason': 'Lokale Regeln, Dokumentextraktion und geprüfte Rechenmodule. Kein Konto und kein Modelldownload erforderlich.'}
     cli = executable(provider)
     reason = None
@@ -87,8 +89,39 @@ def connection_status(actor_id: str, provider: str) -> dict:
         status = 'error'
     return {'provider': provider, 'connected': connected, 'status': status, 'reason': reason,
             'pending_login': pending, 'models': public.get('models') or DEFAULT_MODELS[provider],
+            'client_available': bool(cli), 'model_discovery_status': public.get('model_discovery_status', 'unknown'),
+            'model_catalog_source': 'account_client' if public.get('model_discovery_status') == 'verified' else 'unverified_defaults',
+            'auth_probe_status': public.get('auth_probe_status', 'unknown'), 'auth_checked_at': public.get('auth_checked_at'),
             'auth_mode': public.get('auth_mode'), 'authenticated_at': public.get('authenticated_at'),
             'account_access_verified_by_inference': public.get('account_access_verified_by_inference') is True}
+
+
+def probe_connection(actor_id: str, provider: str) -> dict:
+    """Explicit native auth/catalog check; never starts a model turn or login."""
+    _identity(actor_id, provider)
+    if provider == 'local':
+        return connection_status(actor_id, provider)
+    cli = executable(provider)
+    if not cli:
+        raise ProviderError('Der offizielle Kontoclient ist nicht verfügbar.', 'client_unavailable')
+    with vault.ProfileLease(actor_id, provider) as profile:
+        public = dict(profile.state['public'])
+        try:
+            info = _adapter(provider).status(profile, cli, lambda: False)
+            public.update(info, auth_checked_at=time.time(), auth_probe_status='verified' if info.get('connected') else 'disconnected')
+            if provider == 'claude':
+                # Claude's native auth status has no account model catalog.
+                public['model_discovery_status'] = 'unavailable'
+            if not info.get('connected'):
+                public.update(account_access_verified_by_inference=False, models=[], model_discovery_status='unknown')
+            profile.save(public)
+        except ProviderError as error:
+            public.update(auth_checked_at=time.time(), auth_probe_status='error')
+            if error.code == 'authentication_required':
+                public.update(connected=False, account_access_verified_by_inference=False)
+            profile.save(public)
+            raise
+    return connection_status(actor_id, provider)
 
 
 def capabilities(actor_id: str) -> dict:
@@ -131,7 +164,10 @@ def start_login(actor_id: str, provider: str) -> dict:
                     info = _adapter(provider).login(profile, cli, emit_state, job['cancelled'].is_set, job['codes'])
                     if job['cancelled'].is_set():
                         raise ProviderError('Die Anmeldung wurde abgebrochen.', 'cancelled')
-                    profile.save({**info, 'connected': True, 'authenticated_at': time.time()})
+                    profile.save({**info, 'connected': True, 'authenticated_at': time.time(),
+                                  'auth_checked_at': time.time(), 'auth_probe_status': 'verified',
+                                  'model_discovery_status': info.get('model_discovery_status', 'unavailable'),
+                                  'account_access_verified_by_inference': False})
                 with _lock:
                     job['public'] = {'id': job['public']['id'], 'status': 'completed', 'can_submit_code': False}
             except ProviderError as error:
@@ -161,6 +197,8 @@ def cancel_login(actor_id: str, provider: str, login_id: str) -> dict:
         job = _logins.get(key)
         if job and job['public']['id'] == login_id:
             job['cancelled'].set()
+            if job['thread'].is_alive():
+                job['public'] = {'id': login_id, 'status': 'cancelling', 'can_submit_code': False}
         elif job:
             raise ProviderError('Die Anmeldesitzung hat sich geändert. Bitte den Status neu laden.', 'login_changed')
     return connection_status(actor_id, provider)
@@ -189,7 +227,10 @@ def disconnect(actor_id: str, provider: str) -> dict:
         job = _logins.get(key)
         if job and job['thread'].is_alive():
             job['cancelled'].set()
-            raise ProviderError('Die Anmeldung wird abgebrochen. Sobald sie beendet ist, die Verbindung erneut trennen.', 'provider_busy')
+    if job and job['thread'].is_alive():
+        job['thread'].join(timeout=5)
+        if job['thread'].is_alive():
+            raise ProviderError('Die Anmeldung wird noch beendet. Anschließend erneut trennen.', 'provider_busy')
     vault.disconnect(actor_id, provider)
     with _lock:
         _logins.pop(key, None)
@@ -294,5 +335,6 @@ def execute(actor_id: str, provider: str, request: dict, emit, cancelled) -> dic
             public = dict(profile.state['public'])
             if error.code == 'authentication_required':
                 public['connected'] = False
+                public['account_access_verified_by_inference'] = False
             profile.save(public)
             raise

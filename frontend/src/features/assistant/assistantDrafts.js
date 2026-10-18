@@ -14,10 +14,11 @@ function write(owner, kind, identity, value) {
   } catch { throw new Error('Der private Wiederanlaufpuffer konnte nicht gespeichert werden. Bitte Browserspeicher prüfen.'); }
 }
 
-export function readAssistantDraft(owner, identity) {
+export function readAssistantDraft(owner, identity, fallbackScope = 'authorized') {
   const draft = read(owner, 'draft', identity);
   return draft && typeof draft.body === 'string' && Array.isArray(draft.attachments) && Array.isArray(draft.context)
-    ? { ...draft, web_research: draft.web_research === true, report: draft.report || null } : { body: '', attachments: [], context: [], web_research: false, report: null };
+    ? { ...draft, web_research: draft.web_research === true, report: draft.report || null, data_scope: ['authorized', 'selected', 'none'].includes(draft.data_scope) ? draft.data_scope : 'selected', excluded_attachment_ids: draft.excluded_attachment_ids || [], context_explicit: draft.context_explicit ?? draft.context.length > 0 }
+    : { body: '', attachments: [], context: [], web_research: false, report: null, data_scope: fallbackScope, excluded_attachment_ids: [], context_explicit: false };
 }
 export const writeAssistantDraft = (owner, identity, draft) => write(owner, 'draft', identity, draft);
 export const clearAssistantDraft = (owner, identity) => write(owner, 'draft', identity, null);

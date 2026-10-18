@@ -38,6 +38,6 @@ export function FinancialProof({ finance, report }) {
   return <section className="assistant-financial-proof" aria-label="Lokaler Berechnungsnachweis"><strong>{kinds[finance.basis || definition.kind] || 'Lokale Auswertung'}</strong><p>Stichtag: {definition.as_of || finance.as_of || 'Nicht übermittelt'}</p>
     <dl>{Object.entries(totals).filter(([key]) => labels[key]).map(([key, value]) => <div key={key}><dt>{labels[key]}</dt><dd>{finance.currency ? formatMoney(value, { currency: finance.currency }) : formatNumber(value, 2)}</dd></div>)}</dl>
     {!finance.currency && <p>Die Währung wurde nicht übermittelt.</p>}
-    <p>Ergebnisstand: <code>{finance.result_hash || 'Nicht übermittelt'}</code></p><Link to={reportHref(definition)}>Originalauswertung mit diesen Filtern öffnen →</Link>
+    <Link to={reportHref(definition)}>Originalauswertung mit diesen Filtern öffnen →</Link><details><summary>Berechnungsnachweis</summary><p>Ergebnisstand: <code>{finance.result_hash || 'Nicht übermittelt'}</code></p></details>
   </section>;
 }

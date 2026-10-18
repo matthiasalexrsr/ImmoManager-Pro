@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
-from .assistant_provider_process import CliProcess
+from .assistant_provider_process import CliProcess, private_environment
 from .assistant_provider_prompt import SYSTEM_PROMPT, checked_model, finish_answer, user_payload
-from .assistant_provider_protocol import ProviderError
+from .assistant_provider_protocol import ProviderError, application_mcp
 from .assistant_provider_vault import ProfileLease
+from .secret_box import write_private_file
 
 LOGIN_TIMEOUT = 600
 STATUS_TIMEOUT = 30
@@ -230,11 +231,17 @@ def _authentication_failed(final: dict) -> bool:
     return any(fragment in codes or any(phrase in fragment for phrase in phrases) for fragment in fragments)
 
 
-def _init(event: dict, web: bool) -> None:
+def _init(event: dict, web: bool, mcp=None) -> None:
     tools = event.get("tools")
     permitted = {"WebSearch"} if web else set()
+    expected = {"mcp__immomanager__" + tool for tool in mcp['tools']} if mcp else set()
+    permitted |= expected
+    servers = event.get('mcp_servers') or []
+    valid_servers = (not servers if not mcp else isinstance(servers, list) and len(servers) == 1
+                     and isinstance(servers[0], dict) and servers[0].get('name') == 'immomanager'
+                     and servers[0].get('status') == 'connected')
     if (not isinstance(tools, list) or any(not isinstance(tool, str) or tool not in permitted for tool in tools)
-            or event.get("mcp_servers") or event.get("plugins")):
+            or not expected.issubset(set(tools)) or not valid_servers or event.get("plugins") or event.get('mcp_server_errors')):
         raise ProviderError("Claude hat unerwartete Werkzeuge oder Erweiterungen geladen. Der Vorgang wurde beendet.",
                             "provider_isolation_failed", uncertain=True)
 
@@ -243,14 +250,30 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
             cancelled: Callable[[], bool]) -> dict:
     _cancel(cancelled)
     web = request.get("web_research") is True
+    mcp = application_mcp(request)
+    permitted = {"WebSearch"} if web else set()
+    if mcp:
+        permitted.update('mcp__immomanager__' + tool for tool in mcp['tools'])
+        config = _path(profile) / 'application-mcp.json'
+        write_private_file(config, json.dumps({'mcpServers': {'immomanager': {
+            'type': 'http', 'url': mcp['url'], 'headers': mcp['headers']}}}).encode())
+        mcp_config = str(config)
+    else:
+        mcp_config = '{"mcpServers":{}}'
     argv = [*executable, "--print", "--restricted", "--safe-mode", "--strict-mcp-config",
-            "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "", "--no-chrome",
+            "--mcp-config", mcp_config, "--setting-sources", "", "--no-chrome",
             "--no-session-persistence", "--permission-mode", "dontAsk", "--permission-prompts", "none",
             "--disable-slash-commands", "--tools", "WebSearch" if web else "",
             "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
             "--include-partial-messages", "--system-prompt", SYSTEM_PROMPT]
-    if web:
-        argv += ["--allowedTools", "WebSearch"]
+    if permitted:
+        argv += ["--allowedTools", ','.join(sorted(permitted))]
+    if mcp:
+        argv += ['--disallowedTools', 'EndConversation,ToolSearch']
+        # Native 2.1.302 blocks even command-line MCP servers in safe mode.
+        # Replace that blanket switch with explicit context/hook isolation.
+        argv.remove('--safe-mode')
+        argv += ['--settings', '{"disableAllHooks":true,"autoMemoryEnabled":false,"enabledPlugins":{}}']
     model = checked_model(request.get("model"))
     if model:
         argv += ["--model", model]
@@ -264,8 +287,13 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
     if len(payload.encode("utf-8")) > 10_000_000:
         raise ProviderError("Das Claude-Verarbeitungspaket überschreitet 10 MB. Bitte weniger Quellen oder Bilder auswählen.", "input_too_large")
     submitted = False
+    environment = private_environment(_path(profile))
+    environment.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS='1', CLAUDE_CODE_DISABLE_ATTACHMENTS='1',
+                       CLAUDE_CODE_DISABLE_POLICY_SKILLS='1', CLAUDE_CODE_DISABLE_BACKGROUND_TASKS='1',
+                       CLAUDE_CODE_DISABLE_CRON='1', CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL='1',
+                       ENABLE_TOOL_SEARCH='false')
     try:
-        with CliProcess(argv, _path(profile)) as process:
+        with CliProcess(argv, _path(profile), env=environment) as process:
             process.write_line(payload)
             submitted = True
             process.close_stdin()
@@ -288,7 +316,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                     continue
                 event_type = event.get("type")
                 if event_type == "system" and event.get("subtype") == "init":
-                    _init(event, web)
+                    _init(event, web, mcp)
                     initialized = True
                     session_id = _identifier(event.get("session_id"))
                 elif event_type == "stream_event":
@@ -306,7 +334,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                         delta_text.append(delta["text"])
                         emit({"type": "delta", "text": delta["text"]})
                     block = stream.get("content_block")
-                    if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in ({"WebSearch"} if web else set()):
+                    if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
                         raise ProviderError("Claude hat ein nicht freigegebenes Werkzeug angefordert.", "provider_isolation_failed", uncertain=True)
                 elif event_type == "assistant":
                     message = event.get("message")
@@ -315,7 +343,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                         for block in message.get("content", []):
                             if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
                                 assistant_text.append(block["text"])
-                            elif isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in ({"WebSearch"} if web else set()):
+                            elif isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
                                 raise ProviderError("Claude hat ein nicht freigegebenes Werkzeug angefordert.", "provider_isolation_failed", uncertain=True)
                 elif event_type == "result":
                     final = event

@@ -65,7 +65,7 @@ jobs:
           "$RUNNER_TEMP/document-browser/node_modules/.bin/playwright" install --with-deps chromium
       - name: Exercise actual native engines and isolated application
         run: |
-          python scripts/run_pro_matrix.py --backend sql --label document-tools backend/tests/test_document_work.py backend/tests/test_document_work_migration.py tools/document_pdf_engine_cases.py tools/document_ocr_engine_cases.py
+          python scripts/run_pro_matrix.py --backend sql --label document-tools backend/tests/test_document_work.py backend/tests/test_document_work_migration.py backend/tests/test_assistant_handoff.py tools/document_pdf_engine_cases.py tools/document_ocr_engine_cases.py
           python scripts/run_document_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/document-browser
           python scripts/run_daily_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/daily-browser
           python scripts/run_daily_browser_qa.py --suite interfaces --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/interfaces-browser
@@ -152,7 +152,7 @@ jobs:
           python-version: '3.12'
       - name: Install pinned test dependencies and PostgreSQL tools
         run: |
-          python -m pip install -r backend/requirements-dev.txt -c constraints.txt
+          python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
       - name: Run all PostgreSQL checks without skips
@@ -160,7 +160,7 @@ jobs:
       - name: Verify financial calculations on an independent PostgreSQL database
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label finance-report-release backend/tests/test_finance_report_boundaries.py backend/tests/test_finance_packages_v2.py
       - name: Verify private assistant ownership and draft handoff on PostgreSQL
-        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py backend/tests/test_assistant_tools.py backend/tests/test_assistant_handoff.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -116,25 +116,59 @@ Sicherungsschlüssel gehört zur vorhandenen Vollbackupstrategie. Der normale
 Uploadpfad liefert private KI-Dateien und Konto-Vaults niemals aus. Beim
 Abbruch werden ausschließlich die selbst gestarteten Prozessbäume beendet.
 
-Nur ausdrücklich ausgewählte Immobilien, Einheiten, Parteien, Kontakte,
-Dokumente und Dateien gelangen in ein Anfragepaket. Finanzberichte erfordern
-zusätzlich eine ausdrücklich ausgewählte Berichtsimmobilie oder -einheit.
+Der Arbeitsbereich ist für jede Nachricht sichtbar wählbar: nur eigene
+Chatdateien, ausgewählte Akten mit zugehörigen Vorgängen oder der aktuell
+berechtigte Verwaltungsbestand. Ein neues Gespräch zeigt den gewählten
+Bereich ausdrücklich; alte API-Aufrufer behalten den ausgewählten Kontext.
+Der Assistent kann innerhalb dieses Bereichs passende Akten selbst finden
+und mehrstufig untersuchen. Sechs typisierte Anwendungswerkzeuge liefern
+Suche, aktuelle Datensätze, Beziehungen, die tatsächliche Chronik,
+kanonische Finanzberichte und seitenweise Dokumenttexte. Die verwendeten
+Quellen, Arbeitsschritte, fehlenden Grundlagen und Fortsetzungen bleiben
+nachvollziehbar. Verarbeitungsbudgets gelten je Auftrag; Originale und
+Historie bleiben erhalten. Ein weiterer Auftrag kann die Untersuchung
+fortsetzen.
+
 Berechnungen verwenden `finance_reports.compute`; Beträge, Filter, Stichtag
-und Ergebnishash bleiben nachvollziehbar. Nach einer Finanzdatenänderung
-während der Antwort wird sie als veraltet gekennzeichnet und eine
-Entwurfsübernahme verweigert.
+und Ergebnishash bleiben nachvollziehbar. Im berechtigten Gesamtbestand
+sind auch globale Berichte möglich. Nach Änderungen an verwendeten
+Finanzdaten werden frühere Ergebnisse nicht als aktuelle Fakten verwendet.
+Alte Chatantworten sind historische Interpretationen. Relevante Quellen und
+Zahlen werden für eine neue Untersuchung erneut gelesen und geprüft.
 Aktenrechte werden vor Verarbeitung, Speicherung und Entwurfsübergabe erneut
 geprüft. Den Kontoclients werden kein Store, keine API-Anmeldedaten und keine
-produktiven Datenpfade übergeben. Schreibwerkzeuge, Shell, Plugins und
-zusätzliche Konten sind für Modellläufe deaktiviert; Codex erhält zusätzlich
+produktiven Datenpfade übergeben. Der eigene MCP-Dienst läuft ausschließlich
+auf einer kurzlebigen Loopbackadresse mit einem auf genau diesen Auftrag
+gebundenen Zugang. Jeder Werkzeugaufruf prüft Konto, Rechte, Datenumfang
+und Laufzustand frisch. Shell, beliebige Dateizugriffe, fremde MCP-Dienste,
+Plugins und zusätzliche Konten sind deaktiviert. Codex erhält zusätzlich
 einen auf das temporäre Arbeitsverzeichnis eingeschränkten Lesebereich.
+Beide Clients müssen die tatsächlich geladenen erlaubten Werkzeuge
+bestätigen. Der dafür inkompatible Claude-Sicherheitsmodus wird durch eine
+konkrete eigene Werkzeug-, Einstellungs- und Prozessisolation ersetzt.
 
 Aufgaben-, Gesprächsnotiz- und Rechnungsvorschläge besitzen ein striktes
-Schema, ausgewählte Quellen und eine bestätigte Prüffassung. Die Übernahme
-speichert einen persönlichen Entwurf und öffnet das bestehende Fachformular.
-Erst dessen normale Speicheraktion legt den fachlichen Eintrag an. Rechnungen
-benötigen einen Dokumentbeleg und passende Dezimalbeträge; ein Modelltext
-erzeugt weder eine Buchung noch eine Freigabe oder einen Versand.
+Schema, nachvollziehbare Quellen und eine geprüfte Fassung. Freie Aufgaben
+benötigen keine künstliche Immobilie. Eigene Chatdateien können als Beleg
+eines Rechnungsvorschlags dienen. Die Fachprüfung öffnet einen persönlichen
+Entwurf; erst ihre ausdrückliche Speicheraktion legt den Eintrag an.
+Fachdatensatz, erforderliches unveränderliches Belegoriginal und dauerhafter
+Übernahmebeleg werden atomar gespeichert. Verlorene Erfolgsantworten und
+erneute Befehle erzeugen keinen zweiten Eintrag. Der Arbeitskorb zeigt den
+gespeicherten Vorgang mit Link auch nach einem Neustart. Rechnungen benötigen
+einen maßgeblichen Originalbeleg, eine passende Immobilie und dezimalgenau
+geprüfte Beträge. Ein Modelltext erzeugt weder eine Zahlung noch eine
+Rechnungsfreigabe oder einen Versand.
+
+Die Oberfläche konzentriert sich auf die Unterhaltung. Kontoverbindungen
+liegen in einem eigenen Dialog; Datenumfang, Arbeitsdateien, Quellen und
+Arbeitskorb sind verständlich zugänglich. Providerwechsel erhalten den
+Gesprächsverlauf. Frühere Dateien bleiben für Folgefragen verfügbar und
+können ausdrücklich abgewählt werden. Lokale Prüfung ist als regelbasierte
+Funktion bezeichnet und wird nicht heimlich als freie KI-Antwort verwendet.
+Kontoverbindung, native Authentifizierungsprobe, Modellkatalog und erfolgreiche
+Modellantwort sind getrennte Zustände. Für Claude sind Sonnet/Opus Aliase
+Vorgaben und kein belegter vollständiger Kontomodellkatalog.
 
 Dateigrößen pro Anhang folgen standardmäßig `MAX_UPLOAD_SIZE_BYTES` (50 MiB).
 `ASSISTANT_MAX_ATTACHMENT_BYTES` und `ASSISTANT_REQUEST_ATTACHMENT_BYTES`

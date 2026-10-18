@@ -61,9 +61,16 @@ def fixture(server, owner, output):
     code = """
 import json,sys
 from backend.dependencies import store
-from backend.services import assistant_storage as db
+from backend.services import assistant_storage as db, assistant_handoff
+from backend.services import assistant as service
 from backend.services.assistant import Proposal,Run
 p=sys.argv[1]; f=json.load(open(p,encoding='utf-8'))
+import fitz
+pdf=fitz.open(); page=pdf.new_page(); page.insert_text((72,72),'Manueller Browser-Originalbeleg: Heizungsbetrieb. Netto 100,00 EUR, MwSt 19,00 EUR, Gesamt 119,00 EUR.')
+page=pdf.new_page(); page.insert_text((72,72),'Seite 2: Leistungen am Heizkessel, Wartung und Pruefung.'); raw=pdf.tobytes();pdf.close()
+attached=service.add_attachment(store,f['actor_id'],f['conversation']['id'],raw,'Manueller-Rechnungsbeleg.pdf')
+f['manual_attachment']=attached
+receipt=assistant_handoff.attachment_evidence(store,f['actor_id'],attached['id'])
 with db.work(store,f['actor_id'],write=True) as u:
  r=db.owned_child(u,Run,f['run']['id']); source=db.payload(r)['_bundle']['sources'][0]
  payload={'kind':'note','anchor':{'kind':source['kind'],'id':source['id']},
@@ -71,6 +78,16 @@ with db.work(store,f['actor_id'],write=True) as u:
  'values':{'body':'Manueller synthetischer Prüfentwurf für die Browserabnahme.','conversation_kind':'note'}}
  proposal=db.put(u,Proposal,{'run_id':r.id,'payload':payload,'decision':None},conversation_id=r.conversation_id,state='proposed')
  f['manual_proposal_id']=proposal.id
+ task_payload={'kind':'task','anchor':None,'evidence':[],'values':{'title':'Manuelle Browseraufgabe: Heizungsbetrieb anrufen','due_date':'2026-10-19','priority':'medium','status':'open'}}
+ task=db.put(u,Proposal,{'run_id':r.id,'payload':task_payload,'decision':None},conversation_id=r.conversation_id,state='proposed')
+ f['manual_task_proposal_id']=task.id
+ invoice_values={'supplier':'Manueller Browser-Heizungsbetrieb','invoice_date':'2026-10-18','net_amount':'100.00','vat_rate':'19.00','vat_amount':'19.00','gross_amount':'119.00','property_id':f['property']['id'],'status':'open'}
+ invoice_payload={'kind':'invoice','anchor':{'kind':source['kind'],'id':source['id']},'values':invoice_values,
+ 'evidence':[{k:s[k] for k in ('kind','id','revision','sha256')} for s in (source,receipt)]}
+ invoice=db.put(u,Proposal,{'run_id':r.id,'payload':invoice_payload,'decision':None},conversation_id=r.conversation_id,state='proposed')
+ f['manual_invoice_proposal_id']=invoice.id;f['manual_invoice_values']=invoice_values
+ run_data=db.payload(r);run_data['attachment_ids']=[attached['id']];run_data['_proposal_ids']=[proposal.id,task.id,invoice.id]
+ db.put(u,Run,run_data,row=r)
 open(p,'w',encoding='utf-8').write(json.dumps(f))
 """
     seeded = subprocess.run([sys.executable, "-c", code, str(path)], cwd=ROOT, env=server.env(), capture_output=True, text=True, encoding="utf-8", timeout=60)

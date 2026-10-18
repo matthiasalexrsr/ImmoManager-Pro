@@ -4,7 +4,7 @@ import { api } from '../../api';
 import { assistantApi, activeRun, contextSelection } from './assistantApi';
 import { readAssistantDraft, writeAssistantDraft, readAssistantCommand, writeAssistantCommand, clearAssistantCommand } from './assistantDrafts';
 
-const emptyDraft = () => ({ body: '', attachments: [], context: [], web_research: false, report: null });
+const emptyDraft = () => ({ body: '', attachments: [], context: [], web_research: false, report: null, data_scope: 'authorized', excluded_attachment_ids: [], context_explicit: false });
 const rejected = failure => [400, 403, 404, 409, 413, 415, 422].includes(failure.statusCode);
 const mergeRows = (first, next) => [...new Map([...first, ...next].map(row => [row.id, row])).values()];
 const proposalPageCursor = page => page?.has_more === false ? null : page?.next_cursor || null;
@@ -45,6 +45,18 @@ export default function useAssistantWorkspace(owner) {
   const [pollAttempt, setPollAttempt] = useState(0);
   const currentProvider = record?.provider || provider;
   const connectionProvider = useRef('');
+  const reloadCapabilities = async () => {
+    const generation = epoch.current, token = identity; const session = api.captureSession();
+    try { const value = await assistantApi.capabilities(); session(); if (live.current && scope.current === token && generation === epoch.current) { setCapabilities(value); setConnectionAttempt(previous => previous + 1); } }
+    catch (failure) { if (live.current && scope.current === token && generation === epoch.current) setError(failure.message); }
+  };
+  const syncWorkingContext = useCallback(conversation => {
+    if (!draftRef.current.context_explicit && conversation.context_sources) {
+      const context = conversation.context_sources;
+      const report = draftRef.current.report && context.some(card => card.id === draftRef.current.report[`${card.kind}_id`]) ? draftRef.current.report : null;
+      const next = { ...draftRef.current, context, report }; draftRef.current = next; setDraft(next); writeAssistantDraft(owner, conversation.id, next);
+    }
+  }, [owner]);
   const hideRevoked = useCallback(failure => {
     if (![401, 403, 404].includes(failure.statusCode)) return;
     setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false;
@@ -67,7 +79,7 @@ export default function useAssistantWorkspace(owner) {
         session(); if (!live.current || controller.signal.aborted) return;
         if (!Array.isArray(caps.providers) || !Array.isArray(page.items)) throw new Error('Der KI-Arbeitsbereich hat unvollständige Auswahldaten geliefert.');
         setCapabilities(caps); setConversations(page.items); setNextCursor(page.next_cursor || null);
-        setProvider(previous => previous || caps.providers.find(item => item.id === 'local')?.id || caps.providers[0]?.id || '');
+        setProvider(previous => previous || caps.providers.find(item => item.id !== 'local' && item.connected)?.id || caps.providers.find(item => item.id !== 'local' && item.available)?.id || caps.providers.find(item => item.id !== 'local')?.id || 'local');
       }).catch(failure => { if (live.current && !controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [attempt]);
@@ -93,7 +105,8 @@ export default function useAssistantWorkspace(owner) {
       setRun(runs.items.find(item => item.id === conversation.active_run_id) || runs.items[0] || null);
       setProposals(Array.isArray(suggested) ? suggested : suggested.items || []);
       setProposalCursor(proposalPageCursor(suggested));
-      const restored = readAssistantDraft(owner, selectedId);
+      const restored = readAssistantDraft(owner, selectedId, conversation.data_scope || 'selected');
+      if (!restored.context_explicit && conversation.context_sources) restored.context = conversation.context_sources;
       // Restore private buffers only after the server has authorized this conversation.
       draftRef.current = restored; setDraft(restored); setPending(readAssistantCommand(owner, selectedId));
       setEditPending(readAssistantCommand(owner, `edit:${selectedId}`));
@@ -131,7 +144,7 @@ export default function useAssistantWorkspace(owner) {
         else {
           const [page, conversation, suggestions] = await Promise.all([assistantApi.messages(selectedId), assistantApi.conversation(selectedId), assistantApi.proposals(selectedId)]); session();
           if (!live.current || scope.current !== token || controller.signal.aborted) return;
-          setRun(next); setMessages(previous => mergeRows(previous, page.items)); setRecord(conversation);
+          setRun(next); setMessages(previous => mergeRows(previous, page.items)); setRecord(conversation); syncWorkingContext(conversation);
           setProposals(previous => mergeRows(previous, Array.isArray(suggestions) ? suggestions : suggestions.items || []));
           if (!proposalPagesLoaded.current) setProposalCursor(proposalPageCursor(suggestions));
           setConversations(previous => mergeRows(previous, [conversation]));
@@ -139,24 +152,30 @@ export default function useAssistantWorkspace(owner) {
       } catch (failure) { if (live.current && scope.current === token && !controller.signal.aborted) { hideRevoked(failure); setPollError(failure.message); } }
     }, 1500);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [run, identity, selectedId, pollError, pollAttempt, hideRevoked]);
+  }, [run, identity, selectedId, pollError, pollAttempt, hideRevoked, syncWorkingContext]);
 
   const changeDraft = next => {
     const value = typeof next === 'function' ? next(draftRef.current) : next;
     draftRef.current = value; setDraft(value);
     try { writeAssistantDraft(owner, selectedId || 'new', value); } catch (failure) { setError(failure.message); }
   };
-  const navigate = value => setParams(current => {
+  const navigate = value => { setLoading(Boolean(value)); setParams(current => {
     const next = new URLSearchParams(current); if (value) next.set('conversation', value); else next.delete('conversation'); return next;
-  });
-  const chooseProvider = value => { setProvider(value); setModel(''); setConnection(null); changeDraft(previous => ({ ...previous, web_research: false })); };
+  }); };
+  const chooseProvider = value => {
+    changeDraft(previous => ({ ...previous, web_research: false, ...(value === 'local' ? { data_scope: 'selected' } : {}) }));
+    if (record) return editConversation({ provider: value, model: null, effort: 'high', ...(value === 'local' ? { data_scope: 'selected' } : {}) });
+    setProvider(value); setModel(''); setConnection(null);
+  };
+  const chooseModel = value => record ? editConversation({ model: value || null }) : setModel(value);
+  const chooseScope = value => { changeDraft(previous => ({ ...previous, data_scope: value })); if (record) return editConversation({ data_scope: value }); };
 
   const perform = async action => {
     if (operation.current) return;
     operation.current = true; setBusy(true); setError(''); setNotice('');
     const token = identity; const generation = epoch.current; const session = api.captureSession();
     const current = () => { session(); if (!live.current || scope.current !== token || generation !== epoch.current) throw new Error('Die ausgewählte Unterhaltung hat sich geändert.'); };
-    try { await action(current); }
+    try { return await action(current); }
     catch (failure) { if (live.current && scope.current === token && generation === epoch.current) { hideRevoked(failure); setError(failure.message); } }
     finally { if (live.current && scope.current === token && generation === epoch.current) { operation.current = false; setBusy(false); } }
   };
@@ -164,7 +183,7 @@ export default function useAssistantWorkspace(owner) {
     if (record) return record;
     const old = readAssistantCommand(owner, 'new');
     if (old && old.kind !== 'create') throw new Error('Bitte zuerst die unbestätigte Übermittlung abgleichen.');
-    const command = old || { kind: 'create', idempotency_key: crypto.randomUUID(), request: { title, provider, model: model || null, effort: 'high' } };
+    const command = old || { kind: 'create', idempotency_key: crypto.randomUUID(), request: { title, provider, model: model || null, effort: 'high', data_scope: draftRef.current.data_scope } };
     writeAssistantCommand(owner, 'new', command); setPending(command);
     let conversation;
     try { conversation = await assistantApi.create({ ...command.request, idempotency_key: command.idempotency_key }); current(); }
@@ -179,14 +198,15 @@ export default function useAssistantWorkspace(owner) {
   });
   const submit = (retry = false) => perform(async current => {
     if (activeRun(run)) throw new Error('Bitte warten Sie auf die laufende Antwort oder brechen Sie sie ab.');
-    const original = draftRef.current;
-    if (!retry && !original.body.trim()) return;
+    const original = { ...draftRef.current };
+    if (!retry && !original.body.trim()) { if (currentProvider === 'local') original.body = 'Prüfe die ausgewählten Grundlagen mit den vorhandenen lokalen Regeln.'; else return; }
     const conversation = await ensureConversation(current, original.body.trim().slice(0, 80) || 'Neuer Chat'); current();
     const prior = readAssistantCommand(owner, conversation.id);
     const command = prior || { kind: 'submit', idempotency_key: crypto.randomUUID(), request: {
-      content: original.body, attachment_ids: original.attachments.map(item => item.id), context: contextSelection(original.context), expected_revision: conversation.revision,
+      content: original.body, attachment_ids: original.attachments.map(item => item.id), excluded_attachment_ids: original.excluded_attachment_ids || [], data_scope: original.data_scope,
+      ...(original.data_scope === 'none' ? { context: contextSelection([]) } : original.context_explicit ? { context: contextSelection(original.context) } : {}), expected_revision: conversation.revision,
       web_research: conversation.provider !== 'local' && Boolean(capabilities?.providers.find(item => item.id === conversation.provider)?.web_research) && original.web_research === true,
-      report: original.report || null,
+      report: original.data_scope === 'none' ? null : original.report || null,
     } };
     if (prior && !retry) throw new Error('Eine Übermittlung ist unbestätigt. Bitte zuerst mit derselben Kennung abgleichen.');
     writeAssistantCommand(owner, conversation.id, command); setPending(command);
@@ -199,13 +219,13 @@ export default function useAssistantWorkspace(owner) {
       throw failure;
     }
     clearAssistantCommand(owner, conversation.id, command); setPending(null);
-    const cleared = { ...original, body: '', attachments: [] };
+    const cleared = { ...original, body: '', attachments: [], excluded_attachment_ids: [], context_explicit: false };
     writeAssistantDraft(owner, conversation.id, cleared);
     if (!selectedId) { writeAssistantDraft(owner, 'new', emptyDraft()); navigate(conversation.id); }
     else {
       changeDraft(cleared); setRun(submitted); setPollError('');
       const [page, fresh] = await Promise.all([assistantApi.messages(conversation.id), assistantApi.conversation(conversation.id)]); current();
-      setMessages(previous => mergeRows(previous, page.items)); setRecord(fresh); setConversations(previous => mergeRows(previous, [fresh]));
+      setMessages(previous => mergeRows(previous, page.items)); setRecord(fresh); syncWorkingContext(fresh); setConversations(previous => mergeRows(previous, [fresh]));
     }
   });
   const upload = files => perform(async current => {
@@ -240,22 +260,26 @@ export default function useAssistantWorkspace(owner) {
     const next = await assistantApi.run(run.id); current(); setRun(next); setPollError(''); setPollAttempt(value => value + 1);
     if (!activeRun(next)) {
       const [page, fresh, suggestions] = await Promise.all([assistantApi.messages(selectedId), assistantApi.conversation(selectedId), assistantApi.proposals(selectedId)]); current();
-      setMessages(previous => mergeRows(previous, page.items)); setRecord(fresh); setConversations(previous => mergeRows(previous, [fresh]));
+      setMessages(previous => mergeRows(previous, page.items)); setRecord(fresh); syncWorkingContext(fresh); setConversations(previous => mergeRows(previous, [fresh]));
       setProposals(previous => mergeRows(previous, Array.isArray(suggestions) ? suggestions : suggestions.items || []));
       if (!proposalPagesLoaded.current) setProposalCursor(proposalPageCursor(suggestions));
     }
   });
-  const connect = action => perform(async current => {
-    const value = action === 'login' ? await assistantApi.login(currentProvider) : action === 'cancel'
-      ? await assistantApi.cancelLogin(currentProvider, connection?.pending_login?.id) : await assistantApi.disconnect(currentProvider);
-    current(); setConnection(value); setConnectionAttempt(value => value + 1);
+  const connect = (action, providerOverride, loginId) => perform(async current => {
+    const target = providerOverride || currentProvider;
+    const value = action === 'login' ? await assistantApi.login(target) : action === 'cancel'
+      ? await assistantApi.cancelLogin(target, loginId || connection?.pending_login?.id) : action === 'probe' ? await assistantApi.probeConnection(target) : await assistantApi.disconnect(target);
+    current(); if (connectionProvider.current === target) { setConnection(value); setConnectionAttempt(previous => previous + 1); }
+    await reloadCapabilities(); current(); return value;
   });
   const moreConversations = () => perform(async current => {
     const page = await assistantApi.conversations(nextCursor); current(); setConversations(previous => mergeRows(previous, page.items)); setNextCursor(page.next_cursor || null);
   });
-  const completeLogin = code => perform(async current => {
-    const value = await assistantApi.completeLogin(currentProvider, connection.pending_login.id, code); current();
-    setConnection(value); setConnectionAttempt(value => value + 1);
+  const completeLogin = (code, providerOverride, loginId) => perform(async current => {
+    const target = providerOverride || currentProvider;
+    const value = await assistantApi.completeLogin(target, loginId || connection.pending_login.id, code); current();
+    if (connectionProvider.current === target) { setConnection(value); setConnectionAttempt(previous => previous + 1); }
+    await reloadCapabilities(); current(); return value;
   });
   const moreMessages = () => perform(async current => {
     const page = await assistantApi.messages(selectedId, messageCursor); current(); setMessages(previous => mergeRows(page.items, previous)); setMessageCursor(page.next_cursor || null);
@@ -283,6 +307,6 @@ export default function useAssistantWorkspace(owner) {
   });
   return { capabilities, conversations, nextCursor, provider: currentProvider, model: record?.model || model, connection,
     record, messages, messageCursor, attachments, attachmentCursor, run, proposals, proposalCursor, draft, pending, editPending, loading, busy, uploading, error, pollError, notice, selectedId,
-    setModel, chooseProvider, changeDraft, navigate, startConversation, submit, upload, runCommand, refreshRun, connect, moreConversations, moreMessages,
-    retryLoad: () => setAttempt(value => value + 1), setError, setNotice, perform, refresh: () => setAttempt(value => value + 1), setProposals, completeLogin, moreAttachments, moreProposals, editConversation };
+    setModel: chooseModel, chooseProvider, chooseScope, changeDraft, navigate, startConversation, submit, upload, runCommand, refreshRun, connect, moreConversations, moreMessages,
+    retryLoad: () => setAttempt(value => value + 1), reloadCapabilities, setError, setNotice, perform, refresh: () => setAttempt(value => value + 1), setProposals, completeLogin, moreAttachments, moreProposals, editConversation };
 }

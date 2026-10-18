@@ -18,12 +18,17 @@ from ..finance_models import ReportDefinition
 from . import business_documents, document_versions, finance_reports, workspace_contexts
 from .portfolio_scope import scope_context, scope_from_user
 
-SourceKind = Literal["property", "unit", "tenant", "contact", "document"]
+SourceKind = Literal["property", "unit", "tenant", "contact", "document", "contract", "booking", "receivable", "invoice", "task", "maintenance", "meter", "standalone_reading", "calendar", "utility_statement", "billing_period", "service_contract", "portfolio"]
 FORMAT = "immomanager-assistant-context/1"
 DOCUMENT_TEXT_CHARS = 64_000
 SELECTIONS: dict[str, SourceKind] = {
     "property_ids": "property", "unit_ids": "unit", "tenant_ids": "tenant",
     "contact_ids": "contact", "document_ids": "document",
+    "contract_ids": "contract", "booking_ids": "booking", "receivable_ids": "receivable",
+    "invoice_ids": "invoice", "task_ids": "task", "maintenance_ids": "maintenance", "meter_ids": "meter",
+    "standalone_reading_ids": "standalone_reading", "calendar_ids": "calendar",
+    "utility_statement_ids": "utility_statement", "billing_period_ids": "billing_period", "service_contract_ids": "service_contract",
+    "portfolio_ids": "portfolio",
 }
 # Explicit disclosure allowlist. In particular no banking data, credentials,
 # historical AI output, upload URLs or unselected related record contents.
@@ -38,6 +43,21 @@ FIELDS = {
     "document": {"property_id", "unit_id", "contract_id", "tenant_id", "title", "document_type",
                  "document_date", "tags", "description"},
 }
+FIELDS.update({
+    "portfolio": {"name", "currency", "timezone", "status"},
+    "contract": {"property_id", "unit_id", "tenant_id", "contract_number", "start_date", "end_date", "cold_rent", "service_charge_advance", "heating_advance", "status", "notice_period", "notice_period_months", "payment_day", "ledger_start", "carried_balance"},
+    "booking": {"property_id", "unit_id", "tenant_id", "contract_id", "category_id", "booking_date", "amount", "payment_text", "reverses_booking_id"},
+    "receivable": {"contract_id", "tenant_id", "property_id", "unit_id", "due_date", "amount_due", "amount_paid", "status", "description", "period_start", "period_end"},
+    "invoice": {"property_id", "unit_id", "supplier", "invoice_date", "due_date", "performance_start", "performance_end", "net_amount", "vat_rate", "vat_amount", "gross_amount", "status", "document_id", "source_document_id", "cost_category"},
+    "task": {"property_id", "unit_id", "title", "description", "due_date", "priority", "status"},
+    "maintenance": {"property_id", "unit_id", "title", "description", "status", "priority", "reported_date", "scheduled_date", "completed_date", "due_date", "appointment_at", "estimated_cost", "actual_cost", "category"},
+    "meter": {"property_id", "unit_id", "meter_type", "serial_number", "label", "location", "measure_unit", "installation_date", "removal_date", "next_inspection", "is_active"},
+    "standalone_reading": {"meter_id", "reading_date", "reading_value", "value", "notes", "status"},
+    "calendar": {"property_id", "unit_id", "title", "description", "event_date", "event_time", "start_datetime", "end_datetime", "event_type", "status"},
+    "utility_statement": {"billing_period_id", "contract_id", "tenant_id", "unit_id", "property_id", "status", "total_cost", "total_advance", "balance"},
+    "billing_period": {"property_id", "start_date", "end_date", "status", "name"},
+    "service_contract": {"property_id", "unit_id", "provider", "title", "contract_type", "start_date", "end_date", "status", "amount", "payment_interval"},
+})
 
 
 class ContextSelection(BaseModel):
@@ -47,8 +67,21 @@ class ContextSelection(BaseModel):
     tenant_ids: list[str] = Field(default_factory=list)
     contact_ids: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
+    contract_ids: list[str] = Field(default_factory=list)
+    booking_ids: list[str] = Field(default_factory=list)
+    receivable_ids: list[str] = Field(default_factory=list)
+    invoice_ids: list[str] = Field(default_factory=list)
+    task_ids: list[str] = Field(default_factory=list)
+    maintenance_ids: list[str] = Field(default_factory=list)
+    meter_ids: list[str] = Field(default_factory=list)
+    standalone_reading_ids: list[str] = Field(default_factory=list)
+    calendar_ids: list[str] = Field(default_factory=list)
+    utility_statement_ids: list[str] = Field(default_factory=list)
+    billing_period_ids: list[str] = Field(default_factory=list)
+    service_contract_ids: list[str] = Field(default_factory=list)
+    portfolio_ids: list[str] = Field(default_factory=list)
 
-    @field_validator("property_ids", "unit_ids", "tenant_ids", "contact_ids", "document_ids")
+    @field_validator(*SELECTIONS)
     @classmethod
     def identifiers(cls, values: list[str]) -> list[str]:
         if any(not value.strip() or len(value) > 120 or value != value.strip() for value in values):
@@ -85,7 +118,10 @@ def build_context(store, selection: ContextSelection | dict, actor_id: str) -> d
     with scope_context(scope_from_user(user)):
         sources = [_source(store, kind, identifier, actor_id)
                    for field, kind in SELECTIONS.items() for identifier in getattr(selected, field)]
-    bundle = {"format": FORMAT, "selection": selected.model_dump(), "sources": sources,
+    # Preserve hashes of legacy five-kind bundles; new empty families add no data.
+    selection_data = {key: value for key, value in selected.model_dump().items()
+                      if value or key in {"property_ids", "unit_ids", "tenant_ids", "contact_ids", "document_ids"}}
+    bundle = {"format": FORMAT, "selection": selection_data, "sources": sources,
               "warnings": [], "automatic_related_records": False}
     bundle["sha256"] = content_hash(bundle)
     return bundle

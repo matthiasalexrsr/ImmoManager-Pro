@@ -1,5 +1,5 @@
 """Strict commands for personal conversations; owner is never client supplied."""
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,16 +20,23 @@ class ConversationCreate(Command):
     provider: str = Field(default="local", pattern=r"^(local|codex|claude)$")
     model: str | None = Field(default=None, max_length=120)
     effort: str = Field(default="high", pattern=r"^(low|medium|high|xhigh)$")
+    data_scope: Literal["selected", "authorized", "none"] = "selected"
 
 
 class ConversationEdit(RevisionCommand):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     archived: bool | None = None
+    provider: str | None = Field(default=None, pattern=r"^(local|codex|claude)$")
+    model: str | None = Field(default=None, max_length=120)
+    effort: str | None = Field(default=None, pattern=r"^(low|medium|high|xhigh)$")
+    data_scope: Literal["selected", "authorized", "none"] | None = None
 
 
 class RunCreate(RevisionCommand):
     content: str = Field(min_length=1, max_length=32000)
     attachment_ids: list[str] = Field(default_factory=list, max_length=12)
+    excluded_attachment_ids: list[str] = Field(default_factory=list, max_length=100)
+    data_scope: Literal["selected", "authorized", "none"] = "selected"
     context: dict[str, Any] = Field(default_factory=dict)
     web_research: bool = False
     report: ReportDefinition | None = None

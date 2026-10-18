@@ -73,6 +73,111 @@ def rewrite(fixture, name, data=None, **metadata):
         connection.execute(update(table).values(**metadata))
 
 
+def test_saved_task_completion_survives_later_normal_deletion(isolated):
+    with isolated.engine.begin() as connection:
+        connection.exec_driver_sql('CREATE TABLE tasks(id TEXT PRIMARY KEY,title TEXT)')
+        connection.exec_driver_sql('CREATE TABLE workspace_drafts(id TEXT PRIMARY KEY,owner_user_id TEXT)')
+        connection.exec_driver_sql("INSERT INTO tasks VALUES ('saved-task','Human confirmed')")
+        connection.exec_driver_sql("INSERT INTO workspace_drafts VALUES ('saved-draft','staff')")
+    record = {'kind': 'task', 'id': 'saved-task', 'href': '/tasks?focus_id=saved-task', 'title': 'Human confirmed'}
+    saved = {**isolated.payloads['assistant_proposals'], 'payload': {'kind': 'task'},
+             'record': record, 'completion': {'actor_id': OWNER},
+             'handoff': {'draft_id': 'saved-draft', 'record': record}}
+    rewrite(isolated, 'assistant_proposals', saved, state='saved')
+    with isolated.engine.connect() as connection:
+        assert proof.verify(connection, isolated.box.keys(), uploads=isolated.uploads)['rows'] == 5
+    with isolated.engine.begin() as connection:
+        connection.exec_driver_sql("DELETE FROM tasks WHERE id='saved-task'")
+    with isolated.engine.connect() as connection:
+        assert proof.verify(connection, isolated.box.keys(), uploads=isolated.uploads)['missing_saved_records'] == 1
+    saved['completion']['actor_id'] = 'other'
+    rewrite(isolated, 'assistant_proposals', saved, state='saved')
+    with isolated.engine.connect() as connection, pytest.raises(proof.AssistantBackupError):
+        proof.verify(connection, isolated.box.keys(), uploads=isolated.uploads)
+
+
+def test_final_invoice_private_receipt_survives_actual_full_backup_and_restore(installation, tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from backend import auth
+    from backend.assistant_models import ConversationCreate, ProposalApply, ProposalPreview, RunCreate
+    from backend.models import PropertyCreate
+    from backend.repositories import SQLAlchemyStore
+    from backend.services import (
+        assistant,
+        assistant_context,
+        assistant_handoff,
+        assistant_runner,
+        document_versions,
+        file_storage,
+    )
+    from backend.services.integrations import connection_storage
+    from backend.services.portable_runtime import inventory
+
+    engine = create_engine(installation.sources.database_url)
+    monkeypatch.setattr(auth, '_user_store', auth.SQLUserStore(sessionmaker(bind=engine)))
+    auth.update_user(OWNER, {'portfolio_access': 'selected', 'portfolio_ids': ['pf1']})
+    monkeypatch.setattr(secret_box, 'default_secret_box', lambda: installation.box)
+    monkeypatch.setattr(connection_storage, 'default_secret_box', lambda: installation.box)
+    monkeypatch.setattr(file_storage, '_storage', file_storage.LocalStorage(installation.sources.uploads_dir))
+    monkeypatch.setattr(assistant, 'wake', lambda *args: None)
+    original = b'Netto 100,00 EUR; MwSt 19,00 EUR; Gesamt 119,00 EUR; unveraenderliches Original'
+    try:
+        with Session(engine) as session:
+            target = SQLAlchemyStore(session)
+            prop = target.create_property(PropertyCreate(portfolio_id='pf1', name='Receipt property', property_type='residential'))
+            chat = assistant.create_conversation(target, OWNER, ConversationCreate(idempotency_key=str(uuid4())))
+            uploaded = assistant.add_attachment(target, OWNER, chat['id'], original, 'Receipt.txt')
+            selection = {'property_ids': [prop.id]}
+            bundle = assistant_context.build_context(target, selection, OWNER)
+            source = assistant_handoff.attachment_evidence(target, OWNER, uploaded['id'])
+            values = {'supplier': 'Testbetrieb', 'invoice_date': '2026-10-18', 'net_amount': '100.00',
+                      'vat_rate': '19.00', 'vat_amount': '19.00', 'gross_amount': '119.00', 'property_id': prop.id}
+            proposed = {'kind': 'invoice', 'anchor': {'kind': 'property', 'id': prop.id}, 'values': values,
+                        'evidence': [{key: row[key] for key in ('kind', 'id', 'revision', 'sha256')}
+                                     for row in [*bundle['sources'], source]]}
+            run = assistant.submit(target, OWNER, chat['id'], RunCreate(expected_revision=chat['revision'],
+                idempotency_key=str(uuid4()), content='Original pruefen', context=selection, attachment_ids=[uploaded['id']]))
+            assistant_runner.run(target, run['id'], OWNER,
+                execute=lambda *args: {'text': 'Manueller Testvorschlag', 'proposals': [proposed]})
+            proposal = assistant.list_records(target, OWNER, assistant.Proposal, conversation_id=chat['id'])['items'][0]
+            review = assistant.proposal_preview(target, OWNER, proposal['id'], ProposalPreview(expected_revision=proposal['revision']))['review']
+            prepared = assistant.decide_proposal(target, OWNER, proposal['id'], ProposalApply(expected_revision=proposal['revision'],
+                idempotency_key=str(uuid4()), review_hash=review['review_hash']))['proposal']
+            final = assistant_handoff.save_proposal(target, OWNER, proposal['id'], assistant_handoff.ProposalSave(
+                expected_revision=prepared['revision'], idempotency_key=str(uuid4()), values=values))
+            document_id = final['record']['document_id']
+        references, _ = inventory(installation.db)
+        assert not any(key.startswith('assistant-archive/') for key in references)
+        with engine.connect() as connection:
+            proof.verify(connection, installation.box.keys(), uploads=installation.sources.uploads_dir)
+        installation.sources.passphrase = 'synthetic-private-receipt-only'
+        event = full_backup.create_full_backup(sources=installation.sources)
+        saved = installation.sources.root / event['archive']
+        assert full_backup.restore_probe(saved, installation.sources)['ok']
+        restored = tmp_path / 'restored-receipt'
+        result = full_backup.restore_archive(saved, restored, passphrase=installation.sources.passphrase)
+        assert result['readiness'] == 'data_verified'
+        recovered = create_engine('sqlite:///' + (restored / 'immo_manager.db').as_posix())
+        try:
+            monkeypatch.setattr(auth, '_user_store', auth.SQLUserStore(sessionmaker(bind=recovered)))
+            restored_box = secret_box.SecretBox(restored / 'secrets/keyring.json')
+            monkeypatch.setattr(secret_box, 'default_secret_box', lambda: restored_box)
+            monkeypatch.setattr(connection_storage, 'default_secret_box', lambda: restored_box)
+            with Session(recovered) as session, document_versions.work(SQLAlchemyStore(session), OWNER) as unit:
+                version = document_versions.head(unit, document_id)
+                assert version is not None and document_versions.original_bytes(unit, version) == original
+            with recovered.connect() as connection:
+                checked = proof.verify(connection, restored_box.keys(), uploads=restored / 'uploads')
+                assert checked['rows'] >= 4 and not checked.get('missing_saved_records')
+        finally:
+            recovered.dispose()
+    finally:
+        engine.dispose()
+
+
 def test_snapshot_inventory_decrypts_hidden_remote_key_without_runtime_keyring(isolated, monkeypatch):
     monkeypatch.setattr(secret_box, "default_secret_box", lambda: pytest.fail("Ambient keys must not be consulted"))
     assert proof.references(isolated.path, isolated.box.keys()) == {isolated.key}

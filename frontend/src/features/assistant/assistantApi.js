@@ -23,14 +23,17 @@ export const assistantApi = {
   cancelLogin: (provider, loginId) => api.post(`${root}/connections/${id(provider)}/login/cancel`, { login_id: loginId }),
   completeLogin: (provider, loginId, code) => api.post(`${root}/connections/${id(provider)}/login/${id(loginId)}/complete`, { code }),
   disconnect: provider => api.post(`${root}/connections/${id(provider)}/disconnect`, {}),
+  probeConnection: provider => api.post(`${root}/connections/${id(provider)}/probe`, {}),
   previewContext: (selection, report, options) => api.post(`${root}/context/preview`, { selection, report: report || null, extract_documents: true }, options),
   proposals: (value, options, cursor) => api.get(`${root}/conversations/${id(value)}/proposals${page(cursor)}`, options),
   previewProposal: (value, body) => api.post(`${root}/proposals/${id(value)}/preview`, body),
+  getProposal: (value, options) => api.get(`${root}/proposals/${id(value)}`, options),
+  saveProposal: (value, body) => api.post(`${root}/proposals/${id(value)}/save`, body),
   applyProposal: (value, body) => api.post(`${root}/proposals/${id(value)}/apply`, body),
   rejectProposal: (value, body) => api.post(`${root}/proposals/${id(value)}/reject`, body),
 };
 
-export const contextSelection = cards => Object.fromEntries(['property', 'unit', 'tenant', 'contact', 'document']
+export const contextSelection = cards => Object.fromEntries(['property', 'unit', 'tenant', 'contact', 'document', ...['contract', 'booking', 'receivable', 'invoice', 'task', 'maintenance', 'meter', 'standalone_reading', 'calendar', 'utility_statement', 'billing_period', 'service_contract', 'portfolio'].filter(kind => cards.some(card => card.kind === kind))]
   .map(kind => [`${kind}_ids`, [...new Set(cards.filter(card => card.kind === kind).map(card => card.id))]]));
 export const activeRun = run => run && ['queued', 'running'].includes(run.state);
 export const runText = run => run?.response || (run?.events || []).filter(event => event.type === 'delta' || event.type === 'text').map(event => event.text || '').join('');

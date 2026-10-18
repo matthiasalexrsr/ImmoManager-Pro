@@ -8,7 +8,7 @@ from collections import deque
 
 from .assistant_provider_process import CliProcess
 from .assistant_provider_prompt import SYSTEM_PROMPT, checked_model, finish_answer, user_payload
-from .assistant_provider_protocol import ProviderError
+from .assistant_provider_protocol import ProviderError, application_mcp
 from .secret_box import write_private_file
 
 
@@ -26,7 +26,7 @@ def public_error(error, *, uncertain=False):
 
 
 class CodexRpc:
-    def __init__(self, profile, executable, *, research=False):
+    def __init__(self, profile, executable, *, research=False, mcp=None):
         self.profile = profile
         self.counter = 0
         self.events: deque[dict] = deque()
@@ -44,6 +44,12 @@ class CodexRpc:
                   'apps._default.enabled = false\n'
                   'mcp_servers = {}\n'
                   + 'web_search = ' + ('"live"' if research else '"disabled"') + '\n')
+        if mcp is not None:
+            config = config.replace('mcp_servers = {}\n', '')
+            config += ('\n[mcp_servers.immomanager]\nurl = ' + json.dumps(mcp['url'])
+                       + '\nenabled = true\nrequired = true\nenabled_tools = ' + json.dumps(mcp['tools'])
+                       + '\ndefault_tools_approval_mode = "approve"\nhttp_headers = '
+                       + '{ Authorization = ' + json.dumps(mcp['headers']['Authorization']) + ' }\n')
         write_private_file(profile.path / 'config.toml', config.encode())
         self.transport = CliProcess([*executable, 'app-server', '--listen', 'stdio://'], profile.path)
         try:
@@ -114,9 +120,53 @@ class CodexRpc:
 
 
 def _models(rpc):
-    result = rpc.call('model/list', {'limit': 100})
-    return [{'id': item['id'], 'label': item.get('displayName') or item['id']}
-            for item in result.get('data', []) if isinstance(item, dict) and isinstance(item.get('id'), str)]
+    models, cursor, seen = [], None, set()
+    while True:
+        result = rpc.call('model/list', {'limit': 100, **({'cursor': cursor} if cursor else {})})
+        for item in result.get('data', []):
+            if not isinstance(item, dict) or not isinstance(item.get('id'), str):
+                continue
+            model: dict = {'id': item['id'], 'label': item.get('displayName') or item['id']}
+            efforts = item.get('supportedReasoningEfforts')
+            if isinstance(efforts, list):
+                model['supported_efforts'] = [entry['reasoningEffort'] for entry in efforts if isinstance(entry, dict)
+                                              and entry.get('reasoningEffort') in {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'}]
+            if isinstance(item.get('inputModalities'), list):
+                model['input_modalities'] = [value for value in item['inputModalities'] if value in {'text', 'image'}]
+            models.append(model)
+        cursor = result.get('nextCursor')
+        if not cursor:
+            return models
+        if not isinstance(cursor, str) or cursor in seen:
+            raise ProviderError('Der Modellkatalog konnte nicht vollständig geprüft werden.', 'protocol_incompatible')
+        seen.add(cursor)
+
+
+def status(profile, executable, cancelled):
+    if cancelled():
+        raise ProviderError('Die Kontoprüfung wurde abgebrochen.', 'cancelled')
+    with CodexRpc(profile, executable) as rpc:
+        account = rpc.call('account/read', {'refreshToken': False}).get('account') or {}
+        connected = account.get('type') == 'chatgpt'
+        result = {'connected': connected, 'auth_mode': 'chatgpt' if connected else 'none', 'model_discovery_status': 'unknown'}
+        if connected:
+            try:
+                result['models'] = _models(rpc)
+                result['model_discovery_status'] = 'verified' if result['models'] else 'unavailable'
+            except ProviderError:
+                result['model_discovery_status'] = 'unavailable'
+        return result
+
+
+def _check_mcp(rpc, thread_id, mcp):
+    inventory = rpc.call('mcpServerStatus/list', {'threadId': thread_id, 'detail': 'toolsAndAuthOnly', 'limit': 100})
+    servers = inventory.get('data')
+    if (not isinstance(servers, list) or len(servers) != 1 or inventory.get('nextCursor')
+            or not isinstance(servers[0], dict) or servers[0].get('name') != 'immomanager'
+            or servers[0].get('httpOrigin') != mcp['url'].removesuffix('/mcp')
+            or servers[0].get('runtimeStatus') != 'connected' or servers[0].get('toolsError') or servers[0].get('pluginId')
+            or not isinstance(servers[0].get('tools'), dict) or set(servers[0]['tools']) != set(mcp['tools'])):
+        raise ProviderError('Die Anwendung konnte ihre geschützten Werkzeuge nicht vollständig verbinden.', 'provider_isolation_failed')
 
 
 def login(profile, executable, emit_state, cancelled, codes):
@@ -158,6 +208,7 @@ def login(profile, executable, emit_state, cancelled, codes):
                 info = {'connected': True, 'auth_mode': 'chatgpt'}
                 try:
                     info['models'] = _models(rpc)
+                    info['model_discovery_status'] = 'verified' if info['models'] else 'unavailable'
                 except ProviderError:
                     # Authentication and catalog discovery are independent.
                     # Preserve a successful login when the catalog is offline.
@@ -169,18 +220,24 @@ def login(profile, executable, emit_state, cancelled, codes):
 def execute(profile, executable, request, emit, cancelled):
     if cancelled():
         raise ProviderError('Die Antwort wurde abgebrochen.', 'cancelled')
-    with CodexRpc(profile, executable, research=bool(request.get('web_research'))) as rpc:
+    mcp = application_mcp(request)
+    rpc_options: dict = {'research': bool(request.get('web_research'))}
+    if mcp:
+        rpc_options['mcp'] = mcp
+    with CodexRpc(profile, executable, **rpc_options) as rpc:
         account = rpc.call('account/read', {'refreshToken': True}).get('account') or {}
         if account.get('type') != 'chatgpt':
             raise ProviderError('Bitte zuerst das ChatGPT-Konto verbinden.', 'authentication_required')
         model = checked_model(request.get('model'))
         work = profile.path / 'work'
         params = {'cwd': str(work), 'approvalPolicy': 'never', 'sandbox': 'read-only', 'ephemeral': True,
-                  'baseInstructions': SYSTEM_PROMPT, 'developerInstructions': 'No local tools, apps, plugins, MCP or external conversation history.',
+                  'baseInstructions': SYSTEM_PROMPT, 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
                   'model': model}
         thread = rpc.call('thread/start', params).get('thread', {})
         if not thread.get('id'):
             raise ProviderError('Codex konnte das Gespräch nicht beginnen.', 'protocol_incompatible')
+        if mcp:
+            _check_mcp(rpc, thread['id'], mcp)
         inputs = [{'type': 'text', 'text': user_payload(request)}]
         image_types = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp'}
         for index, attachment in enumerate(request.get('attachments', [])):
@@ -225,7 +282,9 @@ def execute(profile, executable, request, emit, cancelled):
                 item = params.get('item')
                 if not isinstance(item, dict):
                     raise ProviderError('Codex hat einen ungültigen Antwortabschnitt geliefert.', 'protocol_incompatible', uncertain=True)
-                forbidden = {'commandExecution', 'fileChange', 'mcpToolCall', 'dynamicToolCall', 'collabAgentToolCall', 'imageView'}
+                forbidden = {'commandExecution', 'fileChange', 'dynamicToolCall', 'collabAgentToolCall', 'imageView'}
+                if item.get('type') == 'mcpToolCall' and (not mcp or item.get('server') != 'immomanager' or item.get('tool') not in mcp['tools'] or item.get('pluginId')):
+                    raise ProviderError('Der Kontoclient hat ein nicht freigegebenes Werkzeug angefordert. Der Lauf wurde beendet.', 'unexpected_tool', uncertain=True)
                 if item.get('type') in forbidden or (item.get('type') == 'webSearch' and not request.get('web_research')):
                     raise ProviderError('Der Kontoclient hat ein nicht freigegebenes Werkzeug angefordert. Der Lauf wurde beendet.', 'unexpected_tool', uncertain=True)
             if method == 'item/agentMessage/delta':

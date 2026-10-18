@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import KpiAction from '../components/KpiAction';
+import useAssistantHandoff from '../hooks/useAssistantHandoff';
+import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -68,6 +70,9 @@ export default function Invoices() {
   const [modal, setModal] = useState(null);
   // values of a duplicated invoice for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
+  const assistantHandoff = useAssistantHandoff('invoice', values => { setPrefill(values); setModal('create'); });
+  const assistantSaved = useRef(false);
+  useEffect(() => { assistantSaved.current = false; }, [assistantHandoff.identifier]);
   const aktenwerkReady = useAktenwerkReady();
   const filter = params.get('status') || 'all';
   const propertyId = params.get('property_id') || '';
@@ -157,6 +162,12 @@ export default function Invoices() {
   ];
 
   const handleSave = async (data) => {
+    if (modal === 'create' && assistantHandoff.identifier) {
+      await assistantHandoff.save(data);
+      assistantSaved.current = true;
+      store?.invalidateRelated('invoices', 'documents');
+      return;
+    }
     // Fill only missing amounts. An explicitly entered zero belongs to the invoice.
     const net = Number(data.net_amount) || 0;
     const rate = Number(data.vat_rate) || 0;
@@ -195,6 +206,7 @@ export default function Invoices() {
   return (
     <div className="page">
       <h1 className="page-title">Rechnungen</h1>
+      <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
       {propertyId && <p role="status">Immobilienfilter: {propMap[propertyId] || `Unbekannte Immobilie (${propertyId})`}
         {' '}<button type="button" className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
           const next = new URLSearchParams(current); next.delete('property_id'); return next;
@@ -269,11 +281,14 @@ export default function Invoices() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Rechnung erstellen' : 'Rechnung bearbeiten'}
-          repeatKeep={['property_id', 'invoice_date', 'vat_rate', 'category']}
-          fields={fields}
+          repeatKeep={assistantHandoff.identifier ? undefined : ['property_id', 'invoice_date', 'vat_rate', 'category']}
+          fields={assistantHandoff.identifier ? fields.filter(field => !['invoice_number', 'payment_reference', 'category', 'notes'].includes(field.key))
+            .map(field => field.key === 'status' ? { ...field, options: [{ value: 'open', label: 'Offen' }] } : field) : fields}
           initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setPrefill(null);
+            if (assistantSaved.current) { assistantSaved.current = false; navigate(assistantHandoff.returnHref); }
+            else if (assistantHandoff.identifier) assistantHandoff.clear(); }}
         />
       )}
     </div>

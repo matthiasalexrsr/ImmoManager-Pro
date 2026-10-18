@@ -13,7 +13,9 @@ import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import useAssistantHandoff from '../hooks/useAssistantHandoff';
+import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import KpiAction from '../components/KpiAction';
 import InlineFieldEditor from '../features/workCenter/InlineFieldEditor';
 import UndoNotice from '../features/workCenter/UndoNotice';
@@ -58,6 +60,7 @@ function isWithinWeek(dueDate) {
 }
 
 export default function Tasks() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const readFilter = () => {
     const value = params.get('status') || params.get('filter');
@@ -78,6 +81,9 @@ export default function Tasks() {
   const [modal, setModal] = useState(null);
   // values of a duplicated task for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
+  const assistantHandoff = useAssistantHandoff('task', values => { setPrefill(values); setModal('create'); });
+  const assistantSaved = useRef(false);
+  useEffect(() => { assistantSaved.current = false; }, [assistantHandoff.identifier]);
   const [quickChange, setQuickChange] = useState(null);
   const [filter, setFilter] = useState(readFilter);
   const [drilldown, setDrilldown] = useState(0);
@@ -220,6 +226,13 @@ export default function Tasks() {
   ];
 
   const handleSave = async (data) => {
+    if (modal === 'create' && assistantHandoff.identifier) {
+      await assistantHandoff.save(data);
+      assistantSaved.current = true;
+      store?.invalidateRelated('tasks');
+      toast.success('Aufgabe gespeichert und mit dem Assistentenvorschlag verknüpft');
+      return;
+    }
     let saved;
     if (modal === 'create') {
       saved = await api.post('/tasks', data);
@@ -301,6 +314,7 @@ export default function Tasks() {
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.tasks.title') || 'Aufgaben'}</h1>
+      <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
       {quickChange && <UndoNotice key={quickChange.undo_id} change={quickChange} onDismiss={() => setQuickChange(null)} onUndone={applyQuickChange} />}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
         {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
@@ -384,11 +398,13 @@ export default function Tasks() {
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Aufgabe erstellen' : 'Aufgabe bearbeiten'}
-          repeatKeep={['assignee', 'property_id', 'due_date', 'priority', 'status']}
+          repeatKeep={assistantHandoff.identifier ? undefined : ['assignee', 'property_id', 'due_date', 'priority', 'status']}
           fields={fields}
           initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setPrefill(null);
+            if (assistantSaved.current) { assistantSaved.current = false; navigate(assistantHandoff.returnHref); }
+            else if (assistantHandoff.identifier) assistantHandoff.clear(); }}
         />
       )}
     </div>

@@ -92,6 +92,7 @@ class Unit:
         self.store, self.db, self.user, self.archive = store, db, user, archive
         self._undo: list[tuple[dict, Any, bool, Any]] = []
         self._appends: list[tuple[list, Any, AbstractContextManager[Any] | None]] = []
+        self._set_additions: list[tuple[set, Any]] = []
 
     @property
     def actor_id(self) -> str:
@@ -109,6 +110,13 @@ class Unit:
         self._undo.append((collection, key, key in collection, collection.get(key)))
         del collection[key]
 
+    def add_set_entry(self, collection: set, value: Any) -> None:
+        """Undo only this new entry, preserving other concurrent additions."""
+        assert self.db is None
+        if value not in collection:
+            self._set_additions.append((collection, value))
+            collection.add(value)
+
     def append(self, collection: list, value: Any, *, lock: AbstractContextManager[Any] | None = None) -> None:
         """Remember the exact appended object, so rollback cannot erase another writer's entry."""
         assert self.db is None
@@ -117,6 +125,9 @@ class Unit:
             self._appends.append((collection, value, lock))
 
     def rollback(self) -> None:
+        for collection, value in reversed(self._set_additions):
+            collection.discard(value)
+        self._set_additions.clear()
         for collection, value, lock in reversed(self._appends):
             with lock if lock is not None else nullcontext():
                 for index in range(len(collection) - 1, -1, -1):

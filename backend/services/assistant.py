@@ -43,7 +43,8 @@ def create_conversation(store, actor_id: str, command: ConversationCreate):
         if prior:
             return db.public(db.conversation(unit, prior))
         row = db.put(unit, Conversation, dict(title=command.title.strip(), provider=command.provider,
-            model=command.model, effort=command.effort, archived=False, active_run_id=None, _contexts=[]))
+            model=command.model, effort=command.effort, data_scope=command.data_scope,
+            attachment_ids=[], context={}, context_sources=[], archived=False, active_run_id=None, _contexts=[]))
         db.receipt(unit, "conversation.create", command, row)
         return db.public(row)
 
@@ -61,6 +62,13 @@ def edit_conversation(store, actor_id, identifier, command: ConversationEdit):
             return db.public(row)
         db.revision(row, command.expected_revision)
         data = db.payload(row)
+        transport_fields = {"provider", "model", "effort", "data_scope"}.intersection(command.model_fields_set)
+        if transport_fields and data.get("active_run_id") and db.get(unit, Run, data["active_run_id"]).state in ACTIVE:
+            raise HTTPException(409, "Bitte den laufenden Auftrag vor dem Konto- oder Modellwechsel beenden.")
+        for field in transport_fields:
+            value = getattr(command, field)
+            if value is not None or field == "model":
+                data[field] = value
         if command.archived and data.get("active_run_id"):
             raise HTTPException(409, "Bitte den laufenden Auftrag zuerst beenden.")
         if command.title is not None:
@@ -86,6 +94,10 @@ def list_records(store, actor_id, model=Conversation, *, conversation_id=None, c
 
 def run_public(unit, row):
     data = db.public(row)
+    from .assistant_tools import MAX_CALLS
+    used = min(len(data.get("tool_calls", [])), MAX_CALLS)
+    data["tool_budget"] = {"used": used, "limit": MAX_CALLS, "exhausted": used >= MAX_CALLS,
+                           "continuation": "followup" if used >= MAX_CALLS else None}
     data["sources"] = source_cards(db.payload(row)["_bundle"])
     if row.state in ("blocked", "unknown") and not data.get("error"):
         data["error"] = {"code": row.state, "message": "Quellen oder Berechtigungen wurden geändert." if row.state == "blocked"
@@ -126,8 +138,18 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
             raise HTTPException(422, "Webrecherche benötigt einen ausdrücklich ausgewählten Cloudanbieter.")
         if len(set(command.attachment_ids)) != len(command.attachment_ids):
             raise HTTPException(422, "Ein Anhang wurde mehrfach ausgewählt.")
+        if set(command.attachment_ids).intersection(command.excluded_attachment_ids):
+            raise HTTPException(422, "Eine Datei kann nicht gleichzeitig ausgewählt und ausgeschlossen sein.")
+        attachment_ids = sorted((set(data.get("attachment_ids", [])) | set(command.attachment_ids))
+                                - set(command.excluded_attachment_ids))
+        for excluded_id in set(command.excluded_attachment_ids):
+            excluded = db.owned_child(unit, Attachment, excluded_id)
+            if excluded.conversation_id != identifier:
+                raise HTTPException(404, "Anhang gehört nicht zu diesem Gespräch.")
+        if len(attachment_ids) > 12:
+            raise HTTPException(413, "Mehr als 12 Arbeitsdateien. Bitte bisherige Dateien ausdrücklich abwählen.")
         attachment_bytes = 0
-        for attachment_id in command.attachment_ids:
+        for attachment_id in attachment_ids:
             attachment = db.owned_child(unit, Attachment, attachment_id)
             if attachment.conversation_id != identifier:
                 raise HTTPException(404, "Anhang gehört nicht zu diesem Gespräch.")
@@ -135,21 +157,28 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
             attachment_bytes += db.payload(attachment)["byte_length"]
         if attachment_bytes > settings.assistant_request_attachment_bytes:
             raise HTTPException(413, f"Die ausgewählten Anhänge überschreiten zusammen {settings.assistant_request_attachment_bytes} Byte.")
-        selection = ContextSelection.model_validate(command.context)
+        selected_context = command.context if "context" in command.model_fields_set else data.get("context", {})
+        if command.data_scope == "none" and "context" not in command.model_fields_set:
+            selected_context = {}
+        selection = ContextSelection.model_validate(selected_context)
+        if command.data_scope == "none" and (any(getattr(selection, key) for key in ContextSelection.model_fields) or command.report is not None):
+            raise HTTPException(422, "Ohne Fachaktenzugriff bitte Aktenauswahl und Finanzbericht entfernen.")
         if command.report is not None:
             report = command.report
             if (report.unit_id and report.unit_id not in selection.unit_ids) or (
                     not report.unit_id and (not report.property_id or report.property_id not in selection.property_ids)):
                 raise HTTPException(422, "Der Bericht muss ausdrücklich auf eine ausgewählte Immobilie oder Einheit begrenzt sein.")
         bundle = build_context(unit.store, selection, actor_id)
-        run = db.put(unit, Run, dict(content=command.content, attachment_ids=command.attachment_ids,
+        run = db.put(unit, Run, dict(content=command.content, attachment_ids=attachment_ids,
+            effective_attachment_ids=attachment_ids, data_scope=command.data_scope, _grant_selection=selection.model_dump(mode="json"),
+            provider=data["provider"], model=data["model"], effort=data["effort"], activity=[], tool_calls=[],
             context=selection.model_dump(mode="json"), web_research=command.web_research,
             report=command.report.model_dump(mode="json") if command.report is not None else None,
             verification_status="pending",
             response="", events=[], error=None, retry_of=retry_of,
             _bundle=bundle, _proposal_ids=[]), conversation_id=identifier, state="queued")
         db.put(unit, Message, {"role": "user", "content": command.content, "run_id": run.id,
-            "attachment_ids": command.attachment_ids}, conversation_id=identifier)
+            "attachment_ids": attachment_ids}, conversation_id=identifier)
         # Keep source guards for every historical answer, including provider session context.
         if bundle.get("sources"):
             # Historical guards need identities, not repeated copies of source text.
@@ -161,6 +190,9 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
                               for field, target in SELECTIONS.items()},
                 "sources": [{"kind": kind, "id": source_id} for kind, source_id in sorted(sources)]}]
         data["active_run_id"] = run.id
+        data["attachment_ids"] = attachment_ids
+        data["context"] = selection.model_dump(mode="json")
+        data["context_sources"] = source_cards(bundle)
         db.put(unit, Conversation, data, row=conversation)
         db.receipt(unit, operation, command, run)
         result = run_public(unit, run)
@@ -222,6 +254,9 @@ def retry(store, actor_id, identifier, command):
         for attachment_id in old_data["attachment_ids"]:
             verified_attachment(db.owned_child(unit, Attachment, attachment_id))
         data = {**old_data, "response": "", "events": [], "error": None, "retry_of": old.id, "_proposal_ids": []}
+        data.update(provider=conversation_data["provider"], model=conversation_data["model"], effort=conversation_data["effort"], activity=[], tool_calls=[])
+        for key in ("_tool_reports", "_tool_results"):
+            data.pop(key, None)
         data["verification_status"] = "pending"
         for key in ("usage", "provider_session_id", "provider_turn_id", "_lease", "_submitted", "financial_summary", "_report_hash"):
             data.pop(key, None)
@@ -371,7 +406,7 @@ def attachment_request(row):
     result = {key: data[key] for key in ("name", "mime", "sha256", "text", "text_truncated", "omissions")}
     if data["mime"].startswith("image/"):
         result["data_base64"] = base64.b64encode(raw).decode("ascii")
-    return {"id": row.id, **result}
+    return {"id": row.id, "revision": str(row.revision), **result}
 
 
 def proposal_preview(store, actor_id, identifier, command):
@@ -385,7 +420,8 @@ def proposal_preview(store, actor_id, identifier, command):
         proposal = {**data["payload"], **({"values": command.values} if command.values is not None else {})}
         run = db.get(unit, Run, data["run_id"])
         require_current_analysis(unit, run)
-        review = validate_proposal(unit.store, proposal, actor_id, context_bundle=db.payload(run)["_bundle"])
+        review = validate_proposal(unit.store, proposal, actor_id, context_bundle=db.payload(run)["_bundle"],
+                                   allowed_attachment_ids=db.payload(run).get("attachment_ids", []))
         return {"proposal": db.public(row), "review": review}
 
 
@@ -410,13 +446,15 @@ def decide_proposal(store, actor_id, identifier, command, *, reject=False):
             proposed = {**data["payload"], **({"values": command.values} if command.values is not None else {})}
             run = db.get(unit, Run, data["run_id"])
             require_current_analysis(unit, run)
-            review = validate_proposal(unit.store, proposed, actor_id, context_bundle=db.payload(run)["_bundle"])
+            review = validate_proposal(unit.store, proposed, actor_id, context_bundle=db.payload(run)["_bundle"],
+                                       allowed_attachment_ids=db.payload(run).get("attachment_ids", []))
             if review["review_hash"] != command.review_hash or not review["allowed"]:
                 raise HTTPException(409, "Vorschlagsprüfung hat sich geändert. Bitte erneut prüfen.")
             # The context agent uses the supplied unit for atomic draft+decision+receipt.
             handoff = handoff_proposal(unit.store, proposed, actor_id, draft_id=row.id,
                                       base_revision=0, idempotency_key=command.idempotency_key, unit=unit,
-                                      review_hash=command.review_hash, context_bundle=db.payload(run)["_bundle"])
+                                      review_hash=command.review_hash, context_bundle=db.payload(run)["_bundle"],
+                                      allowed_attachment_ids=db.payload(run).get("attachment_ids", []))
             data.update(payload=proposed, handoff=handoff,
                         decision=dict(actor_id=actor_id, at=dbs.stamp(dbs.now()), reason="Geprüften Entwurf übernommen"))
             row = db.put(unit, Proposal, data, row=row, state="applied")
@@ -426,6 +464,8 @@ def decide_proposal(store, actor_id, identifier, command, *, reject=False):
 
 def require_current_analysis(unit, run):
     data = db.payload(run)
+    from .assistant_tools import validate_reports
+    validate_reports(unit.store, data)
     if data.get("verification_status") == "stale":
         raise HTTPException(409, "Die Auswertungszahlen dieses Vorschlags sind veraltet. Bitte mit aktuellem Stand erneut prüfen.")
     if data.get("report") and data.get("_report_hash"):

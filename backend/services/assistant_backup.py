@@ -230,6 +230,27 @@ def verify(connection, keys: list[secret_box.Key], *, uploads: Path | None = Non
                     draft = one("workspace_drafts", handoff["draft_id"])
                     if draft["owner_user_id"] != row["owner_id"]:
                         _fail("assistant_draft_owner_mismatch")
+                if row["state"] == "saved":
+                    record = data.get("record")
+                    kind = data.get("payload", {}).get("kind")
+                    target = {"task": "tasks", "invoice": "invoices", "note": "business_conversation_notes"}.get(kind)
+                    if (not isinstance(record, dict) or record.get("kind") != kind or not target
+                            or not isinstance(record.get("id"), str) or target not in available
+                            or data.get("completion", {}).get("actor_id") != row["owner_id"]
+                            or data.get("handoff", {}).get("record") != record):
+                        _fail("assistant_saved_record_binding_invalid")
+                    if target not in tables:
+                        tables[target] = Table(target, metadata, autoload_with=connection)
+                    saved_record = connection.execute(select(tables[target]).where(tables[target].c.id == record["id"])).mappings().first()
+                    # Tasks and invoices can later be removed through their
+                    # ordinary domain workflow. Their historical completion
+                    # receipt must not make an otherwise valid backup fail.
+                    if saved_record is None:
+                        result["missing_saved_records"] = result.get("missing_saved_records", 0) + 1
+                    if saved_record is not None and kind == "invoice" and saved_record.get("source_document_id") != record.get("document_id"):
+                        _fail("assistant_saved_receipt_binding_invalid")
+                    if saved_record is not None and kind == "note" and saved_record.get("actor_id") != row["owner_id"]:
+                        _fail("assistant_saved_note_owner_mismatch")
             count += 1
         result["table_counts"][name] = count
         result["rows"] += count

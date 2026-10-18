@@ -145,7 +145,8 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             data = db.payload(row)
             revalidate_context(unit.store, data["_bundle"], actor_id)
             conversation = db.conversation(unit, row.conversation_id)
-            settings = db.payload(conversation)
+            settings = {**db.payload(conversation), **{key: data[key] for key in ("provider", "model", "effort") if key in data}}
+            data.update({key: settings[key] for key in ("provider", "model", "effort")})
             # Before changing to running, all selected bytes must still match.
             attachments = [service.attachment_request(db.owned_child(unit, Attachment, item)) for item in data["attachment_ids"]]
             analysis = local_analysis(unit.store, data["context"], actor_id, report=data.get("report"), extract_documents=True)
@@ -158,19 +159,40 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             history = history_page["items"]
             history_truncated = history_page["has_more"]
             messages, budget = [], 128000
+            history_scope_omissions = False
             for item in history:  # newest first; trim only older context
                 text = item["content"]
+                if item["role"] == "assistant":
+                    from .assistant_tools import _permitted
+                    for source in item.get("sources", []):
+                        try:
+                            _permitted(unit, data, source["kind"], source["id"])
+                        except HTTPException:
+                            history_scope_omissions = True
+                            break
+                    else:
+                        source = None
+                    if source is not None:
+                        continue
+                    # Old model interpretations are history, never freshly
+                    # verified facts. Fetch current facts through app tools.
+                    text = "[Historische Modellinterpretation vom " + item["created_at"] + "; Zahlen und Quellenstände können überholt sein.]\n" + text
                 if len(text) > budget:
                     history_truncated = True
                     break
-                messages.append({"role": item["role"], "content": text})
+                messages.append({"role": item["role"], "content": text,
+                                 **({"historical_sources": item.get("sources", []), "historical_financial_summary": item.get("financial_summary")}
+                                    if item["role"] == "assistant" else {})})
                 budget -= len(text)
             messages.reverse()
             data["omissions"] = ["Verlauf für diesen Verarbeitungsschritt auf die letzten 60 Nachrichten / 128.000 Zeichen begrenzt. Die vollständige Historie bleibt gespeichert."] if history_truncated else []
+            if history_scope_omissions:
+                data["omissions"].append("Frühere Antworten mit Fachquellen außerhalb des aktuellen Datenumfangs wurden nicht erneut übertragen; sie bleiben im gespeicherten Verlauf erhalten.")
             data.update(_lease=token, _submitted=True)
             data["events"] = [{"sequence": 1, "type": "status", "message": "Auftrag gestartet."}]
             db.put(unit, Run, data, row=row, state="running")
             request = dict(run_id=identifier, model=settings["model"], effort=settings["effort"], messages=messages,
+                           data_scope=data.get("data_scope", "selected"),
                            web_research=data.get("web_research", False),
                            context=data["_bundle"], local_analysis=analysis, attachments=attachments,
                            omissions=data["omissions"])
@@ -222,13 +244,27 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             db.put(unit, Run, value, row=current)
 
     try:
-        result = execute(actor_id, provider, request, emit, cancelled)
+        if provider == "local":
+            result = execute(actor_id, provider, request, emit, cancelled)
+        else:
+            from .assistant_tool_server import application_mcp
+            with application_mcp(store, actor_id, identifier, token) as connection:
+                request["_application_mcp"] = connection
+                result = execute(actor_id, provider, request, emit, cancelled)
         with db.work(store, actor_id, write=True) as unit:
             current = db.owned_child(unit, Run, identifier, lock=True)
             value = db.payload(current)
             if current.state != "running" or value.get("_lease") != token:
                 return
-            revalidate_context(unit.store, value["_bundle"], actor_id)
+            snapshot_stale = False
+            try:
+                revalidate_context(unit.store, value["_bundle"], actor_id)
+            except HTTPException as exc:
+                from .assistant_context import content_hash
+                bundle = value["_bundle"]
+                if exc.status_code != 409 or content_hash({key: item for key, item in bundle.items() if key != "sha256"}) != bundle["sha256"]:
+                    raise
+                snapshot_stale = True
             for attachment_id in value["attachment_ids"]:
                 service.verified_attachment(db.owned_child(unit, Attachment, attachment_id))
             text = result.get("text", "")
@@ -236,8 +272,21 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
                 from .assistant_provider_protocol import ProviderError
                 raise ProviderError("Ungültige Antwort", "output_too_large" if isinstance(text, str) else "invalid_response")
             value["response"] = text
-            value["verification_status"] = "current"
-            stale = False
+            value["verification_status"] = "stale" if snapshot_stale else "current"
+            stale = snapshot_stale
+            if snapshot_stale:
+                value["error"] = {"code": "analysis_stale", "message": "Verwendete Akten wurden während der Recherche geändert."}
+                text = "Hinweis: Verwendete Akten wurden während der Recherche geändert. Diese Antwort beschreibt den archivierten früheren Stand; bitte erneut prüfen.\n\n" + text
+                value["response"] = text
+            from .assistant_tools import validate_reports
+            try:
+                validate_reports(unit.store, value)
+            except HTTPException:
+                stale = True
+                value["verification_status"] = "stale"
+                value["error"] = {"code": "analysis_stale", "message": "Werkzeug-Auswertungen haben sich während der Analyse geändert."}
+                text = "Hinweis: Verwendete Recherchegrundlagen wurden geändert. Diese Antwort beschreibt einen früheren Stand; bitte erneut prüfen.\n\n" + text
+                value["response"] = text
             if value.get("report") and value.get("_report_hash"):
                 from ..finance_models import ReportDefinition
                 from .finance_reports import compute
@@ -271,6 +320,7 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
                     "decision": None}, conversation_id=current.conversation_id, state="proposed")
                 value["_proposal_ids"].append(candidate.id)
             db.put(unit, Message, {"role": "assistant", "content": text, "run_id": current.id,
+                "provider": value.get("provider", provider), "model": value.get("model"),
                 "sources": service.source_cards(value["_bundle"]), "verification_status": value["verification_status"],
                 "financial_summary": value.get("financial_summary")},
                    conversation_id=current.conversation_id)

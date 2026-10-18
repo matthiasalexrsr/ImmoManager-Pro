@@ -6,7 +6,7 @@ import { assistantApi, contextSelection } from './assistantApi';
 import { contextHref } from './assistantLinks';
 import AssistantReportSelection, { FinancialProof } from './AssistantReportSelection';
 
-const kinds = { property: 'Immobilie', unit: 'Einheit', tenant: 'Partei', contact: 'Kontakt', document: 'Dokument' };
+const kinds = { property: 'Immobilie', unit: 'Einheit', tenant: 'Partei', contact: 'Kontakt', document: 'Dokument', contract: 'Mietvertrag', booking: 'Buchung', receivable: 'Forderung', invoice: 'Rechnung', task: 'Aufgabe', maintenance: 'Instandhaltung', meter: 'Zähler', standalone_reading: 'Ablesung', calendar: 'Termin', utility_statement: 'Nebenkostenabrechnung', billing_period: 'Abrechnungszeitraum', service_contract: 'Dienstleistungsvertrag', portfolio: 'Bestand' };
 export default function AssistantContext({ cards, onChange, disabled, report, onReportChange }) {
   const [expanded, setExpanded] = useState(false);
   const [kind, setKind] = useState('property');
@@ -59,11 +59,11 @@ export default function AssistantContext({ cards, onChange, disabled, report, on
     {cards.length > 0 && <button className="btn btn-sm btn-secondary" type="button" disabled={busy || disabled || Boolean(report && !report.as_of)} onClick={preview}>Ausgewählte Quellen lokal prüfen</button>}
     {busy && <p role="status">Quellen werden gelesen …</p>}
     {error && <p role="alert">{error}</p>}
-    {bundle && <div className="assistant-context-proof"><p>{bundle.sources?.length || 0} geprüfte Quellen · Quellenpaket <code>{bundle.sha256?.slice(0, 12)}</code></p>
+    {bundle && <div className="assistant-context-proof"><p>{bundle.sources?.length || 0} Quellen lokal gelesen</p>
       {(bundle.warnings || []).map((warning, index) => <p role="status" key={index}>{typeof warning === 'string' ? warning : warning.message}</p>)}
       {(bundle.findings || []).map((finding, index) => <p role="status" key={index}>{finding.message}</p>)}
       <FinancialProof finance={bundle.finance} report={report} />
-      <details><summary>Quellstände ansehen</summary>{(bundle.sources || []).map(source => <p key={`${source.kind}:${source.id}`}><strong>{source.title}</strong> · Stand {source.revision}{source.sha256 ? ` · SHA-256 ${source.sha256}` : ''}</p>)}</details>
+      <details><summary>Quellstände ansehen</summary><p>Quellenpaket {bundle.sha256}</p>{(bundle.sources || []).map(source => <p key={`${source.kind}:${source.id}`}><strong>{source.title}</strong> · Stand {source.revision}{source.sha256 ? ` · SHA-256 ${source.sha256}` : ''}</p>)}</details>
     </div>}
   </div>;
 }

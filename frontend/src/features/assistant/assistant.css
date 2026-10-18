@@ -136,3 +136,79 @@
   .assistant-composer-actions { align-items: flex-end; } .assistant-composer-tools .btn { font-size: .75rem; }
   .assistant-alert { margin: .6rem .85rem; } .assistant-heading .assistant-symbol { width: 36px; height: 36px; }
 }
+
+/* Conversation first: configuration and evidence are available on demand. */
+.assistant-toolbar { gap: .7rem; padding: .8rem 1.1rem; }
+.assistant-conversation-title { flex: 1 1 160px; min-width: 0; }
+.assistant-conversation-title h2 { overflow-wrap: anywhere; margin-bottom: .3rem; }
+.assistant-provider { gap: .4rem; }
+.assistant-provider select { max-width: 185px; font-size: .8rem; padding: .4rem; }
+.assistant-provider .btn { font-size: .74rem; }
+.assistant-mode-note { margin: 0; padding: .65rem 1.15rem; color: var(--color-text-muted); font-size: .79rem; background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
+.assistant-onboarding { display: flex; gap: .75rem; padding: 1rem 1.15rem; background: var(--color-bg); border-bottom: 1px solid var(--color-border); font-size: .85rem; }
+.assistant-onboarding > svg { flex-shrink: 0; color: var(--assistant-accent); }
+.assistant-onboarding p { color: var(--color-text-muted); margin: .4rem 0 .7rem; }
+.assistant-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.assistant-empty { padding: 1.3rem .5rem; min-height: 260px; }
+.assistant-transcript { min-height: 200px; max-height: 60dvh; padding: 1.2rem clamp(.8rem, 3vw, 2rem); }
+.assistant-message-body { white-space: normal; }
+.assistant-message-body p, .assistant-message-body pre { white-space: pre-wrap; }
+.assistant-message.user .assistant-message-body { white-space: pre-wrap; }
+.assistant-source-list, .assistant-activity, .assistant-calculation { font-size: .79rem; margin-top: .6rem; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.assistant-source-list > summary, .assistant-activity > summary, .assistant-calculation > summary, .assistant-context-disclosure > summary, .assistant-workbasket > summary { cursor: pointer; padding: .35rem 0; }
+.assistant-activity ol { padding-left: 1.2rem; display: grid; gap: .7rem; }
+.assistant-activity li > strong, .assistant-activity li > span { display: block; }
+.assistant-activity li > strong { color: var(--color-text); }
+.assistant-activity p { margin: .3rem 0; }
+.assistant-coverage { border-left: 2px solid var(--color-border); padding: .5rem .8rem; }
+.assistant-workbasket { border-top: 1px solid var(--color-border); padding: .7rem 1.15rem; max-height: 42dvh; overflow: auto; }
+.assistant-workbasket > summary { font-size: .86rem; font-weight: 600; color: var(--assistant-accent); }
+.assistant-workbasket .assistant-proposal { margin-top: .6rem; }
+.assistant-scope-row { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; font-size: .75rem; }
+.assistant-scope-row > label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.assistant-scope-row select { max-width: 100%; font-size: .77rem; padding: .4rem; }
+.assistant-scope-help p { max-width: 600px; line-height: 1.6; }
+.assistant-scope-help summary { cursor: pointer; color: var(--color-text-muted); }
+.assistant-scope-notice { margin: .45rem 0; font-size: .72rem; color: var(--color-text-muted); }
+.assistant-context-disclosure { margin: .5rem 0; font-size: .78rem; }
+.assistant-context-disclosure > summary { color: var(--assistant-accent); }
+.assistant-context-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin: .5rem 0; max-height: 100px; overflow: auto; }
+.assistant-context-chips a { padding: .3rem .5rem; border: 1px solid var(--color-border); border-radius: 14px; font-size: .75rem; background: var(--color-bg); text-decoration: none; }
+.assistant-context-chips.inactive { opacity: .6; text-decoration: line-through; }
+.assistant-file-limits { display: inline-block; margin-left: .5rem; }
+.assistant-file-limits summary { cursor: pointer; }
+.assistant-account-dialog { width: min(650px, 94vw); max-height: 90dvh; }
+.assistant-account-dialog .modal-header p { font-size: .79rem; color: var(--color-text-muted); margin-top: .45rem; }
+.assistant-account-dialog .modal-body { overflow-y: auto; font-size: .86rem; }
+.assistant-account-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.assistant-account-tabs button[aria-pressed="true"] { border-color: var(--assistant-accent); color: var(--assistant-accent); }
+.assistant-account-dialog label { display: grid; gap: .4rem; }
+.assistant-account-dialog details { margin-top: .8rem; overflow-wrap: anywhere; color: var(--color-text-muted); }
+.assistant-account-dialog summary { cursor: pointer; }
+.assistant-table-scroll table { min-width: 350px; }
+.assistant-page select, .assistant-page input:not([type="checkbox"]):not([type="file"]) { border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface, white); color: var(--color-text); padding: .5rem .6rem; font: inherit; }
+.assistant-page .assistant-search input { padding-left: 2rem; }
+.assistant-provider select { font-size: .79rem; }
+.assistant-context-search select { min-width: 0; max-width: 34%; font-size: .76rem; }
+.assistant-run details { font-size: .72rem; }
+@media (min-width: 1100px) and (min-height: 750px) {
+  .assistant-layout { height: calc(100dvh - 220px); min-height: 0; }
+  .assistant-main, .assistant-sidebar { min-height: 0; }
+  .assistant-sidebar { overflow-y: auto; }
+  .assistant-transcript { flex: 1 1 0; min-height: 0; max-height: none; }
+  .assistant-composer { flex: 0 0 auto; max-height: 50dvh; overflow-y: auto; }
+  .assistant-workbasket { flex-shrink: 1; min-height: 0; max-height: 32dvh; }
+}
+@media (max-width: 720px) {
+  .assistant-toolbar { padding: .8rem; }
+  .assistant-provider select { max-width: 100%; min-width: 0; flex: 1 1 110px; }
+  .assistant-provider .btn { flex: 1 1 auto; }
+  .assistant-conversation-title { flex-basis: calc(100% - 100px); }
+  .assistant-onboarding { padding: .85rem; }
+  .assistant-onboarding .btn { font-size: .75rem; }
+  .assistant-transcript { max-height: 55dvh; min-height: 220px; }
+  .assistant-scope-row > label { display: grid; width: 100%; }
+  .assistant-workbasket { padding: .7rem .85rem; }
+  .assistant-context-grid { grid-template-columns: minmax(0, 1fr); }
+  .assistant-account-dialog .modal-header h2 { font-size: 1.1rem; }
+}

@@ -646,7 +646,8 @@ def require_file_access(value: str, *, source=None):
         if not visible:
             raise HTTPException(403, 'Das Bankoriginal liegt außerhalb Ihrer erlaubten Konten.')
         return
-    from ..dependencies import store
+    if source is None:
+        from ..dependencies import store as source
     from ..routers.files import _file_url_to_key, _ocr_key_from_file_key
 
     key = _file_url_to_key(value)
@@ -656,7 +657,8 @@ def require_file_access(value: str, *, source=None):
         stem = key[:-8]
         for extension in ("pdf", "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp"):
             candidates.add(stem + "." + extension)
-    if hasattr(store, "db"):
+    db = source.db if hasattr(source, "db") else source if hasattr(source, "scalar") else None
+    if db is not None:
         linked = False
         for name, field in (
             ("documents", "file_url"),
@@ -678,25 +680,25 @@ def require_file_access(value: str, *, source=None):
                     for k in candidates
                 )
             )
-            if store.db.scalar(select(table.c.id).where(matches, scoped_clause(table, scope=scope)).limit(1)
+            if db.scalar(select(table.c.id).where(matches, scoped_clause(table, scope=scope)).limit(1)
                                .execution_options(**{BOUNDED: True})):
                 return
             token = _guarding.set(True)
             try:
-                linked = linked or store.db.scalar(select(table.c.id).where(matches).limit(1)) is not None
+                linked = linked or db.scalar(select(table.c.id).where(matches).limit(1)) is not None
             finally:
                 _guarding.reset(token)
         # Upload ownership covers only unlinked drafts. Once a document/photo
         # is attached, its current resource scope governs the bytes as well.
         grants = UploadAccessORM.__table__
-        if not linked and store.db.scalar(
+        if not linked and db.scalar(
             select(grants.c.storage_key)
             .where(grants.c.storage_key.in_(candidates), grants.c.portfolio_id.in_(scope.portfolio_ids))
             .limit(1)
         ):
             return
     else:
-        raw = object.__getattribute__(store, "__dict__")
+        raw = object.__getattribute__(source, "__dict__")
         linked = False
         for name, field in (
             ("documents", "file_url"),
@@ -707,7 +709,7 @@ def require_file_access(value: str, *, source=None):
             ("standalone_meter_readings", "photo_url"),
             ("handover_photos", "file_url"),
         ):
-            for item in getattr(store, name).values():
+            for item in getattr(source, name).values():
                 file_key = _file_url_to_key(getattr(item, field, "") or "")
                 if file_key in candidates or _ocr_key_from_file_key(file_key) == key:
                     return
