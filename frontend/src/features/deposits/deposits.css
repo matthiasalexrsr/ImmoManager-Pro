@@ -50,6 +50,10 @@
 }
 
 .deposit .btn { min-width: 0; white-space: normal; }
+.deposit__body > .related-page-links { margin: 0; }
+.deposit__context-link { display: inline-flex; align-items: center; min-height: 36px; max-width: 100%;
+  overflow-wrap: anywhere; padding: .2rem .35rem; margin-inline-start: -.35rem; text-underline-offset: .15em; }
+.deposit__context-link:focus-visible { outline: 2px solid var(--color-primary, #326cbd); outline-offset: 2px; }
 
 .deposit__icon-button {
   display: inline-grid;
@@ -280,6 +284,9 @@
 .deposits-page__table :is(th, td) { padding: .55rem .5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 .deposits-page__table th { font-size: .8rem; color: var(--color-text-muted); }
 .deposits-page__table td small { display: block; color: var(--color-text-muted); }
+.deposits-page__record-link { display: inline-flex; align-items: center; max-width: 100%; overflow-wrap: anywhere;
+  text-underline-offset: .15em; }
+.deposits-page__record-link:focus-visible { outline: 2px solid var(--color-primary, #326cbd); outline-offset: 2px; }
 
 @media (max-width: 640px) {
   .deposits-page__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -287,4 +294,5 @@
   .deposits-page__table tr { padding: .6rem; margin-bottom: .6rem; border: 1px solid var(--color-border); border-radius: .7rem; }
   .deposits-page__table td { border: 0; padding: .15rem 0; }
   .deposits-page__table td[data-label]::before { content: attr(data-label) ": "; color: var(--color-text-muted); font-size: .8rem; }
+  .deposits-page__record-link, .deposit__context-link { min-height: 44px; }
 }

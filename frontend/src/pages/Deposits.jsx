@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { entityHref } from '../utils/entityLinks';
 import { useAuth } from '../contexts/AuthContext';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import { useTranslation } from '../i18n';
@@ -18,7 +19,7 @@ const PAGE = 50;
 
 /** Every deposit file the account may see, with what was received and where it stands; all counted, paged. */
 export default function Deposits({ service = depositService }) {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const { locale } = useTranslation();
   const say = useCallback((key, params) => depositText(locale, key, params), [locale]);
   const auth = useAuth();
@@ -31,7 +32,19 @@ export default function Deposits({ service = depositService }) {
   const [skip, setSkip] = useState(0);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [open, setOpen] = useState(() => params.get('deposit_id'));
+  // The URL owns the selected file; browser Back/Forward and copied links work
+  // even for records outside the current 50-row page.
+  const open = params.get('deposit_id');
+  const depositRoute = depositId => {
+    const next = new URLSearchParams(params);
+    next.set('deposit_id', depositId);
+    return { pathname: '/deposits', search: `?${next}` };
+  };
+  const closeFile = () => setParams(current => {
+    const next = new URLSearchParams(current);
+    next.delete('deposit_id');
+    return next;
+  }, { replace: true });
   const [contractId, setContractId] = useState('');
   const [contractDialog, setContractDialog] = useState(null);
   const [attempt, setAttempt] = useState(0);
@@ -86,15 +99,17 @@ export default function Deposits({ service = depositService }) {
         <th scope="col">{say('form')}</th><th scope="col">{say('amount')}</th><th scope="col">{say('received')}</th>
         <th scope="col">{say('stage')}</th><th scope="col"><span className="deposit__sr">{say('open')}</span></th></tr></thead>
       <tbody>{rows.length === 0 ? <tr><td colSpan={8}>{say('none')}</td></tr> : rows.map(row => <tr key={row.id}>
-        <td data-label={say('contract')}>{row.contract_number}{row.contract_end && <small>{formatDate(row.contract_end)}</small>}</td>
+        <td data-label={say('contract')}>{row.contract_id && row.contract_number
+          ? <Link className="deposits-page__record-link" to={entityHref('contract', row.contract_id)}>{row.contract_number}</Link>
+          : row.contract_number || '—'}{row.contract_end && <small>{formatDate(row.contract_end)}</small>}</td>
         <td data-label={say('tenant')}>{row.tenant_id ? <PartyLink tenantId={row.tenant_id}>{row.tenant_name || '—'}</PartyLink> : '—'}</td>
         <td data-label={say('property')}>{row.property_name || '—'}{row.unit_label && <small>{row.unit_label}</small>}</td>
         <td data-label={say('form')}>{say(`form_${row.form}`)}</td>
         <td data-label={say('amount')}>{formatMoney(row.amount)}</td>
         <td data-label={say('received')}>{formatMoney(row.received)}{row.retention > 0 && <small>{say('retention')} {formatMoney(row.retention)}</small>}</td>
         <td data-label={say('stage')}><span className={`deposit__stage deposit__stage--${row.stage}`}>{say(`stage_${row.stage}`)}</span></td>
-        <td><button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(row.id)}
-          aria-label={`${say('open')}: ${row.contract_number}`}>{say('open')}</button></td>
+        <td><Link className="btn btn-secondary btn-sm deposits-page__record-link" to={depositRoute(row.id)}
+          aria-label={`${say('open')}: ${row.contract_number}`}>{say('open')}</Link></td>
       </tr>)}</tbody>
     </table></div>}
     {total > PAGE && <div className="deposits-page__pager">
@@ -102,7 +117,7 @@ export default function Deposits({ service = depositService }) {
       <button type="button" className="btn btn-secondary btn-sm" disabled={skip === 0} onClick={() => setSkip(Math.max(0, skip - PAGE))}>{say('previous')}</button>
       <button type="button" className="btn btn-secondary btn-sm" disabled={skip + PAGE >= total} onClick={() => setSkip(skip + PAGE)}>{say('next')}</button>
     </div>}
-    {open && <DepositFile key={open} depositId={open} service={service} onClose={() => setOpen(null)} onChanged={changed} />}
+    {open && <DepositFile key={open} depositId={open} service={service} onClose={closeFile} onChanged={changed} />}
     {contractDialog && <DepositsDialog contractId={contractDialog} service={service} onClose={() => setContractDialog(null)} onChanged={changed} />}
   </div>;
 }

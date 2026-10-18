@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const authState = vi.hoisted(() => ({ user: null, write: null }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => authState }));
@@ -175,5 +176,54 @@ describe('DepositFile', () => {
     expect(screen.queryByRole('button', { name: 'Vereinbarung ändern' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Zahlung zuordnen' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Prüfen' })).toBeNull();
+  });
+});
+
+describe('deposit file record navigation', () => {
+  beforeEach(() => { authState.user = { id: 'u-1', role: 'readonly' }; authState.write = []; });
+
+  it('offers exact contract, tenant-account, deposit-account and booking links in a routed dialog', async () => {
+    const file = fileFixture();
+    file.payments[0].booking = { ...file.payments[0].booking, id: 'b ?/1' };
+    const testService = service(file);
+    render(<MemoryRouter initialEntries={['/deposits?deposit_id=d-1']}><Routes>
+      <Route path="/deposits" element={<DepositFile depositId="d-1" service={testService} onClose={vi.fn()} />} />
+      <Route path="/bookings" element={<h1>Buchungsübersicht</h1>} />
+    </Routes></MemoryRouter>);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    const related = within(dialog).getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(related).getByRole('link', { name: 'Mietvertrag öffnen' }))
+      .toHaveAttribute('href', '/contracts?contract_id=c-1');
+    expect(within(related).getByRole('link', { name: 'Mieterkonto öffnen' }))
+      .toHaveAttribute('href', '/tenants/t-1/account');
+    expect(within(related).getByRole('link', { name: 'Buchungen des Kautionskontos' }))
+      .toHaveAttribute('href', '/bookings?konto=acc-1');
+    const paymentLink = within(dialog).getByRole('link', { name: 'Kaution' });
+    expect(paymentLink).toHaveAttribute('href', '/bookings?booking_id=b%20%3F%2F1');
+    expect(within(dialog).getByRole('note')).toHaveTextContent('Nur Lesezugriff');
+    expect(within(dialog).queryByRole('button', { name: 'Zahlung zuordnen' })).not.toBeInTheDocument();
+    fireEvent.click(paymentLink);
+    expect(await screen.findByRole('heading', { name: 'Buchungsübersicht' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Kautionsakte/ })).not.toBeInTheDocument();
+    expect(testService.addPayment).not.toHaveBeenCalled();
+  });
+
+  it('does not invent links for absent tenant, account and booking IDs', async () => {
+    const base = fileFixture();
+    const noRelations = fileFixture({
+      deposit: { ...base.deposit, account_id: null },
+      source: { ...source, tenant: { full_name: 'Mia Muster' } },
+      account: null,
+      payments: [{ id: 'p-1', booking_id: null, kind: 'receipt', amount: 1500,
+        booking: { booking_date: '2024-01-01', payment_text: 'Manuell', amount: 1500 } }],
+    });
+    render(<MemoryRouter><DepositFile depositId="d-1" service={service(noRelations)} onClose={vi.fn()} /></MemoryRouter>);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    const related = within(dialog).getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(related).getAllByRole('link')).toHaveLength(1);
+    expect(within(related).getByRole('link', { name: 'Mietvertrag öffnen' }))
+      .toHaveAttribute('href', '/contracts?contract_id=c-1');
+    expect(within(dialog).getByText('Manuell')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('link', { name: 'Manuell' })).not.toBeInTheDocument();
   });
 });

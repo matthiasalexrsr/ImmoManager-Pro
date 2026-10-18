@@ -2,6 +2,9 @@
 export const COPY = {
   'de-DE': {
     action: 'Kaution', pageTitle: 'Kautionen', eyebrow: 'Kautionsakte', fileTitle: 'Kautionsakte', listTitle: 'Kautionen des Vertrags',
+    relatedPages: 'Verknüpfte Seiten', nextPages: 'Direkt weiter',
+    openContract: 'Mietvertrag öffnen', openTenantAccount: 'Mieterkonto öffnen',
+    openAccountBookings: 'Buchungen des Kautionskontos', openBooking: 'Buchung öffnen',
     close: 'Schließen', loading: 'Wird geladen …', loadFailed: 'Die Kautionsakte konnte nicht geladen werden.', retry: 'Erneut versuchen',
     readOnly: 'Nur Lesezugriff: Ihre Rolle darf Kautionen nicht ändern.', open: 'Öffnen', none: 'Für diesen Vertrag ist keine Kaution erfasst.',
     contract: 'Vertrag', tenant: 'Mieter', property: 'Objekt', unit: 'Einheit', search: 'Suchen (Vertrag, Mieter, Objekt)', allStages: 'Alle Stände',
@@ -52,6 +55,9 @@ export const COPY = {
   },
   'en-US': {
     action: 'Deposit', pageTitle: 'Deposits', eyebrow: 'Deposit file', fileTitle: 'Deposit file', listTitle: 'Deposits of the contract',
+    relatedPages: 'Related pages', nextPages: 'Go to',
+    openContract: 'Open tenancy contract', openTenantAccount: 'Open tenant account',
+    openAccountBookings: 'Deposit-account transactions', openBooking: 'Open transaction',
     close: 'Close', loading: 'Loading …', loadFailed: 'The deposit file could not be loaded.', retry: 'Try again',
     readOnly: 'Read-only: your role may not change deposits.', open: 'Open', none: 'No deposit recorded for this contract.',
     contract: 'Contract', tenant: 'Tenant', property: 'Property', unit: 'Unit', search: 'Search (contract, tenant, property)', allStages: 'All stages',
@@ -102,6 +108,9 @@ export const COPY = {
   },
   'es-ES': {
     action: 'Fianza', pageTitle: 'Fianzas', eyebrow: 'Expediente de fianza', fileTitle: 'Expediente de fianza', listTitle: 'Fianzas del contrato',
+    relatedPages: 'Páginas relacionadas', nextPages: 'Ir a',
+    openContract: 'Abrir contrato de alquiler', openTenantAccount: 'Abrir cuenta del inquilino',
+    openAccountBookings: 'Movimientos de la cuenta de fianza', openBooking: 'Abrir movimiento',
     close: 'Cerrar', loading: 'Cargando …', loadFailed: 'No se pudo cargar el expediente de fianza.', retry: 'Reintentar',
     readOnly: 'Solo lectura: su rol no puede modificar fianzas.', open: 'Abrir', none: 'Este contrato no tiene fianza registrada.',
     contract: 'Contrato', tenant: 'Inquilino', property: 'Inmueble', unit: 'Unidad', search: 'Buscar (contrato, inquilino, inmueble)', allStages: 'Todos los estados',

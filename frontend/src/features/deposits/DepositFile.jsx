@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link, useInRouterContext } from 'react-router-dom';
+import RelatedPageLinks from '../../components/RelatedPageLinks';
+import { entityHref } from '../../utils/entityLinks';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../i18n';
@@ -12,7 +15,7 @@ import { depositText } from './depositText';
 import SettlementPanel from './SettlementPanel';
 import './deposits.css';
 
-function Payments({ say, file, service, canEdit, onFile, onError }) {
+function Payments({ say, file, service, canEdit, onFile, onError, canNavigate }) {
   const id = useId();
   const [candidates, setCandidates] = useState(null);
   const [amounts, setAmounts] = useState({});
@@ -51,7 +54,10 @@ function Payments({ say, file, service, canEdit, onFile, onError }) {
           <th scope="col" className="deposit__num">{say('share')}</th>{canEdit && !file.settled && <th scope="col"><span className="deposit__sr">{say('unlink')}</span></th>}</tr></thead>
         <tbody>{file.payments.map(payment => <tr key={payment.id}>
           <td>{payment.booking ? formatDate(payment.booking.booking_date) : '—'}</td>
-          <td>{payment.booking?.payment_text || '—'}{payment.booking && Number(payment.booking.amount) !== Number(payment.amount)
+          <td>{canNavigate && payment.booking?.id
+            ? <Link className="deposit__context-link" to={entityHref('booking', payment.booking.id)}>
+              {payment.booking.payment_text || say('openBooking')}</Link>
+            : payment.booking?.payment_text || '—'}{payment.booking && Number(payment.booking.amount) !== Number(payment.amount)
             ? <small className="deposit__muted"> ({formatMoney(payment.booking.amount)})</small> : null}</td>
           <td>{say(`kind_${payment.kind}`)}</td>
           <td className="deposit__num">{formatMoney(payment.amount)}</td>
@@ -169,6 +175,7 @@ function Security({ say, file, service, canEdit, onFile, onError }) {
 
 /** The deposit file of one deposit: agreement, instalments, payments, interest, settlement and release. */
 export default function DepositFile({ depositId, onClose, onChanged, service = depositService }) {
+  const canNavigate = useInRouterContext();
   const auth = useAuth();
   const canEdit = mayWrite(auth?.write ?? null, '/deposits');
   const { locale } = useTranslation();
@@ -243,6 +250,12 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
           <span>{notice}</span></div>}
         {!file && !error && <p role="status">{say('loading')}</p>}
         {file && <>
+          {canNavigate && <RelatedPageLinks label={say('relatedPages')} heading={say('nextPages')}
+            items={[
+              ...(deposit.contract_id ? [{ to: entityHref('contract', deposit.contract_id), label: say('openContract') }] : []),
+              ...(source?.tenant?.id ? [{ to: entityHref('tenantAccount', source.tenant.id), label: say('openTenantAccount') }] : []),
+              ...(deposit.account_id ? [{ to: `/bookings?konto=${encodeURIComponent(deposit.account_id)}`, label: say('openAccountBookings') }] : []),
+            ]} />}
           {!canEdit && <p className="deposit__muted" role="note">{say('readOnly')}</p>}
           {file.settled && <p className="deposit__muted" role="note">{say('settledHint')}</p>}
           <dl className="deposit__figures">
@@ -284,7 +297,8 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
           </section>}
 
           {file.money_form ? <>
-            <Payments say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
+            <Payments say={say} file={file} service={service} canEdit={canEdit} canNavigate={canNavigate}
+              onFile={apply} onError={setError} />
             <Interest key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
             <section className="deposit__section-group" aria-label={say('settlements')}>
               {file.settlements.map(settlement => <SettlementPanel key={settlement.id} say={say} file={file} settlement={settlement}
