@@ -21,9 +21,15 @@
 .work-timeline li { padding: .25rem 0 1rem 1rem; }
 .work-timeline-meta { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: .35rem; }
 .work-preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-.work-inline { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
-.work-inline form { display: flex; gap: .3rem; align-items: center; flex-wrap: wrap; }
-.work-inline input, .work-inline select { max-width: 12rem; min-height: 2rem; }
+/* Quick edit in a table cell: value and pencil on one line; the pencil shows on the
+   row's hover or keyboard focus (always on touch screens), so rows keep one height. */
+.work-inline { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.work-inline > .btn-ghost { width: 26px; min-height: 26px; padding: 0; opacity: 0; transition: opacity var(--transition); }
+tr:hover .work-inline > .btn-ghost,
+.work-inline:focus-within > .btn-ghost { opacity: 1; }
+@media (hover: none) { .work-inline > .btn-ghost { opacity: 1; } }
+.work-inline form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.work-inline input, .work-inline select { max-width: 12rem; min-height: var(--control-height-sm); padding: 4px 8px; }
 .work-inline-error { display: block; width: 100%; color: var(--color-danger, var(--danger)); }
 .work-undo { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; border: 1px solid var(--color-border); padding: .75rem 1rem; border-radius: .5rem; }
 .work-source-links { display: flex; gap: .6rem 1rem; flex-wrap: wrap; margin: .5rem 0; }

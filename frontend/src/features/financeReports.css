@@ -9,13 +9,17 @@
 .finance-report-workspace li { overflow-wrap: anywhere; }
 .finance-page { max-width: 1440px; margin-inline: auto; }
 .finance-page-heading { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; }
-.finance-page-heading > svg { flex-shrink: 0; color: var(--color-primary); }
-.finance-page-heading p, .finance-report-entry > p { color: var(--color-text-muted); margin: 6px 0 16px; }
+.finance-page-heading > svg { flex-shrink: 0; box-sizing: content-box; padding: 10px; border-radius: var(--radius-sm); background: var(--color-primary-light); color: var(--color-primary); }
+.finance-page-heading h1 { margin: 0; }
+.finance-page-heading p, .finance-report-entry > p { color: var(--color-text-secondary); margin: 4px 0 0; font-size: var(--text-base); }
+.finance-report-entry { padding: var(--space-5); margin-bottom: var(--space-5); }
+.finance-report-entry > h2 { font-size: var(--text-lg); }
+.finance-report-entry > .finance-actions { margin-top: var(--space-4); }
 .finance-report-entry .finance-report-workspace { margin-top: 20px; }
 .finance-editor { display: grid; gap: 18px; border: 1px solid var(--color-border); border-radius: 12px; padding: 22px !important; margin: 0; background: var(--color-surface); }
 .finance-editor > label { max-width: 540px; }
 .finance-report-workspace label { font-size: var(--text-sm); font-weight: 550; gap: 7px; }
-.finance-report-workspace input:not([type=checkbox]), .finance-report-workspace select { width: 100%; min-height: 40px; border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 10px; color: var(--color-text); background: var(--color-bg); font: inherit; }
+.finance-report-workspace input:not([type=checkbox]), .finance-report-workspace select { width: 100%; min-height: var(--control-height); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 7px 12px; color: var(--color-text); background: var(--color-surface); font: inherit; font-size: var(--text-base); font-weight: 400; }
 .finance-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .finance-basis { border-left: 3px solid var(--color-primary); margin: 0; padding: 10px 14px; color: var(--color-text-muted); font-size: var(--text-base); line-height: 1.6; background: var(--color-bg); border-radius: 4px; }
 .finance-help { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.6; margin: 0; }
