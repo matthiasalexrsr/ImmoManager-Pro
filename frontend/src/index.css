@@ -128,7 +128,8 @@ body {
   min-height: 100vh;
 }
 
-button, input, select, textarea { font: inherit; }
+/* Zero specificity, so the field base style below can set size and weight. */
+:where(button, input, select, textarea) { font: inherit; }
 button, a, input, select, textarea, [tabindex] { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 fieldset { min-inline-size: 0; }
@@ -669,12 +670,15 @@ table.data-table td.td-stacked {
   font-weight: 500;
   color: var(--color-text-secondary);
 }
+/* Label text beside its field instead of above it (one-line filter rows). */
+.inline-field { display: inline-flex; flex-direction: row; align-items: center; gap: var(--space-2); }
 .toolbar input {
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 400;
   background: var(--color-surface);
   color: var(--color-text);
 }
@@ -685,7 +689,7 @@ table.data-table td.td-stacked {
 .documents-page .toolbar input, .documents-page .toolbar select {
   width: 100%; min-width: 0; max-width: 100%; padding: .55rem .7rem;
   border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-  font: inherit; font-size: var(--text-sm); background: var(--color-surface); color: var(--color-text);
+  font: inherit; font-size: var(--text-base); font-weight: 400; background: var(--color-surface); color: var(--color-text);
 }
 .documents-page .text-muted { overflow-wrap: anywhere; }
 
@@ -1242,10 +1246,11 @@ table.data-table tbody tr:last-child td {
   display: flex;
   align-items: center;
   gap: 1rem;
-  cursor: pointer;
 }
 
-.stat-card:hover {
+/* Only cards that do something react to the pointer; a plain figure stays still. */
+:is(a, button).stat-card { cursor: pointer; font: inherit; text-align: left; }
+:is(a, button).stat-card:hover {
   box-shadow: var(--shadow);
   border-color: var(--color-primary-light);
   transform: translateY(-2px);
@@ -1302,7 +1307,6 @@ table.data-table tbody tr:last-child td {
   align-items: flex-start;
   justify-content: center;
   gap: 0.2rem;
-  cursor: default;
   min-width: 0;
 }
 .stat-card:not(:has(.stat-icon)):hover {

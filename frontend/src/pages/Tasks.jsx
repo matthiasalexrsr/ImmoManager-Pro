@@ -313,7 +313,10 @@ export default function Tasks() {
 
   return (
     <div className="page">
-      <h1 className="page-title">{t('pages.tasks.title') || 'Aufgaben'}</h1>
+      <div className="page-header">
+        <h1>{t('pages.tasks.title') || 'Aufgaben'}</h1>
+        {canWrite && <button className="btn btn-secondary" onClick={generateRecurring} disabled={busy.has('recurrence')}>Folgeaufgaben erzeugen</button>}
+      </div>
       <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
       {quickChange && <UndoNotice key={quickChange.undo_id} change={quickChange} onDismiss={() => setQuickChange(null)} onUndone={applyQuickChange} />}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
@@ -329,7 +332,6 @@ export default function Tasks() {
         <ul>{recurrenceErrors.map(error => <li key={error.task_id}>{error.title}: {error.error}</li>)}</ul>
       </div>}
       {loading && tasks.length > 0 && <p role="status">Aufgaben werden aktualisiert…</p>}
-      {canWrite && <button className="btn btn-secondary" onClick={generateRecurring} disabled={busy.has('recurrence')}>Folgeaufgaben erzeugen</button>}
 
       {/* Summary cards */}
       <div className="kpi-row">

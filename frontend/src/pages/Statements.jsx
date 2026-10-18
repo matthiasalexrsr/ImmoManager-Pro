@@ -1354,21 +1354,15 @@ export default function Statements() {
   return (
     <div className="page billing-workspace">
       {toast.Toast}
-      <div className="filter-chips"><label>Quelle <select value={sourceFilter} onChange={event => setParams(current => {
+      <div className="toolbar"><label className="inline-field">Quelle <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
         if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;
-      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label></div>
+      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label>
+        {selectedPeriod && <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>Vorjahr kopieren</button>}</div>
       {loadError && <p role="alert">{loadError} <button type="button" onClick={loadData}>Erneut laden</button></p>}
       {sourceFilter === 'preflight_blockers' && <><p className="text-muted">Noch nicht abgeschlossene Zeiträume ohne abrechenbare Verträge, ohne Kosten oder mit einer unpassenden Schlüsselzuordnung.</p>
         {sourceRows.loading && <p role="status">Preflight-Quellen werden geladen…</p>}
         {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Preflight-Quelle erneut laden</button></p>}</>}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        {selectedPeriod && (
-          <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>
-            Vorjahr kopieren
-          </button>
-        )}
-      </div>
       <DataTable
         title={sourceFilter === 'statements' ? 'Einzelabrechnungen · Quellzeilen' : 'Nebenkostenabrechnungen'}
         columns={sourceFilter === 'statements' ? STMT_COLUMNS : COLUMNS}

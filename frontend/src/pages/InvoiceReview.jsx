@@ -40,10 +40,10 @@ export default function InvoiceReview() {
             {tx.newInvoice}</button>}
         </div>
       </div>
-      <div className="ir-tabs" role="tablist" aria-label={tx.title}>
+      <div className="detail-tabs" role="tablist" aria-label={tx.title}>
         {['inbox', 'proposals'].map(key => (
           <button key={key} type="button" role="tab" aria-selected={tab === key}
-            className={`ir-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
+            className={`detail-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
         ))}
       </div>
       {tab === 'inbox' ? <Inbox properties={properties} revision={revision} /> : <Proposals revision={revision} />}
@@ -107,7 +107,7 @@ function Inbox({ properties, revision }) {
       {!error && !page && <p className="text-muted" role="status">{tx.loading}</p>}
       {page && (page.items.length === 0 ? <Empty>{tx.noResults}</Empty> : (
         <>
-          <p className="text-muted" role="status">{fill(tx.page, { from: skip + 1, to: skip + page.items.length,
+          <p className="text-muted ir-count" role="status">{fill(tx.page, { from: skip + 1, to: skip + page.items.length,
             total: page.total })}</p>
           <ul className="ir-list">
             {page.items.map(row => <InboxRow key={row.invoice_id} row={row} />)}

@@ -59,8 +59,8 @@ function SettingField({ item, onSaved }) {
   const choiceLabels = { symbol: 'Währungssymbol (Quellwährung)', code: 'ISO-Währungscode (Quellwährung)', '\t': 'Tabulator', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Übersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persönlicher Eingang' };
   const id = `setting-${item.scope}-${item.key}`;
   return <article className="setting-card">
-    <label htmlFor={id}><strong>{item.label}</strong></label>
-    <p className="text-muted">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {item.origin}</p>
+    <label htmlFor={id} className="setting-card-title">{item.label}</label>
+    <p className="setting-card-meta">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {item.origin}</p>
     {item.editable ? <div className="setting-controls">
       {item.choices ? <select id={id} value={String(value)} onChange={e => edit(e.target.value)} disabled={busy}>
         {item.choices.map(choice => <option key={String(choice.value ?? choice)} value={String(choice.value ?? choice)}>{choice.label || (choice === true ? 'Ja' : choice === false ? 'Nein' : choiceLabels[choice] || String(choice))}</option>)}
@@ -68,7 +68,7 @@ function SettingField({ item, onSaved }) {
       <button className="btn btn-primary" onClick={() => save()} disabled={busy || !dirty}>{busy ? 'Speichert …' : 'Speichern'}</button>
       {dirty && <small>Ungespeicherte Eingabe (in diesem Tab gesichert)</small>}
     </div> : <p id={id}>{String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}
-    {item.editable && <button className="btn btn-secondary" disabled={busy} onClick={() => { expected.current = item.revision; pending.current = null; setDirty(true); save(true); }}>Vorgabe übernehmen</button>}
+    {item.editable && <button className="btn btn-ghost btn-sm setting-reset" disabled={busy} onClick={() => { expected.current = item.revision; pending.current = null; setDirty(true); save(true); }}>Vorgabe übernehmen</button>}
     {dirty && item.revision !== expected.current && <p role="status">Aktuell gespeichert: {String(item.value)}. Ihre Eingabe: {String(value)}. <button onClick={() => { expected.current = item.revision; pending.current = null; setError(null); }}>Mit aktuellem Stand vergleichen und eigene Eingabe behalten</button></p>}
     {error && <p role="alert">{error} Eingabe bleibt erhalten. Bei Konflikt zuerst den aktuellen Stand laden und vergleichen.</p>}
   </article>;
@@ -113,14 +113,16 @@ export default function SettingsCatalogue() {
     ...(auth?.isAdmin ? [['Integrationen und Zugangsdaten', '/integrations'], ['Benutzer, Rollen und Objektzugriff', '/settings?section=users'], ['Sicherung, Wiederherstellung, Backupzeit, Aufbewahrung, Jobs und Betrieb', '/settings?section=system'], ['Updates und Erweiterungen', '/settings?section=system']] : []),
   ].filter(([label]) => matches(label));
   return <section className="settings-catalogue"><h2>Einstellungen finden</h2>
-    <label htmlFor="settings-search">Suche nach Einstellung oder Bereich</label><input id="settings-search" type="search" value={search} onChange={e => setSearch(e.target.value)} />
-    <label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>
-      <option value="">Ohne Objekt</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-    </select>
+    <div className="settings-catalogue-filters">
+      <div className="settings-catalogue-field"><label htmlFor="settings-search">Suche nach Einstellung oder Bereich</label><input id="settings-search" type="search" value={search} onChange={e => setSearch(e.target.value)} /></div>
+      <div className="settings-catalogue-field"><label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>
+        <option value="">Ohne Objekt</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select></div>
+    </div>
     {propertyError && <p role="alert">Objekte konnten nicht geladen werden: {propertyError} <button onClick={() => setPropertyAttempt(n => n + 1)}>Objekte erneut laden</button></p>}
-    <p>Persönliche Werte haben Vorrang vor Objektvorgaben und globalen Standardwerten. Ruhezeiten gelten für persoenliche E-Mail-Hinweise in Europe/Berlin, sobald beide Zeiten gesetzt und verschieden sind. Serverparameter stammen aus der bestehenden Serverkonfiguration und werden hier nur angezeigt. Währungen werden nicht umgerechnet; Belege behalten ihre Quellwährung.</p>
+    <p className="settings-catalogue-intro">Persönliche Werte haben Vorrang vor Objektvorgaben und globalen Standardwerten. Ruhezeiten gelten für persönliche E-Mail-Hinweise in Europe/Berlin, sobald beide Zeiten gesetzt und verschieden sind. Serverparameter stammen aus der bestehenden Serverkonfiguration und werden hier nur angezeigt. Währungen werden nicht umgerechnet; Belege behalten ihre Quellwährung.</p>
     {error && <p role="alert">{error} <button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
-    <p role="status">{loading || loadedProperty !== property && !error ? 'Einstellungen werden geladen …' : error ? 'Aktuelle Einstellungen konnten nicht geladen werden.' : `${found.length} Einstellungen gefunden`}</p>
+    <p role="status" className="settings-catalogue-count">{loading || loadedProperty !== property && !error ? 'Einstellungen werden geladen …' : error ? 'Aktuelle Einstellungen konnten nicht geladen werden.' : `${found.length} Einstellungen gefunden`}</p>
     <div className="setting-grid">{found.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div>
     {(!search || /sitz|sicher|anmeld|session/i.test(search)) && <SessionInventory />}
     {auth?.isAdmin && (!search || /api|plugin|erweiter/i.test(search)) && <ConfigurationContract />}

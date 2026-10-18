@@ -25,12 +25,13 @@ export default function Dunning() {
 
   return (
     <div className="page dunning">
-      <h1 className="sr-only">{say('title')}</h1>
-      <p className="text-muted dunning-intro">{say('intro')}</p>
+      <h1 className="page-title">{say('title')}</h1>
+      <p className="page-subtitle dunning-intro">{say('intro')}</p>
       {!canWrite && <div role="note" className="alert alert-info">{say('readOnly')}</div>}
-      <div className="dn-tabs" role="tablist" aria-label={say('title')}>
+      <div className="detail-tabs" role="tablist" aria-label={say('title')}>
         {TABS.map(name => (
           <button key={name} type="button" role="tab" aria-selected={tab === name} id={`dn-tab-${name}`}
+            className={`detail-tab${tab === name ? ' active' : ''}`}
             aria-controls={`dn-panel-${name}`} onClick={() => setTab(name)}>{say(TAB_KEYS[name])}</button>
         ))}
       </div>

@@ -29,7 +29,7 @@ function Summary({ query }) {
     {!data && !error && <p role="status">Quellenübersicht wird geladen…</p>}
     {data && <div className="work-summary-grid">{Object.entries(LABELS).filter(([kind]) => Number.isFinite(data.counts[kind])).map(([kind, label]) => {
       const href = data.drilldowns[kind]?.href;
-      const content = <><span>{label}</span><strong>{data.counts[kind]}</strong><small>Gezählte Vorgänge ansehen</small></>;
+      const content = <><span>{label}</span><strong>{data.counts[kind]}</strong>{href && <small>Gezählte Vorgänge ansehen</small>}</>;
       return href ? <Link className="work-summary-metric" key={kind} to={href} aria-label={`${label}: ${data.counts[kind]} – gezählte Vorgänge ansehen`}>{content}</Link> : <div className="work-summary-metric" key={kind}>{content}</div>;
     })}</div>}
   </section>;

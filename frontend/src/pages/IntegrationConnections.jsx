@@ -305,7 +305,7 @@ export default function IntegrationConnections() {
     return () => { request.abort(); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
   }, [attempt, cursor, linked]);
   function choose(connection) { setParams(current => { const next = new URLSearchParams(current); next.set('connection', connection.id); return next; }); }
-  return <main className="page connection-workspace">
+  return <div className="page connection-workspace">
     <div className="connection-heading"><div><h1 className="page-title">Verbindungen und Vorgänge</h1>
       <p>Geschützte Zugänge, geprüfte Vorschauen und nachvollziehbare Ergebnisse.</p></div>
       {canWrite && <button type="button" className="btn btn-primary" disabled={loading || !catalog.length} onClick={() => setEditor({ create: true })}>Verbindung anlegen</button>}</div>
@@ -324,5 +324,5 @@ export default function IntegrationConnections() {
       onEdit={() => setEditor({ connection: selected })} onChanged={() => setAttempt(value => value + 1)} /> : <section className="connection-detail"><h2>Verbindung auswählen</h2><p>Wählen Sie einen Zugang oder legen Sie eine benannte Verbindung an.</p></section>}</div>}
     {editor && <ConnectionEditor connection={editor.connection} catalog={catalog} onClose={() => setEditor(null)}
       onSaved={connection => { choose(connection); setAttempt(value => value + 1); }} />}
-  </main>;
+  </div>;
 }

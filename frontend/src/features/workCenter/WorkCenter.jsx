@@ -52,6 +52,7 @@ export default function WorkCenter() {
     <EntityShelf />
     <WorkSummary query={summaryQuery.toString()} revision={summaryRevision} />
     <section aria-label="Offene Vorgänge">
+      <div className="work-center-toolbar">
       <div className="work-center-filters">
         <label>Bereich<select value={params.get('kind') || ''} onChange={event => filter('kind', event.target.value)}><option value="">Alle Bereiche</option>
           {Object.entries(LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
@@ -59,15 +60,15 @@ export default function WorkCenter() {
         <label>Immobilie<select value={params.get('property_id') || ''} onChange={event => filter('property_id', event.target.value)}><option value="">Alle Immobilien</option>
           {properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}
         </select></label>
-        <label>Fällig bis<input type="date" value={params.get('due_before') || ''} onChange={event => filter('due_before', event.target.value)} /></label>
+        <label>Wiedervorlagen<select value={params.get('deferred') || ''} onChange={event => filter('deferred', event.target.value)}>
+          <option value="">Alle Vorgänge</option><option value="due">Wiedervorlage erreicht</option><option value="active">Jetzt bearbeiten (ohne zurückgestellte)</option>
+        </select></label>
+        <label className="work-center-date">Fällig bis<input type="date" value={params.get('due_before') || ''} onChange={event => filter('due_before', event.target.value)} /></label>
         <button type="button" className="btn btn-secondary" onClick={() => filter('due_before', today())}>Heute und überfällig</button>
         <button type="button" className="btn btn-secondary" disabled={!prefs} onClick={() => {
           const horizon = new Date(); horizon.setDate(horizon.getDate() + Number(prefs?.reminder_days || 0));
           filter('due_before', `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`);
         }}>Mein Erinnerungsvorlauf ({prefs?.reminder_days || 0} Tage)</button>
-        <label>Wiedervorlagen<select value={params.get('deferred') || ''} onChange={event => filter('deferred', event.target.value)}>
-          <option value="">Alle Vorgänge</option><option value="due">Wiedervorlage erreicht</option><option value="active">Jetzt bearbeiten (ohne zurückgestellte)</option>
-        </select></label>
         <button type="button" className="btn btn-ghost" onClick={() => setParams({})}>Filter zurücksetzen</button>
       </div>
       <NamedViews context="work-center" config={{ column_filters: Object.fromEntries(summaryQuery) }} onApply={config => {
@@ -76,6 +77,7 @@ export default function WorkCenter() {
         ['kind', 'property_id', 'due_before', 'deferred'].forEach(key => { if (typeof filters[key] === 'string' && filters[key]) next.set(key, filters[key]); });
         setParams(next);
       }} />
+      </div>
       {change && <UndoNotice key={change.undo_id} change={change} onDismiss={() => setChange(null)} onUndone={() => { store?.invalidateRelated('tasks'); setChange(null); refresh(); }} />}
       <ul className="work-item-list">{feed.items.map(item => <li className="work-item" key={item.work_item_key}>
         <div className="work-item-heading"><h3><Link to={item.href}>{item.title}</Link></h3><span className="work-item-context">{LABELS[item.kind] || item.kind}</span></div>

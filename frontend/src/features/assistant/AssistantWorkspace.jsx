@@ -92,7 +92,7 @@ export default function AssistantWorkspace({ owner }) {
         {state.capabilities && !chats.length && <p className="text-muted">{filter ? 'Keine passenden Chats.' : 'Hier finden Sie Ihre gespeicherten Unterhaltungen.'}</p>}
         <p className="assistant-private-note"><LockKeyhole size={14} aria-hidden="true" /> Persönlich für Ihr Anwendungskonto. Aktenrechte gelten auch im Chat.</p>
       </aside>
-      <main className="assistant-main" aria-label="KI-Unterhaltung">
+      <section className="assistant-main" aria-label="KI-Unterhaltung">
         <header className="assistant-toolbar"><button type="button" className="btn btn-secondary assistant-mobile-list" aria-controls="assistant-chat-list" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}><PanelLeft size={16} /> Chats</button>
           <div className="assistant-conversation-title"><h2>{state.record?.title || 'Neue Unterhaltung'}</h2>{state.record && <ChatManagement key={state.record.id} record={state.record} disabled={state.busy || sending || Boolean(state.editPending)} onEdit={state.editConversation} />}</div>
           <div className="assistant-provider"><label className="sr-only" htmlFor="assistant-provider">Assistent auswählen</label><select id="assistant-provider" value={state.provider} disabled={locked || sending || !state.capabilities} onChange={event => state.chooseProvider(event.target.value)}>
@@ -160,7 +160,7 @@ export default function AssistantWorkspace({ owner }) {
           <label className="assistant-web-option"><input type="checkbox" checked={!local && Boolean(capability?.web_research) && state.draft.web_research === true} disabled={locked || local || !capability?.web_research} onChange={event => state.changeDraft(previous => ({ ...previous, web_research: event.target.checked }))} /> Internetrecherche zulassen{local ? ' · lokale Analyse bleibt offline' : !capability?.web_research ? ' · für diese Verbindung nicht verfügbar' : ''}</label>
           <div className="assistant-composer-help">Dateien hier ablegen · Strg + Enter sendet <details className="assistant-file-limits"><summary>Dateigrenzen</summary>{state.capabilities?.attachment_max_bytes ? `Maximal ${formatBytes(state.capabilities.attachment_max_bytes)} je Datei` : ''}{state.capabilities?.max_attachments ? ` · Höchstens ${state.capabilities.max_attachments} Dateien je Nachricht` : ''}{state.capabilities?.request_attachment_max_bytes ? ` · Insgesamt höchstens ${formatBytes(state.capabilities.request_attachment_max_bytes)} je Nachricht` : ''}</details></div>
         </form>
-      </main>
+      </section>
     </div>
     {accountsOpen && <AssistantAccounts state={state} onClose={() => { setAccountsOpen(false); state.reloadCapabilities(); }} />}
   </div>;
