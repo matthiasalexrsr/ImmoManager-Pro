@@ -100,6 +100,8 @@ class UploadStaticFiles(StaticFiles):
             if scope["method"] not in ("GET", "HEAD"):
                 raise HTTPException(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
             user = await run_in_threadpool(require_upload_access, Request(scope))
+            if path.lstrip("/").startswith(("assistant-private/", "assistant/")):
+                raise HTTPException(404, "Datei nicht gefunden.")
             if path.replace("\\", "/").lstrip("/").startswith(ARCHIVED_PREFIXES):
                 return await run_in_threadpool(_archived_original, path, user)
             # a restricted account reads only files of records in its portfolios

@@ -1,5 +1,6 @@
 from . import (
     access_models,  # noqa: F401  (portfolio grants)
+    assistant_models,  # noqa: F401 (personal assistant records)
     bank_models,  # noqa: F401 (bank source originals and ledger links)
     business_qol_models,  # noqa: F401  (conversation notes, undo, document processing)
     channel_models,  # noqa: F401 (external channel claims, originals and webhooks)

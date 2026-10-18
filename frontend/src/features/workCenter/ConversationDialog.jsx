@@ -3,7 +3,7 @@ import FormModal from '../../components/FormModal';
 import { api } from '../../api';
 import { workspace } from '../../utils/workspaceClient';
 
-export default function ConversationDialog({ entityType, entityId, entityRevision, title, onClose, onSaved }) {
+export default function ConversationDialog({ entityType, entityId, entityRevision, title, initial, onClose, onSaved }) {
   const command = useRef(workspace.command());
   const payloadRef = useRef(null);
   const revision = useRef(entityRevision);
@@ -34,7 +34,7 @@ export default function ConversationDialog({ entityType, entityId, entityRevisio
     const result = await api.post('/work-center/notes', { ...payload, idempotency_key: command.current });
     onSaved?.(result);
   };
-  return <FormModal title={`Gespräch / Wiedervorlage · ${title || 'Vorgang'}`} fields={fields} onSave={save} onClose={onClose}
+  return <FormModal title={`Gespräch / Wiedervorlage · ${title || 'Vorgang'}`} fields={fields} initial={initial} onSave={save} onClose={onClose}
     draftContext="conversation-note" draftAnchor={{ kind: entityType, id: entityId }}
     onDraftRebase={source => { revision.current = source.revision; }} />;
 }

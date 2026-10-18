@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
-PERSONAL = ("/workspace", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
+PERSONAL = ("/workspace", "/assistant", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
             r"^/notifications/(all/receipt|[^/]+/receipt)$")
 OFFICE = ("/work-center", "/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 # Project file of a maintenance case: awarding and cancelling orders and deciding change orders

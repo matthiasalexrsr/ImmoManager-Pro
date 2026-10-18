@@ -17,6 +17,7 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/', labelKey: 'navigation.main.dashboard', fallback: 'Dashboard', icon: DashboardIcon },
       { to: '/work-center', labelKey: 'navigation.main.workCenter', fallback: 'Arbeitszentrale', icon: TaskIcon },
+      { to: '/assistant', labelKey: 'navigation.main.assistant', fallback: 'KI-Assistent', icon: MessageIcon },
       { to: '/notifications', labelKey: 'navigation.main.notifications', fallback: 'Benachrichtigungen', icon: BellIcon },
     ],
   },

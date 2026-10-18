@@ -62,3 +62,16 @@ def pytest_runtest_teardown(item, nextitem):
     # so connection-return tests measure their own requests, not a prior caller.
     # Assertions inside those tests still run before this cleanup.
     dependencies.cleanup_session()
+    # Some component tests construct a bare FastAPI app without the production
+    # DBSessionMiddleware. Its finished TestClient worker threads have their
+    # own custom-scoped Sessions; removing only the main test thread leaves
+    # those in ScopedRegistry's dictionary until the pool is exhausted. All
+    # request/thread fixtures have finalized here, so close only this test
+    # application's registered sessions before the next test starts.
+    scoped = dependencies._scoped_session
+    if scoped is not None:
+        registry = getattr(scoped.registry, "registry", None)
+        if isinstance(registry, dict):
+            for session in tuple(registry.values()):
+                session.close()
+            registry.clear()

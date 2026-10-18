@@ -77,7 +77,7 @@ def _require_full_bank_backup(store: Any) -> None:
 
 def _require_full_private_backup(store: Any) -> None:
     """A partial business snapshot cannot replace private workflow evidence."""
-    prefixes = ('integration_', 'communication_', 'teha_', 'channel_')
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_')
     if hasattr(store, 'db'):
         from sqlalchemy import inspect
 

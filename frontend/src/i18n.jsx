@@ -22,6 +22,7 @@ const BUILTIN_TRANSLATIONS = {
         notificationTemplates: 'Benachrichtigungsvorlagen',
         notifications: 'Benachrichtigungen',
         reports: 'Auswertungen',
+        assistant: 'KI-Assistent',
       },
     },
     contractWizard: {
@@ -159,6 +160,7 @@ const BUILTIN_TRANSLATIONS = {
         notificationTemplates: 'Notification Templates',
         notifications: 'Notifications',
         reports: 'Reports',
+        assistant: 'AI assistant',
       },
     },
     contractWizard: {
@@ -296,6 +298,7 @@ const BUILTIN_TRANSLATIONS = {
         notificationTemplates: 'Plantillas de notificacion',
         notifications: 'Notificaciones',
         reports: 'Informes',
+        assistant: 'Asistente de IA',
       },
     },
     contractWizard: {

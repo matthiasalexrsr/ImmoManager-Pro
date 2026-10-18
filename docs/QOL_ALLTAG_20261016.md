@@ -83,3 +83,80 @@ serverseitige Quellpagination und fortsetzbare sehr große Exporte sind damit
 noch nicht allgemein umgesetzt. Dieses Paket behauptet keine neue Abnahme
 einer Million Finanzzeilen und keine steuerliche Vollständigkeit des
 Periodenergebnisses.
+
+## Persönlicher KI-Arbeitsbereich am 18. Oktober 2026
+
+`/assistant` ergänzt einen privaten Chatbereich mit eigenen Unterhaltungen,
+Verlaufseiten, Archiv, Modellwahl, geschützten Dateianhängen, Bild- und
+Dokumentvorschau sowie wiederaufnehmbaren Nachrichteneingaben. Die bestehende
+Auswertungsseite und sämtliche Fachformulare bleiben unabhängig davon nutzbar.
+
+Es gibt drei ausdrücklich getrennte Betriebsarten:
+
+- **Lokale Analyse:** ausgewählte Akten, lokale Dokumentextraktion,
+  regelbasierte Hinweise und die vorhandene geprüfte Finanzrechnung. Kein
+  Anbieteraufruf, kein Konto und kein Modelldownload. Dieser Modus ersetzt
+  keinen freien Dialog mit einem Sprachmodell.
+- **ChatGPT:** Anmeldung über den offiziellen Codex-App-Server mit einem
+  eigenen ChatGPT-Konto. Die Anwendung zeigt den Geräte-Anmeldeweg und
+  verwendet keine API-Schlüssel. Konto, verfügbare Modelle und Kontingente
+  bestimmen den tatsächlichen Zugang. Die Gerätecode-Anmeldung muss gemäß
+  [offizieller Anleitung](https://learn.chatgpt.com/docs/auth#preferred-device-code-authentication-beta)
+  in den ChatGPT-Sicherheitseinstellungen beziehungsweise den
+  Workspaceberechtigungen freigegeben sein.
+- **Claude:** Anmeldung über den offiziellen Claude-Code-Client mit dem
+  eigenen Claude-Konto. Bei einem Server ohne lokalen Browser kann der
+  freigegebene Anmeldelink auf dem Benutzerrechner geöffnet und ein einmaliger
+  Anmeldecode direkt an die laufende Anmeldung übergeben werden.
+
+Die Kontoclients laufen in temporären privaten Profilen je Anwendungskonto.
+Globale Codex-/Claude-Profile werden nicht übernommen. Dauerhaft gespeicherte
+Anmeldungen und Chatpayloads sind verschlüsselt; der vollständige
+Sicherungsschlüssel gehört zur vorhandenen Vollbackupstrategie. Der normale
+Uploadpfad liefert private KI-Dateien und Konto-Vaults niemals aus. Beim
+Abbruch werden ausschließlich die selbst gestarteten Prozessbäume beendet.
+
+Nur ausdrücklich ausgewählte Immobilien, Einheiten, Parteien, Kontakte,
+Dokumente und Dateien gelangen in ein Anfragepaket. Finanzberichte erfordern
+zusätzlich eine ausdrücklich ausgewählte Berichtsimmobilie oder -einheit.
+Berechnungen verwenden `finance_reports.compute`; Beträge, Filter, Stichtag
+und Ergebnishash bleiben nachvollziehbar. Nach einer Finanzdatenänderung
+während der Antwort wird sie als veraltet gekennzeichnet und eine
+Entwurfsübernahme verweigert.
+Aktenrechte werden vor Verarbeitung, Speicherung und Entwurfsübergabe erneut
+geprüft. Den Kontoclients werden kein Store, keine API-Anmeldedaten und keine
+produktiven Datenpfade übergeben. Schreibwerkzeuge, Shell, Plugins und
+zusätzliche Konten sind für Modellläufe deaktiviert; Codex erhält zusätzlich
+einen auf das temporäre Arbeitsverzeichnis eingeschränkten Lesebereich.
+
+Aufgaben-, Gesprächsnotiz- und Rechnungsvorschläge besitzen ein striktes
+Schema, ausgewählte Quellen und eine bestätigte Prüffassung. Die Übernahme
+speichert einen persönlichen Entwurf und öffnet das bestehende Fachformular.
+Erst dessen normale Speicheraktion legt den fachlichen Eintrag an. Rechnungen
+benötigen einen Dokumentbeleg und passende Dezimalbeträge; ein Modelltext
+erzeugt weder eine Buchung noch eine Freigabe oder einen Versand.
+
+Dateigrößen pro Anhang folgen standardmäßig `MAX_UPLOAD_SIZE_BYTES` (50 MiB).
+`ASSISTANT_MAX_ATTACHMENT_BYTES` und `ASSISTANT_REQUEST_ATTACHMENT_BYTES`
+konfigurieren Verarbeitungspakete auf dem Server. Die Oberfläche nennt die
+tatsächliche Dateigröße. Text-, PDF- und DOCX-Auszüge sowie Modellkontext haben
+ausdrücklich benannte Verarbeitungsbudgets; die gespeicherten Originale und
+die vollständig seitenweise erreichbare Chathistorie bleiben erhalten.
+Finanz-Gesamtwerte werden vollständig berechnet; bei mehr als 200 Belegen
+wird die Auswahl der an das Modell übertragenen Belege sichtbar benannt.
+
+Offizielle Clients können über `ASSISTANT_CODEX_CLI` beziehungsweise
+`ASSISTANT_CLAUDE_CLI` als absolute Serverpfade konfiguriert werden. Windows
+erkennt unterstützte lokal installierte native Clients; für andere Server
+ist deren Installation getrennt von der Anwendung erforderlich. Die
+Oberfläche zeigt einen fehlenden Client als nicht verfügbar an. Lokale
+Analysen und Statistiken funktionieren weiterhin.
+
+Die Schemaerweiterung `f019a1b2c001` ist additiv. Vorhandene ungestempelte
+Installationen werden geprüft übernommen; eine unvollständige neue
+Tabellenfamilie wird nicht still als korrekt gestempelt. Downgrade verweigert
+das Verwerfen vorhandener privater KI-Daten. Prüfberichte unterscheiden
+synthetische Transportantworten, native Clientstatusprüfungen ohne Konto,
+lokale Browserabläufe und tatsächlich authentifizierte Anbieterantworten.
+Eine native Statusprüfung mit leerem Profil ist kein Nachweis einer echten
+ChatGPT-/Claude-Anmeldung oder einer erfolgreichen Modellantwort.

@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import unicodedata
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -348,7 +349,13 @@ def _prepare(unit, kind: str, identifier: str, body: dict, prior, *, delete: boo
 
 
 def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, delete: bool = False,
-             touch: bool = False, rebase: bool = False, source_guard: tuple | None = None) -> dict:
+             touch: bool = False, rebase: bool = False, source_guard: tuple | None = None,
+             unit=None, preflight=None) -> dict:
+    """Write a personal record, optionally inside a caller's existing transaction.
+
+    The optional preflight is internal code, never request input. It can lock and
+    validate multiple sources before draft/receipt/parent decision are committed.
+    """
     if kind not in MODELS:
         raise HTTPException(404, "Arbeitsstand nicht gefunden.")
     contexts.validate_json(body)
@@ -360,15 +367,21 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
         command_parts.append(source_guard)
     digest = hashlib.sha256(json.dumps(command_parts, sort_keys=True, ensure_ascii=False,
                                        separators=(",", ":")).encode()).hexdigest()
-    for attempt in range(2):
+    external_unit = unit
+    for attempt in range(1 if external_unit is not None else 2):
         try:
-            with archive.work(store, actor_id, write_areas=("/workspace",)) as unit:
-                if source_guard:
-                    source_kind, source_id, expected_source = source_guard
-                    source = contexts.resolve_context(unit.store, source_kind, source_id, actor_id, lock=True)
-                    if not contexts.same_revision(expected_source, source["revision"]):
-                        raise HTTPException(409, "Quelle wurde geändert. Bitte Vorschlag erneut prüfen.")
+            with (nullcontext(external_unit) if external_unit is not None else
+                  archive.work(store, actor_id, write_areas=("/workspace",))) as unit:
+                if unit.actor_id != actor_id:
+                    raise HTTPException(403, "Arbeitsstand gehört zu einem anderen Konto.")
                 with contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
+                    if preflight is not None:
+                        preflight(unit)
+                    if source_guard:
+                        source_kind, source_id, expected_source = source_guard
+                        source = contexts.resolve_context(unit.store, source_kind, source_id, actor_id, lock=True)
+                        if not contexts.same_revision(expected_source, source["revision"]):
+                            raise HTTPException(409, "Quelle wurde geändert. Bitte Vorschlag erneut prüfen.")
                     prior = _get(unit, kind, identifier, lock=True)
                     command = _command(unit, body["idempotency_key"])
                     if command:
@@ -425,7 +438,7 @@ def mutate(store, actor_id: str, kind: str, identifier: str, body: dict, *, dele
                     _remember(unit, body["idempotency_key"], digest, response, payload)
                     return response
         except IntegrityError:
-            if attempt:
+            if attempt or external_unit is not None:
                 raise HTTPException(409, {"code": "workspace_conflict", "message": "Eine gleichzeitige Änderung wurde gespeichert. Bitte neu laden."}) from None
     raise AssertionError("unreachable")
 

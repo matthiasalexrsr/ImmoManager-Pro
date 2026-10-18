@@ -31,7 +31,7 @@ target_metadata = Base.metadata
 # schema-sync migration, which then adds whatever their version lacks.
 ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 ORM_ADOPTION_HEAD = "f016a1b2c001"
-ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001"})
+ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001"})
 
 
 def _current_addition_names():
@@ -45,6 +45,11 @@ def _current_addition_names():
     return names | {'registration_quotas', 'plugin_installations', 'storage_bindings'}
 
 
+def _assistant_addition_names():
+    return {getattr(mapper.local_table, 'name') for mapper in Base.registry.mappers
+            if mapper.class_.__module__.rsplit('.', 1)[-1] == 'assistant_models'}
+
+
 def _current_additions_are_present(connection) -> bool:
     """Accept the known current ORM schema, including missing *legacy* tables.
 
@@ -55,8 +60,17 @@ def _current_additions_are_present(connection) -> bool:
     """
     additions = _current_addition_names()
     inspector = inspect(connection)
-    if not additions <= set(inspector.get_table_names()):
+    existing = set(inspector.get_table_names())
+    if not additions <= existing:
         return False
+    # The assistant successor is optional on an older unversioned PRO desktop
+    # database. If present, it must be complete and exact before any stamping;
+    # absent tables are created by its own reviewed successor migration.
+    assistant = _assistant_addition_names()
+    if assistant & existing:
+        if not assistant <= existing:
+            return False
+        additions |= assistant
     for name in additions:
         declared = target_metadata.tables.get(name)
         if declared is None or inspector.get_pk_constraint(name)['constrained_columns'] != [column.name for column in declared.primary_key]:
@@ -114,7 +128,7 @@ def _adopt_unversioned_database(connection) -> bool:
             # already exists; it is adopted after those backfills complete.
             context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
             return True
-        if set(inspector.get_table_names()) & _current_addition_names():
+        if set(inspector.get_table_names()) & (_current_addition_names() | _assistant_addition_names()):
             raise RuntimeError("Partial or altered current ORM adoption schema; verify the original database before upgrading")
     context.get_context().stamp(context.script, ADOPT_UNVERSIONED_AT)
     return False

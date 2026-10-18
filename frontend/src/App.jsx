@@ -11,6 +11,7 @@ import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Assistant = lazy(() => import('./pages/Assistant'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Portfolios = lazy(() => import('./pages/Portfolios'));
 const Properties = lazy(() => import('./pages/Properties'));
@@ -170,6 +171,7 @@ export default function App() {
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="assistant" element={<Assistant />} />
           <Route path="bookings" element={<Bookings />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />

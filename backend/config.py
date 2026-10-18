@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 SETTING_ORIGINS: dict[str, str] = {}
@@ -166,6 +166,13 @@ class Settings(BaseSettings):
     secret_key_file: str = ""
     # Alternative: comma-separated base64url 32-byte keys, the first one active (never written to disk).
     secret_keys: str = ""
+
+    # Optional official account clients. Leave empty for discovery on this
+    # server; no API key or operator-global credential directory is used.
+    assistant_codex_cli: str = ""
+    assistant_claude_cli: str = ""
+    assistant_max_attachment_bytes: int | None = Field(default=None, gt=0)
+    assistant_request_attachment_bytes: int = Field(default=128 * 1024 * 1024, gt=0)
 
     # --- Full backups and restore probes ---
     # Daily full backup and monthly restore probe as durable jobs (Europe/Berlin).

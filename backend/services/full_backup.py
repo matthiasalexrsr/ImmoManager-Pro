@@ -363,7 +363,7 @@ def _pg_tables(connection) -> list[str]:
     return sorted(inspect(connection).get_table_names())
 
 
-def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
+def _pg_dump(sources: Sources, target: Path, private_keys: list[secret_box.Key] | None = None) -> dict[str, Any]:
     """pg_dump of one exported snapshot; row counts read inside the same snapshot."""
     tool = _pg_tool("pg_dump", sources.pg_bin_dir)
     conninfo, env = _libpq(sources.database_url)
@@ -388,13 +388,19 @@ def _pg_dump(sources: Sources, target: Path) -> dict[str, Any]:
                 tax_keys = sorted(needed_key_ids(connection))
                 from .portable_runtime import inventory
                 references, database_key_ids = inventory(connection)
+                from .assistant_backup import inventory as assistant_inventory
+                try:
+                    assistant_snapshot = assistant_inventory(connection, private_keys or [])
+                    references.update(assistant_snapshot["references"])
+                except Exception:
+                    raise BackupError("Geschützte KI-Quellen konnten im Datenbanksnapshot nicht vollständig geprüft werden.") from None
                 _run([tool, "--format=custom", "--no-owner", "--no-privileges", f"--snapshot={snapshot}",
                       f"--file={target}", "--dbname", conninfo], env)
     finally:
         engine.dispose()
     return {"integrity": "pg_dump ok", "row_counts": counts, "revision": revision, "server_version": server,
             "bank_key_ids": bank_keys, "tax_needed_key_ids": tax_keys, "communication_key_ids": communication_keys,
-            "references": references, "key_ids": database_key_ids}
+            "references": references, "key_ids": database_key_ids, "assistant_originals": assistant_snapshot["originals"]}
 
 
 class _Lock:
@@ -661,6 +667,23 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
     final = sources.root / name
     partial = sources.root / (name + ".partial")
     try:
+        # These exact bytes both decrypt the snapshot inventory and enter the
+        # archive. Never use an ambient/default keyring for private AI sources.
+        keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
+        env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
+        from .portable_runtime import RUNTIME
+        runtime_bytes = sources.runtime_bytes
+        if sources.env_secret_keys:
+            runtime = json.loads(runtime_bytes) if runtime_bytes else {}
+            runtime["secret_keys"] = ",".join(value for value in (runtime.get("secret_keys", ""), sources.env_secret_keys) if value)
+            runtime_bytes = json.dumps(runtime, ensure_ascii=False).encode("utf-8")
+        captured_secrets = {name: raw for name, raw in ((KEYRING, keyring_bytes), (ENV, env_bytes), (RUNTIME, runtime_bytes)) if raw is not None}
+        private_keys = _archived_connection_keys(captured_secrets)
+        from .assistant_backup import VAULT_PREFIX, capture_vaults
+        try:
+            vault_files, vault_keys = capture_vaults(sources.uploads_dir, private_keys)
+        except Exception:
+            raise BackupError("Geschützte KI-Kontozugänge konnten mit den gesicherten Schlüsseln nicht geprüft werden.") from None
         if dialect == "sqlite":
             db_copy = work / "db.sqlite3"
             sqlite_online_copy(_sqlite_path(sources.database_url), db_copy)
@@ -670,7 +693,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
             db_entry = DB_SQLITE
         else:
             db_copy = work / "postgres.dump"
-            facts = _pg_dump(sources, db_copy)
+            facts = _pg_dump(sources, db_copy, private_keys)
             db_entry = DB_POSTGRES
         pulse.beat()
 
@@ -679,12 +702,20 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
             journal_copy = work / "journal.sqlite3"
             sqlite_online_copy(sources.journal, journal_copy)
         state_bytes = sources.integration_state.read_bytes() if sources.integration_state.is_file() else None
-        keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
-        env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
 
         from .backup_extensions import extensions
         from .portable_runtime import RUNTIME, inventory
         references, database_keys = inventory(db_copy) if dialect == "sqlite" else (facts["references"], facts["key_ids"])
+        if dialect == "sqlite":
+            from .assistant_backup import inventory as assistant_inventory
+            try:
+                assistant_snapshot = assistant_inventory(db_copy, private_keys)
+                references.update(assistant_snapshot["references"])
+            except Exception:
+                raise BackupError("Geschützte KI-Quellen konnten im Datenbanksnapshot nicht vollständig geprüft werden.") from None
+            assistant_originals = assistant_snapshot["originals"]
+        else:
+            assistant_originals = facts["assistant_originals"]
 
         needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])) | set(facts.get('communication_key_ids', [])))
         if dialect == "sqlite":
@@ -697,15 +728,8 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
                 tax_engine.dispose()
         else:
             needed = sorted(set(needed) | set(facts.get("tax_needed_key_ids", [])))
-        needed = sorted(set(needed) | set(database_keys))
-        included_ids = set(_env_key_ids(env_bytes))
-        if sources.runtime_bytes:
-            runtime_keys = json.loads(sources.runtime_bytes).get("secret_keys", "")
-            included_ids.update(key.id for key in secret_box.parse_env_keys(runtime_keys))
-        if sources.env_secret_keys:
-            included_ids.update(key.id for key in secret_box.parse_env_keys(sources.env_secret_keys))
-        if keyring_bytes:
-            included_ids |= {key.id for key in secret_box.keys_from_bytes(keyring_bytes)}
+        needed = sorted(set(needed) | set(database_keys) | vault_keys)
+        included_ids = {key.id for key in private_keys}
         included = sorted(included_ids)
         missing = sorted(set(needed) - included_ids)
         if missing:
@@ -722,6 +746,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
             upload_count = upload_bytes = 0
             uploaded = set()
             for path, arcname in _iter_uploads(sources.uploads_dir):
+                if arcname[len("uploads/"):].startswith(VAULT_PREFIX):
+                    # Snapshot the credential envelope once; never archive a
+                    # concurrent login's replacement or transient .tmp file.
+                    continue
                 # Selected remote storage is authoritative for referenced remote originals.
                 from .file_storage import S3Storage
                 if isinstance(sources.file_storage, S3Storage) and arcname[len("uploads/"):] in references:
@@ -730,6 +758,11 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
                 uploaded.add(arcname[len("uploads/"):])
                 upload_count += 1
                 upload_bytes += writer.files[-1]["size"]
+            for key, raw in vault_files.items():
+                writer.add_bytes(raw, "uploads/" + key, "upload")
+                uploaded.add(key)
+                upload_count += 1
+                upload_bytes += len(raw)
             for key in sorted(references - uploaded):
                 if sources.file_storage is None:
                     raise BackupError("Vollsicherung unvollständig: referenziertes Original fehlt")
@@ -739,21 +772,21 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
                 writer.add_bytes(content, "uploads/" + key, "upload")
                 upload_count += 1
                 upload_bytes += len(content)
+            written = {entry["path"]: entry for entry in writer.files}
+            for key, expected in assistant_originals.items():
+                original = written.get("uploads/" + key)
+                if original is None or original["sha256"] != expected["sha256"] or original["size"] != expected["byte_length"]:
+                    raise BackupError("KI-Anhangoriginal fehlt oder wurde verändert; die Vollsicherung wurde nicht veröffentlicht.")
             if state_bytes is not None:
                 writer.add_bytes(state_bytes, INTEGRATIONS, "config")
             if journal_copy is not None:
                 writer.add_file(journal_copy, JOURNAL, "config")
             protected: list[dict[str, Any]] = []
             plain = {KEYRING: keyring_bytes, ENV: env_bytes}
-            if sources.runtime_bytes:
+            if runtime_bytes:
                 if not sources.passphrase:
                     raise BackupError("Portabler Runtime-Export benötigt eine Backup-Passphrase")
-                plain[RUNTIME] = sources.runtime_bytes
-            elif sources.env_secret_keys:
-                # Explicit Sources callers still need their external keys in the sealed bundle.
-                if not sources.passphrase:
-                    raise BackupError("Externe Schlüssel benötigen eine Backup-Passphrase")
-                plain[RUNTIME] = json.dumps({"secret_keys": sources.env_secret_keys}).encode("utf-8")
+                plain[RUNTIME] = runtime_bytes
             if sources.passphrase:
                 bundle = {arc: base64.b64encode(data).decode("ascii") for arc, data in plain.items() if data}
                 protected = [{"path": arc, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
@@ -1034,7 +1067,29 @@ def _archived_connection_keys(files: dict[str, bytes]) -> list[secret_box.Key]:
     return keys
 
 
-def _private_connection_proof(connection, keys: list[secret_box.Key], *, normalize: bool = False) -> dict:
+def _assistant_vault_proof(uploads: Path, keys: list[secret_box.Key]) -> dict:
+    from .assistant_backup import capture_vaults
+    try:
+        files, identifiers = capture_vaults(uploads, keys)
+        return {"verified": len(files), "key_ids": sorted(identifiers)}
+    except Exception:
+        raise BackupError("Geschützte KI-Kontozugänge konnten mit den archivierten Schlüsseln nicht geprüft werden.") from None
+
+
+def _restored_pg_attachments(connection, uploads: Path, keys: list[secret_box.Key]) -> dict:
+    from .assistant_backup import references as assistant_references
+    from .file_storage import validate_key
+    from .portable_runtime import inventory
+    references, key_ids = inventory(connection)
+    references.update(assistant_references(connection, keys))
+    for key in references:
+        if not filesystem_path(uploads / validate_key(key)).is_file():
+            raise BackupError("Referenziertes Original fehlt im Archiv")
+    return {"checked": True, "references": len(references), "key_ids": sorted(key_ids)}
+
+
+def _private_connection_proof(connection, keys: list[secret_box.Key], *, normalize: bool = False,
+                              uploads_dir: Path | None = None) -> dict:
     """Verify all saved connection evidence before publishing an offline restore.
 
     A recovery transition is performed in the CALLER'S fresh-target transaction.
@@ -1083,7 +1138,17 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
             open=lambda token, context: secret_box.open_with(keys, token, context)))
     except Exception:
         raise BackupError("Geschützte Kanalquellen und Originalnachweise konnten nicht vollständig geprüft werden.") from None
+    from .assistant_backup import verify as verify_assistant
+    try:
+        assistant_proof = verify_assistant(connection, keys, uploads=uploads_dir, normalize=normalize)
+        # Public checks contain counts, never private file locators or key material.
+        assistant_proof.pop("references", None)
+        assistant_proof.pop("originals", None)
+        assistant_proof["vault_key_ids"] = sorted(assistant_proof["vault_key_ids"])
+    except Exception:
+        raise BackupError("Geschützte KI-Gespräche, Anhänge und Kontozugänge konnten nicht vollständig geprüft werden.") from None
     return {
+        "assistant": assistant_proof,
         "channels": channel_proof,
         "teha": teha_proof,
         "communication": communication_proof,
@@ -1095,7 +1160,8 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     }
 
 
-def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, normalize: bool = False) -> dict:
+def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, normalize: bool = False,
+                                uploads_dir: Path | None = None) -> dict:
     from sqlalchemy.pool import NullPool
 
     if normalize:
@@ -1108,9 +1174,9 @@ def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, norma
     try:
         if normalize:
             with engine.begin() as connection:
-                return _private_connection_proof(connection, keys, normalize=True)
+                return _private_connection_proof(connection, keys, normalize=True, uploads_dir=uploads_dir)
         with engine.connect() as connection:
-            return _private_connection_proof(connection, keys)
+            return _private_connection_proof(connection, keys, uploads_dir=uploads_dir)
     finally:
         engine.dispose()
 
@@ -1190,6 +1256,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
         # A warning can remain for unrelated runtime secrets, but private SQL
         # evidence MUST decrypt using the keys actually archived here.
         private_keys = _archived_connection_keys(secret_files) if not secret_warning else []
+        checks["assistant_vaults"] = _assistant_vault_proof(probe_dir / "uploads", private_keys)
         head = _code_head()
         if database["dialect"] == "sqlite":
             db_path = probe_dir / DB_SQLITE
@@ -1200,7 +1267,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
             from .sqlite_backup import verify_archived_originals
 
             checks["archived_originals"] = verify_archived_originals(db_path)
-            checks["private_connections"] = _sqlite_private_connections(db_path, private_keys)
+            checks["private_connections"] = _sqlite_private_connections(db_path, private_keys, uploads_dir=probe_dir / "uploads")
             if facts["revision"] != head:
                 from ..db.schema_state import run_migrations
 
@@ -1274,20 +1341,14 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
                     from .document_version_validation import verify_document_versions
 
                     checks["archived_originals"] = verify_document_versions(connection)
-                checks["private_connections"] = _private_connection_proof(connection, private_keys)
+                restored_uploads = dump.parent.parent / "uploads"
+                checks["private_connections"] = _private_connection_proof(connection, private_keys, uploads_dir=restored_uploads)
                 checks['communication'] = checks['private_connections']['communication']
                 checks['communication_verified'] = True
                 # A readable pg_dump does not prove that its referenced files
                 # survived extraction. Rebuild the inventory from the restored
                 # native database, using the same rules as SQLite and backup.
-                from .file_storage import validate_key
-                from .portable_runtime import inventory
-                references, key_ids = inventory(connection)
-                for key in references:
-                    if not (dump.parent / 'uploads' / validate_key(key)).is_file():
-                        raise BackupError('Referenziertes Original fehlt im Archiv')
-                checks['attachments'] = {'checked': True, 'references': len(references),
-                                         'key_ids': sorted(key_ids)}
+                checks['attachments'] = _restored_pg_attachments(connection, restored_uploads, private_keys)
         finally:
             engine.dispose()
         _compare({"revision": revision, "row_counts": counts}, database)
@@ -1322,6 +1383,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             raise BackupError("Schlüsselsicherung ist mit Passphrase geschützt: Passphrase angeben "
                               "(--passphrase-env).")
         archived_keys = _archived_connection_keys(files)
+        _assistant_vault_proof(staging / "uploads", archived_keys)
         attachments = _check_attachments(manifest, staging)
         secret_check = _check_secrets(manifest, staging, passphrase, "", attachments["key_ids"])
         if secret_check.get("warning") or manifest["secrets"].get("missing_key_ids"):
@@ -1331,7 +1393,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
         database = manifest["database"]
         steps = []
         if database["dialect"] == "sqlite":
-            private = _sqlite_private_connections(staging / DB_SQLITE, archived_keys, normalize=True)
+            private = _sqlite_private_connections(staging / DB_SQLITE, archived_keys, normalize=True, uploads_dir=staging / "uploads")
             steps.append(f"Geschützte Verbindungen vor Publikation geprüft ({private['verified_rows']} Datensätze); "
                          f"{private['restored_unconfirmed']} unterbrochene Vorgänge gesperrt.")
             os.replace(staging / DB_SQLITE, target / "immo_manager.db")
@@ -1343,7 +1405,8 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
                 verify_engine = create_engine(pg_target_url, poolclass=NullPool)
                 try:
                     with verify_engine.begin() as connection:
-                        private = _private_connection_proof(connection, archived_keys, normalize=True)
+                        private = _private_connection_proof(connection, archived_keys, normalize=True, uploads_dir=staging / "uploads")
+                        attachments = _restored_pg_attachments(connection, staging / "uploads", archived_keys)
                     steps.append(f"Geschützte PostgreSQL-Verbindungen geprüft ({private['verified_rows']} Datensätze); "
                                  f"{private['restored_unconfirmed']} unterbrochene Vorgänge gesperrt.")
                 finally:

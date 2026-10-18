@@ -93,6 +93,7 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    "assistant_conversations", "assistant_messages", "assistant_runs", "assistant_attachments", "assistant_proposals",
     # Each service predicates by owner/current source grants before any private read.
     "bank_imports", "bank_source_links", "bank_fints_sessions",
     "saved_finance_reports",  # owner predicate plus current definition/source checks in finance_reports
@@ -620,6 +621,11 @@ def _scope_native_writes(db, context, instances):
 
 
 def require_file_access(value: str, *, source=None):
+    # Assistant files and encrypted provider vaults are personal, even for an
+    # all-portfolio administrator. Only the owner-checked assistant API reads them.
+    from ..routers.files import _file_url_to_key
+    if _file_url_to_key(value).startswith(("assistant-private/", "assistant/")):
+        raise HTTPException(404, "Datei nicht gefunden.")
     scope = current_scope()
     if scope is None or scope.unrestricted:
         return

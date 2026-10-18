@@ -70,6 +70,7 @@ jobs:
           python scripts/run_daily_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/daily-browser
           python scripts/run_daily_browser_qa.py --suite interfaces --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/interfaces-browser
           python scripts/run_daily_browser_qa.py --suite qol --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/qol-browser
+          python scripts/run_assistant_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/assistant-browser
           python -c "import subprocess,sys; from pathlib import Path; files=list(Path('artifacts/document-browser').rglob('native-editor-roundtrip.docx')); assert len(files)==1; p=files[0]; subprocess.run([sys.executable,'scripts/check_document_editor_roundtrip.py',str(p.parents[1]/'fixtures/Langdokument.docx'),str(p)],check=True)"
       - name: Preserve document evidence
         if: always()
@@ -81,6 +82,7 @@ jobs:
             artifacts/daily-browser
             artifacts/interfaces-browser
             artifacts/qol-browser
+            artifacts/assistant-browser
             artifacts/pro-tests
 
   backend:
@@ -157,6 +159,8 @@ jobs:
         run: python scripts/check_postgres.py
       - name: Verify financial calculations on an independent PostgreSQL database
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label finance-report-release backend/tests/test_finance_report_boundaries.py backend/tests/test_finance_packages_v2.py
+      - name: Verify private assistant ownership and draft handoff on PostgreSQL
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@v4
