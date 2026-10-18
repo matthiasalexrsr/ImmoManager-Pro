@@ -164,6 +164,11 @@ try {
     await tab.keyboard.press('Escape');
     await tab.getByRole('button', { name: 'Foto ansehen: Foto', exact: true }).click();
     await expect(tab.getByRole('dialog')).toBeVisible();
+    await tab.goto(base.origin + `/reports?kind=cash-v2&property_id=${property.id}`);
+    await expect(tab.getByRole('button', { name: 'Berechnen', exact: true })).toBeEnabled();
+    await expect(tab.getByRole('button', { name: 'Als neue Fassung speichern', exact: true })).toHaveCount(0);
+    await tab.getByRole('button', { name: 'Berechnen', exact: true }).click();
+    await expect(tab.getByRole('region', { name: 'Berechneter Bericht', exact: true })).toBeVisible();
     await reader.close(); reader = null;
     await page.getByRole('button', { name: 'Foto löschen: Foto', exact: true }).click();
     const confirmation = page.getByRole('dialog');
@@ -189,6 +194,63 @@ try {
     }
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await step('Financial workspace: exact property/unit context, cents, sources, exports and mobile layouts', async () => {
+    const account = await call('POST', '/accounts', { portfolio_id: portfolio.id, name: 'QA Berichtskonto ' + suffix, account_type: 'checking' });
+    const income = await call('POST', '/categories', { portfolio_id: portfolio.id, name: 'QA Einnahmen ' + suffix, category_type: 'income' });
+    const expense = await call('POST', '/categories', { portfolio_id: portfolio.id, name: 'QA Ausgaben ' + suffix, category_type: 'expense' });
+    for (const [amount, category] of [[0.1, income], [0.2, income], [-0.15, expense]]) {
+      await call('POST', '/bookings', { account_id: account.id, category_id: category.id, property_id: property.id,
+        unit_id: unit.id, booking_date: `${year}-01-05`, amount, payment_text: 'QA Quelle ' + amount });
+    }
+    await page.goto(base.origin + '/units/' + unit.id);
+    await page.getByRole('link', { name: 'Auswertungen dieser Einheit', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Auswertungen', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Immobilie', { exact: true })).toHaveValue(property.id);
+    await expect(page.getByLabel('Einheit', { exact: true })).toHaveValue(unit.id);
+    await expect(page.getByRole('button', { name: 'Berechnen', exact: true })).toBeEnabled();
+    await page.getByLabel('Zeitraum von', { exact: true }).fill(`${year}-01-01`);
+    await page.getByLabel('Zeitraum bis', { exact: true }).fill(`${year}-01-31`);
+    await page.getByRole('button', { name: 'Berechnen', exact: true }).click();
+    const result = page.getByRole('region', { name: 'Berechneter Bericht', exact: true });
+    const monthly = result.getByRole('table', { name: 'Monatsverlauf', exact: true });
+    await expect(monthly.locator('tbody tr')).toHaveCount(1);
+    await expect(monthly.locator('tbody tr')).toContainText('0,30');
+    await expect(monthly.locator('tbody tr')).toContainText('0,15');
+    await expect(result.getByText('1–3 von 3 Quellen', { exact: true })).toBeVisible();
+    for (const format of ['CSV', 'PDF']) {
+      const event = page.waitForEvent('download');
+      await page.getByRole('button', { name: `${format} herunterladen`, exact: true }).click();
+      const download = await event;
+      const destination = path.join(output, `finance-exact.${format.toLowerCase()}`);
+      await download.saveAs(destination);
+      const bytes = await fs.readFile(destination);
+      if (format === 'PDF') assert.ok(bytes.subarray(0, 5).equals(Buffer.from('%PDF-')));
+      else assert.ok(bytes.toString('utf8').includes('0.30') && bytes.toString('utf8').includes('0.15'));
+    }
+    await page.screenshot({ path: path.join(output, 'reports-1440.png'), fullPage: true });
+    await result.getByRole('link', { name: 'Buchungen prüfen →', exact: true }).first().click();
+    await expect(page.getByRole('heading', { name: 'Buchungen', exact: true })).toBeVisible();
+    assert.equal(new URL(page.url()).searchParams.get('unit_id'), unit.id);
+    await page.goBack();
+    await expect(page.getByLabel('Einheit', { exact: true })).toHaveValue(unit.id);
+    await page.getByRole('button', { name: 'Berechnen', exact: true }).click();
+    await expect(result).toBeVisible();
+    for (const width of [320, 360]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('button', { name: 'Navigation öffnen', exact: true })).toBeVisible();
+      await fitsViewport(page);
+      await page.screenshot({ path: path.join(output, `reports-${width}.png`), fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.getByLabel('Berichtsart', { exact: true }).selectOption('performance-period-v2');
+    await page.getByRole('button', { name: 'Berechnen', exact: true }).click();
+    await expect(result.getByRole('columnheader', { name: 'Sonstige Einnahmen', exact: true })).toBeVisible();
+    await page.getByLabel('Berichtsart', { exact: true }).selectOption('liquidity-v2');
+    await page.getByRole('button', { name: 'Zahlung ergänzen', exact: true }).click();
+    assert.ok(await page.getByLabel('Datum 1', { exact: true }).inputValue() > await page.getByLabel('Stichtag', { exact: true }).inputValue());
+    await page.getByRole('button', { name: 'Berechnen', exact: true }).click();
+    await expect(result.getByRole('columnheader', { name: 'Saldo Basis', exact: true })).toBeVisible();
+  });
   const taskPrefix = 'QA Sortierung ' + suffix;
   const task2 = await call('POST', '/tasks', { title: taskPrefix + ' 2', due_date: '2030-01-02', status: 'open' });
   const task10 = await call('POST', '/tasks', { title: taskPrefix + ' 10', due_date: '2030-01-10', status: 'open' });

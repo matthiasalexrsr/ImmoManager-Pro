@@ -22,3 +22,62 @@ Der zusätzliche Linux-Browserlauf fand beim unmittelbaren Pfeiltastendruck nach
 `scripts/run_daily_browser_qa.py --suite qol` erzeugt eine neue synthetische Installation und führt `scripts/qol_browser_qa.mjs` aus. Die sechs zusammenhängenden Browserfälle umfassen Aktennavigation, Vertragszuordnung, Schnellzugriff, Foto-Teilerfolg, zwei getrennte Benutzerkonten mit Leserechten sowie 320-/360-Pixel-Ansichten. Ergebnisse, Fehler und Bilder werden aufbewahrt; der Testserver wird anschließend beendet. Die neue Suite läuft auch im bestehenden nativen Dokument-/Browser-CI-Job. Die reguläre Einstellung-/Benachrichtigungs-Suite bleibt als Standard erhalten.
 
 Für dieses Paket ist keine zusätzliche Migration erforderlich. Tests verwenden synthetische Daten; reale Mieterdaten und veröffentlichte Originale werden dabei nicht verändert. Ein GitHub-Quellstand oder ein gebautes Frontend allein stellt keine Umstellung der vorhandenen Windows-Installation dar. Der jeweilige Abnahmebericht nennt den tatsächlich geprüften und gegebenenfalls installierten Stand.
+
+## Fortsetzung: Auswertungen und Datengrundlagen am 18. Oktober 2026
+
+Auf Wunsch des Anwenders ist die weitere WISO-/TEHA-Entwicklung zurückgestellt.
+Die nicht ausgelieferten Schnittstellenentwürfe wurden im lokalen Git-Stash
+`48967f5d942b6aca406b6b40b70dea9137669ebd` erhalten. Die bisherigen geprüften
+Funktionen des Ausgangsstands `3531af5a` bleiben bestehen. Dieses Alltagspaket
+enthält ausschließlich Bedienung, Auswertungen und belegte Fehlerkorrekturen.
+
+- `/reports` ist ein eigener Bereich in der Finanznavigation, der globalen
+  Seitensuche und den persönlichen Seitenfavoriten. Das Dashboard und die
+  Immobilien-/Einheitenakten verlinken denselben Arbeitsbereich. Objektbezüge
+  verwenden IDs und bleiben mit Zeitraum und Berichtsart in der URL erhalten.
+- Zahlungsübersicht, Periodenergebnis und Liquiditätsplanung nennen ihre
+  jeweilige Grundlage. Portfolio-, Immobilien- und Einheitenauswahl hängen
+  zusammen; ein Elternwechsel entfernt unpassende Kind- und Leerstandsauswahlen.
+  Stichtagsjahr, Vorjahr und zwölf Monate lassen sich direkt auswählen.
+- Die Zahlungsübersicht verwendet dieselbe centgenaue Buchungsrechnung wie die
+  bestehende API. `cash-v2` ergänzt nachvollziehbare Quellen, Dezimalstrings,
+  Definitions-/Ergebnishash und wiederverwendbare Berichtsfassungen. SQL filtert
+  die tatsächlichen Quellbuchungen vor ihrer Materialisierung. Es entstehen
+  keine zusätzlichen Finanzereignisse oder konkurrierenden Buchungstabellen.
+- Die Ergebnistabelle zeigt auch sonstige Einnahmen. Kennzahlen und Monate
+  führen zu ihren Vorgängen; Leistungsquellen besitzen einen ausdrücklich
+  berechneten `contribution`-Bezug. Quellensuche durchsucht den gesamten
+  zurückgegebenen Bericht; seine Anzeige ist seitenweise fortsetzbar.
+- JSON, CSV und PDF verlangen denselben Ergebnisstand. Änderungen an Quellen
+  führen zum überprüfbaren Konflikt, statt andere Zahlen still zu exportieren.
+  Unvollständige Antworten und fehlgeschlagene Abfragen erzeugen keine
+  scheinbar erfolgreichen Nullberichte. Späte Antworten einer geschlossenen
+  Ansicht werden verworfen; fehlgeschlagene Eingaben und unklare
+  Speicherungskommandos behalten ihren Wiederanlaufweg.
+- Widersprüchliche sichtbare Portfolio-/Objekt-/Einheitsfilter ergeben 422.
+  Leistungsberichte prüfen auch implizite Jahresgrenzen. Eine zukünftige
+  Rechnungszahlung außerhalb des Planungshorizonts unterdrückt keine Zahlung
+  innerhalb der Prognose mehr. Hinweise beziehen sich auf beitragende Quellen.
+  Unterschiedliche Kontowährungen werden nicht unter einer gemeinsamen
+  Immobilienwährung summiert.
+- Rechnungen aus der Immobilienakte verwenden einen exakten Objektfilter,
+  einschließlich Kennzahlen und gespeicherter Ansichten. Ein Steuersatz oder
+  eingegebener Betrag von null wird erhalten; nur fehlende Beträge werden
+  ergänzt. Unbekannte Mietbeträge bleiben unbekannt. Zwischensummen tragen
+  einen Vollständigkeitshinweis; Jahresplan und €/m² benötigen vollständige
+  Grundlagen. Heizkostenvorauszahlung und Kaution unterscheiden null von leer.
+
+Die Änderungen erweitern vorhandene Modelle und Rechenpfade additiv; eine
+Datenbankmigration ist nicht erforderlich. Neue Regressionen halten die
+Gegenbeispiele auf Memory und SQLite sowie in den echten React-Seiten fest.
+Der bestehende Alltags-Browserlauf prüft zusätzlich den vollständigen
+Auswertungsablauf, Centbeträge, Belegsprünge, CSV/PDF, Leserechte und
+320-/360-Pixel-Ansichten. Prüfberichte nennen ihren tatsächlichen Quellstand;
+die Auslieferungsabnahme liegt beim jeweiligen Release im Sicherungsordner.
+
+Die neue Zahlungsansicht erhält keine künstliche Gesamtzahlbegrenzung. Ein
+globaler Bericht liefert weiterhin alle zugehörigen Quellen in einer Antwort;
+serverseitige Quellpagination und fortsetzbare sehr große Exporte sind damit
+noch nicht allgemein umgesetzt. Dieses Paket behauptet keine neue Abnahme
+einer Million Finanzzeilen und keine steuerliche Vollständigkeit des
+Periodenergebnisses.

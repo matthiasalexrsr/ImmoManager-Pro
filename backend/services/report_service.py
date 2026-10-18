@@ -230,13 +230,17 @@ def compute_receivables_aging(store: Any, flt: FinanceFilter | None = None,
     }
 
 
-def compute_cashflow(store: Any, flt: FinanceFilter | None = None) -> dict[str, Any]:
+def compute_cashflow(store: Any, flt: FinanceFilter | None = None, *, decimal_strings: bool = False) -> dict[str, Any]:
     """Cash view: what came in and went out in the period, with a row for every month.
 
     A bounded period lists each of its months, months without bookings as zero rows; an open
     period runs from the first to the last booking.
+
+    Versioned exports request decimal strings, avoiding a float round trip of
+    large cent totals. Existing callers retain their JSON-number contract.
     """
     flt = flt or FinanceFilter()
+    number = str if decimal_strings else as_number
     rows = booking_totals(store, flt, by=("month",))
     by_month = _by_month(rows)
     if rows or (flt.date_from and flt.date_to):
@@ -249,13 +253,13 @@ def compute_cashflow(store: Any, flt: FinanceFilter | None = None) -> dict[str, 
     monthly = []
     for key in months:
         income, expense = _income(by_month.get(key, [])), _expense(by_month.get(key, []))
-        monthly.append({"month": key, "income": as_number(income), "expense": as_number(expense),
-                        "net": as_number(income - expense)})
+        monthly.append({"month": key, "income": number(income), "expense": number(expense),
+                        "net": number(income - expense)})
     income, expense = _income(rows), _expense(rows)
     return {
-        "incomeTotal": as_number(income),
-        "expenseTotal": as_number(expense),
-        "netTotal": as_number(income - expense),
+        "incomeTotal": number(income),
+        "expenseTotal": number(expense),
+        "netTotal": number(income - expense),
         "monthly": monthly,
         "basis": "cash",
         "filters": flt.echo(),

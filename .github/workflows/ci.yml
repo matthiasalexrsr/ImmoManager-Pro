@@ -155,12 +155,16 @@ jobs:
           sudo apt-get install --yes postgresql-client
       - name: Run all PostgreSQL checks without skips
         run: python scripts/check_postgres.py
+      - name: Verify financial calculations on an independent PostgreSQL database
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label finance-report-release backend/tests/test_finance_report_boundaries.py backend/tests/test_finance_packages_v2.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: postgres-checks
-          path: artifacts/postgres-checks.xml
+          path: |
+            artifacts/postgres-checks.xml
+            artifacts/pro-tests
 
   e2e-smoke:
     name: E2E smoke (docker-compose)

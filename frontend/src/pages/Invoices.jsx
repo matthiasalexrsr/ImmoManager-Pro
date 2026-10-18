@@ -46,7 +46,7 @@ const COLUMNS = [
   { key: 'net_amount', hidden: true, label: 'Netto (€)', type: 'number', sum: true, align: 'right',
     render: v => formatMoney(v) },
   { key: 'vat_display', hidden: true, label: 'MwSt', align: 'right',
-    render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount || 0)} (${formatPercent(row.vat_rate)})` : '—' },
+    render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount)} (${formatPercent(row.vat_rate)})` : '—' },
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
@@ -55,7 +55,7 @@ const COLUMNS = [
 ];
 
 export default function Invoices() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const confirm = useConfirm();
@@ -69,7 +69,13 @@ export default function Invoices() {
   // values of a duplicated invoice for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
   const aktenwerkReady = useAktenwerkReady();
-  const [filter, setFilter] = useState(() => params.get('status') || 'all');
+  const filter = params.get('status') || 'all';
+  const propertyId = params.get('property_id') || '';
+  const setFilter = value => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (value === 'all') next.delete('status'); else next.set('status', value);
+    return next;
+  });
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 
@@ -92,7 +98,7 @@ export default function Invoices() {
   }, []);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
-  const enriched = invoices.map(inv => ({
+  const enriched = invoices.filter(inv => !propertyId || inv.property_id === propertyId).map(inv => ({
     ...inv,
     property_name: propMap[inv.property_id] || '—',
     invoice_number: inv.invoice_number || inv.id?.toString().slice(0, 8),
@@ -111,7 +117,7 @@ export default function Invoices() {
   const totalPaid = sum(enriched.filter(i => i.status === 'paid'), 'gross_amount');
   const totalVat = sum(enriched, 'vat_amount');
 
-  const defaultVatRate = taxRates.find(t => t.is_default)?.rate || 19;
+  const defaultVatRate = taxRates.find(t => t.is_default)?.rate ?? 19;
 
   const fields = [
     { key: 'supplier', label: 'Lieferant', required: true },
@@ -151,13 +157,13 @@ export default function Invoices() {
   ];
 
   const handleSave = async (data) => {
-    // Auto-calculate VAT and gross if net and rate are provided
+    // Fill only missing amounts. An explicitly entered zero belongs to the invoice.
     const net = Number(data.net_amount) || 0;
     const rate = Number(data.vat_rate) || 0;
-    if (net > 0 && !data.vat_amount) {
+    if (net > 0 && (data.vat_amount == null || data.vat_amount === '')) {
       data.vat_amount = Number((net * rate / 100).toFixed(2));
     }
-    if (net > 0 && !data.gross_amount) {
+    if (net > 0 && (data.gross_amount == null || data.gross_amount === '')) {
       data.gross_amount = Number((net + (Number(data.vat_amount) || 0)).toFixed(2));
     }
 
@@ -189,6 +195,11 @@ export default function Invoices() {
   return (
     <div className="page">
       <h1 className="page-title">Rechnungen</h1>
+      {propertyId && <p role="status">Immobilienfilter: {propMap[propertyId] || `Unbekannte Immobilie (${propertyId})`}
+        {' '}<button type="button" className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('property_id'); return next;
+        })}>Immobilienfilter entfernen</button>
+      </p>}
       {loadError && <p className="alert-error" role="alert">Rechnungen konnten nicht aktualisiert werden. {loadError}<button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
 
       {/* Summary cards */}
@@ -223,8 +234,14 @@ export default function Invoices() {
         columns={COLUMNS}
         data={filtered}
         drilldownKey={drilldown}
-        viewConfig={{ column_filters: { workflow_filter: filter } }}
-        onApplyView={config => setFilter(config.column_filters?.workflow_filter || 'all')}
+        viewConfig={{ column_filters: { workflow_filter: filter, property_id: propertyId } }}
+        onApplyView={config => setParams(current => {
+          const next = new URLSearchParams(current);
+          const saved = config.column_filters || {};
+          if (!saved.workflow_filter || saved.workflow_filter === 'all') next.delete('status'); else next.set('status', saved.workflow_filter);
+          if (saved.property_id) next.set('property_id', saved.property_id); else next.delete('property_id');
+          return next;
+        })}
         rowName={row => `${row.supplier || 'Rechnung'} ${row.invoice_number || ''}`.trim()}
         // the invoice's document (received through the invoice review) for the document management system
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => documentExchangeId(row.source_document_id))] : []}

@@ -18,10 +18,12 @@ from .finance_ledger import (
     FinanceFilter,
     add_months,
     booking_side,
+    booking_sources,
     month_end,
     month_key,
     month_start,
     months_between,
+    validate_filter,
 )
 from .maintenance_projects import work
 from .maintenance_rows import Rows
@@ -30,15 +32,18 @@ from .rent_history import rent_steps
 
 
 def validate_scope(store, definition):
-    for value, method in ((definition.portfolio_id, "get_portfolio"), (definition.property_id, "get_property"),
-                           (definition.unit_id, "get_unit")):
-        if value:
-            getattr(store, method)(value)
+    validate_filter(store, _filter(definition), require_visible=True)
+    dims = Dimensions(store, _filter(definition))
     for unit_id in definition.vacant_unit_ids:
-        store.get_unit(unit_id)
+        if not dims.unit_record_matches(store.get_unit(unit_id)):
+            raise HTTPException(422, "Eine als leerstehend gewählte Einheit liegt außerhalb des Berichtsfilters.")
     if definition.date_from and definition.date_to and definition.date_from > definition.date_to:
         raise HTTPException(422, "Der Berichtszeitraum beginnt nach seinem Ende.")
     if definition.kind == "performance-period-v2":
+        first = definition.date_from or date(definition.as_of.year, 1, 1)
+        last = definition.date_to or date(definition.as_of.year, 12, 31)
+        if first > last:
+            raise HTTPException(422, "Der Berichtszeitraum beginnt nach seinem Ende (einschließlich der Jahresvorgaben).")
         if definition.date_from and definition.date_from.day != 1:
             raise HTTPException(422, "Das Leistungsperiodenergebnis v2 beginnt am ersten Tag eines Kalendermonats.")
         if definition.date_to and definition.date_to != month_end(definition.date_to):
@@ -88,6 +93,38 @@ def location_amount(store, contract_id, amount, flt, day):
     return sum((part for loc, part in zip(locations, portions) if loc.property_id in visible and dims.matches(loc.property_id, loc.unit_id)), ZERO)
 
 
+def cash(store, d):
+    """The canonical cash calculation, with the exact bookings behind its rows."""
+    from .report_service import compute_cashflow
+    applied = _filter(d).with_period(d.date_from, d.date_to or d.as_of)
+    calculated = compute_cashflow(store, applied, decimal_strings=True)
+    dimensions = Dimensions(store, applied)
+    selected = booking_sources(store, applied)
+    selected_property = d.property_id or dimensions.unit_property(d.unit_id)
+    selected_portfolio = d.portfolio_id or dimensions.property_portfolio(selected_property)
+    if selected_portfolio:
+        portfolio_currencies = {portfolio.id: portfolio.currency for portfolio in store.list_portfolios()}
+        expected_currency = portfolio_currencies[selected_portfolio]
+        accounts = {account.id: account for account in store.list_accounts()}
+        for booking in selected:
+            source_currency = portfolio_currencies[accounts[booking.account_id].portfolio_id]
+            if source_currency != expected_currency:
+                raise HTTPException(422, "Die Buchungsquelle hat eine andere Währung als der gewählte Immobilienbestand.")
+    categories = {category.id: category.category_type for category in store.list_categories()}
+    sources = [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
+                "month": month_key(booking.booking_date), "amount": str(money(booking.amount)),
+                "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
+                "side": booking_side(categories.get(booking.category_id), booking),
+                "url": "/bookings?booking_id=" + booking.id, "basis": "Buchungsdatum"}
+               for booking in selected]
+    actual_first = applied.date_from or (selected[0].booking_date if selected else None)
+    return {"filters": applied.with_period(actual_first, applied.date_to).echo(),
+            "monthly": [{"month": row["month"], **{key: str(money(row[key])) for key in ("income", "expense", "net")}}
+                        for row in calculated["monthly"]],
+            "totals": {key: str(money(calculated[key + "Total"])) for key in ("income", "expense", "net")},
+            "sources": sorted(sources, key=lambda source: (source["day"], source["identity"])), "warnings": []}
+
+
 def performance(store, d):
     from .invoice_review import flows
     from .report_service import rent_due_by_month
@@ -118,7 +155,7 @@ def performance(store, d):
             key = month_key(m)
             if key in values:
                 values[key]["other_income"] += share
-                sources.append({"identity": "utility-statement:" + statement.id, "month": key, "amount": str(share),
+                sources.append({"identity": "utility-statement:" + statement.id, "month": key, "amount": str(share), "contribution": "other_income",
                                 "url": "/statements?period_id=" + period.id, "basis": "Finale Abrechnungsdifferenz zu Sollvorauszahlungen"})
     for contract in contracts.values():
         if contract.status in NON_BILLABLE_STATUSES or not dims.contract_matches(contract):
@@ -127,7 +164,7 @@ def performance(store, d):
                 contract_end=contract.end_date, rent_steps=rent_steps(store, contract), until_including=last):
             if month_key(line.period_start) in values:
                 sources.append({"identity": "rent:" + contract.id + ":" + month_key(line.period_start),
-                                "month": month_key(line.period_start), "amount": str(line.total_amount),
+                                "month": month_key(line.period_start), "amount": str(line.total_amount), "contribution": "rent_due",
                                 "url": "/contracts?contract_id=" + contract.id, "basis": "Sollwarmmiete einschließlich Vorauszahlungen"})
     invoices = store.list_invoices()
     reviewed = flows(rows, invoices)
@@ -147,14 +184,16 @@ def performance(store, d):
         link = links.get(invoice.id)
         start = invoice.performance_start or (link.period_start if link else invoice.invoice_date)
         end = invoice.performance_end or (link.period_end if link else invoice.invoice_date)
-        if bool(invoice.performance_start) != bool(invoice.performance_end) or end < start:
-            raise HTTPException(409, "Ungültiger Leistungszeitraum bei Rechnung " + invoice.id)
-        if not invoice.performance_start and not link:
-            warnings.append({"source": "invoice:" + invoice.id, "message": "Leistungszeitraum fehlt; Rechnungsdatum verwendet."})
         amount = reviewed.get(invoice.id, ("legacy", money(invoice.gross_amount)))[1]
         amount = invoice_scope_amount(store, invoice, amount, flt, start, end)
         if not amount:
             continue
+        if bool(invoice.performance_start) != bool(invoice.performance_end) or end < start:
+            raise HTTPException(409, "Ungültiger Leistungszeitraum bei Rechnung " + invoice.id)
+        if end < first or start > last:
+            continue
+        if not invoice.performance_start and not link:
+            warnings.append({"source": "invoice:" + invoice.id, "message": "Leistungszeitraum fehlt; Rechnungsdatum verwendet."})
         period_months = months_between(start, end)
         days = [(min(month_end(m), end) - max(m, start)).days + 1 for m in period_months]
         shares = allocate_cents(amount, [Decimal(n) for n in days])
@@ -162,14 +201,15 @@ def performance(store, d):
             key = month_key(m)
             if key in values:
                 values[key]["costs"] += share
-                sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(share),
+                sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(share), "contribution": "costs",
                                 "url": "/invoice-review/" + invoice.id, "basis": "Leistung"})
     categories = {c.id: c.category_type for c in store.list_categories()}
     # Unlinked cash remains an explicitly labelled fallback. Never add invoice-paid cash twice.
     bookings = store.list_bookings()
     reverses = {b.id: b for b in bookings}
+    booking_dimensions = Dimensions(store, applied)
     for b in bookings:
-        if not Dimensions(store, applied).booking_matches(b) or b.tenant_id:
+        if not booking_dimensions.booking_matches(b) or b.tenant_id:
             continue
         amount = money(b.amount)
         identified_amount = identified.get(b.id, ZERO)
@@ -186,7 +226,7 @@ def performance(store, d):
         field = "costs" if side == "expense" else "other_income"
         contribution = -amount if side == "expense" else amount
         values[key][field] += contribution
-        sources.append({"identity": "booking:" + b.id, "month": key, "amount": str(contribution),
+        sources.append({"identity": "booking:" + b.id, "month": key, "amount": str(contribution), "contribution": field,
                         "url": "/bookings?booking_id=" + b.id, "basis": "Buchungsdatum (ohne Leistungsbeleg)"})
     monthly = []
     for key, value in values.items():
@@ -282,7 +322,7 @@ def forecast(store, d):
             rest = max(abs(current) - abs(amount), ZERO)
             entry["amount"] = str(rest if current >= 0 else -rest)
     for b in store.list_bookings():
-        if b.booking_date <= d.as_of or not dims.booking_matches(b):
+        if not d.as_of < b.booking_date <= last or not dims.booking_matches(b):
             continue
         identity = "booking:" + b.id
         # Explicit invoice identity wins; a single cash booking can pay several bills.
@@ -335,12 +375,19 @@ def compute(store, definition):
                   (not definition.unit_id or dims.property_portfolio(dims.unit_property(definition.unit_id)) == p.id)}
     if len(currencies) > 1:
         raise HTTPException(422, "Mehrere Währungen: bitte ein Portfolio wählen. Eine Währungsumrechnung wird nicht angenommen.")
-    data = performance(store, definition) if definition.kind == "performance-period-v2" else forecast(store, definition)
+    if definition.kind == "cash-v2":
+        data = cash(store, definition)
+    elif definition.kind == "performance-period-v2":
+        data = performance(store, definition)
+    else:
+        data = forecast(store, definition)
     if definition.kind == "liquidity-v2":
         baseline = definition.model_copy(update={"rent_collection_percent": Decimal(100), "arrears_collection_percent": Decimal(0),
                                                   "vacant_unit_ids": [], "planned_flows": []})
         data["baseline_monthly"] = forecast(store, baseline)["monthly"]
-    if definition.kind == "performance-period-v2":
+    if definition.kind == "cash-v2":
+        period_from, period_to = definition.date_from, definition.date_to or definition.as_of
+    elif definition.kind == "performance-period-v2":
         period_from = definition.date_from or date(definition.as_of.year, 1, 1)
         period_to = definition.date_to or date(definition.as_of.year, 12, 31)
     else:

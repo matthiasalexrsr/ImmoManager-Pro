@@ -19,7 +19,7 @@ it('uses the saved scenario unchanged for calculation and export and shows a fai
   const definition = { version: 2, kind: 'liquidity-v2', as_of: '2026-01-15', months: 3,
     rent_payment_day: 3, rent_collection_percent: '80', arrears_collection_percent: '20', vacant_unit_ids: [], planned_flows: [] };
   api.list.mockImplementation(path => Promise.resolve(path.includes('/saved') ? [{ id: 'saved-1', name: 'Ausfall 20 %', definition }] : []));
-  api.get.mockResolvedValue({ definition_hash: 'abcdef123456', basis: 'liquidity-v2', opening_balance: '1000', closing_balance: '1160', monthly: [
+  api.get.mockResolvedValue({ definition_hash: 'abcdef123456', result_hash: 'checked-result', basis: 'liquidity-v2', opening_balance: '1000', closing_balance: '1160', monthly: [
     { month: '2026-01', income: '0', expense: '0', balance: '1000' },
     { month: '2026-02', income: '80', expense: '0', balance: '1080' },
     { month: '2026-03', income: '80', expense: '0', balance: '1160' }], sources: [], warnings: [] });
@@ -29,11 +29,11 @@ it('uses the saved scenario unchanged for calculation and export and shows a fai
   await screen.findByRole('option', { name: 'Ausfall 20 %' });
   fireEvent.change(screen.getByLabelText('Gespeicherten Bericht öffnen'), { target: { value: 'saved-1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
-  await screen.findByText('2026-03');
+  await screen.findByRole('button', { name: 'Quellen für 2026-03 anzeigen' });
   expect(api.get).toHaveBeenCalledWith(`/reports/v2/preview?definition=${encodeURIComponent(JSON.stringify(definition))}`);
   fireEvent.click(screen.getByRole('button', { name: 'PDF herunterladen' }));
   await screen.findByRole('alert');
-  expect(api.getBlob).toHaveBeenCalledWith(`/reports/v2/preview?format=pdf&definition=${encodeURIComponent(JSON.stringify(definition))}`);
+  expect(api.getBlob).toHaveBeenCalledWith(`/reports/v2/preview?format=pdf&definition=${encodeURIComponent(JSON.stringify(definition))}&expected_result_hash=checked-result`);
   expect(screen.getByLabelText('Erwarteter Mieteingang (%)')).toHaveValue(80);
   expect(screen.getByRole('alert')).toHaveTextContent('Export vorübergehend nicht erreichbar');
 });

@@ -30,8 +30,18 @@ const NEW_FOR_PROPERTY = [
 ];
 const TAB_KEYS = ['overview', 'units', 'contracts', 'finance', 'documents', 'maintenance', 'timeline'];
 
-function fmt(v) {
-  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
+const fmt = formatMoney;
+const RENT_FIELDS = ['cold_rent', 'service_charge_advance', 'heating_advance'];
+
+function rentSubtotal(values) {
+  const known = values.filter(value => value != null && value !== '' && Number.isFinite(Number(value)));
+  // Match the table's money totals: add each source amount in whole cents.
+  const cents = known.reduce((total, value) => total + Math.round(Number(value) * 100), 0);
+  return { amount: known.length ? cents / 100 : null, missing: values.length - known.length };
+}
+
+function subtotalLabel(subtotal) {
+  return `${formatMoney(subtotal.amount)}${subtotal.missing ? ' (unvollständig)' : ''}`;
 }
 
 function DocumentReference({ document, onOpen }) {
@@ -136,10 +146,14 @@ function PropertyDossier({ id }) {
 
   const withArea = units.filter(unit => unit.area_sqm != null && Number.isFinite(Number(unit.area_sqm)));
   const totalArea = withArea.length ? withArea.reduce((sum, unit) => sum + Number(unit.area_sqm), 0) : null;
-  const totalColdRent = units.reduce((s, u) => s + (u.cold_rent || 0), 0);
+  const rentTotals = Object.fromEntries(RENT_FIELDS.map(key => [key, rentSubtotal(units.map(unit => unit[key]))]));
+  const coldRent = rentTotals.cold_rent;
+  const totalColdRent = coldRent.amount;
+  const totalRent = rentSubtotal(units.flatMap(unit => RENT_FIELDS.map(key => unit[key])));
+  const annualColdRent = coldRent.missing === 0 && totalColdRent != null ? Math.round(totalColdRent * 100) * 12 / 100 : null;
   const occupiedCount = units.filter(u => u.status === 'occupied').length;
   const vacantCount = units.filter(u => u.status === 'vacant').length;
-  const rentPerSqm = withArea.length === units.length && totalArea > 0 ? totalColdRent / totalArea : null;
+  const rentPerSqm = coldRent.missing === 0 && totalColdRent != null && withArea.length === units.length && totalArea > 0 ? totalColdRent / totalArea : null;
   const currentContracts = currentContractsOn(contracts);
   const activeContracts = currentContracts.length;
   const openMaintenance = maintenance.filter(m => m.status === 'open' || m.status === 'in_progress').length;
@@ -164,7 +178,7 @@ function PropertyDossier({ id }) {
     { key: 'unit_type', label: t('units.list.columns.type') || 'Typ', filterType: 'select' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', sum: 'number', formatTotal: formatArea, align: 'right',
       render: v => formatArea(v) },
-    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', sum: true, align: 'right',
+    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', sum: coldRent.missing === 0, align: 'right',
       render: v => v != null ? fmt(v) : '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select' },
   ];
@@ -220,6 +234,7 @@ function PropertyDossier({ id }) {
         </div>
         <StatusBadge status={property.status} />
         <div className="dossier-actions">
+          <Link className="btn btn-secondary btn-sm" to={`/reports?kind=cash-v2&property_id=${encodeURIComponent(id)}`}>Auswertungen dieses Objekts</Link>
           <Link className="btn btn-secondary btn-sm" to={`/teha?property_id=${encodeURIComponent(id)}`}>TEHA Kundenportal</Link>
           {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
@@ -231,7 +246,7 @@ function PropertyDossier({ id }) {
       {/* KPI Summary */}
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
-          <div className="stat-label">Plan-Kaltmiete gesamt</div>
+          <div className="stat-label">{coldRent.missing ? 'Plan-Kaltmiete – unvollständige Zwischensumme' : 'Plan-Kaltmiete gesamt'}</div>
           <div className="stat-value">{fmt(totalColdRent)}</div>
         </button>
         <button type="button" className="stat-card dossier-kpi-button" onClick={() => setTab('units')}>
@@ -261,6 +276,7 @@ function PropertyDossier({ id }) {
         </button>
       </div>
       <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheiten. Tatsächliche Vertragsmieten und Zahlungseingänge können abweichen.</p>
+      {coldRent.missing > 0 && <p className="text-muted dossier-rent-note">Für {coldRent.missing} von {units.length} Einheiten fehlt die Plan-Kaltmiete. Die Zwischensumme enthält nur erfasste Beträge. Jahresplan und €/m² erscheinen nach vollständiger Erfassung.</p>}
       {withArea.length < units.length && <p className="text-muted dossier-rent-note">Für {units.length - withArea.length} von {units.length} Einheiten fehlt die Fläche. Die Kennzahl €/m² erscheint nach vollständiger Erfassung.</p>}
 
       {/* Tabs */}
@@ -343,12 +359,12 @@ function PropertyDossier({ id }) {
             <div className="panel-body">
               <div className="stats-grid">
                 <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
-                  <div className="stat-label">Monatliche Plan-Kaltmiete</div>
+                  <div className="stat-label">{coldRent.missing ? 'Monatliche Plan-Kaltmiete (unvollständige Zwischensumme)' : 'Monatliche Plan-Kaltmiete'}</div>
                   <div className="stat-value">{fmt(totalColdRent)}</div>
                 </button>
                 <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
                   <div className="stat-label">Jährliche Plan-Kaltmiete</div>
-                  <div className="stat-value">{fmt(totalColdRent * 12)}</div>
+                  <div className="stat-value">{fmt(annualColdRent)}</div>
                 </button>
                 <button type="button" className="stat-card dossier-kpi-button" onClick={focusRentSources}>
                   <div className="stat-label">Plan-Kaltmiete Ø €/m²</div>
@@ -358,6 +374,7 @@ function PropertyDossier({ id }) {
               <div style={{ marginTop: '1rem' }}>
                 <h4>Planmieten nach Einheit</h4>
                 <p className="text-muted">Monatssumme aus diesen Einheiten · Jahresplan = Monatssumme × 12 · €/m² = Monatssumme / Gesamtfläche ({formatArea(totalArea)}).</p>
+                {totalRent.missing > 0 && <p className="text-muted">Fehlende Beträge erscheinen als —. Unvollständige Zwischensummen enthalten nur erfasste Beträge; fehlende Werte sind keine Nullbeträge.</p>}
                 <div ref={rentSources} className="dossier-table-scroll" role="region" aria-label="Planmieten nach Einheit" tabIndex={0}>
                 <table className="simple-table">
                   <thead>
@@ -379,17 +396,17 @@ function PropertyDossier({ id }) {
                         <td style={{ textAlign: 'right' }}>{fmt(u.service_charge_advance)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(u.heating_advance)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                          {fmt((u.cold_rent || 0) + (u.service_charge_advance || 0) + (u.heating_advance || 0))}
+                          {subtotalLabel(rentSubtotal(RENT_FIELDS.map(key => u[key])))}
                         </td>
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-border)' }}>
-                      <td colSpan={2}>{t('pages.propertyDetail.total') || 'Gesamt'}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(totalColdRent)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(units.reduce((s, u) => s + (u.service_charge_advance || 0), 0))}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(units.reduce((s, u) => s + (u.heating_advance || 0), 0))}</td>
+                      <td colSpan={2}>{totalRent.missing ? 'Zwischensummen (unvollständig)' : t('pages.propertyDetail.total') || 'Gesamt'}</td>
+                      <td style={{ textAlign: 'right' }}>{subtotalLabel(coldRent)}</td>
+                      <td style={{ textAlign: 'right' }}>{subtotalLabel(rentTotals.service_charge_advance)}</td>
+                      <td style={{ textAlign: 'right' }}>{subtotalLabel(rentTotals.heating_advance)}</td>
                       <td style={{ textAlign: 'right' }}>
-                        {fmt(units.reduce((s, u) => s + (u.cold_rent || 0) + (u.service_charge_advance || 0) + (u.heating_advance || 0), 0))}
+                        {subtotalLabel(totalRent)}
                       </td>
                     </tr>
                   </tbody>
@@ -399,7 +416,7 @@ function PropertyDossier({ id }) {
               <div className="dossier-navigation dossier-finance-links">
                 <Link className="btn btn-secondary btn-sm" to={`/bookings?property_id=${encodeURIComponent(id)}`}>Buchungen dieser Immobilie <ArrowRightIcon size={14} /></Link>
                 <Link className="btn btn-secondary btn-sm" to="/rent-overview">Mietübersicht (Soll und Ist) <ArrowRightIcon size={14} /></Link>
-                <Link className="btn btn-secondary btn-sm" to={`/invoices?suche=${encodeURIComponent(property.name)}`}>Rechnungen <ArrowRightIcon size={14} /></Link>
+                <Link className="btn btn-secondary btn-sm" to={`/invoices?property_id=${encodeURIComponent(id)}`}>Rechnungen <ArrowRightIcon size={14} /></Link>
               </div>
             </div>
           </div>

@@ -331,7 +331,10 @@ def test_every_finance_report_takes_the_same_filters(estate):
     assert cash(unit_id=a1) == (1899.99, 99.99, 1800.0)
     assert cash(portfolio_id=north) == (3045.66, 100.29, 2945.37)
     assert cash(portfolio_id=south) == (700.0, 0.0, 700.0)
-    assert cash(property_id=house_a, portfolio_id=south) == (0.0, 0.0, 0.0)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as contradictory:
+        cash(property_id=house_a, portfolio_id=south)
+    assert contradictory.value.status_code == 422
 
     by_unit = reports.get_period_result(date_from=start, date_to=end, unit_id=estate["a2"].id)
     assert [m["rent_due"] for m in by_unit["monthly"]] == [0.0, 225.0, 450.0, 450.0, 450.0]

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { formatMoney } from '../utils/format';
 import './financeReports.css';
@@ -8,33 +8,62 @@ import { financeCommandKey, forgetFinanceCommand, readFinanceCommand, rememberFi
 
 const today = () => new Date().toLocaleDateString('sv-SE');
 
-export default function FinanceReports() {
+const queryKeys = ['kind', 'as_of', 'date_from', 'date_to', 'portfolio_id', 'property_id', 'unit_id'];
+const reportKinds = ['cash-v2', 'performance-period-v2', 'liquidity-v2'];
+const queryDefinition = params => Object.fromEntries(queryKeys.flatMap(key => {
+  const value = params.get(key);
+  if (key === 'kind') return [[key, reportKinds.includes(value) ? value : 'cash-v2']];
+  return value ? [[key, value]] : [];
+}));
+const followingDay = day => { const value = new Date(`${day}T12:00:00`); value.setDate(value.getDate() + 1); return value.toLocaleDateString('sv-SE'); };
+
+export default function FinanceReports({ standalone = false }) {
   const [open, setOpen] = useState(false);
-  return <section className="card"><h2>Finanzplanung und Leistungsperioden</h2>
-    <p>Leistungsperiodenergebnis v2 und gespeicherte Liquiditätsszenarien mit nachvollziehbaren Quellen.</p>
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Schließen' : 'Bericht erstellen oder öffnen'}</button>
-    {open && <ReportEditor />}
+  const owner = useAuth()?.user?.id;
+  if (standalone) return <ReportEditor key={owner || 'pending'} standalone />;
+  return <section className="card finance-report-entry"><h2>Auswertungen und Finanzplanung</h2>
+    <p>Zahlungen, Periodenergebnis und Liquidität mit nachvollziehbaren Quellen.</p>
+    <div className="finance-actions"><Link className="btn btn-primary" to="/reports">Auswertungen öffnen</Link>
+    <button type="button" className="btn btn-secondary" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Schließen' : 'Bericht erstellen oder öffnen'}</button></div>
+    {open && <ReportEditor key={owner || 'pending'} />}
   </section>;
 }
 
-function ReportEditor() {
+function ReportEditor({ standalone = false }) {
   const canSave = useCanWrite('/reports');
   const owner = useAuth()?.user?.id;
   const commandKey = financeCommandKey(owner, 'report-definition');
   const [pendingState, setPending] = useState(() => ({ key: commandKey, command: readFinanceCommand(commandKey) }));
   const pending = pendingState.key === commandKey ? pendingState.command : readFinanceCommand(commandKey);
-  const [definition, setDefinition] = useState({ version: 2, kind: 'liquidity-v2', as_of: today(), months: 3,
+  const [params, setParams] = useSearchParams();
+  const [definition, setDefinition] = useState(() => ({ version: 2, kind: standalone ? 'cash-v2' : 'liquidity-v2', as_of: today(), months: 3,
     rent_payment_day: 3, rent_collection_percent: '100', arrears_collection_percent: '0',
-    vacant_unit_ids: [], planned_flows: [] });
+    vacant_unit_ids: [], planned_flows: [], ...(standalone ? queryDefinition(params) : {}) }));
   const [name, setName] = useState('Mein Finanzbericht');
   const [saved, setSaved] = useState([]);
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
+  const [portfolios, setPortfolios] = useState([]);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [referenceError, setReferenceError] = useState('');
+  const [referencesReady, setReferencesReady] = useState(false);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saveKey, setSaveKey] = useState(() => crypto.randomUUID());
+  const active = useRef(false);
+  const querySignature = params.toString();
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  useEffect(() => {
+    if (!standalone) return;
+    setDefinition(previous => {
+      const next = { ...previous };
+      queryKeys.forEach(key => delete next[key]);
+      return { ...next, as_of: today(), ...queryDefinition(new URLSearchParams(querySignature)) };
+    });
+    setResult(null); setError(''); setNotice('');
+  }, [standalone, querySignature]);
   useEffect(() => {
     const changed = event => { if (event.key === commandKey) setPending({ key: commandKey, command: readFinanceCommand(commandKey) }); };
     window.addEventListener('storage', changed);
@@ -43,19 +72,41 @@ function ReportEditor() {
   useEffect(() => {
     const controller = new AbortController();
     const current = api.captureSession();
+    setReferencesReady(false); setReferenceError('');
     Promise.all([api.list('/reports/v2/saved', { signal: controller.signal }),
-      api.list('/properties', { signal: controller.signal }), api.list('/units', { signal: controller.signal })])
-      .then(([reports, props, allUnits]) => { current(); setSaved(reports); setProperties(props); setUnits(allUnits); })
-      .catch(e => { if (!controller.signal.aborted) setError(e.message); });
+      api.list('/properties', { signal: controller.signal }), api.list('/units', { signal: controller.signal }),
+      api.list('/portfolios', { signal: controller.signal })])
+      .then(([reports, props, allUnits, allPortfolios]) => {
+        current(); if (controller.signal.aborted) return;
+        setSaved(reports); setProperties(props); setUnits(allUnits); setPortfolios(allPortfolios); setReferencesReady(true);
+      })
+      .catch(e => { if (!controller.signal.aborted) setReferenceError(e.message); });
     return () => controller.abort();
-  }, []);
-  const change = (key, value) => { setDefinition(d => ({ ...d, [key]: value })); setResult(null); setNotice(''); setSaveKey(crypto.randomUUID()); };
-  const run = async (action) => {
-    const current = api.captureSession();
-    setBusy(true); setError(''); setNotice('');
-    try { await action(current); current(); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }, [loadAttempt]);
+  const update = next => {
+    setDefinition(next); setResult(null); setNotice(''); setError(''); setSaveKey(crypto.randomUUID());
+    if (standalone) setParams(current => {
+      const query = new URLSearchParams(current);
+      queryKeys.forEach(key => { if (next[key]) query.set(key, next[key]); else query.delete(key); });
+      return query;
+    }, { replace: true });
   };
-  const cash = value => formatMoney(value, { currency: result?.currency || 'EUR' });
+  const change = (key, value) => {
+    const next = { ...definition, [key]: value };
+    if (key === 'portfolio_id') { next.property_id = null; next.unit_id = null; next.vacant_unit_ids = []; }
+    if (key === 'property_id') { next.unit_id = null; next.vacant_unit_ids = []; }
+    if (key === 'unit_id') {
+      if (value) next.property_id = units.find(unit => unit.id === value)?.property_id || next.property_id;
+      next.vacant_unit_ids = next.vacant_unit_ids.filter(id => !value || id === value);
+    }
+    update(next);
+  };
+  const run = async (action) => {
+    const session = api.captureSession();
+    const current = () => { session(); if (!active.current) throw new Error('Die Berichtsansicht wurde geschlossen.'); };
+    setBusy(true); setError(''); setNotice('');
+    try { await action(current); current(); } catch (e) { if (active.current) setError(e.message); } finally { if (active.current) setBusy(false); }
+  };
   const saveReport = () => run(async current => {
     if (!owner) throw new Error('Die Anmeldung wird noch geprüft. Bitte erneut versuchen.');
     const command = pending || { path: '/reports/v2/saved', request: { name, definition, idempotency_key: saveKey } };
@@ -64,6 +115,7 @@ function ReportEditor() {
       const r = await api.post(command.path, command.request); current();
       forgetFinanceCommand(commandKey, command); setPending({ key: commandKey, command: null });
       setSaved(list => [...list.filter(v => v.id !== r.id), r]);
+      setSaveKey(crypto.randomUUID());
       setNotice('Definition gespeichert. Beim Öffnen gelten die aktuellen Rechte und Quellen.');
     } catch (error) {
       current();
@@ -77,60 +129,138 @@ function ReportEditor() {
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url;
     a.download = `Finanzbericht-v2.${format}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
+  const selectedProperties = properties.filter(property => !definition.portfolio_id || property.portfolio_id === definition.portfolio_id);
+  const selectedPropertyIds = new Set(selectedProperties.map(property => property.id));
+  const selectedUnits = units.filter(unit => selectedPropertyIds.has(unit.property_id) && (!definition.property_id || unit.property_id === definition.property_id));
+  const selectPeriod = preset => {
+    const day = definition.as_of || today();
+    const year = Number(day.slice(0, 4));
+    let first = null, last = null;
+    if (preset === 'year') { first = `${year}-01-01`; last = definition.kind === 'cash-v2' ? day : `${year}-12-31`; }
+    if (preset === 'previous') { first = `${year - 1}-01-01`; last = `${year - 1}-12-31`; }
+    if (preset === 'twelve') {
+      const start = new Date(`${day.slice(0, 7)}-01T12:00:00`); start.setMonth(start.getMonth() - 11);
+      first = start.toLocaleDateString('sv-SE');
+      const end = new Date(`${day.slice(0, 7)}-01T12:00:00`); end.setMonth(end.getMonth() + 1); end.setDate(0);
+      last = definition.kind === 'cash-v2' ? day : end.toLocaleDateString('sv-SE');
+    }
+    update({ ...definition, date_from: first, date_to: last });
+  };
   return <div className="finance-report-workspace">
+    {referenceError && <div role="alert" className="alert alert-error">{referenceError} <button type="button" className="btn btn-secondary" onClick={() => setLoadAttempt(value => value + 1)}>Auswahldaten erneut laden</button></div>}
+    {!referencesReady && !referenceError && <p role="status">Berichte und Objektauswahl werden geladen…</p>}
     {error && <p role="alert">{error} Ihre Eingaben bleiben erhalten. Bitte erneut versuchen.</p>}
     {notice && <p role="status">{notice}</p>}
     {pending && <p role="status">Die Bestätigung einer Berichtsspeicherung steht noch aus.
       {canSave && <button type="button" disabled={busy} onClick={saveReport}>Speicherung prüfen und fortsetzen</button>}</p>}
-    <fieldset disabled={busy || Boolean(pending)} style={{ border: 0, padding: 0, display: 'grid', gap: 12 }}>
+    <fieldset disabled={busy || Boolean(pending)} className="finance-editor">
     <label>Gespeicherten Bericht öffnen <select aria-label="Gespeicherten Bericht öffnen" value="" disabled={busy}
-      onChange={e => { const r = saved.find(r => r.id === e.target.value); if (r) { setDefinition(r.definition); setName(r.name); setResult(null); setSaveKey(crypto.randomUUID()); } }}>
+      onChange={e => { const r = saved.find(r => r.id === e.target.value); if (r) { update(r.definition); setName(r.name); } }}>
       <option value="">Bitte auswählen</option>{saved.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
     </select></label>
-    <label>Berichtsart <select value={definition.kind} onChange={e => change('kind', e.target.value)}>
-      <option value="liquidity-v2">Liquiditätsprognose v2</option><option value="performance-period-v2">Leistungsperiodenergebnis v2</option>
+    <label>Berichtsart <select aria-label="Berichtsart" value={definition.kind} onChange={e => change('kind', e.target.value)}>
+      <option value="cash-v2">Zahlungsübersicht</option><option value="performance-period-v2">Periodenergebnis</option><option value="liquidity-v2">Liquiditätsplanung</option>
     </select></label>
+    <p className="finance-basis">{definition.kind === 'cash-v2' ? 'Tatsächlich gebuchte Einnahmen und Ausgaben nach Zahlungsdatum.' : definition.kind === 'performance-period-v2' ? 'Sollmiete + sonstige Einnahmen − Kosten nach Leistungszeitraum. Zahlungseingänge werden nicht ein zweites Mal gezählt.' : 'Erwartete Zahlungen mit sichtbaren Annahmen. Planwerte sind keine zugesicherten Zahlungseingänge.'}</p>
+    <div className="finance-filter-grid">
     <label>Stichtag <input type="date" value={definition.as_of} onChange={e => change('as_of', e.target.value)} /></label>
-    <label>Immobilie <select value={definition.property_id || ''} onChange={e => change('property_id', e.target.value || null)}>
-      <option value="">Alle berechtigten Immobilien</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+    <label>Portfolio <select aria-label="Portfolio" disabled={!referencesReady} value={definition.portfolio_id || ''} onChange={e => change('portfolio_id', e.target.value || null)}>
+      <option value="">Alle berechtigten Portfolios</option>{portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      {definition.portfolio_id && !portfolios.some(p => p.id === definition.portfolio_id) && <option value={definition.portfolio_id}>Nicht verfügbares Portfolio ({definition.portfolio_id})</option>}
     </select></label>
-    {definition.kind === 'performance-period-v2' ? <>
+    <label>Immobilie <select aria-label="Immobilie" disabled={!referencesReady} value={definition.property_id || ''} onChange={e => change('property_id', e.target.value || null)}>
+      <option value="">Alle berechtigten Immobilien</option>{selectedProperties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      {definition.property_id && !selectedProperties.some(p => p.id === definition.property_id) && <option value={definition.property_id}>Nicht verfügbare Immobilie ({definition.property_id})</option>}
+    </select></label>
+    <label>Einheit <select aria-label="Einheit" disabled={!referencesReady} value={definition.unit_id || ''} onChange={e => change('unit_id', e.target.value || null)}>
+      <option value="">Alle Einheiten und Objektkosten</option>{selectedUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.label || unit.unit_number || unit.id}{!definition.property_id ? ` · ${properties.find(property => property.id === unit.property_id)?.name || 'Immobilie'}` : ''}</option>)}
+      {definition.unit_id && !selectedUnits.some(unit => unit.id === definition.unit_id) && <option value={definition.unit_id}>Nicht verfügbare Einheit ({definition.unit_id})</option>}
+    </select></label>
+    </div>
+    {(definition.portfolio_id || definition.property_id || definition.unit_id) && <button className="btn btn-secondary finance-reset-selection" type="button" onClick={() => update({ ...definition, portfolio_id: null, property_id: null, unit_id: null, vacant_unit_ids: [] })}>Objektauswahl zurücksetzen</button>}
+    {definition.property_id && <div className="finance-actions"><Link to={`/properties/${encodeURIComponent(definition.property_id)}`}>Immobilienakte öffnen →</Link>{definition.unit_id && <Link to={`/units/${encodeURIComponent(definition.unit_id)}`}>Einheitenakte öffnen →</Link>}</div>}
+    {definition.kind !== 'liquidity-v2' ? <>
+      <div className="finance-actions" role="group" aria-label="Zeitraum schnell auswählen"><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('year')}>Stichtagsjahr</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('previous')}>Vorjahr</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('twelve')}>Letzte 12 Monate</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('reset')}>Zeitraum zurücksetzen</button></div>
+      <div className="finance-filter-grid">
       <label>Zeitraum von <input type="date" value={definition.date_from || ''} onChange={e => change('date_from', e.target.value || null)} /></label>
       <label>Zeitraum bis <input type="date" value={definition.date_to || ''} onChange={e => change('date_to', e.target.value || null)} /></label>
-      <p>Ganze Kalendermonate auswählen. Ohne Zeitraum wird das Kalenderjahr des Stichtags ausgewertet. Rechnungen ohne Leistungszeitraum erhalten einen Hinweis.</p>
+      </div><p className="finance-help">{definition.kind === 'cash-v2' ? 'Ohne Zeitraum: alle passenden Buchungen bis einschließlich Stichtag. Objektkosten ohne Einheitenzuordnung bleiben in der Immobilienauswertung sichtbar.' : 'Ganze Kalendermonate auswählen. Ohne Zeitraum wird das Kalenderjahr des Stichtags ausgewertet. Rechnungen ohne Leistungszeitraum erhalten einen Hinweis.'}</p>
     </> : <>
+      <h2 className="finance-subheading">Planungsannahmen</h2><div className="finance-filter-grid">
       <label>Planungshorizont <select value={definition.months} onChange={e => change('months', Number(e.target.value))}>
         {[3, 6, 12].map(m => <option key={m} value={m}>{m} Monate einschließlich Restmonat</option>)}</select></label>
       <label>Zahlungstag der Miete <input type="number" min="1" max="31" value={definition.rent_payment_day} onChange={e => change('rent_payment_day', Number(e.target.value))} /></label>
       <label>Erwarteter Mieteingang (%) <input type="number" min="0" max="100" step="0.01" value={definition.rent_collection_percent} onChange={e => change('rent_collection_percent', e.target.value)} /></label>
       <label>Erwarteter Eingang offener Rückstände im Folgemonat (%) <input type="number" min="0" max="100" step="0.01" value={definition.arrears_collection_percent} onChange={e => change('arrears_collection_percent', e.target.value)} /></label>
-      <fieldset><legend>Im Szenario leerstehende Einheiten</legend>{units.filter(u => !definition.property_id || u.property_id === definition.property_id).map(u =>
-        <label key={u.id} style={{ display: 'block' }}><input type="checkbox" checked={definition.vacant_unit_ids.includes(u.id)} onChange={e => change('vacant_unit_ids', e.target.checked ? [...definition.vacant_unit_ids, u.id] : definition.vacant_unit_ids.filter(id => id !== u.id))} /> {u.label}</label>)}</fieldset>
+      </div><p className="finance-help">Der Anfangssaldo umfasst Buchungen bis einschließlich Stichtag; geplante Zahlungen werden ab dem Folgetag berücksichtigt. Bei Immobilien und Einheiten ist der Saldo ein Buchungssaldo, kein eigener Bankkontostand.</p>
+      <details><summary>Im Szenario leerstehende Einheiten ({definition.vacant_unit_ids.length})</summary>{selectedUnits.filter(unit => !definition.unit_id || unit.id === definition.unit_id).map(u =>
+        <label key={u.id} className="finance-check"><input type="checkbox" checked={definition.vacant_unit_ids.includes(u.id)} onChange={e => change('vacant_unit_ids', e.target.checked ? [...definition.vacant_unit_ids, u.id] : definition.vacant_unit_ids.filter(id => id !== u.id))} /> {u.label}</label>)}</details>
       <fieldset><legend>Zusätzliche geplante Zahlungen (Ausgaben negativ)</legend>
-        {definition.planned_flows.map((f, index) => <div key={f.identity} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {definition.planned_flows.map((f, index) => <div key={f.identity} className="finance-planned-row">
           <input aria-label={`Bezeichnung ${index + 1}`} value={f.label} onChange={e => change('planned_flows', definition.planned_flows.map((v, i) => i === index ? { ...v, label: e.target.value } : v))} />
           <input aria-label={`Datum ${index + 1}`} type="date" value={f.day} onChange={e => change('planned_flows', definition.planned_flows.map((v, i) => i === index ? { ...v, day: e.target.value } : v))} />
           <input aria-label={`Betrag ${index + 1}`} type="number" step="0.01" value={f.amount} onChange={e => change('planned_flows', definition.planned_flows.map((v, i) => i === index ? { ...v, amount: e.target.value } : v))} />
           <button type="button" onClick={() => change('planned_flows', definition.planned_flows.filter((_, i) => i !== index))}>Entfernen</button>
-        </div>)}<button type="button" onClick={() => change('planned_flows', [...definition.planned_flows, { identity: `plan:${crypto.randomUUID()}`, day: definition.as_of, amount: '0.00', label: 'Geplante Zahlung' }])}>Zahlung ergänzen</button>
+          {f.day <= definition.as_of && <p role="status" className="finance-help">Diese Zahlung liegt am oder vor dem Stichtag und wird nicht prognostiziert.</p>}
+        </div>)}<button type="button" onClick={() => change('planned_flows', [...definition.planned_flows, { identity: `plan:${crypto.randomUUID()}`, day: followingDay(definition.as_of || today()), amount: '0.00', label: 'Geplante Zahlung' }])}>Zahlung ergänzen</button>
       </fieldset>
     </>}
     <label>Berichtsname <input value={name} maxLength={160} onChange={e => { setName(e.target.value); setSaveKey(crypto.randomUUID()); }} /></label>
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <button type="button" disabled={busy} onClick={() => run(async current => { const data = await api.get(`/reports/v2/preview?definition=${encodeURIComponent(JSON.stringify(definition))}`); current(); setResult(data); })}>Berechnen</button>
-      {canSave && <button type="button" disabled={busy} onClick={saveReport}>Als neue Fassung speichern</button>}
-      {['json', 'csv', 'pdf'].map(f => <button type="button" key={f} disabled={busy} onClick={() => exportReport(f)}>{f.toUpperCase()} herunterladen</button>)}
+    <div className="finance-actions">
+      <button className="btn btn-primary" type="button" disabled={busy || !referencesReady || !definition.as_of} onClick={() => run(async current => {
+        setResult(null);
+        const data = await api.get(`/reports/v2/preview?definition=${encodeURIComponent(JSON.stringify(definition))}`); current();
+        const numeric = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
+        const columns = data?.basis === 'liquidity-v2' ? ['income', 'expense', 'balance'] : data?.basis === 'cash-v2' ? ['income', 'expense', 'net'] : ['rent_due', 'other_income', 'costs', 'result'];
+        if (!data || data.basis !== definition.kind || typeof data.definition_hash !== 'string' || !data.result_hash || !Array.isArray(data.sources) || !Array.isArray(data.warnings) || !Array.isArray(data.monthly)
+          || !data.monthly.every(row => row && typeof row.month === 'string' && columns.every(key => numeric(row[key])))
+          || !data.sources.every(source => source && numeric(source.amount) && (source.url == null || typeof source.url === 'string'))
+          || !data.warnings.every(warning => warning && typeof warning.message === 'string')
+          || (data.baseline_monthly != null && (!Array.isArray(data.baseline_monthly) || !data.baseline_monthly.every(row => row && typeof row.month === 'string' && numeric(row.balance))))) throw new Error('Die Berichtsantwort ist unvollständig. Bitte erneut berechnen.');
+        setResult(data);
+      })}>Berechnen</button>
+      {canSave && <button className="btn btn-secondary" type="button" disabled={busy || !referencesReady || !name.trim()} onClick={saveReport}>Als neue Fassung speichern</button>}
+      {['json', 'csv', 'pdf'].map(f => <button className="btn btn-secondary" type="button" key={f} disabled={busy || !result} onClick={() => exportReport(f)}>{f.toUpperCase()} herunterladen</button>)}
     </div>
     </fieldset>
     {busy && <p role="status">Bericht wird verarbeitet …</p>}
-    {result && <>
-      <p>Definition: {result.definition_hash.slice(0, 12)} · {result.currency || 'EUR'}</p>
-      {result.opening_balance != null && <p>Anfangssaldo: {cash(result.opening_balance)} · Endsaldo: {cash(result.closing_balance)}</p>}
-      <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Monat</th><th>{result.basis === 'liquidity-v2' ? 'Eingänge' : 'Sollmiete'}</th><th>{result.basis === 'liquidity-v2' ? 'Ausgänge' : 'Kosten'}</th><th>{result.basis === 'liquidity-v2' ? 'Kontostand Szenario' : 'Ergebnis'}</th>{result.baseline_monthly && <th>Kontostand Basis</th>}</tr></thead><tbody>
-        {result.monthly.map((r, index) => <tr key={r.month}><td>{r.month}</td><td>{cash(r.income ?? r.rent_due)}</td><td>{cash(r.expense ?? r.costs)}</td><td>{cash(r.balance ?? r.result)}</td>{result.baseline_monthly && <td>{cash(result.baseline_monthly[index].balance)}</td>}</tr>)}
-      </tbody></table></div>
-      {result.warnings.map((w, i) => <p role="status" key={i}>{w.message}</p>)}
-      <details><summary>Quellen und Zahlungsannahmen ({result.sources.length})</summary><ul>{result.sources.map((s, i) => <li key={i}>{s.day || s.month}: {cash(s.amount)} · {s.url ? <Link to={s.url}>{s.label || s.basis || 'Beleg öffnen'}</Link> : s.label}</li>)}</ul></details>
-    </>}
+    {result && <ReportResult key={result.result_hash || result.definition_hash} result={result} />}
   </div>;
+}
+
+function ReportResult({ result }) {
+  const [search, setSearch] = useState('');
+  const [month, setMonth] = useState('');
+  const [contribution, setContribution] = useState('');
+  const [page, setPage] = useState(0);
+  const sourceRef = useRef(null);
+  const cash = value => formatMoney(value, { currency: result.currency || 'EUR' });
+  const plan = result.basis === 'liquidity-v2', payment = result.basis === 'cash-v2';
+  const totals = result.totals || {};
+  const metrics = plan ? [['Anfangssaldo', result.opening_balance], ['Endsaldo Szenario', result.closing_balance], ['Endsaldo Basis', result.baseline_monthly?.at(-1)?.balance]]
+    : payment ? [['Einnahmen', totals.income], ['Ausgaben', totals.expense], ['Saldo', totals.net]]
+      : [['Sollmiete inkl. Vorauszahlungen', totals.rent_due, 'rent_due'], ['Sonstige Einnahmen', totals.other_income, 'other_income'], ['Kosten', totals.costs, 'costs'], ['Periodenergebnis', totals.result, '']];
+  const reveal = (value, role = contribution) => { setMonth(value); setContribution(role); setPage(0); sourceRef.current?.focus(); sourceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
+  const needle = search.toLocaleLowerCase();
+  const sources = result.sources.filter(source => (!month || (source.month || source.day?.slice(0, 7)) === month)
+    && (!contribution || source.contribution === contribution)
+    && (!needle || [source.label, source.basis, source.identity, source.month, source.day, source.amount].some(value => String(value ?? '').toLocaleLowerCase().includes(needle))));
+  const pageSize = 50, currentPage = Math.min(page, Math.max(0, Math.ceil(sources.length / pageSize) - 1));
+  const query = new URLSearchParams(Object.entries(result.filters || {}).filter(([, value]) => value));
+  return <section className="finance-result" aria-label="Berechneter Bericht">
+    <h2>Ergebnis und Quellen</h2><p className="finance-help">{payment ? 'Tatsächliche Zahlungen' : plan ? 'Szenario und Basisprognose' : 'Sollmiete + sonstige Einnahmen − Kosten'} · {result.currency || 'EUR'}</p>
+    <div className="finance-result-metrics">{metrics.map(([label, value, role]) => <div className="finance-result-metric" key={label}><span>{label}</span><strong className={Number(value) < 0 ? 'is-negative' : ''}>{cash(value)}</strong>
+      {payment ? <Link to={`/bookings?${query}${label === 'Einnahmen' ? '&flow=income' : label === 'Ausgaben' ? '&flow=expense' : ''}`}>Buchungen prüfen →</Link> : <button type="button" onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
+    <div className="finance-table-scroll"><table><caption>Monatsverlauf</caption><thead><tr><th scope="col">Monat</th><th scope="col">{plan || payment ? 'Eingänge' : 'Sollmiete'}</th>{!plan && !payment && <th scope="col">Sonstige Einnahmen</th>}<th scope="col">{plan || payment ? 'Ausgänge' : 'Kosten'}</th><th scope="col">{plan ? 'Saldo Szenario' : payment ? 'Saldo' : 'Ergebnis'}</th>{result.baseline_monthly && <th scope="col">Saldo Basis</th>}</tr></thead><tbody>
+      {result.monthly.map(row => <tr key={row.month}><th scope="row"><button type="button" onClick={() => reveal(row.month)} aria-label={`Quellen für ${row.month} anzeigen`}>{row.month}</button></th><td>{cash(row.income ?? row.rent_due)}</td>{!plan && !payment && <td>{cash(row.other_income)}</td>}<td>{cash(row.expense ?? row.costs)}</td><td>{cash(row.balance ?? row.net ?? row.result)}</td>{result.baseline_monthly && <td>{cash(result.baseline_monthly.find(baseline => baseline.month === row.month)?.balance)}</td>}</tr>)}
+    </tbody></table></div>
+    {result.warnings.length > 0 && <div className="finance-warnings"><h3>Angaben prüfen</h3>{result.warnings.map((warning, index) => <p role="status" key={index}>{warning.message}</p>)}</div>}
+    <section className="finance-sources" tabIndex={-1} ref={sourceRef} aria-label="Quellen und Zahlungsannahmen"><h3>Quellen und Zahlungsannahmen ({result.sources.length})</h3>
+      <div className="finance-filter-grid"><label>Quellen durchsuchen <input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Vorgang, Grundlage, Betrag…" /></label><label>Quellenmonat <select value={month} onChange={event => { setMonth(event.target.value); setPage(0); }}><option value="">Alle Monate</option>{result.monthly.map(row => <option key={row.month} value={row.month}>{row.month}</option>)}</select></label></div>
+      {!plan && !payment && <label className="finance-source-type">Quellenart <select aria-label="Quellenart" value={contribution} onChange={event => { setContribution(event.target.value); setPage(0); }}><option value="">Alle Beitragsarten</option><option value="rent_due">Sollmiete</option><option value="other_income">Sonstige Einnahmen</option><option value="costs">Kosten</option></select></label>}
+      {sources.length > 0 ? <div className="finance-table-scroll"><table><caption>Quellbelege und Berechnungsannahmen</caption><thead><tr><th scope="col">Datum / Monat</th><th scope="col">Vorgang / Grundlage</th><th scope="col">Betrag laut Quelle</th></tr></thead><tbody>{sources.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((source, index) => <tr key={`${source.identity}:${index}`}><td>{source.day || source.month}</td><td>{source.url ? <Link to={source.url}>{source.label || source.basis || 'Beleg öffnen'}</Link> : source.label || source.basis || source.identity}</td><td>{cash(source.amount)}</td></tr>)}</tbody></table></div> : <p>{result.sources.length ? 'Keine Quellen entsprechen der Auswahl.' : 'Keine beitragenden Vorgänge in diesem Zeitraum.'}</p>}
+      <div className="finance-source-pagination"><span role="status">{sources.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, sources.length)} von ${sources.length} Quellen` : '0 Quellen'}</span><div className="finance-actions"><button className="btn btn-secondary" type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Vorherige Quellen</button><button className="btn btn-secondary" type="button" disabled={(currentPage + 1) * pageSize >= sources.length} onClick={() => setPage(currentPage + 1)}>Weitere Quellen</button></div></div>
+    </section>
+    <details className="finance-proof"><summary>Berechnungsnachweis</summary><p>Definition: {result.definition_hash} · Ergebnis: {result.result_hash || 'Nicht übermittelt'}</p><p>Exporte werden vor der Ausgabe erneut mit dem Ergebnisstand abgeglichen. Eine gespeicherte Definition wird beim Öffnen mit aktuellen Daten neu berechnet.</p></details>
+  </section>;
 }

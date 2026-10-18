@@ -80,6 +80,7 @@ export default function UnitOverview() {
         <div className="dossier-navigation">
           {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
           <Link to="/units" className="btn btn-secondary">Alle Einheiten</Link>
+          <Link to={`/reports?kind=cash-v2${unit.property_id ? `&property_id=${encodeURIComponent(unit.property_id)}` : ''}&unit_id=${encodeURIComponent(unit.id)}`} className="btn btn-secondary">Auswertungen dieser Einheit</Link>
           <NewForMenu label="Neu für diese Einheit" items={NEW_FOR_UNIT} prefill={prefill} />
           <EntityActions entityType="unit" entityId={unit.id} entityRevision={unit.updated_at} title={unit.label}
             onChanged={() => setActivityRevision(value => value + 1)} />
@@ -109,7 +110,7 @@ export default function UnitOverview() {
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
               <dt>Plan-Kaltmiete</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
               <dt>Plan-Nebenkosten</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
-              <dt>Plan-Heizkosten</dt><dd>{unit.heating_advance ? `${formatMoney(unit.heating_advance)}` : '—'}</dd>
+              <dt>Plan-Heizkosten</dt><dd>{formatMoney(unit.heating_advance)}</dd>
             </dl>
             <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheit. Die vereinbarte Miete steht im Mietvertrag.</p>
           </div>
@@ -124,7 +125,7 @@ export default function UnitOverview() {
                 <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd><PartyLink tenantId={tenant?.id}>{tenant?.full_name || '—'}</PartyLink></dd>
                 <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{formatDate(activeContract.start_date)}</dd>
                 <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date ? formatDate(activeContract.end_date) : t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
-                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${formatMoney(activeContract.deposit_amount)}` : '—'}</dd>
+                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{formatMoney(activeContract.deposit_amount)}</dd>
               </dl>
             ) : (
               <div className="empty-text">

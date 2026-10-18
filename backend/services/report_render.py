@@ -14,6 +14,7 @@ from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spac
 from .housing_confirmation_render import _fonts
 
 REPORT_TITLES = {
+    "cash-v2": "Zahlungsübersicht v2",
     "performance-period-v2": "Leistungsperiodenergebnis v2",
     "liquidity-v2": "Liquiditätsprognose v2",
     "summary": "Bestands- und Finanzübersicht",

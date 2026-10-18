@@ -68,7 +68,7 @@ class PlannedFlow(BaseModel):
 class ReportDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[2] = 2
-    kind: Literal["performance-period-v2", "liquidity-v2"]
+    kind: Literal["cash-v2", "performance-period-v2", "liquidity-v2"]
     as_of: date
     months: Literal[3, 6, 12] = 12
     date_from: date | None = None

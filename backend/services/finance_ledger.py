@@ -25,7 +25,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Iterable, Optional
 
+from fastapi import HTTPException
+
 from ..domain.money import ZERO, from_cents, money
+from ..storage import NotFoundError
 
 SIDES = ("income", "expense")
 GROUPS = frozenset({"month", "category", "account"})
@@ -101,10 +104,38 @@ class FinanceFilter:
         }
 
 
+def validate_filter(store: Any, flt: FinanceFilter, *, require_visible: bool = False) -> None:
+    """A visible filter must describe one consistent portfolio/property/unit path.
+
+    Lookups use the caller's current scope. An inaccessible record stays missing;
+    only contradictions between records the caller can read produce a 422.
+    """
+    if flt.date_from and flt.date_to and flt.date_from > flt.date_to:
+        raise HTTPException(422, "Der Berichtszeitraum beginnt nach seinem Ende.")
+    try:
+        if flt.portfolio_id:
+            store.get_portfolio(flt.portfolio_id)
+        prop = store.get_property(flt.property_id) if flt.property_id else None
+        unit = store.get_unit(flt.unit_id) if flt.unit_id else None
+    except NotFoundError:
+        # Legacy reports intentionally display an empty, unavailable selection
+        # for missing/hidden IDs. Versioned definitions require visible sources.
+        if require_visible:
+            raise
+        return
+    if prop is not None and unit is not None and unit.property_id != prop.id:
+        raise HTTPException(422, "Die gewählte Einheit gehört nicht zur gewählten Immobilie.")
+    if flt.portfolio_id:
+        selected_property = prop or (store.get_property(unit.property_id) if unit is not None else None)
+        if selected_property is not None and selected_property.portfolio_id != flt.portfolio_id:
+            raise HTTPException(422, "Die gewählte Immobilie oder Einheit gehört nicht zum gewählten Portfolio.")
+
+
 class Dimensions:
     """Where records belong (portfolio, property, unit), read once per calculation."""
 
     def __init__(self, store: Any, flt: FinanceFilter) -> None:
+        validate_filter(store, flt)
         self.store, self.flt = store, flt
         self._unit_property: Optional[dict[str, str]] = None
         self._property_portfolio: Optional[dict[str, str]] = None
@@ -196,14 +227,35 @@ def booking_totals(store: Any, flt: FinanceFilter, *, by: Iterable[str] = ()) ->
     groups = frozenset(by)
     if groups - GROUPS:
         raise ValueError(f"unknown groups: {sorted(groups - GROUPS)}")
+    validate_filter(store, flt)
     if hasattr(store, "db"):
         return _sql_totals(store.db, flt, groups)
     return _memory_totals(store, flt, groups)
 
 
+def booking_sources(store: Any, flt: FinanceFilter) -> list[Any]:
+    """The scoped rows behind the same aggregate, filtered in SQL before loading."""
+    validate_filter(store, flt)
+    if hasattr(store, "db"):
+        from sqlalchemy import select
+
+        from ..db.orm_models import BookingORM
+        from .portfolio_scope import scoped_clause
+
+        query = select(BookingORM).where(*_sql_conditions(flt))
+        boundary = scoped_clause(BookingORM)
+        if boundary is not None:
+            query = query.where(boundary)
+        return list(store.db.scalars(query.order_by(BookingORM.booking_date, BookingORM.id)))
+    dimensions = Dimensions(store, flt)
+    return sorted((booking for booking in store.list_bookings() if dimensions.booking_matches(booking)),
+                  key=lambda booking: (booking.booking_date, booking.id))
+
+
 def first_booking_date(store: Any, flt: FinanceFilter) -> Optional[date]:
     """The earliest booking date within the filter (its period ignored)."""
     unbounded = flt.with_period(None, None)
+    validate_filter(store, unbounded)
     if hasattr(store, "db"):
         from sqlalchemy import func, select
 

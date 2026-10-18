@@ -21,6 +21,7 @@ const BUILTIN_TRANSLATIONS = {
         contractWizard: 'Mietvertrag-Wizard',
         notificationTemplates: 'Benachrichtigungsvorlagen',
         notifications: 'Benachrichtigungen',
+        reports: 'Auswertungen',
       },
     },
     contractWizard: {
@@ -157,6 +158,7 @@ const BUILTIN_TRANSLATIONS = {
         contractWizard: 'Lease Wizard',
         notificationTemplates: 'Notification Templates',
         notifications: 'Notifications',
+        reports: 'Reports',
       },
     },
     contractWizard: {
@@ -293,6 +295,7 @@ const BUILTIN_TRANSLATIONS = {
         contractWizard: 'Asistente de contrato',
         notificationTemplates: 'Plantillas de notificacion',
         notifications: 'Notificaciones',
+        reports: 'Informes',
       },
     },
     contractWizard: {
