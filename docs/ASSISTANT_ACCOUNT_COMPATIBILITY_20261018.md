@@ -29,6 +29,11 @@ Laden des Modellkatalogs allein konnten diesen Fehler nicht nachweisen.
   übernommene Claude-Kontokonnektoren und gebündelte Skills bleiben deaktiviert.
   Der Modus `--bare` wird nicht verwendet, da der installierte Client darin keine
   OAuth-Kontoanmeldungen liest.
+- Bei der echten Claude-Recherche war ein Vorschlag fachlich richtig, enthielt
+  jedoch keinen eigenen Nachweis für seine Immobilienzuordnung. Die Prüfung
+  verweigert diese Übernahme weiterhin. Die Modellanweisung fordert jetzt
+  ausdrücklich separate Belege für alle Zuordnungen; die Fehlermeldung nennt
+  die fehlende Aktenart und den Korrekturweg im Chat.
 
 Grundlage sind das vom installierten Client erzeugte Protokollschema und die
 offiziellen Dokumentationen zu

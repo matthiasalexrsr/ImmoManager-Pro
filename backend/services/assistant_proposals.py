@@ -136,9 +136,15 @@ def validate_proposal(store, proposal: Proposal | dict, actor_id: str, *, contex
                                       "message": "Eine Vorschlagsquelle wurde geändert. Bitte neu prüfen."})
         evidence.append({key: source[key] for key in ("kind", "id", "revision", "sha256", "title", "href")})
     values = parsed.values.model_dump(mode="json", exclude_none=True)
-    for field, kind in (("property_id", "property"), ("unit_id", "unit")):
-        if values.get(field) and (kind, values[field]) not in references:
-            raise HTTPException(422, "Jeder Entwurfsbezug muss ausdrücklich als Quelle gewählt und belegt sein.")
+    missing = [kind for field, kind in (("property_id", "property"), ("unit_id", "unit"))
+               if values.get(field) and (kind, values[field]) not in references]
+    if missing:
+        labels = {"property": "Immobilie", "unit": "Einheit"}
+        raise HTTPException(422, {"code": "assistant_reference_evidence_missing",
+            "message": "Für folgende Zuordnungen fehlen ausdrücklich belegte Quellen: "
+                + ", ".join(labels[kind] for kind in missing)
+                + ". Bitte im Chat einen korrigierten Vorschlag mit diesen Quellen anfordern.",
+            "missing_kinds": missing})
     if values.get("unit_id"):
         unit = workspace_contexts.resolve_context(store, "unit", values["unit_id"], actor_id)
         if values.get("property_id") and unit["values"]["property_id"] != values["property_id"]:

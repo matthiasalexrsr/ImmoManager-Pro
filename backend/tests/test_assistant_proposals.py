@@ -134,6 +134,29 @@ def test_references_and_unit_property_relationship_need_explicit_evidence(estate
     with pytest.raises(HTTPException) as no_evidence:
         proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)
     assert no_evidence.value.status_code == 422
+    assert isinstance(no_evidence.value.detail, dict)
+    assert no_evidence.value.detail["code"] == "assistant_reference_evidence_missing"
+    assert no_evidence.value.detail["missing_kinds"] == ["unit"]
+
+
+def test_unit_anchor_does_not_implicitly_attest_property(estate):
+    # An actual model selected the unit as its anchor but omitted the separate
+    # property evidence. This must remain blocked, with an actionable reason.
+    bundle = context.build_context(store, {"property_ids": [estate.prop.id], "unit_ids": [estate.unit.id]}, estate.user.id)
+    proposal = {"kind": "task", "anchor": {"kind": "unit", "id": estate.unit.id},
+                "evidence": [{key: source[key] for key in ("kind", "id", "revision", "sha256")}
+                             for source in bundle["sources"] if source["kind"] == "unit"],
+                "values": {"title": "Prüfen", "property_id": estate.prop.id, "unit_id": estate.unit.id}}
+    with pytest.raises(HTTPException) as missing:
+        proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)
+    assert missing.value.status_code == 422
+    assert isinstance(missing.value.detail, dict)
+    assert missing.value.detail["missing_kinds"] == ["property"]
+    assert "Immobilie" in missing.value.detail["message"]
+    assert "korrigierten Vorschlag" in missing.value.detail["message"]
+    proposal["evidence"] = [{key: source[key] for key in ("kind", "id", "revision", "sha256")}
+                            for source in bundle["sources"]]
+    assert proposals.validate_proposal(store, proposal, estate.user.id, context_bundle=bundle)["allowed"]
 
 
 def test_secondary_source_changed_between_preview_and_write_is_blocked_in_preflight(estate, monkeypatch):

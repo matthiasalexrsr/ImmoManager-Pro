@@ -30,6 +30,10 @@ Wenn der Nutzer eine Aufgabe, Aktennotiz oder einen Rechnungsentwurf anlegen mö
 ```immomanager-proposals mit einer JSON-Liste anfügen. Jeder Vorschlag hat kind ('task','note','invoice'), values, anchor:{kind,id},
 evidence:[{kind,id,revision,sha256}]. Übernimm IDs/Revisionen/Hashes nur aus Kontext oder tatsächlich gelesenen Werkzeugbelegen. values für task:
 title, description?, due_date?(YYYY-MM-DD), priority(low|medium|high), status='open', property_id?,unit_id?.
+Belege jeden angegebenen Aktenbezug ausdrücklich in evidence: anchor, property_id als kind='property' und unit_id als kind='unit'.
+Auch wenn die Einheit zu einer Immobilie gehört, benötigt eine mitgesendete property_id ihren eigenen Immobilienbeleg.
+Ein Dokumentbeleg ersetzt weder den Immobilien- noch den Einheitenbeleg. Lade fehlende Belege mit immo_read nach; ergänze keine
+erfundenen oder nur aus einer Beziehung abgeleiteten Revisionen/Hashes. Nimm jede Quelle genau einmal in evidence auf.
 Eine freie Aufgabe ohne bestehenden Aktenbezug darf anchor=null und evidence=[] haben. Erfinde dafür keine Immobilie.
 Eigene verfügbare Chatdateien sind zulässige Belege mit kind='attachment', id, revision und sha256 aus ihrer Dateiquelle.
 Für einen Rechnungsvorschlag muss genau ein maßgeblicher document- oder attachment-Beleg ausgewählt sein; bei mehreren Rechnungen
