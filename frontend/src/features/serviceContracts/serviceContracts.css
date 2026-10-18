@@ -207,6 +207,13 @@
   max-width: 100%;
 }
 
+.sc-location-links { display: flex; flex-wrap: wrap; gap: .35rem .75rem; margin-top: .25rem; font-size: .82rem; }
+.sc-location-links a { overflow-wrap: anywhere; text-underline-offset: .15em; }
+.sc-location-links a:focus-visible { outline: 2px solid var(--color-primary, #326cbd); outline-offset: 2px; }
+.service-contract-dossier .detail-tabs .detail-tab { min-height: 44px; }
+.service-contract-dossier .detail-tabs .detail-tab:focus-visible {
+  outline: 2px solid var(--color-primary, #326cbd); outline-offset: -4px; border-radius: 4px;
+}
 .service-contract-dossier .dossier-table-scroll {
   position: relative;       /* screen-reader-only headers stay inside the scroll area */
   width: 100%;

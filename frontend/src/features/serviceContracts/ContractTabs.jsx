@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { entityHref } from '../../utils/entityLinks';
 import { api } from '../../api';
 import { useTranslation } from '../../i18n';
 import FormModal from '../../components/FormModal';
@@ -86,7 +88,14 @@ export function LocationsTab({ contract, canWrite, onChanged }) {
             <tbody>
               {contract.locations.map(location => (
                 <tr key={location.id}>
-                  <td>{location.label}</td>
+                  <td><span>{location.label}</span>
+                    {!contract.restricted && (location.property_id || location.unit_id) && <span className="sc-location-links">
+                      {location.property_id && <Link to={entityHref('property', location.property_id)}
+                        aria-label={`Immobilie zur Lieferstelle ${location.label} öffnen`}>Immobilie</Link>}
+                      {location.unit_id && <Link to={entityHref('unit', location.unit_id)}
+                        aria-label={`Einheit zur Lieferstelle ${location.label} öffnen`}>Einheit</Link>}
+                    </span>}
+                  </td>
                   <td className="sc-break">{location.supply_point || '—'}</td>
                   <td className="text-right">{formatNumber(location.share_weight, 2)}</td>
                   <td>{location.valid_from || location.valid_to

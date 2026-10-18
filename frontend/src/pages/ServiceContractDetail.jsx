@@ -1,6 +1,6 @@
 import NotificationArrival from '../components/NotificationArrival';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -14,6 +14,8 @@ import {
 import { DeadlinesTab, LocationsTab, TariffsTab } from '../features/serviceContracts/ContractTabs';
 import FinanceTab from '../features/serviceContracts/FinanceTab';
 import DocumentsTab from '../features/serviceContracts/DocumentsTab';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 import '../features/serviceContracts/serviceContracts.css';
 import './propertyDossier.css';
 
@@ -27,15 +29,34 @@ export default function ServiceContractDetail() {
 function ServiceContractDossier({ id }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const confirm = useConfirm();
   const [contract, setContract] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [tab, setTab] = useState('master');
   const [modal, setModal] = useState(null);     // edit | cancel
   const [contacts, setContacts] = useState([]);
   const [revision, setRevision] = useState(0);
   const path = `/service-contracts/${encodeURIComponent(id)}`;
+  const requestedTab = new URLSearchParams(location.search).get('tab');
+  const tab = TAB_KEYS.includes(requestedTab) ? requestedTab : 'master';
+  const selectTab = key => {
+    if (!TAB_KEYS.includes(key) || key === tab) return;
+    const params = new URLSearchParams(location.search);
+    if (key === 'master') params.delete('tab'); else params.set('tab', key);
+    navigate({ pathname: location.pathname, search: params.size ? `?${params}` : '', hash: location.hash },
+      { state: location.state });
+  };
+  const onTabKey = (event, key) => {
+    const index = TAB_KEYS.indexOf(key);
+    const next = event.key === 'ArrowRight' ? TAB_KEYS[(index + 1) % TAB_KEYS.length]
+      : event.key === 'ArrowLeft' ? TAB_KEYS[(index - 1 + TAB_KEYS.length) % TAB_KEYS.length]
+        : event.key === 'Home' ? TAB_KEYS[0] : event.key === 'End' ? TAB_KEYS.at(-1) : null;
+    if (!next) return;
+    event.preventDefault();
+    selectTab(next);
+    event.currentTarget.parentElement?.querySelector(`[data-tab-key="${next}"]`)?.focus();
+  };
   const mayChange = useCanWrite('/service-contracts');
   const mayBook = useCanWrite(`${path}/payments`);
   const canWrite = mayChange && contract && !contract.restricted;
@@ -74,6 +95,14 @@ function ServiceContractDossier({ id }) {
   const openEdit = () => { setModal('edit'); api.list('/contacts').then(setContacts).catch(() => setContacts([])); };
   const terms = contract.terms || {};
   const next = contract.next_deadline;
+  const visibleLocations = contract.restricted ? [] : (contract.locations || []);
+  const propertyIds = [...new Set(visibleLocations.map(item => item.property_id).filter(Boolean))];
+  const unitIds = [...new Set(visibleLocations.map(item => item.unit_id).filter(Boolean))];
+  const relatedItems = [
+    ...(propertyIds.length === 1 ? [{ to: entityHref('property', propertyIds[0]), label: 'Immobilie öffnen' },
+      { to: `/bookings?property_id=${encodeURIComponent(propertyIds[0])}`, label: 'Buchungen der Immobilie' }] : []),
+    ...(unitIds.length === 1 ? [{ to: entityHref('unit', unitIds[0]), label: 'Einheit öffnen' }] : []),
+  ];
   const tabLabel = key => {
     switch (key) {
       case 'master': return t('serviceContracts.tabs.master');
@@ -97,6 +126,7 @@ function ServiceContractDossier({ id }) {
         <span className={`badge ${STATUS_BADGE[contract.status] || 'badge-gray'}`}>{statusLabel(t, contract.status)}</span>
       </div>
       {contract.restricted && <div role="note" className="alert alert-info">{t('serviceContracts.restrictedNote')}</div>}
+      <RelatedPageLinks items={relatedItems} />
       {actionError && <div role="alert" className="alert alert-error">{actionError}</div>}
 
       <div className="stats-grid sc-kpis">
@@ -114,8 +144,10 @@ function ServiceContractDossier({ id }) {
 
       <div className="detail-tabs" role="tablist" aria-label={contract.title}>
         {TAB_KEYS.map(key => (
-          <button key={key} type="button" role="tab" id={`sc-tab-${key}`} aria-selected={tab === key}
-            aria-controls={`sc-panel-${key}`} className={`detail-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+          <button key={key} type="button" role="tab" id={`sc-tab-${key}`} data-tab-key={key}
+            aria-selected={tab === key} tabIndex={tab === key ? 0 : -1}
+            aria-controls={`sc-panel-${key}`} className={`detail-tab ${tab === key ? 'active' : ''}`}
+            onClick={() => selectTab(key)} onKeyDown={event => onTabKey(event, key)}>
             {tabLabel(key)}
           </button>
         ))}

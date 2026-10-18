@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import FileViewer from '../components/FileViewer';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
 import PdfPreview from '../components/PdfPreview';
 import { fileKind, resolveFileUrl } from '../features/partyWorkspace/files';
 import { formatMoney } from '../utils/format';
@@ -58,6 +60,16 @@ function InvoiceReviewSession({ id }) {
   if (!view) return <div className="page ir-page"><p className="text-muted" role="status">{tx.loading}</p></div>;
 
   const { invoice, abilities } = view;
+  const propertyId = invoice.property_id || view.review?.property_id;
+  const assignment = view.assignment || {};
+  const relatedItems = [
+    ...(propertyId ? [{ to: `${entityHref('property', propertyId)}?tab=finance`, label: 'Finanzen der Immobilie' }] : []),
+    ...(invoice.invoice_number ? [{ to: entityHref('invoice', null, invoice.invoice_number), label: 'Rechnung in der Liste' }] : []),
+    ...(assignment.kind === 'maintenance_order' && assignment.case_id
+      ? [{ to: entityHref('maintenance', assignment.case_id), label: 'Wartungsfall öffnen' }] : []),
+    ...(assignment.kind === 'service_contract' && assignment.service_contract_id
+      ? [{ to: `${entityHref('serviceContract', assignment.service_contract_id)}?tab=finance`, label: 'Objektvertrag und Finanzen' }] : []),
+  ];
   const readOnly = !Object.entries(abilities).some(([key, value]) => value && !['decide_above_limit', 'settings'].includes(key));
   return (
     <div className="page ir-page">
@@ -69,6 +81,7 @@ function InvoiceReviewSession({ id }) {
           <strong>{formatMoney(invoice.gross_amount)}</strong>
         </div>
       </div>
+      <RelatedPageLinks items={relatedItems} />
       {readOnly && <p className="ir-note">{tx.readOnly}</p>}
       <div className="ir-review">
         <DocumentPane document={view.document} />

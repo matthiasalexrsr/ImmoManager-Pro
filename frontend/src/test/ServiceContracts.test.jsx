@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import ServiceContracts from '../pages/ServiceContracts';
 import ServiceContractDetail from '../pages/ServiceContractDetail';
 import { api } from '../api';
@@ -40,7 +40,15 @@ const CONTRACT = {
 const RECONCILIATION = { expected: 1200, invoiced: 1350, credited: 1200, invoice_balance: 150, obligations: 1350,
   paid: 1350, open: 0, costs: 1350, partial: false, instalments: [{ due_date: '2026-01-01', amount: 100 }], invoices: [] };
 
-function showDetail(contract = CONTRACT) {
+function ServiceRoute() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <><output data-testid="service-route">{location.pathname + location.search}</output>
+    <button type="button" onClick={() => navigate(-1)}>Service-History zurück</button>
+    <button type="button" onClick={() => navigate(1)}>Service-History vorwärts</button></>;
+}
+
+function showDetail(contract = CONTRACT, path = '/service-contracts/sc1') {
   api.get.mockImplementation(path => {
     if (path === '/service-contracts/sc1') return Promise.resolve(contract);
     if (path.startsWith('/service-contracts/sc1/reconciliation')) return Promise.resolve(RECONCILIATION);
@@ -54,7 +62,7 @@ function showDetail(contract = CONTRACT) {
       { id: 'd2', link_id: null, source: 'invoice', title: 'Rechnung 2026', file_url: '/uploads/b.pdf' }]);
     return Promise.reject(new Error(`unexpected ${path}`));
   });
-  return render(<MemoryRouter initialEntries={['/service-contracts/sc1']}>
+  return render(<MemoryRouter initialEntries={[path]}><ServiceRoute />
     <Routes><Route path="/service-contracts/:id" element={<ServiceContractDetail />} /></Routes></MemoryRouter>);
 }
 
@@ -138,6 +146,67 @@ describe('ServiceContractDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     access.canWrite = true;
+  });
+
+  it('opens an exact deep-linked section and preserves other query params through browser history and keyboard tabs', async () => {
+    showDetail(CONTRACT, '/service-contracts/sc1?from=property&tab=finance');
+    await screen.findByRole('heading', { name: 'Allgemeinstrom Nordhaus' });
+    const finance = screen.getByRole('tab', { name: 'serviceContracts.tabs.finance' });
+    expect(finance).toHaveAttribute('aria-selected', 'true');
+    expect(finance).toHaveAttribute('tabindex', '0');
+    expect(screen.getByTestId('service-route')).toHaveTextContent('/service-contracts/sc1?from=property&tab=finance');
+    fireEvent.click(screen.getByRole('tab', { name: 'serviceContracts.tabs.documents' }));
+    expect(screen.getByTestId('service-route')).toHaveTextContent('/service-contracts/sc1?from=property&tab=documents');
+    fireEvent.click(screen.getByRole('button', { name: 'Service-History zurück' }));
+    expect(finance).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Service-History vorwärts' }));
+    expect(screen.getByRole('tab', { name: 'serviceContracts.tabs.documents' })).toHaveAttribute('aria-selected', 'true');
+
+    const docTab = screen.getByRole('tab', { name: 'serviceContracts.tabs.documents' });
+    docTab.focus();
+    fireEvent.keyDown(docTab, { key: 'Home' });
+    const master = screen.getByRole('tab', { name: 'serviceContracts.tabs.master' });
+    expect(master).toHaveFocus();
+    expect(master).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('service-route')).toHaveTextContent('/service-contracts/sc1?from=property');
+    fireEvent.keyDown(master, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: /serviceContracts.tabs.locations/ })).toHaveFocus();
+    expect(screen.getByTestId('service-route')).toHaveTextContent('/service-contracts/sc1?from=property&tab=locations');
+  });
+
+  it('links the exact authorized property, unit and property bookings without creating business commands', async () => {
+    const related = { ...CONTRACT, locations: [{ ...CONTRACT.locations[0], unit_id: 'unit +1' }] };
+    showDetail(related);
+    await screen.findByRole('heading', { name: 'Allgemeinstrom Nordhaus' });
+    const nav = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(nav).getByRole('link', { name: 'Immobilie öffnen' })).toHaveAttribute('href', '/properties/p1');
+    expect(within(nav).getByRole('link', { name: 'Einheit öffnen' })).toHaveAttribute('href', '/units/unit%20%2B1');
+    expect(within(nav).getByRole('link', { name: 'Buchungen der Immobilie' })).toHaveAttribute('href', '/bookings?property_id=p1');
+    fireEvent.click(screen.getByRole('tab', { name: /serviceContracts.tabs.locations/ }));
+    expect(screen.getByRole('link', { name: /Immobilie zur Lieferstelle/ })).toHaveAttribute('href', '/properties/p1');
+    expect(screen.getByRole('link', { name: /Einheit zur Lieferstelle/ })).toHaveAttribute('href', '/units/unit%20%2B1');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.del).not.toHaveBeenCalled();
+  });
+
+  it('does not expose related record links for restricted or ambiguous locations', async () => {
+    let result = showDetail({ ...CONTRACT, restricted: true });
+    await screen.findByRole('heading', { name: 'Allgemeinstrom Nordhaus' });
+    expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /serviceContracts.tabs.locations/ }));
+    expect(screen.queryByRole('link', { name: /Immobilie zur Lieferstelle/ })).not.toBeInTheDocument();
+    result.unmount();
+    vi.clearAllMocks();
+    result = showDetail({ ...CONTRACT, locations: [
+      { ...CONTRACT.locations[0], property_id: 'p1' },
+      { ...CONTRACT.locations[0], id: 'l2', property_id: 'p2' },
+    ] }, '/service-contracts/sc1?tab=unknown');
+    await screen.findByRole('heading', { name: 'Allgemeinstrom Nordhaus' });
+    expect(screen.getByRole('tab', { name: 'serviceContracts.tabs.master' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /serviceContracts.tabs.locations/ }));
+    expect(screen.getAllByRole('link', { name: /Immobilie zur Lieferstelle/ })).toHaveLength(2);
   });
 
   it('shows master data, tariffs with exact prices and the notice deadline', async () => {

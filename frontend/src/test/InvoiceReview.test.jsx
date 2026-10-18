@@ -99,6 +99,37 @@ describe('invoice review inbox', () => {
 });
 
 describe('invoice review view', () => {
+  it('offers precise read-only context links to the property, invoice and assigned maintenance', async () => {
+    showDetail();
+    const links = await screen.findByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(links).getByRole('link', { name: 'Finanzen der Immobilie' }))
+      .toHaveAttribute('href', '/properties/p1?tab=finance');
+    expect(within(links).getByRole('link', { name: 'Rechnung in der Liste' }))
+      .toHaveAttribute('href', '/invoices?suche=RE-1');
+    expect(within(links).getByRole('link', { name: 'Wartungsfall öffnen' }))
+      .toHaveAttribute('href', '/maintenance/c1');
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('links assigned service-contract finance by actual ID without fabricating maintenance links', async () => {
+    const changed = { ...VIEW, assignment: { kind: 'service_contract', service_contract_id: 'sc /1', contract_title: 'Strom' } };
+    showDetail(changed);
+    const links = await screen.findByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(links).getByRole('link', { name: 'Objektvertrag und Finanzen' }))
+      .toHaveAttribute('href', '/service-contracts/sc%20%2F1?tab=finance');
+    expect(within(links).queryByRole('link', { name: 'Wartungsfall öffnen' })).not.toBeInTheDocument();
+  });
+
+  it('does not add misleading links when record associations are absent', async () => {
+    const source = { ...VIEW, invoice: { ...VIEW.invoice, property_id: null, invoice_number: '' },
+      review: { ...VIEW.review, property_id: null }, assignment: { kind: 'free', cost_category: 'Sonstiges' } };
+    showDetail(source);
+    await screen.findByRole('heading', { name: 'Dach Müller GmbH' });
+    expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Zur Rechnungsprüfung' })).toHaveAttribute('href', '/invoice-review');
+  });
+
   it('shows the document beside checklist, findings, four-eyes hint and history', async () => {
     showDetail();
     expect(await screen.findByTestId('pdf')).toHaveTextContent('/uploads/documents/re1.pdf');
