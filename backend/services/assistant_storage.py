@@ -1,12 +1,13 @@
 """Owner predicates, encrypted payloads and account-fenced assistant transactions."""
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select, text
 
 from ..db.assistant_models import AssistantConversationORM as Conversation
+from ..db.assistant_models import AssistantMessageORM as Message
 from . import business_qol as commands
 from . import document_versions as archive
 from .integrations import connection_storage as dbs
@@ -65,9 +66,26 @@ def conversation_public(unit, row):
 def put(unit, model, data: dict, *, row=None, state: str | None = None, conversation_id: str | None = None):
     identifier = row.id if row is not None else str(uuid4())
     parent = (row.conversation_id if row is not None else conversation_id) if model is not Conversation else ""
+    created_at = row.created_at if row is not None else dbs.now()
+    if row is None and model is Message:
+        if not isinstance(parent, str) or not parent:
+            raise HTTPException(422, "Die Nachricht benötigt einen gültigen Gesprächsbezug.")
+        # The cursor uses (created_at, id), but random UUIDs cannot determine
+        # conversational order when the Windows clock repeats or goes back.
+        # Serialize the metadata read/insert on this owned parent row. Memory
+        # transactions already hold the installation's writer lock.
+        get(unit, Conversation, parent, lock=True)
+        if unit.db is None:
+            latest = max((item.created_at for item in dbs.memory(unit, Message).values()
+                          if item.owner_id == unit.actor_id and item.conversation_id == parent), default=None)
+        else:
+            latest = unit.db.scalar(select(Message.created_at).where(Message.owner_id == unit.actor_id,
+                Message.conversation_id == parent).order_by(Message.created_at.desc()).limit(1))
+        if latest is not None and created_at <= latest:
+            created_at = latest + timedelta(microseconds=1)
     values = dict(id=identifier, owner_id=unit.actor_id, revision=row.revision + 1 if row is not None else 1,
                   state=state or (row.state if row is not None else "active"),
-                  created_at=row.created_at if row is not None else dbs.now(), updated_at=dbs.now(),
+                  created_at=created_at, updated_at=max(created_at, dbs.now()),
                   payload_token=dbs.seal(data, f"assistant/{model.__tablename__}/{unit.actor_id}/{identifier}/{parent}"))
     if model is not Conversation:
         values["conversation_id"] = row.conversation_id if row is not None else conversation_id

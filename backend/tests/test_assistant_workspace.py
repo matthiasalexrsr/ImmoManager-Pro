@@ -2,8 +2,8 @@
 import hashlib
 import io
 import zipfile
-from datetime import date, timedelta
-from uuid import uuid4
+from datetime import date, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -79,6 +79,40 @@ def test_http_readonly_chats_do_not_grant_domain_writes(actor):
     finished = client.get('/api/v1/assistant/runs/' + result.json()["id"]).json()
     assert finished["state"] == "completed" and finished["response"] == "Geprüft ohne Fachänderung"
     assert client.get(f'/api/v1/assistant/conversations/{chat["id"]}/messages').json()["items"][-1]["role"] == "assistant"
+
+
+@pytest.mark.parametrize("rollback", [False, True])
+def test_conversation_order_and_cursors_survive_repeated_or_backward_clock(actor, monkeypatch, rollback):
+    clock = [dbs.now()]
+    monkeypatch.setattr(dbs, "now", lambda: clock[0])
+    # A descending UUID sequence makes reliance on the tie breaker fail
+    # deterministically instead of hiding the bug behind a lucky random UUID.
+    identifiers = iter(UUID(int=value) for value in range(1000, 0, -1))
+    monkeypatch.setattr(db, "uuid4", lambda: next(identifiers))
+    chat = conversation(actor)
+    for turn in range(2):
+        if turn:
+            clock[0] -= timedelta(days=1) if rollback else timedelta(0)
+            chat = assistant.get_conversation(store, actor.id, chat["id"])
+        run = submit(actor, chat)
+        assistant_runner.run(store, run["id"], actor.id, execute=fake_execute)
+        assert assistant.get_run(store, actor.id, run["id"])["state"] == "completed"
+    messages = assistant.list_records(store, actor.id, assistant.Message, conversation_id=chat["id"])["items"]
+    assert [item["role"] for item in messages] == ["user", "assistant", "user", "assistant"]
+    stamps = [datetime.fromisoformat(item["created_at"]) for item in messages]
+    assert stamps == sorted(set(stamps)) and len(stamps) == 4
+    assert all(datetime.fromisoformat(item["updated_at"]) >= datetime.fromisoformat(item["created_at"])
+               for item in messages)
+    cursor = None
+    backwards: list[str] = []
+    while True:
+        page = assistant.list_records(store, actor.id, assistant.Message,
+            conversation_id=chat["id"], cursor=cursor, limit=1)
+        backwards.extend(item["id"] for item in page["items"])
+        if not page["has_more"]:
+            break
+        cursor = page["next_cursor"]
+    assert backwards == [item["id"] for item in reversed(messages)]
 
 
 def test_run_replay_conflict_and_cancel_do_not_duplicate_messages(actor):

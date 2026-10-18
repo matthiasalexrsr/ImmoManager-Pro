@@ -42,6 +42,10 @@ Laden des Modellkatalogs allein konnten diesen Fehler nicht nachweisen.
   Ein nativer Windows-Junction-Test prüft die Kontotrennung auch ohne die erst
   ab Python 3.12 verfügbare Junction-Erkennung. Fehlende Quellen werden zusätzlich
   über den tatsächlichen HTTP-Fehlerhandler als lesbare Meldung geprüft.
+- Neue Gesprächsnachrichten erhalten unter der Gesprächssperre strikt steigende
+  Zeitstempel. Eine stehende oder zurückspringende Windows-Uhr lässt Frage und
+  Antwort dadurch nicht mehr über zufällige UUIDs vertauschen. Gespeicherte
+  historische Nachrichten bleiben unverändert; Cursor bleiben kompatibel.
 
 Grundlage sind das vom installierten Client erzeugte Protokollschema und die
 offiziellen Dokumentationen zu
