@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import UnitOverview from '../pages/UnitOverview';
@@ -108,6 +108,10 @@ it('does not manufacture a linked contract or tenant account for a vacant unit',
     <Routes><Route path="/units/:id" element={<UnitOverview />} /></Routes>
   </MemoryRouter>);
   await screen.findByRole('heading', { name: 'Leerstand' });
-  expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+  // a vacant unit only leads to its re-letting; no contract or tenant account is made up
+  const related = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+  expect(within(related).getAllByRole('link').map(link => [link.textContent.replace('↗', '').trim(), link.getAttribute('href')]))
+    .toEqual([['Neuvermietung', '/reletting']]);
+  expect(screen.queryByRole('link', { name: 'Mietvertrag öffnen' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Mieterkonto öffnen' })).not.toBeInTheDocument();
 });
