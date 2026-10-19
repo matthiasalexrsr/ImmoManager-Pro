@@ -339,6 +339,7 @@ describe('unsaved sub-editors and deposit navigation', () => {
       }
       const destination = part === 'security' ? linkedContract()
         : within(dialog).getByRole('link', { name: 'Kaution' });
+      expect(unloadWouldPrompt()).toBe(true);
       fireEvent.click(destination);
       expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
       const confirmation = within(dialog).getByRole('group', { name: 'Ungespeicherte Kautionsänderungen' });
@@ -356,6 +357,7 @@ describe('unsaved sub-editors and deposit navigation', () => {
       fireEvent.click(within(dialog).getByRole('link', { name: 'Ohne Speichern verlassen' }));
       expect(await screen.findByRole('heading', { name: part === 'security'
         ? 'Contract navigation reached' : 'Booking navigation reached' })).toBeInTheDocument();
+      expect(unloadWouldPrompt()).toBe(false);
     },
   );
 
@@ -427,5 +429,95 @@ describe('failed and uncertain deposit operations do not bypass the leave guard'
     expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
     expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
     expect(testService.finalize).toHaveBeenCalledOnce();
+  });
+});
+
+function unloadWouldPrompt() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+describe('browser unload protection for deposit editors', () => {
+  beforeEach(() => { authState.user = { id: 'u-1', role: 'buchhaltung' }; authState.write = null; });
+
+  it('activates only for unsaved changes, stays active through cancel, and disarms after reverting the edit form', async () => {
+    render(<GuardHarness />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    expect(unloadWouldPrompt()).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    const form = within(dialog).getByRole('form', { name: 'Vereinbarung ändern' });
+    expect(unloadWouldPrompt()).toBe(false);
+    const notes = within(form).getByRole('textbox', { name: 'Notizen' });
+    fireEvent.change(notes, { target: { value: 'Eine neue Eingabe' } });
+    expect(unloadWouldPrompt()).toBe(true);
+    fireEvent.click(linkedContract());
+    expect(unloadWouldPrompt()).toBe(true);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter bearbeiten' }));
+    expect(unloadWouldPrompt()).toBe(true);
+    expect(notes).toHaveValue('Eine neue Eingabe');
+    fireEvent.click(within(form).getByRole('button', { name: 'Abbrechen' }));
+    expect(unloadWouldPrompt()).toBe(false);
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+  });
+
+  it('protects a pending command even without changed inputs, then disarms after a successful response', async () => {
+    const original = fileFixture();
+    let finish;
+    const api = service(original);
+    api.startSettlement = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    render(<GuardHarness serviceOverride={api} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    expect(unloadWouldPrompt()).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Kautionsabrechnung beginnen' }));
+    expect(api.startSettlement).toHaveBeenCalledOnce();
+    expect(unloadWouldPrompt()).toBe(true);
+    await act(async () => { finish(fileFixture({ settlements: [draftSettlement()] })); });
+    await waitFor(() => expect(unloadWouldPrompt()).toBe(false));
+    expect(screen.getByRole('dialog', { name: /Kautionsakte/ })).toBeInTheDocument();
+  });
+
+  it('keeps unload protection after a failed save until a confirmed clean state', async () => {
+    const api = service();
+    api.updateAgreement.mockRejectedValueOnce(new Error('Sicherung fehlgeschlagen'));
+    render(<GuardHarness serviceOverride={api} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    const form = within(dialog).getByRole('form', { name: 'Vereinbarung ändern' });
+    const notes = within(form).getByRole('textbox', { name: 'Notizen' });
+    fireEvent.change(notes, { target: { value: 'Bitte nicht verlieren' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+    await within(dialog).findByText('Sicherung fehlgeschlagen');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Sicherung fehlgeschlagen');
+    expect(unloadWouldPrompt()).toBe(true);
+    expect(notes).toHaveValue('Bitte nicht verlieren');
+    fireEvent.click(within(form).getByRole('button', { name: 'Abbrechen' }));
+    expect(unloadWouldPrompt()).toBe(false);
+  });
+
+  it('continues to protect an uncertain settlement finalization after the network request has stopped', async () => {
+    const api = service(fileFixture({ settlements: [draftSettlement()] }));
+    api.finalize.mockRejectedValueOnce(Object.assign(new Error('Ungewiss'), { isNetwork: true }));
+    render(<GuardHarness serviceOverride={api} />);
+    const section = await screen.findByRole('region', { name: 'Kautionsabrechnung' });
+    expect(unloadWouldPrompt()).toBe(false);
+    fireEvent.click(within(section).getByRole('button', { name: 'Prüfen' }));
+    await waitFor(() => expect(api.preview).toHaveBeenCalledOnce());
+    fireEvent.click(within(section).getByRole('checkbox'));
+    fireEvent.click(within(section).getByRole('button', { name: 'Abschließen' }));
+    expect(await within(section).findByText(/Die Antwort ging verloren/)).toBeInTheDocument();
+    expect(unloadWouldPrompt()).toBe(true);
+    expect(api.finalize).toHaveBeenCalledOnce();
+  });
+
+  it('removes the unload listener on unmount so later pages can reload normally', async () => {
+    const view = render(<GuardHarness />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Notizen' }),
+      { target: { value: 'Nicht gespeichert' } });
+    expect(unloadWouldPrompt()).toBe(true);
+    view.unmount();
+    expect(unloadWouldPrompt()).toBe(false);
   });
 });

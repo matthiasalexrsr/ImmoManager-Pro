@@ -255,6 +255,18 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
   };
   useLayoutEffect(() => { if (leaveRequest) keepEditingRef.current?.focus(); }, [leaveRequest]);
   useEffect(() => { if (!hasPendingAction) setLeaveBlocked(false); }, [hasPendingAction]);
+  // The inline link/close confirmation cannot intercept the browser's Reload,
+  // close-tab or cross-origin navigation. Ask for its native confirmation only
+  // while edits or a possibly unfinished business operation exist.
+  useEffect(() => {
+    if (!hasUnsaved && !hasPendingAction) return;
+    const protectUnload = event => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', protectUnload);
+    return () => window.removeEventListener('beforeunload', protectUnload);
+  }, [hasUnsaved, hasPendingAction]);
   useModalDialog(dialogRef, requestClose, true);
 
   useEffect(() => {
