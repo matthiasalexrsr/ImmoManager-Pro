@@ -248,7 +248,7 @@ export default function Tasks() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/tasks/${row.id}`);
       setTasks(current => current.filter(task => task.id !== row.id));

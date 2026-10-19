@@ -35,7 +35,8 @@ export default function UpdateSection({ versionInfo }) {
   };
 
   const applyUpdate = async () => {
-    if (!await confirm(tr('settings.update.confirmApply', 'Update jetzt anwenden? Es wird automatisch ein Backup erstellt.'))) return;
+    if (!await confirm(tr('settings.update.confirmApply', 'Update jetzt anwenden? Es wird automatisch ein Backup erstellt.'),
+      { action: 'apply' })) return;
     setUpdateApplying(true);
     setUpdateResult(null);
     try {

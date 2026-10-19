@@ -142,7 +142,7 @@ function ServiceContractDossier({ id }) {
               <div className="panel-header sc-panel-header"><span>{t('serviceContracts.sections.term')}</span>
                 {canWrite && (terms.cancellation
                   ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => run(async () => {
-                    if (confirm && !(await confirm(t('serviceContracts.confirmWithdraw')))) return;
+                    if (confirm && !(await confirm(t('serviceContracts.confirmWithdraw'), { action: 'withdraw' }))) return;
                     await api.del(`${path}/cancel`); reload();
                   })}>{t('serviceContracts.withdraw')}</button>
                   : <button type="button" className="btn btn-sm btn-secondary" onClick={() => setModal('cancel')}>{t('serviceContracts.cancel')}</button>)}

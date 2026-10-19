@@ -396,7 +396,7 @@ describe('named-view destructive-action safety', () => {
     expect(screen.getByRole('option', { name: view.name })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ansicht löschen' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(workspace.remove).toHaveBeenCalledTimes(1));
     expect(workspace.remove).toHaveBeenCalledWith('views', view.id, {
       base_revision: 7, idempotency_key: expect.any(String),
@@ -418,7 +418,7 @@ describe('named-view destructive-action safety', () => {
       <NamedViews context="tasks#new" config={{ search: 'Anders' }} onApply={vi.fn()} />
     </ConfirmProvider>);
     await screen.findByRole('option', { name: view.name });
-    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(workspace.remove).not.toHaveBeenCalled();
   });

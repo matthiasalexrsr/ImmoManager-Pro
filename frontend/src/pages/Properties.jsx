@@ -162,7 +162,7 @@ export default function Properties() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/properties/${row.id}`);
     } catch (err) {

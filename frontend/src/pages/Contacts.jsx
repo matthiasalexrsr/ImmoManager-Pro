@@ -76,7 +76,7 @@ export default function Contacts() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.display_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.display_name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/contacts/${row.id}`);
     loadData();
   };

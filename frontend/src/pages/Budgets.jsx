@@ -101,7 +101,7 @@ export default function Budgets() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.property_name} ${row.year}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.property_name} ${row.year}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/budgets/${row.id}`);

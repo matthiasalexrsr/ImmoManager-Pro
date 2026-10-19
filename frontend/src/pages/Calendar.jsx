@@ -91,7 +91,7 @@ export default function Calendar() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/calendar/${row.id}`);

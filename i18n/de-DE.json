@@ -1099,6 +1099,16 @@
       "title": "Archivieren?",
       "body": "Sie können archivierte Einträge später wiederherstellen.",
       "archive": "Archivieren"
+    },
+    "confirm": {
+      "title": "Bitte bestätigen",
+      "archive": "Archivieren",
+      "markPaid": "Als bezahlt markieren",
+      "reverse": "Stornieren",
+      "apply": "Update anwenden",
+      "deactivate": "Deaktivieren",
+      "withdraw": "Kündigung zurücknehmen",
+      "unlink": "Zuordnung lösen"
     }
   },
   "toasts": {

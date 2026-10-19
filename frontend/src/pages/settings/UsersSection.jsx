@@ -97,7 +97,8 @@ export default function UsersSection({ currentUser }) {
   };
 
   const toggleActive = async (user) => {
-    if (user.is_active && !(await confirm(u('confirmDeactivate', { name: user.username })))) return;
+    if (user.is_active && !(await confirm(u('confirmDeactivate', { name: user.username }),
+      { action: 'deactivate', danger: true }))) return;
     try {
       await api.patch(`/auth/users/${user.id}`, { is_active: !user.is_active });
       toast.success(u('saved'));

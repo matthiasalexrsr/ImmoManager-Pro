@@ -59,7 +59,7 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
 
   const handleDelete = async (row) => {
     const name = row[columns[0]?.key] || row.id;
-    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`${endpoint}/${row.id}`);

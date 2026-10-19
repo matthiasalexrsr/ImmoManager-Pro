@@ -106,7 +106,7 @@ export default function RentCharges() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/rent-charges/${row.id}`);

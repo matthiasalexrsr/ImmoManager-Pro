@@ -189,7 +189,7 @@ export default function Tenants() {
 
   const handleDelete = async (row) => {
     const name = row.full_name || row.id;
-    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setError(null);
     try {
       await api.del(`/tenants/${row.id}`);
@@ -202,7 +202,8 @@ export default function Tenants() {
   const handleArchiveToggle = async (tenant) => {
     const isArchived = tenant.archived;
     if (!isArchived) {
-      if (!await confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`)) return;
+      if (!await confirm(`"${tenant.full_name}" ${t('pages.tenants.archiveConfirm') || 'archivieren? Der Mieter wird aus der aktiven Liste entfernt.'}`,
+        { action: 'archive' })) return;
     }
     setError(null);
     try {

@@ -189,7 +189,7 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/invoices/${row.id}`);
     refreshData();
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
@@ -274,7 +274,8 @@ export default function Invoices() {
           write: true,
           icon: <CheckCircleIcon size={15} />,
           onClick: async () => {
-            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
+            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`,
+              { action: 'markPaid' })) markPaid(row);
           },
         }] : [])]}
       />

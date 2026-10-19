@@ -225,7 +225,7 @@ export default function Viewings() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/viewings/${row.id}`);

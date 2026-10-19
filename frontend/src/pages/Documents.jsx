@@ -346,7 +346,7 @@ function DocumentsWorkspace() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/documents/${encodeURIComponent(row.id)}`);
       refreshData();

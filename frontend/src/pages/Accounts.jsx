@@ -101,7 +101,7 @@ export default function Accounts() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.name || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/accounts/${row.id}`);
     } catch (err) {

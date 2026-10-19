@@ -147,7 +147,7 @@ export default function Leads() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/leads/${row.id}`);

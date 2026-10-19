@@ -189,7 +189,7 @@ export default function Meters() {
   };
 
   const handleDeleteMeter = async (row) => {
-    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/meters/${row.id}`);
     if (selectedMeter?.id === row.id) {
       setSelectedMeter(null);

@@ -356,7 +356,8 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const reverseBooking = async (row) => {
     if (!canWrite || reversing) return;
     if (!await confirm(`„${row.payment_text || formatDate(row.booking_date)}“ stornieren? Es wird eine Gegenbuchung über den `
-      + 'noch nicht stornierten Betrag angelegt; beide zusammen zählen in allen Auswertungen null.')) return;
+      + 'noch nicht stornierten Betrag angelegt; beide zusammen zählen in allen Auswertungen null.',
+    { action: 'reverse' })) return;
     setReversing(true);
     try {
       await api.post(`/bookings/${encodeURIComponent(row.id)}/reverse`, {});
@@ -373,7 +374,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const handleDelete = async (row) => {
     if (!canWrite) return;
-    if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/bookings/${encodeURIComponent(row.id)}`);
       if (store) store.invalidateRelated('bookings', 'accounts', 'categories');

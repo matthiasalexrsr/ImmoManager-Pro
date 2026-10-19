@@ -18,7 +18,7 @@ describe('sichere globale Bestätigungen', () => {
     render(<ConfirmProvider><Requester outcome={outcome} /></ConfirmProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Erster Auftrag' }));
     fireEvent.click(screen.getByRole('button', { name: 'Zweiter Auftrag' }));
-    let dialog = screen.getByRole('dialog', { name: /Bestätigung/ });
+    let dialog = screen.getByRole('dialog', { name: /Wirklich löschen/ });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(within(dialog).getByText('Ersten Eintrag löschen?')).toBeInTheDocument();
     expect(screen.queryByText('Zweiten Eintrag löschen?')).not.toBeInTheDocument();
@@ -27,7 +27,7 @@ describe('sichere globale Bestätigungen', () => {
     await waitFor(() => expect(outcome).toHaveBeenCalledWith('first', false));
     dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Zweiten Eintrag löschen?')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Bestätigen' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(outcome).toHaveBeenCalledWith('second', true));
     expect(outcome).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -40,7 +40,7 @@ describe('sichere globale Bestätigungen', () => {
     fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');
     const cancel = within(dialog).getByRole('button', { name: 'Abbrechen' });
-    const accept = within(dialog).getByRole('button', { name: 'Bestätigen' });
+    const accept = within(dialog).getByRole('button', { name: 'Löschen' });
     expect(cancel).toHaveFocus();
     fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
     expect(accept).toHaveFocus();
@@ -79,7 +79,7 @@ it('fokussiert auch bei der nächsten Frage nach einer Bestätigung wieder Abbre
   render(<ConfirmProvider><Requester outcome={outcome} /></ConfirmProvider>);
   fireEvent.click(screen.getByRole('button', { name: 'Erster Auftrag' }));
   fireEvent.click(screen.getByRole('button', { name: 'Zweiter Auftrag' }));
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Bestätigen' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Löschen' }));
   await waitFor(() => expect(outcome).toHaveBeenCalledWith('first', true));
   const next = screen.getByRole('dialog');
   expect(within(next).getByText('Zweiten Eintrag löschen?')).toBeInTheDocument();
