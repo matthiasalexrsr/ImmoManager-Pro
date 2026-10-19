@@ -59,7 +59,7 @@ class InvoiceMatcher:
         remaining = invoice.gross_amount
         allocations: list[AllocationLine] = []
 
-        for candidate in sorted(candidates, key=lambda item: item.booking_date):
+        for candidate in sorted(candidates, key=lambda item: (item.booking_date, item.booking_id)):
             if remaining == Decimal("0.00"):
                 break
             if candidate.open_amount == Decimal("0.00"):

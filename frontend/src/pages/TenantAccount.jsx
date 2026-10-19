@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
 import { formatDate as day, formatMoney } from '../utils/format';
@@ -9,26 +9,40 @@ import { entityHref } from '../utils/entityLinks';
 import FormModal from '../components/FormModal';
 import { useCanWrite } from '../contexts/AuthContext';
 import { PAYMENT_METHODS, TENANT_FIELDS } from '../features/tenants/tenantFields';
+import { useDataStore } from '../contexts/DataStoreContext';
 
 const eur = v => formatMoney(v || 0);
 
 /** Per contract what was due, what was paid and the balance, plus payments not credited to any contract. */
 export default function TenantAccount() {
   const { id } = useParams();
+  return <TenantAccountSession key={id} id={id} />;
+}
+
+function TenantAccountSession({ id }) {
+  const [params, setParams] = useSearchParams();
   const toast = useToast();
+  const store = useDataStore();
   const party = usePartyWorkspace();
   const canWrite = useCanWrite('/tenants');
   const [editing, setEditing] = useState(false);
   const [tenant, setTenant] = useState(null);
   const [account, setAccount] = useState(null);
-  const [asOf, setAsOf] = useState(() => { const date = new Date();
+  const [today] = useState(() => { const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   });
+  const asOf = params.get('as_of') ?? today;
+  const setAsOf = value => { setEditing(false); setParams(current => {
+    const next = new URLSearchParams(current); next.set('as_of', value); return next;
+  }); };
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
   const contractSources = useRef(null);
   const unassignedSources = useRef(null);
   const showSources = target => { target.current?.focus(); target.current?.scrollIntoView?.({ block: 'center' }); };
+  const bookingParams = new URLSearchParams({ tenant_id: id, date_to: asOf });
+  const bookingHref = `/bookings?${bookingParams}`;
+  const unassignedHref = `/bookings?${new URLSearchParams({ ...Object.fromEntries(bookingParams), flow: 'unassigned' })}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +52,7 @@ export default function TenantAccount() {
     if (!asOf) { setError('Bitte einen gültigen Stichtag wählen.'); return; }
     Promise.all([
       api.get(`/tenants/${encodeURIComponent(id)}`, options),
-      api.get(`/tenants/${encodeURIComponent(id)}/account?as_of=${asOf}`, options),
+      api.get(`/tenants/${encodeURIComponent(id)}/account?as_of=${encodeURIComponent(asOf)}`, options),
     ]).then(([person, result]) => {
       if (!cancelled) { setTenant(person); setAccount(result); }
     }).catch(err => { if (!cancelled) { setError(err.message); toast.error(err.message); } });
@@ -70,7 +84,8 @@ export default function TenantAccount() {
 
       <RelatedPageLinks items={[
         { to: `/contracts?tenant_id=${encodeURIComponent(id)}`, label: 'Verträge dieses Mieters' },
-        { to: `/bookings?tenant_id=${encodeURIComponent(id)}`, label: 'Buchungen dieses Mieters' },
+        { to: bookingHref, label: 'Buchungen dieses Mieters' },
+        { to: `/receivables?${new URLSearchParams({ tenant_id: id, date_to: asOf })}`, label: 'Forderungen und Guthaben' },
       ]} />
       {tenant && <TenantFacts tenant={tenant} />}
 
@@ -95,6 +110,7 @@ export default function TenantAccount() {
                   <td>{c.contract_id && c.contract_number
                     ? <Link to={entityHref('contract', c.contract_id)}>{c.contract_number}</Link>
                     : c.contract_number || '—'}
+                    {c.contract_id && <div className="td-sub"><Link to={`/receivables?${new URLSearchParams({ contract_id: c.contract_id, date_to: asOf })}`}>Forderungen & Guthaben</Link></div>}
                     {c.ledger_start && <div className="td-sub">Konto ab {day(c.ledger_start)} übernommen
                       {c.carried_balance ? ` · Saldo ${eur(c.carried_balance)}` : ''}</div>}</td>
                   <td className="text-right td-num">{eur(c.expected)}</td>
@@ -131,13 +147,14 @@ export default function TenantAccount() {
                 </tbody>
               </table>
               <p className="text-muted" style={{ padding: '0 1rem 1rem' }}>
-                Zuordnen unter <Link to={`/bookings?tenant_id=${encodeURIComponent(id)}`}>Buchungen</Link> → Filter „Nicht zugeordnet“ → „Aufteilen“.
+                <Link to={unassignedHref}>Nicht zugeordnete Buchungen bis zum Stichtag öffnen</Link> und dort „Aufteilen“ wählen.
               </p>
             </div>
           )}
       </section>
       {editing && tenant && <FormModal title="Mieter bearbeiten" fields={TENANT_FIELDS} initial={tenant}
-        onSave={async data => { await api.put(`/tenants/${encodeURIComponent(id)}`, data); setRevision(value => value + 1); }}
+        onSave={async data => { await api.put(`/tenants/${encodeURIComponent(id)}`, data);
+          store?.invalidateRelated('tenants', 'contracts'); setRevision(value => value + 1); }}
         onClose={() => setEditing(false)} />}
     </div>
   );

@@ -28,6 +28,7 @@ async function step(name, action) {
   catch (error) {
     report.checks.push({ name, ok: false, phase: current, error: String(error) });
     await page?.screenshot({ path: path.join(output, 'failure.png'), fullPage: true });
+    if (page) await fs.writeFile(path.join(output, 'failure-dom.html'), await page.content());
     throw error;
   } finally { await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2)); }
 }
@@ -203,13 +204,85 @@ try {
     await shot('service-documents-1440.png');
   });
 
+  let financialInvoice;
+  await step('Invoice list and payment file agree; an older payment beyond the first page can be linked', async () => {
+    financialInvoice = await call('POST', '/invoices', { supplier: 'QA Restbetragsprüfung', invoice_number: 'QA-RE-REST',
+      property_id: north.id, invoice_date: '2026-01-01', due_date: '2026-12-31', net_amount: 123.45, gross_amount: 123.45 });
+    const paid = await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
+      booking_date: '2026-01-01', amount: -40, status: 'open', payment_text: 'QA Bereits bezahlt' });
+    await call('POST', `/invoices/${financialInvoice.id}/payments`, { booking_id: paid.id, amount: 40 });
+    for (let i = 0; i < 26; i++) await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
+      booking_date: '2026-01-02', amount: -1, payment_text: 'QA RE-REST Auswahl neuer ' + i });
+    const older = await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
+      booking_date: '2025-01-01', amount: -100, payment_text: 'QA RE-REST Auswahl älter' });
+    await page.goto(base.origin + '/invoices');
+    await expect(row('QA-RE-REST')).toContainText('83,45');
+    await expect(row('QA-RE-REST')).toContainText('40,00');
+    await page.getByRole('link', { name: 'QA-RE-REST', exact: true }).click();
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'Zahlung zuordnen', exact: true }).click();
+    const picker = page.getByRole('dialog', { name: 'Zahlung zuordnen' });
+    await expect(picker).toBeVisible();
+    await picker.getByRole('searchbox').fill('QA RE-REST Auswahl');
+    await picker.getByRole('button', { name: 'Suchen', exact: true }).click();
+    await expect(picker.locator('li')).toHaveCount(25);
+    await picker.getByRole('button', { name: 'Weitere laden', exact: true }).click();
+    await picker.locator('li').filter({ hasText: 'QA RE-REST Auswahl älter' }).getByRole('button', { name: 'Auswählen', exact: true }).click();
+    const payment = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Zahlung', exact: true }) });
+    await expect(payment.getByLabel('Betrag', { exact: true })).toHaveValue('83.45');
+    await payment.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(payment.getByRole('link', { name: /QA RE-REST Auswahl älter/ })).toBeVisible();
+    const details = await call('GET', `/invoices/${financialInvoice.id}/review`);
+    assert.equal(details.settlement.paid, 123.45); assert.equal(details.settlement.open, 0);
+    const overview = (await call('GET', '/invoices/overview')).find(item => item.id === financialInvoice.id);
+    assert.equal(overview.payment_summary.open, 0); assert.equal(overview.payment_summary.paid, 123.45);
+    assert.ok(details.payments.some(item => item.booking_id === older.id));
+    await page.setViewportSize({ width: 360, height: 1000 });
+    await shot('invoice-payments-360.png');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  });
+  await step('Tenant and booking files keep the chosen date and open the exact linked source', async () => {
+    const incoming = await call('POST', '/bookings', { account_id: account.id, property_id: north.id, unit_id: unit.id,
+      tenant_id: tenant.id, booking_date: '2026-02-15', amount: 20, payment_text: 'QA Stichtagszahlung' });
+    await page.goto(`${base.origin}/bookings?booking_id=${incoming.id}`);
+    await page.getByRole('link', { name: 'Mieterkonto zum Buchungsdatum', exact: true }).click();
+    await expect(page.getByLabel('Stichtag', { exact: true })).toHaveValue('2026-02-15');
+    await expect(page.getByRole('link', { name: 'Buchungen dieses Mieters', exact: true }))
+      .toHaveAttribute('href', `/bookings?tenant_id=${tenant.id}&date_to=2026-02-15`);
+    await page.getByRole('link', { name: 'Buchungen dieses Mieters', exact: true }).click();
+    await expect(row('QA Stichtagszahlung')).toBeVisible();
+    assert.equal(new URL(page.url()).searchParams.get('date_to'), '2026-02-15');
+  });
+  await step('Statement and claim files form a precise round trip; repeating claim creation never duplicates it', async () => {
+    const period = await call('POST', '/billing/periods', { property_id: north.id, label: 'QA Abrechnungsbrücke 2025', start_date: '2025-01-01', end_date: '2025-12-31' });
+    const key = await call('POST', '/billing/allocation-keys', { property_id: north.id, name: 'QA Einheitenbrücke', key_type: 'unit_count' });
+    await call('POST', '/billing/cost-items', { billing_period_id: period.id, description: 'QA Belegbare Nebenkosten', amount: 120, allocation_key_id: key.id });
+    const generated = await call('POST', `/billing/periods/${period.id}/generate`, {});
+    const statement = generated.find(item => item.party !== 'vacancy'); assert.ok(statement);
+    await call('POST', `/billing/periods/${period.id}/finalize`, {});
+    const first = await call('POST', `/billing/periods/${period.id}/create-receivables`, {});
+    assert.equal(first.created_receivables, 1);
+    assert.equal((await call('POST', `/billing/periods/${period.id}/create-receivables`, {})).created_receivables, 0);
+    await page.goto(`${base.origin}/statements?period_id=${period.id}`);
+    await page.getByRole('link', { name: 'Forderungen & Guthaben', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Forderungen und Guthaben dieser Einzelabrechnung' })).toBeVisible();
+    assert.equal(new URL(page.url()).searchParams.get('statement_id'), statement.id);
+    await expect(row('Nebenkostenabrechnung QA Abrechnungsbrücke 2025')).toHaveCount(1);
+    await page.getByRole('link', { name: 'Einzelabrechnung öffnen', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText('QA Wohnung Nord');
+    assert.equal(new URL(page.url()).searchParams.get('statement_id'), statement.id);
+    await shot('statement-source-roundtrip-1440.png');
+  });
+
   const source = await fs.readFile(new URL('../frontend/src/App.jsx', import.meta.url), 'utf8');
   const declared = [...source.matchAll(/<Route path="([^"]+)"/g)].map(match => match[1]);
   const validPaths = declared.filter(route => route !== '*').map(route => new RegExp('^/' + route.replace(/^\//, '').replace(/:[^/]+/g, '[^/]+') + '$'));
   const backendPages = new Set(['/openapi.json', '/docs', '/redoc', '/health']);
   const verifiedBackend = new Set();
   const routes = ['/', ...declared.filter(route => route !== '*' && route !== '/' && route !== '/login' && !route.includes(':')).map(route => '/' + route.replace(/^\//, '')),
-    `/properties/${north.id}`, `/units/${unit.id}`, `/tenants/${tenant.id}/account`, `/service-contracts/${service.id}`, `/maintenance/${maintenance.id}`];
+    `/properties/${north.id}`, `/units/${unit.id}`, `/tenants/${tenant.id}/account`, `/service-contracts/${service.id}`, `/maintenance/${maintenance.id}`,
+    `/invoice-review/${financialInvoice.id}`];
   for (const width of [320, 360, 1440]) {
     await step(`All ${routes.length} application pages at ${width}px: visible text, navigation targets, errors and overflow`, async () => {
       await page.setViewportSize({ width, height: 1000 });

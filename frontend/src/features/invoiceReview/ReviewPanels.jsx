@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format';
-import { Empty, Fact, Pill, Section } from '../maintenanceProject/ProjectUi';
+import { Empty, Fact, PickerDialog, Pill, Section } from '../maintenanceProject/ProjectUi';
+import { entityHref } from '../../utils/entityLinks';
 import { PAYMENT_TONE, compact, findingText, reviewApi } from './reviewApi';
 import { fill, useReviewText } from './text';
 import useEditableDraft from '../workCenter/useEditableDraft';
@@ -278,13 +279,14 @@ export function Payment({ view, onChanged }) {
   const { tx } = useReviewText();
   const s = view.settlement;
   const { busy, error, run } = useAction(onChanged);
-  const [candidates, setCandidates] = useState(null);
+  const [picker, setPicker] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [choice, setChoice] = useState({ booking_id: '', amount: '' });
   const draft = useEditableDraft({ context: 'invoice-review-action#payment', kind: 'invoice', id: view.invoice.id,
     fields: ['booking_id', 'amount'], values: choice, enabled: view.abilities.pay && s.payment_status !== 'rejected' && view.kind === 'invoice' });
-  useEffect(() => { setCandidates(null); }, [view.invoice.id]);
-  const loadCandidates = () => reviewApi.paymentCandidates(view.invoice.id).then(page => setCandidates(page.items || []))
-    .catch(() => setCandidates([]));
+  const invoiceId = view.invoice.id;
+  const loadCandidates = useCallback(({ q, skip, limit, option }, options) =>
+    reviewApi.paymentCandidates(invoiceId, { q, skip, limit, all_properties: option }, options), [invoiceId]);
   return (
     <Section id="ir-payment" title={tx.settlement}>
       {error && <div className="alert-error" role="alert">{error}</div>}
@@ -302,32 +304,32 @@ export function Payment({ view, onChanged }) {
       <h3 className="mp-subhead">{tx.payments}</h3>
       {view.payments.length === 0 ? <Empty>{tx.noPayments}</Empty> : (
         <ul className="mp-list">{view.payments.map(p => <li key={p.id} className="mp-row">
-          <span className="mp-row-main">{formatDate(p.booking?.booking_date)} · {p.booking?.payment_text || tx.booking}</span>
+          <Link className="mp-row-main" to={entityHref('booking', p.booking_id)}>{formatDate(p.booking?.booking_date)} · {p.booking?.payment_text || tx.booking}</Link>
           <span>{formatMoney(p.amount)}</span></li>)}</ul>
       )}
       {view.abilities.pay && s.payment_status !== 'rejected' && view.kind === 'invoice' && (
         <EditableDraft draft={draft} values={choice} busy={busy} beforeRestore={() => reviewApi.load(view.invoice.id)}
-          onRestore={restored => { setChoice({ booking_id: restored.booking_id || '', amount: restored.amount || '' }); loadCandidates(); }}>
-        {
-        candidates === null
-          ? <button type="button" className="btn btn-secondary btn-sm" onClick={loadCandidates}>{tx.addPayment}</button>
-          : <form className="ir-check-actions" onSubmit={event => { event.preventDefault();
+          onRestore={restored => { setChoice({ booking_id: restored.booking_id || '', amount: restored.amount || '' }); setSelectedBooking(null); }}>
+          <form className="ir-check-actions" onSubmit={event => { event.preventDefault();
             if (!draft.blocked && !busy) run(() => draft.finish(() => reviewApi.addPayment(view.invoice.id, { booking_id: choice.booking_id, amount: Number(choice.amount) }))); }}>
-            <label className="form-group">{tx.booking}
-              <select value={choice.booking_id} required onChange={e => {
-                const found = candidates.find(c => c.id === e.target.value);
-                setChoice({ booking_id: e.target.value, amount: found ? String(Math.min(found.free, s.open || found.free)) : '' });
-              }}>
-                <option value="">{tx.none}</option>
-                {candidates.map(c => <option key={c.id} value={c.id}>{formatDate(c.booking_date)} · {formatMoney(c.amount)}
-                  {' '}({tx.free} {formatMoney(c.free)}) {c.payment_text || ''}</option>)}
-              </select></label>
+            <div className="form-group"><span>{tx.booking}</span>
+              {choice.booking_id && <Link to={entityHref('booking', choice.booking_id)}>
+                {selectedBooking ? `${formatDate(selectedBooking.booking_date)} · ${selectedBooking.payment_text || tx.booking}` : tx.openBooking}
+              </Link>}
+              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setPicker(true)}>{tx.addPayment}</button>
+              {selectedBooking && <small>{tx.free} {formatMoney(selectedBooking.free)}</small>}
+            </div>
             <label className="form-group">{tx.amount}
-              <input type="number" step="0.01" min="0.01" required value={choice.amount}
+              <input type="number" step="0.01" min="0.01" max={selectedBooking?.free} required value={choice.amount}
                 onChange={e => setChoice(c => ({ ...c, amount: e.target.value }))} /></label>
-            <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{tx.save}</button></div>
+            <div className="mp-actions"><button type="submit" className="btn btn-primary btn-sm" disabled={busy || !choice.booking_id || draft.blocked}>{tx.save}</button></div>
           </form>
-        }</EditableDraft>
+          {picker && <PickerDialog title={tx.addPayment} load={loadCandidates} onClose={() => setPicker(false)} extra={tx.otherProperties}
+            renderItem={booking => <><strong>{booking.payment_text || tx.booking}</strong>
+              <span>{formatDate(booking.booking_date)} · {formatMoney(booking.amount)} · {tx.free} {formatMoney(booking.free)}</span></>}
+            onPick={booking => { setSelectedBooking(booking); setChoice({ booking_id: booking.id,
+              amount: String(Math.min(booking.free, s.open > 0 ? s.open : booking.free)) }); setPicker(false); }} />}
+        </EditableDraft>
       )}
     </Section>
   );

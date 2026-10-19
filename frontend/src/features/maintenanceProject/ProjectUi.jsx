@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PdfPreview from '../../components/PdfPreview';
 import { CloseIcon } from '../../components/Icons';
 import { useProjectText } from './text';
+import './maintenanceProject.css';
 
 export function Section({ title, actions, children, id }) {
   return (
@@ -57,7 +59,7 @@ export function Modal({ title, onClose, children, wide = false }) {
     node?.addEventListener('keydown', onKey);
     return () => { node?.removeEventListener('keydown', onKey); previous?.focus?.(); };
   }, []);
-  return (
+  return createPortal(
     <div className="modal-overlay" role="presentation" onClick={onClose}>
       <div ref={ref} className={`modal mp-modal${wide ? ' modal-wide' : ''}`} role="dialog" aria-modal="true"
         aria-label={title} onClick={event => event.stopPropagation()}>
@@ -67,7 +69,7 @@ export function Modal({ title, onClose, children, wide = false }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>, document.body
   );
 }
 
@@ -83,24 +85,30 @@ export function PickerDialog({ title, load, renderItem, onPick, onClose, extra }
   const [skip, setSkip] = useState(0);
   const [nextSkip, setNextSkip] = useState(0);
   const [option, setOption] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    if (skip === 0) { setItems([]); setHasMore(false); }
     load({ q: submitted, skip, limit: 25, option }, { signal: controller.signal })
       .then(page => {
         if (controller.signal.aborted) return;
-        setItems(current => (skip === 0 ? page.items : [...current, ...page.items]));
+        const next = page?.next_skip ?? skip + 25;
+        if (!Array.isArray(page?.items) || (page.has_more && (!Number.isFinite(next) || next <= skip))) {
+          throw new Error('Die Auswahlliste konnte nicht vollständig gelesen werden.');
+        }
+        setItems(current => [...new Map([...(skip === 0 ? [] : current), ...page.items].map(item => [item.id, item])).values()]);
         setHasMore(Boolean(page.has_more));
         // A lookup may filter its page locally (already-linked documents, search).
         // Its server offset must advance by consumed rows, not by visible results.
-        setNextSkip(page.next_skip ?? skip + 25);
+        setNextSkip(next);
       })
-      .catch(failure => { if (failure?.name !== 'AbortError') setError(failure.message); })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message || 'Auswahl konnte nicht geladen werden.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [load, submitted, skip, option]);
+  }, [load, submitted, skip, option, attempt]);
 
   const search = event => { event.preventDefault(); setSkip(0); setSubmitted(q.trim()); };
   return (
@@ -117,19 +125,20 @@ export function PickerDialog({ title, load, renderItem, onPick, onClose, extra }
             {extra}
           </label>
         )}
-        {error && <div className="alert-error" role="alert">{error}</div>}
+        {error && <div className="alert-error" role="alert">{error}{' '}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAttempt(value => value + 1)}>{tx.retry || 'Erneut laden'}</button></div>}
         {!loading && !error && items.length === 0 && <Empty>{tx.nothingFound}</Empty>}
         <ul className="mp-pick-list">
           {items.map(item => (
             <li key={item.id}>
               <div className="mp-pick-text">{renderItem(item)}</div>
-              <button type="button" className="btn btn-primary btn-sm" disabled={item.free === 0}
+              <button type="button" className="btn btn-primary btn-sm" disabled={loading || Boolean(error) || item.free === 0}
                 onClick={() => onPick(item)}>{tx.choose}</button>
             </li>
           ))}
         </ul>
         {loading && <p className="text-muted" role="status">{tx.loading}</p>}
-        {hasMore && !loading && (
+        {hasMore && !loading && !error && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSkip(nextSkip)}>{tx.loadMore}</button>
         )}
       </div>

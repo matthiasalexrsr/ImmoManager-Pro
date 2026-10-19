@@ -1,4 +1,6 @@
 import { useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { entityHref } from '../../utils/entityLinks';
 import { useModalDialog } from '../partyWorkspace/useModalDialog';
 import { formatDate, formatMoney, formatNumber } from '../../utils/format';
 import StatusBadge from '../../components/StatusBadge';
@@ -48,6 +50,8 @@ export default function StatementBreakdown({ statement, period, onClose, onCosts
         <dl className="billing-result">{totals.map(([label, value], index) => <div key={`${label}-${index}`}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       </div>
       <footer className="modal-footer"><button type="button" className="btn btn-secondary" onClick={onClose}>Schließen</button>
+        {statement.contract_id && <Link className="btn btn-secondary" to={entityHref('contract', statement.contract_id)}>Mietvertrag</Link>}
+        {statement.party !== 'vacancy' && <Link className="btn btn-secondary" to={`/receivables?${new URLSearchParams({ statement_id: statement.id })}`}>Forderungen & Guthaben</Link>}
         {onCosts && <button type="button" className="btn btn-secondary" onClick={onCosts}>Kostenpositionen bearbeiten</button>}
         {statement.party !== 'vacancy' && <button type="button" className="btn btn-primary" onClick={() => onLetter(statement)}>Anschreiben & PDF</button>}
       </footer>

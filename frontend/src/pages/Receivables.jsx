@@ -31,25 +31,19 @@ export default function Receivables() {
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const statementId = params.get('statement_id') || '';
 
-  const refreshData = () => {
-    setLoading(true);
-    setError(null);
-    api.list('/receivables')
-      .then(recs => { if (!Array.isArray(recs)) throw new Error('Forderungen konnten nicht gelesen werden.'); setReceivables(recs); })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const refreshData = () => setAttempt(value => value + 1);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setError(null); setLoading(true);
-    api.list('/receivables')
-      .then(data => { if (!Array.isArray(data)) throw new Error('Forderungen konnten nicht gelesen werden.'); if (!cancelled) setReceivables(data); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [attempt]);
+    api.list(`/receivables${statementId ? `?${new URLSearchParams({ statement_id: statementId })}` : ''}`, { signal: controller.signal })
+      .then(data => { if (!Array.isArray(data)) throw new Error('Forderungen konnten nicht gelesen werden.'); if (!controller.signal.aborted) setReceivables(data); })
+      .catch(e => { if (!controller.signal.aborted) setError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [attempt, statementId]);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
@@ -70,6 +64,7 @@ export default function Receivables() {
     if (selectedStatus === 'dunning' && (!row.dunning_level || ['archived', 'cancelled', 'canceled', 'closed', 'done', 'finalized', 'paid'].includes((row.status || '').toLowerCase()))) return false;
     if (selectedStatus && !['unpaid', 'credits', 'overdue', 'dunning'].includes(selectedStatus) && row.status !== selectedStatus) return false;
     return (!params.get('contract_id') || row.contract_id === params.get('contract_id'))
+      && (!statementId || row.statement_id === statementId)
       && (!params.get('tenant_id') || row.tenant_id === params.get('tenant_id'))
       && (!params.get('property_id') || contract?.property_id === params.get('property_id'))
       && (!params.get('unit_id') || contract?.unit_id === params.get('unit_id'))
@@ -88,6 +83,8 @@ export default function Receivables() {
         </span> : value || '—' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
+    { key: 'statement_id', label: 'Herkunft', render: value => value
+      ? <Link to={`/statements?${new URLSearchParams({ statement_id: value })}`}>Einzelabrechnung öffnen</Link> : 'Direkte Forderung' },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
@@ -138,6 +135,11 @@ export default function Receivables() {
 
   return (
     <div className="page">
+      {statementId && <p role="status">Forderungen und Guthaben dieser Einzelabrechnung.{' '}
+        <Link to={`/statements?${new URLSearchParams({ statement_id: statementId })}`}>Zur Abrechnung</Link>{' '}
+        <button className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('statement_id'); return next;
+        })}>Abrechnungsfilter entfernen</button></p>}
       <div className="filter-chips">{[['', 'Alle Vorgänge'], ['unpaid', 'Offene Forderungen'], ['credits', 'Offene Guthaben']].map(([value, label]) => <button type="button" key={value} className={`btn btn-sm ${selectedStatus === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setParams(current => { const next = new URLSearchParams(current); if (value) next.set('status', value); else next.delete('status'); return next; })}>{label}</button>)}</div>
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
@@ -150,7 +152,7 @@ export default function Receivables() {
         columns={COLUMNS}
         data={filtered}
         viewConfig={{ column_filters: Object.fromEntries(params) }}
-        onApplyView={config => setParams(Object.fromEntries(Object.entries(config.column_filters || {}).filter(([key, value]) => ['status', 'contract_id', 'tenant_id', 'property_id', 'unit_id', 'date_from', 'date_to'].includes(key) && value)))}
+        onApplyView={config => setParams(Object.fromEntries(Object.entries(config.column_filters || {}).filter(([key, value]) => ['status', 'statement_id', 'contract_id', 'tenant_id', 'property_id', 'unit_id', 'date_from', 'date_to'].includes(key) && value)))}
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}

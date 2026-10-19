@@ -198,21 +198,28 @@ function NewInvoice({ properties, onClose, onSaved }) {
   const [values, setValues] = useState(EMPTY_INVOICE);
   const [file, setFile] = useState(null);
   const [duplicates, setDuplicates] = useState([]);
+  const [duplicateError, setDuplicateError] = useState(null);
+  const [duplicateAttempt, setDuplicateAttempt] = useState(0);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const set = (key, value) => setValues(current => ({ ...current, [key]: value }));
   const ready = values.supplier && values.gross_amount && values.invoice_date;
 
   useEffect(() => {
-    if (!ready) { setDuplicates([]); return undefined; }
+    setDuplicates([]); setDuplicateError(null);
+    if (!ready) return undefined;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       reviewApi.duplicates({ supplier: values.supplier, invoice_number: values.invoice_number,
         gross_amount: values.gross_amount, invoice_date: values.invoice_date }, { signal: controller.signal })
-        .then(result => setDuplicates(result.duplicates || [])).catch(() => {});
+        .then(result => {
+          if (controller.signal.aborted) return;
+          if (!Array.isArray(result?.duplicates)) throw new Error(tx.duplicateCheckFailed);
+          setDuplicates(result.duplicates);
+        }).catch(failure => { if (!controller.signal.aborted) setDuplicateError(failure.message || tx.duplicateCheckFailed); });
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [ready, values.supplier, values.invoice_number, values.gross_amount, values.invoice_date]);
+  }, [ready, values.supplier, values.invoice_number, values.gross_amount, values.invoice_date, duplicateAttempt, tx.duplicateCheckFailed]);
 
   const sameNumber = duplicates.some(d => d.reason === 'same_number');
   const submit = async event => {
@@ -287,6 +294,8 @@ function NewInvoice({ properties, onClose, onSaved }) {
             </label>
           </div>
           {duplicates.length > 0 && <DuplicateList duplicates={duplicates} />}
+          {duplicateError && <div role="alert" className="alert-error">{tx.duplicateCheckFailed} {duplicateError}{' '}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDuplicateAttempt(value => value + 1)}>{tx.retry}</button></div>}
           {sameNumber && input('duplicate_reason', `${tx.acceptDuplicate} – ${tx.duplicateReason}`, 'text', { required: true })}
         </div>
         <div className="modal-footer">

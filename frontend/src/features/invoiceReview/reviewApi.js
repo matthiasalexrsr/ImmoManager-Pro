@@ -34,7 +34,7 @@ export const reviewApi = {
   decide: (invoiceId, values) => api.post(`${base(invoiceId)}/decision`, values),
   resolve: (invoiceId, values) => api.post(`${base(invoiceId)}/dispute`, values),
   transfer: (invoiceId, values) => api.post(`${base(invoiceId)}/cost-transfer`, values),
-  paymentCandidates: (invoiceId, options) => api.get(`/invoices/${enc(invoiceId)}/payments/candidates`, options),
+  paymentCandidates: (invoiceId, params, options) => api.get(`/invoices/${enc(invoiceId)}/payments/candidates${query(params)}`, options),
   addPayment: (invoiceId, values) => api.post(`/invoices/${enc(invoiceId)}/payments`, values),
 };
 

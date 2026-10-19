@@ -214,6 +214,8 @@ function getStmtColumns(t, onError, onLetter) {
     { key: 'pdf_action', label: '',
       render: (_, row) => row.party !== 'vacancy' && (
         <div className="billing-document-actions">
+          <Link className="btn btn-sm btn-secondary" to={`/receivables?${new URLSearchParams({ statement_id: row.id })}`}
+            onClick={event => event.stopPropagation()}>Forderungen & Guthaben</Link>
           <button type="button" className="btn btn-sm btn-primary" onClick={event => { event.stopPropagation(); onLetter(row); }}>Anschreiben & PDF</button>
         <button
           className="btn btn-sm btn-secondary"
@@ -451,6 +453,11 @@ export default function Statements() {
   const akMap = Object.fromEntries(allocationKeys.map(k => [k.id, k]));
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
+  const enrichStatement = statement => {
+    const contract = contractMap[statement.contract_id];
+    return { ...statement, unit_label: unitMap[statement.unit_id]?.label || '—',
+      tenant_id: contract?.tenant_id || null, tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—' };
+  };
 
   const matchesPeriod = bp => (!params.get('period_id') || bp.id === params.get('period_id'))
     && (!params.get('property_id') || bp.property_id === params.get('property_id'))
@@ -894,6 +901,7 @@ export default function Statements() {
     const next = new URLSearchParams(query);
     next.delete('period_id');
     if (next.get('filter') !== 'statements') next.delete('focus_id');
+    next.delete('statement_id');
     ['notice_id', 'source_id'].forEach(key => next.delete(key));
     return next.toString();
   };
@@ -903,7 +911,7 @@ export default function Statements() {
       const next = new URLSearchParams(current);
       // period_id owns the detail selection; the surrounding list filters and
       // search remain intact. A source receipt never follows a manual switch.
-      ['focus_id', 'notice_id', 'source_id'].forEach(key => next.delete(key));
+      ['focus_id', 'notice_id', 'source_id', 'statement_id'].forEach(key => next.delete(key));
       next.set('period_id', period.id);
       return next;
     });
@@ -921,7 +929,9 @@ export default function Statements() {
     setView('list'); setBreakdown(null); setLetterStatement(null);
     setParams(new URLSearchParams(listReturnSearch.current));
   };
-  const noticePeriod = params.get('period_id') || (!params.get('filter') ? params.get('focus_id') : null);
+  const requestedStatement = params.get('statement_id');
+  const statementTarget = statements.find(row => row.id === requestedStatement);
+  const noticePeriod = statementTarget?.billing_period_id || params.get('period_id') || (!params.get('filter') ? params.get('focus_id') : null);
   const previousNoticePeriod = useRef(noticePeriod);
   useEffect(() => {
     if (previousNoticePeriod.current && !noticePeriod) { setView('list'); setBreakdown(null); setLetterStatement(null); }
@@ -933,6 +943,11 @@ export default function Statements() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noticePeriod, loading, loadError, periods]);
+  useEffect(() => {
+    if (!requestedStatement || loading || loadError || !statementTarget || selectedPeriod?.id !== statementTarget.billing_period_id) return;
+    setBreakdown(enrichStatement(statementTarget));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- open an explicit source after its period is ready
+  }, [requestedStatement, loading, loadError, statementTarget, selectedPeriod?.id]);
 
   // Build revision history for the selected period (periods with same property + date range)
   const getRevisionHistory = () => {
@@ -977,19 +992,17 @@ export default function Statements() {
 
   if (loading && !modal && !costModal && !promptModal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
+  if (requestedStatement && !statementTarget && !loadError) return <div className="page"><div role="alert" className="alert alert-error">
+    Die angeforderte Einzelabrechnung ist nicht verfügbar.{' '}
+    <button type="button" className="btn btn-secondary" onClick={() => setParams(current => {
+      const next = new URLSearchParams(current); next.delete('statement_id'); return next;
+    })}>Abrechnungsübersicht öffnen</button>
+  </div></div>;
+
   if (view === 'detail' && selectedPeriod) {
     const periodCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id)
       .map(ci => ({ ...ci, allocation_key_name: akMap[ci.allocation_key_id]?.name || '—' }));
-    const periodStmts = statements.filter(s => s.billing_period_id === selectedPeriod.id)
-      .map(s => {
-        const contract = contractMap[s.contract_id];
-        return {
-          ...s,
-          unit_label: unitMap[s.unit_id]?.label || '—',
-          tenant_id: contract?.tenant_id || null,
-          tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
-        };
-      });
+    const periodStmts = statements.filter(s => s.billing_period_id === selectedPeriod.id).map(enrichStatement);
     const totalCosts = sumMoney(periodCosts, 'amount');
     const nonRecoverable = sumMoney(periodCosts.filter(c => c.is_recoverable === false), 'amount');
     const tenantShare = sumMoney(periodStmts.filter(s => s.party !== 'vacancy'), 'total_cost');
@@ -997,7 +1010,7 @@ export default function Statements() {
     const editable = isMutable(selectedPeriod.status);
     const writableCosts = editable && canEditCosts;
     const writablePeriod = editable && canManagePeriods;
-    const isFinalized = selectedPeriod.status === 'finalized';
+    const isFinalized = ['finalized', 'delivered'].includes(selectedPeriod.status);
     const canCorrect = CORRECTABLE.includes(selectedPeriod.status);
     const correctedVersion = selectedPeriod.corrects_period_id
       ? periods.find(p => p.id === selectedPeriod.corrects_period_id) : null;

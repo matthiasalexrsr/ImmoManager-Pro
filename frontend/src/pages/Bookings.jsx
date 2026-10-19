@@ -410,9 +410,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
             <div><dt>Datum</dt><dd>{formatDate(selected.booking_date)}</dd></div>
             <div><dt>Betrag</dt><dd>{formatMoney(selected.amount)}</dd></div>
             <div><dt>Konto</dt><dd>{accountMap[selected.account_id] || selected.account_id}</dd></div>
-            <div><dt>Immobilie</dt><dd>{propertyMap[selected.property_id] || selected.property_id || 'Nicht zugeordnet'}</dd></div>
-            <div><dt>Einheit</dt><dd>{unitMap[selected.unit_id] || selected.unit_id || 'Nicht zugeordnet'}</dd></div>
-            <div><dt>Mieter</dt><dd>{selected.tenant_id ? tenantMap[selected.tenant_id] || selected.tenant_id : 'Noch nicht zugeordnet'}</dd></div>
+            <div><dt>Immobilie</dt><dd>{selected.property_id ? <Link to={`/properties/${encodeURIComponent(selected.property_id)}`}>{propertyMap[selected.property_id] || selected.property_id}</Link> : 'Nicht zugeordnet'}</dd></div>
+            <div><dt>Einheit</dt><dd>{selected.unit_id ? <Link to={`/units/${encodeURIComponent(selected.unit_id)}`}>{unitMap[selected.unit_id] || selected.unit_id}</Link> : 'Nicht zugeordnet'}</dd></div>
+            <div><dt>Mieter</dt><dd>{selected.tenant_id ? <PartyLink tenantId={selected.tenant_id}>{tenantMap[selected.tenant_id] || selected.tenant_id}</PartyLink> : 'Noch nicht zugeordnet'}</dd></div>
             <div><dt>Kategorie</dt><dd>{categoryMap[selected.category_id] || (selected.category_id ? `Kategorie ${selected.category_id} (Name nicht verfügbar)` : 'Noch nicht zugeordnet')}</dd></div>
             <div><dt>Vertrag</dt><dd title={selectedAllocation.detail}>{selectedAllocation.label}</dd></div>
             {selected.reverses_booking_id && <div><dt>Storno von</dt><dd>
@@ -422,6 +422,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
           {selectedAllocation.unassigned !== null && selectedAllocation.unassigned !== 0 && <p>Noch keinem Vertrag zugeordnet: {formatMoney(selectedAllocation.unassigned)}</p>}
           <div className="booking-selection-actions">
             {receiptAction(selected)}
+            {selected.tenant_id && <Link className="btn btn-sm btn-secondary" to={`/tenants/${encodeURIComponent(selected.tenant_id)}/account?as_of=${encodeURIComponent(selected.booking_date)}`}>Mieterkonto zum Buchungsdatum</Link>}
             {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => openModal(selected)}>Bearbeiten</button>}
             {selected.tenant_id && canSplit && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
             {canWrite && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" disabled={reversing}
