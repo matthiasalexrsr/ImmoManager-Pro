@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { TENANT_FIELDS } from '../features/tenants/tenantFields';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
@@ -161,22 +162,7 @@ export default function Tenants() {
         : <span className="badge badge-green">Aktiv</span> },
   ];
 
-  const fields = [
-    { key: 'full_name', label: 'Vollständiger Name', required: true },
-    { key: 'email', label: 'E-Mail', type: 'email' },
-    { key: 'phone', label: 'Telefon' },
-    { key: 'address_line', label: 'Straße' },
-    { key: 'postal_code', label: 'PLZ' },
-    { key: 'city', label: 'Stadt' },
-    { key: 'country', label: 'Land', default: 'DE' },
-    { key: 'payment_method', label: 'Zahlungsart', type: 'select', options: [
-      { value: 'bank_transfer', label: 'Überweisung' },
-      { value: 'sepa_direct_debit', label: 'SEPA-Lastschrift' },
-      { value: 'cash', label: 'Bar' },
-    ]},
-    { key: 'sepa_mandate', label: 'SEPA-Mandat', placeholder: 'Mandatsreferenz' },
-    { key: 'notes', label: 'Notizen', type: 'textarea' },
-  ];
+  const fields = TENANT_FIELDS;
 
   const handleSave = async (data) => {
     if (modal === 'create') {
