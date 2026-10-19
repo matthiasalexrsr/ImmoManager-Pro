@@ -46,9 +46,9 @@ def validate_scope(store, definition):
         if first > last:
             raise HTTPException(422, "Der Berichtszeitraum beginnt nach seinem Ende (einschließlich der Jahresvorgaben).")
         if definition.date_from and definition.date_from.day != 1:
-            raise HTTPException(422, "Das Leistungsperiodenergebnis v2 beginnt am ersten Tag eines Kalendermonats.")
+            raise HTTPException(422, "Das Periodenergebnis beginnt am ersten Tag eines Kalendermonats.")
         if definition.date_to and definition.date_to != month_end(definition.date_to):
-            raise HTTPException(422, "Das Leistungsperiodenergebnis v2 endet am letzten Tag eines Kalendermonats.")
+            raise HTTPException(422, "Das Periodenergebnis endet am letzten Tag eines Kalendermonats.")
     identities = [f.identity for f in definition.planned_flows]
     if len(identities) != len(set(identities)):
         raise HTTPException(422, "Eine geplante Quelle darf nur einmal vorkommen.")

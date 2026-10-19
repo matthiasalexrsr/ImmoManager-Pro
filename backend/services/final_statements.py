@@ -18,6 +18,13 @@ from typing import Any
 # Periods whose statements are issued and must not change any more.
 FINAL_STATUSES = frozenset({"finalized", "delivered", "disputed", "corrected"})
 EDITABLE_STATUSES = frozenset({"draft", "review"})
+# How messages name a period's status, as the statements page does (frontend codeLabels)
+STATUS_LABELS = {"draft": "Entwurf", "review": "In Prüfung", "finalized": "Abgeschlossen", "delivered": "Zugestellt",
+                 "disputed": "Widersprochen", "corrected": "Korrigiert"}
+
+
+def status_label(status: str) -> str:
+    return STATUS_LABELS.get(status, status)
 
 
 def _iso(value: Any) -> Any:

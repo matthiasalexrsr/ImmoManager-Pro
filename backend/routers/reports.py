@@ -390,7 +390,7 @@ def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: Dat
 
     allowed = set(REPORT_TITLES) - {"performance-period-v2", "liquidity-v2"}
     if report_name not in allowed:
-        raise HTTPException(400, f"Ungültiger Report. Erlaubt: {', '.join(sorted(allowed))}. Berichte v2 benötigen eine gespeicherte oder übergebene Definition.")
+        raise HTTPException(400, f"Unbekannter Bericht. Möglich: {', '.join(sorted(allowed))}. Periodenergebnis und Liquiditätsplanung werden über die Finanzberichte exportiert.")
     if as_of is not None and report_name not in ("summary", "receivables-aging"):
         raise HTTPException(422, "Der Stichtag gilt hier nur für Forderungsreste und die Zusammenfassung.")
     flt = _filter(date_from, date_to, portfolio_id, property_id, unit_id)

@@ -59,6 +59,7 @@ from ..services.final_statements import (
     final_version_problems,
     json_safe,
     statement_snapshot_hash,
+    status_label,
 )
 from ..services.portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user
 from ..services.service_contracts import check_cost_item_origin
@@ -91,7 +92,7 @@ def _assert_period_mutable(period: BillingPeriod) -> None:
     if period.status in _IMMUTABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Periode ist '{period.status}' und kann nicht mehr bearbeitet werden; "
+            detail=f"Die Abrechnungsperiode ist „{status_label(period.status)}“ und kann nicht mehr bearbeitet werden; "
                    "Änderungen nur über eine Korrektur",
         )
 
@@ -456,7 +457,7 @@ def submit_period_for_review(period_id: str) -> BillingPeriod:
     if period.status != "draft":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nur Perioden im Status 'draft' können zur Prüfung eingereicht werden (aktuell: '{period.status}')",
+            detail=f"Nur ein Entwurf kann zur Prüfung gegeben werden (aktuell: „{status_label(period.status)}“)",
         )
 
     return _set_period_status(period_id, "review")
@@ -474,7 +475,7 @@ def revert_period_to_draft(period_id: str) -> BillingPeriod:
     if period.status != "review":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nur Perioden im Status 'review' können zurückgesetzt werden (aktuell: '{period.status}')",
+            detail=f"Nur eine Abrechnung in Prüfung kann zum Entwurf zurück (aktuell: „{status_label(period.status)}“)",
         )
 
     return _set_period_status(period_id, "draft")
@@ -501,14 +502,14 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
     if period.status not in EDITABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Finalisierung nur aus 'draft' oder 'review' möglich (aktuell: '{period.status}')",
+            detail=f"Abschließen geht nur aus Entwurf oder Prüfung (aktuell: „{status_label(period.status)}“)",
         )
 
     preflight = _run_billing_period_preflight(period_id)
     if preflight.has_blockers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Finalisierung blockiert: Preflight enthält Blocker",
+            detail="Abschließen nicht möglich: Die Vorprüfung meldet noch offene Punkte, die zuerst geklärt werden müssen",
         )
 
     period_statements = _period_statements(period_id)
@@ -887,7 +888,7 @@ def create_period_revision(
     if period.status not in _CORRECTABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Eine Korrektur setzt eine finalisierte Fassung voraus (aktuell: '{period.status}'); "
+            detail=f"Eine Korrektur setzt eine abgeschlossene Fassung voraus (aktuell: „{status_label(period.status)}“); "
                    "einen Entwurf bitte direkt bearbeiten",
         )
     pending = [p for p in store.list_billing_periods()
@@ -957,7 +958,7 @@ def _record_objection(period_id: str, request: BillingObjectionRequest) -> Billi
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Widerspruch nur gegen eine finalisierte oder zugestellte Abrechnung möglich "
-                   f"(aktuell: '{period.status}')",
+                   f"(aktuell: „{status_label(period.status)}“)",
         )
     try:
         existing = store.list_billing_objections(period_id)

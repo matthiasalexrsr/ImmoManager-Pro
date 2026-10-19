@@ -79,7 +79,7 @@ function buildNextStep(processSteps, attentionItems) {
     labelKey: attentionItem.titleKey,
     labelFallback: attentionItem.titleFallback,
     detailKey: 'pages.dashboard.process.nextAttention',
-    detailFallback: 'Dringendster Blocker',
+    detailFallback: 'Dringendster offener Punkt',
     value: attentionItem.value,
     to: attentionItem.to,
   };

@@ -723,7 +723,7 @@ def resolve_dispute(store: Any, invoice_id: str, payload: DisputeResolution, act
 
 def transfer_cost(store: Any, invoice_id: str, payload: CostTransferRequest, actor_id: str | None) -> dict:
     from ..models import CostItem
-    from .final_statements import EDITABLE_STATUSES
+    from .final_statements import EDITABLE_STATUSES, status_label
 
     with _reviewed(store, actor_id, invoice_id, f"/invoices/{invoice_id}/review/cost-transfer",
                    "/billing/cost-items") as r:
@@ -746,7 +746,7 @@ def transfer_cost(store: Any, invoice_id: str, payload: CostTransferRequest, act
         if period is None:
             raise NotFoundError("Abrechnungsperiode nicht gefunden")
         if period.status not in EDITABLE_STATUSES:
-            raise conflict(f"Die Abrechnungsperiode ist '{period.status}' und nimmt keine Kosten mehr auf.")
+            raise conflict(f"Die Abrechnungsperiode ist „{status_label(period.status)}“ und nimmt keine Kosten mehr auf.")
         place = invoice.property_id or review.property_id
         if place != period.property_id:
             raise conflict("Die Abrechnungsperiode gehört nicht zum Objekt der Rechnung.")

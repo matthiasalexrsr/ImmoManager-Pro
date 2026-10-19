@@ -50,7 +50,7 @@ from ..models_service_contracts import (
 )
 from ..store_errors import NotFoundError, ValidationError
 from .booking_payment_capacity import booking_payment_capacity
-from .final_statements import EDITABLE_STATUSES
+from .final_statements import EDITABLE_STATUSES, status_label
 from .jobs.schedule import local_today
 from .maintenance_rows import Rows
 from .portfolio_scope import contract_has_hidden_locations, scope_context
@@ -880,7 +880,7 @@ def _transfer_costs(store: Any, contract_id: str, request: CostTransferRequest) 
     if period is None:
         raise ValidationError("Abrechnungsperiode existiert nicht")
     if period.status not in EDITABLE_STATUSES:
-        raise HTTPException(409, f"Die Abrechnungsperiode ist '{period.status}' und nimmt keine Kosten mehr auf; "
+        raise HTTPException(409, f"Die Abrechnungsperiode ist „{status_label(period.status)}“ und nimmt keine Kosten mehr auf; "
                                  "Änderungen nur über eine Korrektur")
     key = _try(store.get_allocation_key, request.allocation_key_id)
     if key is None or key.property_id != period.property_id:

@@ -34,7 +34,7 @@ const BUILTIN_TRANSLATIONS = {
           title: 'Kernprozess',
           subtitle: 'Objekt → Einheit → Mieter → Vertrag → Sollstellung → Zahlung → Mahnung',
           nextLabel: 'Nächster Schritt',
-          nextAttention: 'Dringendster Blocker',
+          nextAttention: 'Dringendster offener Punkt',
           complete: 'Alles bereit',
           steps: {
             property: 'Objekt',
@@ -129,9 +129,9 @@ const BUILTIN_TRANSLATIONS = {
         },
         attention: {
           title: 'Heute wichtig',
-          subtitle: 'Die nächsten operativen Blocker in Reihenfolge der Dringlichkeit.',
-          emptyTitle: 'Alles im gruenen Bereich',
-          emptyText: 'Keine akuten Rückstände aus den aktuellen Dashboard-Daten.',
+          subtitle: 'Was als Nächstes Aufmerksamkeit braucht, nach Dringlichkeit geordnet.',
+          emptyTitle: 'Alles im grünen Bereich',
+          emptyText: 'Derzeit keine akuten Rückstände.',
           overdueReceivables: 'Überfällige Forderungen',
           dunningReceivables: 'Offene Mahnungen',
           openReceivables: 'Offene Forderungen',
