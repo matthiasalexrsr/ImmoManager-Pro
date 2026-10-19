@@ -1,8 +1,9 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { receiptCommand } from '../hooks/useNotificationInbox';
 import { formatDate, formatMoney } from '../utils/format';
+import StatusBadge from '../components/StatusBadge';
 
 // Rendering the actual authorized source is the landing. The receipt is sent
 // only after that source has mounted; failure/offline keeps a retryable command.
@@ -23,14 +24,23 @@ function SourceLanding({ data, identifier }) {
   const labels = { description: 'Beschreibung', content: 'Inhalt', status: 'Status', due_date: 'Fällig am',
     start_date: 'Beginn', end_date: 'Ende', document_date: 'Dokumentdatum', amount_due: 'Forderungsbetrag',
     contract_number: 'Vertragsnummer', notes: 'Notizen', address: 'Adresse' };
-  return <article className="page personal-inbox"><h1 className="page-title">{source.title}</h1>
-    <p>{notice.content}</p>
-    <dl>{Object.entries(labels).filter(([key]) => source.values[key] != null).map(([key, label]) => <div key={key}>
-      <dt>{label}</dt><dd>{key.endsWith('_date') ? formatDate(source.values[key]) : key === 'amount_due' ? formatMoney(source.values[key], { currency: source.values.currency || 'EUR' }) : String(source.values[key])}</dd>
-    </div>)}</dl>
-    <Link className="btn btn-primary" to={source.href}>Vollständige Akte öffnen</Link>{' '}<Link to="/notifications">Zum Eingang</Link>
-    {done && <p role="status">Persönlich gelesen und archiviert.</p>}
-    {error && <div role="alert">Die Lesebestätigung wurde nicht bestätigt: {error} <button onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button></div>}
+  const shown = (key, value) => key === 'status' ? <StatusBadge status={value} />
+    : key.endsWith('_date') ? formatDate(value)
+      : key === 'amount_due' ? formatMoney(value, { currency: source.values.currency || 'EUR' }) : String(value);
+  return <article className="page personal-inbox">
+    <div className="page-header"><h1 className="page-title">{source.title}</h1></div>
+    <section className="card"><div className="card-body">
+      <p>{notice.content}</p>
+      <dl className="overview-dl">{Object.entries(labels).filter(([key]) => source.values[key] != null).map(([key, label]) => <Fragment key={key}>
+        <dt>{label}</dt><dd>{shown(key, source.values[key])}</dd>
+      </Fragment>)}</dl>
+      <div className="notification-landing-actions">
+        <Link className="btn btn-primary" to={source.href}>Vollständige Akte öffnen</Link>
+        <Link className="btn btn-secondary" to="/notifications">Zum Eingang</Link>
+      </div>
+    </div></section>
+    {done && <p role="status" className="text-muted">Persönlich gelesen und archiviert.</p>}
+    {error && <div className="alert alert-error" role="alert">Die Lesebestätigung wurde nicht bestätigt: {error} <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button></div>}
   </article>;
 }
 
@@ -45,6 +55,8 @@ export default function NotificationLanding() {
       .catch(failure => { if (live) setError(failure.message); });
     return () => { live = false; };
   }, [id, attempt]);
-  if (error) return <div className="page" role="alert">Quelle konnte nicht geöffnet werden: {error}. Der Hinweis bleibt im Eingang. <button onClick={() => setAttempt(n => n + 1)}>Erneut versuchen</button> <Link to="/notifications">Zum Eingang</Link></div>;
-  return data ? <SourceLanding key={id} data={data} identifier={id} /> : <p role="status">Quelle wird geprüft …</p>;
+  if (error) return <div className="page"><div className="alert alert-error" role="alert">Quelle konnte nicht geöffnet werden: {error}. Der Hinweis bleibt im Eingang.{' '}
+    <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(n => n + 1)}>Erneut versuchen</button>{' '}
+    <Link to="/notifications">Zum Eingang</Link></div></div>;
+  return data ? <SourceLanding key={id} data={data} identifier={id} /> : <div className="page-loading" role="status">Quelle wird geprüft …</div>;
 }

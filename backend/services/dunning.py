@@ -108,7 +108,7 @@ from .dunning_letter_validation import (
     finalize_request_hash,
     validate_dunning_letter_snapshot,
 )
-from .dunning_render import plain_text, render_pdf, subject
+from .dunning_render import eur, plain_text, render_pdf, subject
 from .payment_allocations import contract_ledger
 
 WRITE_AREAS = ("/dunning",)
@@ -1541,7 +1541,7 @@ def propose(store: Any, ledger: Any, run_id: str | None, as_of: date, contracts:
             continue
         title = f"Mahnvorschlag: {entry['next_stage_label']} – Vertrag {contract.contract_number}"
         content = (f"Fällig seit {date.fromisoformat(entry['due_on']):%d.%m.%Y}: {entry['next_stage_label']} über "
-                   f"{entry['letter']['total']:.2f} € (Hauptforderung {entry['letter']['principal']:.2f} €). "
+                   f"{eur(entry['letter']['total'])} (Hauptforderung {eur(entry['letter']['principal'])}). "
                    "Bitte in der Mahnübersicht prüfen und den Lauf bestätigen; es wurde nichts versendet.")
         notification = NotificationCreate(notification_type="dunning_proposal", title=title, content=content,
                                           severity="warning", entity_type="contract", entity_id=contract.id)
