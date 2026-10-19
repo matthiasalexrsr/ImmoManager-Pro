@@ -19,9 +19,12 @@
   display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0 0 0.75rem;
 }
 .reletting-compare { min-width: 100%; }
-.reletting-compare th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
-.reletting-compare thead th { vertical-align: bottom; min-width: 11rem; }
-.reletting-compare td { vertical-align: top; }
+table.data-table.reletting-compare th[scope="row"] {
+  text-align: left; font-weight: 600; text-transform: none; letter-spacing: normal; font-size: var(--text-sm, 0.875rem);
+  color: var(--color-text, inherit); min-width: 12rem; max-width: 18rem; white-space: normal;
+}
+table.data-table.reletting-compare thead th { vertical-align: bottom; min-width: 12rem; text-transform: none; letter-spacing: normal; }
+table.data-table.reletting-compare td { vertical-align: top; white-space: normal; min-width: 12rem; max-width: 22rem; overflow-wrap: anywhere; }
 .reletting-mark { display: inline-block; width: 1.2rem; font-weight: 700; }
 .reletting-met .reletting-mark { color: var(--success, #2e7d32); }
 .reletting-not-met .reletting-mark { color: var(--danger, #c62828); }
@@ -49,3 +52,4 @@
 .reletting-cancel { margin-top: 0.75rem; }
 .reletting-purge-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; gap: 0.4rem; }
 .reletting-purge-list .badge { margin-left: 0.35rem; }
+.reletting-warning { color: var(--danger, #c62828); font-weight: 600; }

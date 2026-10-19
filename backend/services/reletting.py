@@ -76,7 +76,7 @@ PURGE_AFTER_DAYS = 90
 UPCOMING_DAYS = 120
 DOCUMENTS = (("doc_self_disclosure", "Selbstauskunft"), ("doc_income", "Einkommensnachweis"),
              ("doc_credit_report", "Bonitätsauskunft"), ("doc_landlord_reference", "Vermieterbescheinigung"),
-             ("doc_id_checked", "Ausweis vorgelegt"))
+             ("doc_id_checked", "Ausweisprüfung"))
 EMPLOYMENT = {"permanent": "unbefristet angestellt", "temporary": "befristet angestellt",
               "self_employed": "selbstständig", "retired": "in Rente / Pension", "student": "in Ausbildung / Studium",
               "other": "sonstiges"}

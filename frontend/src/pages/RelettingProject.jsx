@@ -2,8 +2,9 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import FormModal from '../components/FormModal';
+import RelatedPageLinks from '../components/RelatedPageLinks';
 import { useCanWrite } from '../contexts/AuthContext';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoney, formatNumber } from '../utils/format';
 import { OFFER_FIELDS, PROJECT_STATUS, offerPayload } from '../features/reletting/relettingModel';
 import { ApplicantsTab, ClosingTab, ComparisonTab, ExposeTab, ViewingsTab } from '../features/reletting/ProjectTabs';
 import '../features/reletting/reletting.css';
@@ -69,6 +70,13 @@ function ProjectFile({ id }) {
         <span className={`badge ${status.badge}`}>{status.label}</span>
       </div>
 
+      <RelatedPageLinks items={[
+        { to: unit.href, label: 'Einheit' }, { to: property.href, label: 'Objekt' }, { to: '/viewings', label: 'Besichtigungskalender' },
+        ...(data.listing ? [{ to: `/listings?focus_id=${encodeURIComponent(data.listing.id)}`, label: 'Inserat' }] : []),
+        ...(data.tenant ? [{ to: data.tenant.href, label: 'Mieterkonto' }] : []),
+        ...(project.contract_id ? [{ to: `/contracts?contract_id=${encodeURIComponent(project.contract_id)}`, label: 'Mietvertrag' }] : []),
+      ]} />
+
       <div className="stats-grid">
         <div className="stat-card"><div className="stat-label">Warmmiete</div>
           <div className="stat-value reletting-kpi">{data.warm_rent == null ? '—' : formatMoney(data.warm_rent)}</div>
@@ -111,13 +119,16 @@ function ProjectFile({ id }) {
 // The steps of the project, each with what is still missing, and the offer at a glance.
 function Overview({ data, done, canWrite, onEdit, onGo }) {
   const { project, unit } = data;
+  const depositRatio = project.deposit_amount != null && project.target_rent ? project.deposit_amount / project.target_rent : null;
   const target = { offer: 'overview', expose: 'expose', applicants: 'applicants', viewings: 'viewings', choice: 'compare',
     contract: 'closing', privacy: 'closing' };
   const facts = [
     ['Kaltmiete', project.target_rent != null && formatMoney(project.target_rent)],
     ['Nebenkosten', project.service_charge != null && formatMoney(project.service_charge)],
     ['Heizkosten', project.heating_charge != null && formatMoney(project.heating_charge)],
-    ['Kaution', project.deposit_amount != null && formatMoney(project.deposit_amount)],
+    ['Kaution', project.deposit_amount != null && <>{formatMoney(project.deposit_amount)}{depositRatio != null
+      && <span className={depositRatio > 3 ? 'reletting-warning' : 'text-muted'}> · {formatNumber(depositRatio, 1)} Kaltmieten
+        {depositRatio > 3 ? ' – mehr als drei (§ 551 BGB)' : ''}</span>}</>],
     ['Wohnfläche', unit.area_sqm && `${String(unit.area_sqm).replace('.', ',')} m²`],
     ['Zimmer', unit.rooms && String(unit.rooms).replace('.', ',')],
     ['Etage', unit.floor],

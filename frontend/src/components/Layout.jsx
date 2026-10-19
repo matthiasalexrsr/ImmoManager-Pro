@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout } from '../api';
 import './Shell.css';
 import { useTranslation } from '../i18n';
@@ -19,6 +19,7 @@ import { NAV_SECTIONS, SUB_PAGES } from './navigation';
 import ShortcutHelp from './ShortcutHelp';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavFavorites } from '../utils/navFavorites';
+import { useNavGroups } from '../utils/navGroups';
 import { dropNewEntry, holdNewEntry, requestNewEntry } from '../utils/newEntry';
 import useNavigationState from '../hooks/useNavigationState';
 
@@ -81,10 +82,11 @@ const PRIMARY_ITEMS = PRIMARY_PATHS.map(path => NAV_SECTIONS.flatMap(section => 
 const GROUPS = NAV_SECTIONS.map(section => ({
   ...section, items: section.items.filter(item => !PRIMARY_PATHS.includes(item.to)),
 })).filter(section => section.items.length > 0);
+const GROUP_KEYS = GROUPS.map(section => section.labelKey);
 const SHELL_TEXT = {
-  de: { skip: 'Zum Hauptinhalt springen', favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden' },
-  en: { skip: 'Skip to main content', favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out' },
-  es: { skip: 'Saltar al contenido principal', favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión' },
+  de: { skip: 'Zum Hauptinhalt springen', favorites: 'Favoriten', pin: 'Als Favorit in die Seitenleiste', unpin: 'Aus den Favoriten entfernen', shortcuts: 'Tastenkürzel', navigation: 'Hauptnavigation', open: 'Navigation öffnen', close: 'Navigation schließen', workspace: 'Arbeitsplatz', areas: 'Verwaltungsbereiche', expand: 'Navigation erweitern', collapse: 'Navigation einklappen', theme: 'Darstellung wechseln', logout: 'Abmelden', backToList: 'Zur Übersicht dieses Bereichs' },
+  en: { skip: 'Skip to main content', favorites: 'Favourites', pin: 'Pin to the sidebar', unpin: 'Remove from favourites', shortcuts: 'Keyboard shortcuts', navigation: 'Main navigation', open: 'Open navigation', close: 'Close navigation', workspace: 'Workspace', areas: 'Management', expand: 'Expand navigation', collapse: 'Collapse navigation', theme: 'Change theme', logout: 'Sign out', backToList: 'Back to the list' },
+  es: { skip: 'Saltar al contenido principal', favorites: 'Favoritos', pin: 'Fijar en la barra lateral', unpin: 'Quitar de favoritos', shortcuts: 'Atajos de teclado', navigation: 'Navegación principal', open: 'Abrir navegación', close: 'Cerrar navegación', workspace: 'Área de trabajo', areas: 'Administración', expand: 'Ampliar navegación', collapse: 'Contraer navegación', theme: 'Cambiar tema', logout: 'Cerrar sesión', backToList: 'Volver a la lista' },
 };
 
 function LayoutFrame() {
@@ -96,11 +98,15 @@ function LayoutFrame() {
   const words = SHELL_TEXT[locale?.slice(0, 2)] || SHELL_TEXT.de;
   const [mobile, setMobile] = useState(() => window.matchMedia?.('(max-width: 768px)').matches || false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [groupsOpen, setGroupsOpen] = useState({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [favorites, toggleFavorite] = useNavFavorites(useAuth()?.user?.id, PINNABLE_PATHS);
+  const userId = useAuth()?.user?.id;
+  const [favorites, toggleFavorite] = useNavFavorites(userId, PINNABLE_PATHS);
+  // groups the person opened or closed themselves are remembered; the current page's group opens for this visit only
+  const [rememberedOpen, setRememberedOpen] = useNavGroups(userId, GROUP_KEYS);
+  const [visitOpen, setVisitOpen] = useState({});
+  const isGroupOpen = key => Boolean(visitOpen[key] ?? rememberedOpen[key]);
   const favoriteItems = favorites.map(path => ALL_ITEMS.find(item => item.to === path)).filter(Boolean);
   const sidebarRef = useRef(null);
   const closeRef = useRef(null);
@@ -146,7 +152,7 @@ function LayoutFrame() {
   useEffect(() => { document.title = `${currentPageTitle} · ImmoManager Pro`; }, [currentPageTitle]);
 
   useEffect(() => {
-    if (activeGroup) setGroupsOpen(current => ({ ...current, [activeGroup]: true }));
+    if (activeGroup) setVisitOpen(current => ({ ...current, [activeGroup]: true }));
   }, [activeGroup, location.pathname]);
 
   useEffect(() => {
@@ -203,8 +209,12 @@ function LayoutFrame() {
   const toggleGroup = key => {
     if (collapsed) {
       toggleSidebar();
-      setGroupsOpen(current => ({ ...current, [key]: true }));
-    } else setGroupsOpen(current => ({ ...current, [key]: !current[key] }));
+      setVisitOpen(current => ({ ...current, [key]: true }));
+      return;
+    }
+    const open = !isGroupOpen(key);
+    setVisitOpen(current => ({ ...current, [key]: open }));
+    setRememberedOpen(current => ({ ...current, [key]: open }));
   };
   const navItem = item => {
     const label = tr(item.labelKey, item.fallback);
@@ -237,7 +247,7 @@ function LayoutFrame() {
           </>}
           <div className="sidebar-section-label">{words.areas}</div>
           {GROUPS.map((section, index) => {
-            const open = !collapsed && Boolean(groupsOpen[section.labelKey]);
+            const open = !collapsed && isGroupOpen(section.labelKey);
             const label = tr(section.labelKey, section.fallback);
             const GroupIcon = section.labelKey.endsWith('configuration') ? SettingsIcon : section.items[0].icon;
             return <div className="nav-group" key={section.labelKey}>
@@ -266,7 +276,8 @@ function LayoutFrame() {
         <div className="top-bar">
           <div className="top-bar-left">
             {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}
-            <div className="top-bar-page-title">{activeSection && <><span className="shell-context">{tr(activeSection.labelKey, activeSection.fallback)}</span><span className="shell-context-divider" aria-hidden="true">/</span></>}<span>{currentPageTitle}</span>
+            <div className="top-bar-page-title">{activeSection && <><span className="shell-context">{tr(activeSection.labelKey, activeSection.fallback)}</span><span className="shell-context-divider" aria-hidden="true">/</span></>}{activeItem && activeItem.to !== '/' && location.pathname !== activeItem.to
+                ? <Link className="shell-context-link" to={activeItem.to} title={words.backToList}>{currentPageTitle}</Link> : <span>{currentPageTitle}</span>}
               {activeItem && PINNABLE_PATHS.includes(activeItem.to) && (() => {
                 const pinned = favorites.includes(activeItem.to);
                 return <button type="button" className={`favorite-toggle${pinned ? ' is-pinned' : ''}`} aria-pressed={pinned}

@@ -257,7 +257,7 @@ export function ComparisonTab({ data, path, canWrite, onChanged, onGo }) {
                 <span className="sr-only">{state.label}: </span>{cell.detail}</td>;
             })}</tr>)}
           <tr><th scope="row">Beschäftigung</th>{rows.map(row => <td key={row.id}>{EMPLOYMENT[row.employment] || '—'}</td>)}</tr>
-          <tr><th scope="row">Mietbelastung</th>{rows.map(row => <td key={row.id} className="text-right td-num">
+          <tr><th scope="row">Mietbelastung</th>{rows.map(row => <td key={row.id}>
             {row.rent_share == null ? '—' : `${String(row.rent_share).replace('.', ',')} %`}</td>)}</tr>
           <tr><th scope="row">Eindruck bei der Besichtigung</th>{rows.map(row => <td key={row.id}>{stars(row.viewing_rating)}</td>)}</tr>
           <tr><th scope="row">Eigene Bewertung</th>{rows.map(row => <td key={row.id}>{stars(row.rating)}</td>)}</tr>

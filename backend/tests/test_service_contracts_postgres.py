@@ -141,12 +141,13 @@ def test_service_contract_migration_on_postgres(postgres):  # noqa: F811
                for i in inspector.get_indexes("cost_items"))
     target = _store(engine)
     contract = service.create_contract(target, _request(seeded, "house_n"))
+    # A downgrade changes tables (exclusive locks); an open session reading them would wait for it forever.
+    target.db.close()
     with pytest.raises(RuntimeError, match="service contracts"):
         command.downgrade(config, PREVIOUS)
     with engine.begin() as connection:
         connection.execute(sa.text("DELETE FROM service_contracts WHERE id = :id"), {"id": contract.id})
         assert connection.execute(sa.text("SELECT COUNT(*) FROM service_contract_locations")).scalar() == 0
-    target.db.close()
     command.downgrade(config, PREVIOUS)
     assert "service_contracts" not in sa.inspect(engine).get_table_names()
     assert "service_contract_invoice_id" not in {c["name"] for c in sa.inspect(engine).get_columns("cost_items")}

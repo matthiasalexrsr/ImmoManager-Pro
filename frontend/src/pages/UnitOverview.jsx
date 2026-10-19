@@ -99,6 +99,8 @@ export default function UnitOverview() {
         ] : []),
         ...(activeContract?.id ? [{ to: entityHref('contract', activeContract.id), label: 'Mietvertrag öffnen' }] : []),
         ...(activeContract?.tenant_id ? [{ to: entityHref('tenantAccount', activeContract.tenant_id), label: 'Mieterkonto öffnen' }] : []),
+        // a unit without a running tenancy is re-let as a project (offer, applicants, takeover)
+        ...(!activeContract ? [{ to: '/reletting', label: 'Neuvermietung' }] : []),
       ]} />
 
       {photoNotice.error && <div role="alert" className="alert alert-error">{photoNotice.error} Der Hinweis bleibt ungelesen. <button type="button" onClick={photoNotice.retry}>Hinweisquelle erneut laden</button></div>}

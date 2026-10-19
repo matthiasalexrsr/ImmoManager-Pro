@@ -91,6 +91,8 @@
 .workspace-shell .top-bar-page-title { display: flex; align-items: center; gap: 9px; color: var(--color-text-secondary); font-size: var(--text-xs); font-weight: 500; white-space: nowrap; }
 .workspace-shell .shell-context { color: var(--color-text-muted); }
 .workspace-shell .shell-context-divider { color: var(--color-border); }
+.workspace-shell .shell-context-link { color: inherit; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 3px; }
+.workspace-shell .shell-context-link:hover { text-decoration-color: currentColor; }
 .workspace-shell .search-bar-global { flex: 1; max-width: 440px; min-width: 100px; margin-left: auto; }
 .workspace-shell .search-bar-input-wrapper { min-height: 40px; border-color: transparent; border-radius: 9px; background: var(--color-bg); }
 .workspace-shell .search-bar-input { font-size: var(--text-sm); }
