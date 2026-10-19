@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format';
 import { Empty, Fact, PickerDialog, Pill, Section } from '../maintenanceProject/ProjectUi';
 import { entityHref } from '../../utils/entityLinks';
+import { localDay } from '../../utils/occupancy';
 import { PAYMENT_TONE, compact, findingText, reviewApi } from './reviewApi';
 import { fill, useReviewText } from './text';
 import useEditableDraft from '../workCenter/useEditableDraft';
@@ -83,7 +84,7 @@ export function Findings({ view }) {
 export function ReceiptForm({ view, properties, onChanged }) {
   const { tx } = useReviewText();
   const { busy, error, run } = useAction(onChanged);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay();
   const [values, setValues] = useState({ received_on: today, kind: 'invoice', credit_for_invoice_id: '',
     skonto_percent: '', skonto_days: '', payment_days: '', property_id: view.invoice.property_id || '',
     cost_category: '', recoverable: false, document_id: view.invoice.source_document_id || '',
