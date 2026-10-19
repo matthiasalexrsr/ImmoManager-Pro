@@ -7,10 +7,12 @@ from sqlalchemy import create_engine, event, insert
 from sqlalchemy.orm import Session
 
 from backend.db import schema_state
-from backend.db.orm_models import BookingORM, ReceivableORM
+from backend.db.deposit_models import DepositSettlementItemORM, DepositSettlementORM
+from backend.db.orm_models import BookingORM, DepositORM, ReceivableORM
 from backend.models import AccountCreate, ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.repositories import SQLAlchemyStore
 from backend.services import report_service
+from backend.services.maintenance_rows import registry
 from backend.services.portfolio_scope import AccessScope, scope_context
 from backend.services.receivable_residuals import cash_reserved
 from backend.storage import NotFoundError
@@ -92,5 +94,65 @@ def test_cash_reservation_validates_all_sources_with_bounded_sql_round_trips(tmp
                     cash_reserved(store, {rows[0]['id']})
             with scope_context(AccessScope('restricted-reader', 'readonly', False, (portfolio.id,))):
                 assert cash_reserved(store, {rows[0]['id']}) == {}
+    finally:
+        engine.dispose()
+
+
+def test_summary_for_a_restricted_account_reads_many_contracts_in_a_bounded_number_of_queries(tmp_path):
+    """Payments, returns and deposit offsets of every contract are read together, not once per contract.
+
+    A query per contract (deposit offsets, contract, property, portfolio) took a restricted account
+    about 20 s for a five-year portfolio, because every scoped query builds its portfolio boundary.
+    """
+    engine = create_engine(f"sqlite:///{tmp_path / 'many-contracts.db'}")
+    schema_state.initialise_empty(engine)
+    try:
+        with Session(engine) as session:
+            store = SQLAlchemyStore(session)
+            portfolio = store.create_portfolio(PortfolioCreate(name='Viele Verträge', currency='EUR'))
+            account = store.create_account(AccountCreate(portfolio_id=portfolio.id, name='Bank', account_type='bank'))
+            prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name='Haus', property_type='residential'))
+            claims, bookings, edges, deposits, settlements, items = [], [], [], [], [], []
+            for index in range(40):
+                unit = store.create_unit(UnitCreate(property_id=prop.id, label=f'WE {index}', unit_type='residential'))
+                tenant = store.create_tenant(TenantCreate(full_name=f'Mieter {index}'))
+                contract = store.create_contract(ContractCreate(contract_number=f'V-{index}', property_id=prop.id,
+                    unit_id=unit.id, tenant_id=tenant.id, start_date=date(2025, 1, 1)))
+                claims.append({'id': f'claim-{index}', 'contract_id': contract.id, 'due_date': date(2026, 1, 1),
+                               'amount_due': Decimal('100.00'), 'status': 'open'})
+                # 60 of a 100 payment settle the claim; half of the payment goes back, so 30 remain
+                bookings.append({'id': f'pay-{index}', 'account_id': account.id, 'tenant_id': tenant.id,
+                                 'booking_date': date(2026, 1, 3), 'amount': Decimal('100.00'), 'status': 'booked'})
+                bookings.append({'id': f'return-{index}', 'account_id': account.id, 'tenant_id': tenant.id,
+                                 'booking_date': date(2026, 1, 10), 'amount': Decimal('-50.00'), 'status': 'booked',
+                                 'reverses_booking_id': f'pay-{index}'})
+                edges.append({'id': f'edge-{index}', 'receivable_id': f'claim-{index}', 'booking_id': f'pay-{index}',
+                              'amount': Decimal('60.00'), 'effective_date': date(2026, 1, 5), 'reason': 'Zahlung',
+                              'request_hash': f'h-{index}', 'created_at': date(2026, 1, 5)})
+                # and 25 are offset against the finalized deposit settlement
+                deposits.append({'id': f'deposit-{index}', 'contract_id': contract.id, 'amount': Decimal('500.00')})
+                settlements.append({'id': f'settlement-{index}', 'deposit_id': f'deposit-{index}', 'kind': 'final',
+                                    'settlement_date': date(2026, 1, 12), 'finalized_at': date(2026, 1, 12)})
+                items.append({'id': f'item-{index}', 'settlement_id': f'settlement-{index}', 'kind': 'receivable',
+                              'description': 'Offene Miete', 'amount': Decimal('25.00'), 'receivable_id': f'claim-{index}'})
+            for orm, values in ((ReceivableORM, claims), (BookingORM, bookings),
+                                (registry()['receivable_settlements'][0], edges), (DepositORM, deposits),
+                                (DepositSettlementORM, settlements), (DepositSettlementItemORM, items)):
+                session.execute(insert(orm), values)
+            session.commit()
+            reads = []
+            def count_reads(_conn, _cursor, statement, _parameters, _context, _many):
+                if statement.lstrip().upper().startswith('SELECT'):
+                    reads.append(statement)
+            reader = AccessScope('restricted-reader', 'readonly', False, (portfolio.id,))
+            event.listen(engine, 'before_cursor_execute', count_reads)
+            try:
+                with scope_context(reader):
+                    summary = report_service.compute_summary(store, today=date(2026, 1, 20))
+            finally:
+                event.remove(engine, 'before_cursor_execute', count_reads)
+            assert summary['finance']['openReceivables'] == 40 * 45.00
+            assert len(reads) < 40, f'{len(reads)} SQL reads for 40 contracts'
+            assert report_service.compute_summary(store, today=date(2026, 1, 20))['finance'] == summary['finance']
     finally:
         engine.dispose()

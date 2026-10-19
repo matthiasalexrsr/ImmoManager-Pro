@@ -53,12 +53,16 @@ def ensure_claim_unchanged(store, identifier, changes):
         raise HTTPException(409, "Diese Forderung gehört zu einem belegten Ausgleich. Quelle und Betrag bleiben erhalten.")
 
 
-def cash_events(store, booking, edges):
-    """Dated allocation/return timeline, including allocations after partial returns."""
+def cash_events(store, booking, edges, reversals=None):
+    """Dated allocation/return timeline, including allocations after partial returns.
+
+    `reversals` are the booking's reversals when the caller already read them (a report reads all at once).
+    """
     originals = {e.id: e for e in edges if not e.reverses_id}
     remaining = {key: ZERO for key in originals}
     events = [(e.effective_date, 1 if e.reverses_id else 0, e.id, e) for e in edges]
-    events += [(b.booking_date, 2, b.id, b) for b in store.list_booking_reversals(booking.id)]
+    events += [(b.booking_date, 2, b.id, b)
+               for b in (store.list_booking_reversals(booking.id) if reversals is None else reversals)]
     balance = money(booking.amount)
     result = []
     for day, phase, _, item in sorted(events, key=lambda event: event[:3]):
@@ -130,9 +134,14 @@ def cash_reserved(store, booking_ids=None):
     return dict(found)
 
 
-def dated_evidence(store, contract_id, *, known_claims=None, known_edges=None, booking_edges=None):
-    """(claim id, date, amount, source type, source id), stable and decimal exact."""
-    result = deposit_evidence(store, contract_id)
+def dated_evidence(store, contract_id, *, known_claims=None, known_edges=None, booking_edges=None,
+                   bookings=None, reversals=None, deposits=None):
+    """(claim id, date, amount, source type, source id), stable and decimal exact.
+
+    `bookings` and `reversals` (by booking id) and the contract's `deposits` evidence spare queries per
+    contract and booking when a report reads many contracts; a booking missing from them is read as before.
+    """
+    result = list(deposits) if deposits is not None else deposit_evidence(store, contract_id)
     receivables = {r.id: r for r in (known_claims if known_claims is not None else Rows.reading(store).find("receivables", contract_id=contract_id))}
     if known_edges is None:
         rows = Rows.reading(store)
@@ -152,7 +161,8 @@ def dated_evidence(store, contract_id, *, known_claims=None, known_edges=None, b
             result.append((edge.receivable_id, edge.effective_date, money(edge.amount), "credit", edge.id))
             result.append((edge.credit_id, edge.effective_date, -money(edge.amount), "credit", edge.id))
     for booking_id, selected in by_booking.items():
-        booking = store.get_booking(booking_id)
+        known = bookings is not None and booking_id in bookings
+        booking = bookings[booking_id] if known else store.get_booking(booking_id)
         # Include every edge sharing this booking for a deterministic global cent split.
         if booking_edges is not None:
             all_edges = booking_edges.get(booking_id, [])
@@ -162,31 +172,43 @@ def dated_evidence(store, contract_id, *, known_claims=None, known_edges=None, b
                 all_edges = Rows.reading(store).find("receivable_settlements", booking_id=booking_id)
         all_edges = sorted(all_edges, key=lambda e: e.id)
         selected_ids = {e.receivable_id for e in selected}
-        result.extend(event for event in cash_events(store, booking, all_edges) if event[0] in selected_ids)
+        returned = reversals.get(booking_id, []) if known and reversals is not None else None
+        result.extend(event for event in cash_events(store, booking, all_edges, returned) if event[0] in selected_ids)
     return sorted(result, key=lambda row: (row[1], row[0], row[3], row[4]))
 
 
 def deposit_evidence(store, contract_id):
     """Public read hook: finalized deposit sources, never drafts or inferred payments."""
+    return deposit_evidence_by_contract(store, {contract_id}).get(contract_id, [])
+
+
+def deposit_evidence_by_contract(store, contract_ids):
+    """The finalized deposit sources of several contracts at once, grouped by contract."""
+    result: dict[str, list[tuple[str, date, Decimal, str, str]]] = defaultdict(list)
     if hasattr(store, "db"):
         from sqlalchemy import select
 
         from ..db.deposit_models import DepositSettlementItemORM, DepositSettlementORM
         from ..db.orm_models import DepositORM
-        query = (select(DepositSettlementItemORM.receivable_id, DepositSettlementORM.settlement_date,
-                        DepositSettlementItemORM.amount, DepositORM.id)
-                 .join(DepositSettlementORM, DepositSettlementItemORM.settlement_id == DepositSettlementORM.id)
-                 .join(DepositORM, DepositORM.id == DepositSettlementORM.deposit_id)
-                 .where(DepositORM.contract_id == contract_id, DepositSettlementORM.finalized_at.is_not(None),
-                        DepositSettlementItemORM.kind == "receivable", DepositSettlementItemORM.receivable_id.is_not(None)))
-        return [(key, day, money(amount), "deposit", source) for key, day, amount, source in store.db.execute(query)]
-    ids = {d.id for d in store.list_deposits() if d.contract_id == contract_id}
-    result: list[tuple[str, date, Decimal, str, str]] = []
+        keys = sorted(contract_ids)
+        for start in range(0, len(keys), 500):
+            query = (select(DepositORM.contract_id, DepositSettlementItemORM.receivable_id, DepositSettlementORM.settlement_date,
+                            DepositSettlementItemORM.amount, DepositORM.id)
+                     .join(DepositSettlementORM, DepositSettlementItemORM.settlement_id == DepositSettlementORM.id)
+                     .join(DepositORM, DepositORM.id == DepositSettlementORM.deposit_id)
+                     .where(DepositORM.contract_id.in_(keys[start:start + 500]), DepositSettlementORM.finalized_at.is_not(None),
+                            DepositSettlementItemORM.kind == "receivable", DepositSettlementItemORM.receivable_id.is_not(None))
+                     .order_by(DepositSettlementItemORM.id))
+            for contract_id, key, day, amount, source in store.db.execute(query):
+                result[contract_id].append((key, day, money(amount), "deposit", source))
+        return dict(result)
+    contract_of = {d.id: d.contract_id for d in store.list_deposits() if d.contract_id in contract_ids}
     for settlement in store.list_deposit_settlements():
-        if settlement.deposit_id in ids and settlement.finalized_at is not None:
-            result.extend((item.receivable_id, settlement.settlement_date, money(item.amount), "deposit", settlement.deposit_id)
-                          for item in store.list_deposit_settlement_items(settlement.id) if item.kind == "receivable" and item.receivable_id)
-    return result
+        if settlement.deposit_id in contract_of and settlement.finalized_at is not None:
+            result[contract_of[settlement.deposit_id]].extend(
+                (item.receivable_id, settlement.settlement_date, money(item.amount), "deposit", settlement.deposit_id)
+                for item in store.list_deposit_settlement_items(settlement.id) if item.kind == "receivable" and item.receivable_id)
+    return dict(result)
 
 
 class ResidualReader:
@@ -210,13 +232,28 @@ class ResidualReader:
         with scope_context(None):
             for edge in Rows.reading(store).find("receivable_settlements", booking_id={e.booking_id for e in edges if e.booking_id}):
                 self.booking_edges[edge.booking_id].append(edge)
+        # The paying bookings and their reversals, read once for the whole report instead of per booking
+        # (thousands of queries on a few years of rent); visibility is the store's, as for single reads.
+        rows = Rows.reading(store)
+        paid_by = {edge.booking_id for edge in edges if edge.booking_id}
+        self.bookings = {booking.id: booking for booking in rows.find("bookings", id=paid_by)}
+        self.reversals: dict[str, list] = defaultdict(list)
+        for reversal in rows.find("bookings", reverses_booking_id=set(self.bookings)):
+            self.reversals[reversal.reverses_booking_id].append(reversal)
+        self.deposits = deposit_evidence_by_contract(store, set(self.claims))
+        # The parent chain behind each claim's currency, read once; a record missing here is read singly,
+        # so an unreadable contract, property or portfolio still fails exactly as a detailed read.
+        self.contracts = {c.id: c for c in rows.find("contracts", id=set(self.claims))}
+        self.properties = {p.id: p for p in rows.find("properties", id={c.property_id for c in self.contracts.values()})}
+        self.portfolios = {p.id: p for p in store.list_portfolios()}
         self.evidence: dict[str, list] = {}
         self.currencies: dict[str, str] = {}
 
     def contract_evidence(self, contract_id):
         if contract_id not in self.evidence:
             self.evidence[contract_id] = dated_evidence(self.store, contract_id, known_claims=self.claims[contract_id],
-                known_edges=self.edges[contract_id], booking_edges=self.booking_edges)
+                known_edges=self.edges[contract_id], booking_edges=self.booking_edges,
+                bookings=self.bookings, reversals=self.reversals, deposits=self.deposits.get(contract_id, []))
         return self.evidence[contract_id]
 
     def balance(self, receivable, as_of=None):
@@ -231,9 +268,10 @@ class ResidualReader:
 
     def currency(self, contract_id):
         if contract_id not in self.currencies:
-            contract = self.store.get_contract(contract_id)
-            prop = self.store.get_property(contract.property_id)
-            self.currencies[contract_id] = self.store.get_portfolio(prop.portfolio_id).currency
+            contract = self.contracts.get(contract_id) or self.store.get_contract(contract_id)
+            prop = self.properties.get(contract.property_id) or self.store.get_property(contract.property_id)
+            portfolio = self.portfolios.get(prop.portfolio_id) or self.store.get_portfolio(prop.portfolio_id)
+            self.currencies[contract_id] = portfolio.currency
         return self.currencies[contract_id]
 
     def read(self, receivable, as_of=None):
