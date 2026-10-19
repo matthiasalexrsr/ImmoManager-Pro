@@ -33,8 +33,9 @@
   padding: 4px 10px;
   font-size: var(--text-sm);
 }
-.named-views select { min-width: 11rem; }
+.named-views select { min-width: min(11rem, 100%); }
 .named-views input { width: 13rem; }
+.named-views > .btn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .data-table-workspace .named-views {
   margin: 0;
   padding: 10px 20px;

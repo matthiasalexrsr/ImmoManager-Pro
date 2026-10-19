@@ -1,11 +1,13 @@
 .work-center { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1.25rem; }
 .work-center > * { min-width: 0; }
-.work-center :is(h1, h2, h3, p, a, strong) { overflow-wrap: anywhere; }
+.work-center :is(h1, h2, h3, p, a, strong, summary) { overflow-wrap: anywhere; }
 .work-shelf-list li > a { min-width: 0; overflow-wrap: anywhere; }
 .work-center-header, .work-item-heading, .work-item-actions, .entity-actions, .work-shelf-heading { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .work-center-header, .work-shelf-heading { justify-content: space-between; }
 /* Filters, quick filters and saved views in one panel above the list. */
-.work-center-toolbar { display: grid; gap: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: var(--space-4); }
+.work-center-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: var(--space-4); }
+.work-center-toolbar > * { min-width: 0; }
+.work-center-toolbar .btn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .work-center-toolbar .named-views { margin: 0; padding-top: var(--space-3); border-top: 1px solid var(--color-border-light); }
 .work-center-filters { display: flex; align-items: end; gap: var(--space-3); flex-wrap: wrap; }
 .work-center-filters label { display: grid; gap: var(--space-1); flex: 1 1 12rem; min-width: 0; max-width: 18rem; }
@@ -54,4 +56,4 @@ tr:hover .work-inline > .btn-ghost,
 .modal-body .work-carry-option input[type="checkbox"] { flex: 0 0 auto; width: 1rem; height: 1rem; margin: .15rem 0 0; padding: 0; }
 
 .work-summary-metric span, .work-summary-metric small { overflow-wrap: normal; word-break: normal; hyphens: auto; }
-.work-center h1 { overflow-wrap: normal; hyphens: auto; font-size: clamp(1.3rem, 1rem + 1vw, 2rem); }
+.work-center h1 { overflow-wrap: anywhere; hyphens: auto; font-size: clamp(1.3rem, 1rem + 1vw, 2rem); }

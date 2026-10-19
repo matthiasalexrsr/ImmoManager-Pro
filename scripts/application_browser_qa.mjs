@@ -33,7 +33,13 @@ async function step(name, action) {
 }
 async function fits() {
   const size = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth }));
-  assert.ok(size.document <= size.viewport + 1, 'Page-wide overflow: ' + JSON.stringify(size));
+  if (size.document > size.viewport + 1) {
+    const elements = await page.locator('main *').evaluateAll(nodes => nodes.map(node => {
+      const bounds = node.getBoundingClientRect();
+      return { tag: node.tagName, class: node.className, text: node.textContent?.trim().slice(0, 100), left: bounds.left, right: bounds.right };
+    }).filter(node => node.right > innerWidth + 1 && node.right > node.left).slice(0, 20));
+    assert.fail(`${current}: Page-wide overflow: ${JSON.stringify({ ...size, elements })}`);
+  }
 }
 const row = text => page.locator('.data-table tbody tr').filter({ hasText: text });
 async function shot(name) { await fits(); await page.screenshot({ path: path.join(output, name) }); }
