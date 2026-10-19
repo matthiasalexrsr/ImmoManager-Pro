@@ -19,7 +19,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Einheiten, Mieter & Verträge, Finanzen, Dokumente und Instandhaltung auf einer Seite;
   - Bearbeiten direkt dort;
   - „Neu für dieses Objekt“ öffnet Einheit, Vertrag, Wartungsfall, Buchung, Rechnung oder Aufgabe schon ausgefüllt.
-- **Parteiakte je Mieter:** Verträge, Mietverlauf, Konto, Dokumente, Kaution, Übergaben und Wohnungsgeberbestätigung.
+- **Parteiakte je Mieter:** Verträge, Mietverlauf, Konto, Dokumente, Kaution, Übergaben und Wohnungsgeberbestätigung. Auf der Mieterkonto-Seite lassen sich die Mieterdaten direkt bearbeiten.
+- **Durchgehend deutsch:** Status, Arten und Ja/Nein erscheinen überall als Wörter statt als interne Kürzel; Betragsspalten stehen bündig unter ihrer Überschrift.
 - **Verlinkungen überall:**
   - Mietername → Parteiakte;
   - Objekt, Einheit, Wartungsfall, Rechnungsprüfung, Mieterkonto und Mahnfall → ihre Seite;
@@ -47,6 +48,14 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Objektverträge** (Strom, Gas, Wärme, Hausmeister …) mit Tarifen und Fristen. An Fristen erinnert das Programm von selbst.
 - **Wartungsfall als Projektakte:** Angebot, Auftrag, Nachträge, Rechnungen und Zahlungen.
 - **Wohnungsgeberbestätigung** als PDF mit Original im Archiv.
+- **Zählerverlauf:** Ein Klick auf die Zählernummer zeigt alle Ablesungen mit Verbrauch je Zeitraum und je Kalenderjahr, weist auf Auffälligkeiten hin und verlinkt den eigenen Versorgungsvertrag sowie das Kundenportal des Anbieters.
+- **Neuvermietung (Leerstand):** Jede frei werdende Einheit wird zum Projekt:
+  - Angebot mit Miete, Kaution, Vorgaben und den Pflichtangaben des Energieausweises;
+  - Exposé als PDF und Texte für Immobilienportale zum Kopieren (es wird nichts automatisch veröffentlicht);
+  - Interessenten mit Unterlagen, Besichtigungen im Besichtigungskalender samt Eindruck danach;
+  - Vergleich aller Bewerbungen nach denselben Kriterien, auf Wunsch als pseudonymisierte Frage an den KI-Assistenten;
+  - Übernahme als Mieter mit vorausgefülltem Mietvertrag;
+  - abgelehnte Bewerber mit allen Unterlagen datenschutzkonform löschen (Hinweis nach drei Monaten).
 
 ### Schneller arbeiten
 - **Tabellen:**
@@ -55,7 +64,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Einstellungen je Liste;
   - CSV für deutsche Tabellenprogramme.
 - **Formulare:** „Speichern & weiteren“, „Duplizieren“, „Heute“ neben jedem Datum, Strg+Enter zum Speichern; Eingaben gehen beim Schließen nicht verloren.
-- **Tastatur:** „/“ öffnet die Suche, Alt+N das Neu-Formular der Liste, „?“ zeigt alle Kürzel. Favoriten lassen sich in der Seitenleiste anheften.
+- **Tastatur:** „/“ öffnet die Suche, Alt+N das Neu-Formular der Liste, „?“ zeigt alle Kürzel. Favoriten lassen sich in der Seitenleiste anheften; aufgeklappte Bereiche bleiben aufgeklappt, und auf einer Detailseite führt der Seitenname oben zurück zur Liste.
 
 ### Sicherheit, Sicherung, Updates
 - **Rollen und Rechte:** Rollen (Verwaltung, Buchhaltung, Technik, Nur Lesen) mit Portfoliozugriff je Konto.
