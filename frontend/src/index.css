@@ -948,6 +948,7 @@ table.data-table tbody tr:last-child td {
 
 .modal-footer {
   display: flex;
+  flex-wrap: wrap;            /* three actions do not fit next to each other on a phone */
   justify-content: flex-end;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
@@ -975,6 +976,8 @@ table.data-table tbody tr:last-child td {
 }
 
 @media (max-width: 640px) {
+  .modal-footer { padding: 0.75rem 1rem; }
+  .modal-footer > .btn { flex: 1 1 auto; }
   .modal-footer .modal-shortcut-hint { display: none; }
   .modal-discard-question { flex: 1 1 100%; }
 }
