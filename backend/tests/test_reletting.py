@@ -94,6 +94,56 @@ def _applicants(detail):
     return {row["full_name"]: row for row in detail["applicants"]}
 
 
+def test_generic_lead_creation_cannot_skip_the_projects_tenant_takeover(client):
+    estate = _estate()
+    detail = _project(client, estate)
+    response = client.post(f"{API}/leads", json={"full_name": "Clara Neu", "status": "accepted",
+                                               "unit_id": estate["unit"].id, "project_id": detail["project"]["id"]})
+    assert response.status_code == 409, response.text
+    unchanged = client.get(f"{BASE}/{detail['project']['id']}").json()
+    assert unchanged["applicants"] == [] and unchanged["project"]["tenant_id"] is None
+
+
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_generic_lead_edit_cannot_replace_the_projects_tenant_takeover(client, method):
+    estate = _estate()
+    detail = _project(client, estate)
+    project_id = detail["project"]["id"]
+    added = client.post(f"{BASE}/{project_id}/applicants", json=GOOD).json()
+    lead = added["applicants"][0]
+    change = {"full_name": lead["full_name"], "status": "accepted"}
+    response = getattr(client, method)(f"{API}/leads/{lead['id']}", json=change)
+    assert response.status_code == 409, response.text
+    unchanged = client.get(f"{BASE}/{project_id}").json()
+    assert unchanged["applicants"][0]["status"] == "new" and unchanged["project"]["tenant_id"] is None
+    accepted = client.post(f"{BASE}/{project_id}/accept", json={"lead_id": lead["id"]})
+    assert accepted.status_code == 200, accepted.text
+    response = getattr(client, method)(f"{API}/leads/{lead['id']}", json={**change, "status": "rejected"})
+    assert response.status_code == 409, response.text
+    # Ordinary contact corrections remain available without changing the decision.
+    response = getattr(client, method)(f"{API}/leads/{lead['id']}", json={**change, "phone": "0351 987654"})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "accepted" and response.json()["phone"] == "0351 987654"
+
+
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_generic_lead_edit_retains_the_project_and_its_unit(client, method):
+    estate = _estate()
+    detail = _project(client, estate)
+    project_id = detail["project"]["id"]
+    added = client.post(f"{BASE}/{project_id}/applicants", json=GOOD).json()
+    lead = added["applicants"][0]
+    other = store.create_unit(UnitCreate(property_id=estate["property"].id, label="Andere Einheit", unit_type="Wohnung"))
+    changes: list[dict[str, str | None]] = [{"unit_id": other.id}]
+    if method == "put":  # project_id is deliberately not part of the PATCH schema
+        changes.append({"project_id": None})
+    for change in changes:
+        response = getattr(client, method)(f"{API}/leads/{lead['id']}", json={"full_name": lead["full_name"], **change})
+        assert response.status_code == 409, response.text
+    unchanged = client.get(f"{API}/leads/{lead['id']}").json()
+    assert unchanged["project_id"] == project_id and unchanged["unit_id"] == estate["unit"].id
+
+
 def test_a_project_starts_from_the_unit_and_the_overview_shows_vacancies(client):
     estate = _estate()
     overview = client.get(BASE).json()

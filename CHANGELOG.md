@@ -13,6 +13,7 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 
 ## Unreleased — 2026-10-19 Billing workspace, correspondence and everyday controls
 
+- Integrated Claude's completed re-letting projects through `ab2bbfb8`. Generic lead edits now preserve project/unit membership and cannot replace or undo the project's tenant takeover with a plain status change; ordinary contact corrections remain available. Read-only and completed project applicant lists no longer open editable forms.
 - Integrated Claude's published changes through `3e87172c`: German labels, numeric headings, editable tenant facts and the meter history. The unfinished reletting module remains in its author's development work.
 - Replaced the initials with a scalable building mark in the navigation, login and browser icon. Removed the redundant workspace and dashboard slogans.
 - Task recurrence now offers readable presets and custom interval/end controls, preserving existing rule strings and unfinished recovered drafts.

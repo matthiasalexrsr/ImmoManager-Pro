@@ -12,13 +12,14 @@ const toast = { error: vi.fn(), success: vi.fn() };
 vi.mock('../components/Toast', () => ({ useToast: () => toast }));
 const confirm = vi.fn(() => Promise.resolve(true));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => confirm }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => ({ user: { id: 'u1' } }) }));
+const access = vi.hoisted(() => ({ canWrite: true }));
+vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => ({ user: { id: 'u1' } }) }));
 vi.mock('../components/PdfPreview', () => ({ default: ({ title }) => <div>PDF {title}</div> }));
 // the form itself is tested on its own; here only what the page gives it and does with the result
 vi.mock('../components/FormModal', () => ({ default: ({ title, onSave, onClose, initial }) => <div role="dialog" aria-label={title}>
   <button onClick={async () => { await onSave({ ...(initial || {}), full_name: 'Clara Neu', status: 'new' }); onClose(); }}>Speichern</button></div> }));
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); localStorage.clear(); access.canWrite = true; });
 
 function Where() { const location = useLocation(); return <output aria-label="Adresse">{location.pathname}</output>; }
 
@@ -60,10 +61,10 @@ const PROJECT = {
   viewings: [], listing: null, tenant: null, contracts: [], purge_due: 1, retention_days: 90,
 };
 
-function renderProject(entry = '/reletting/p1') {
+function renderProject(entry = '/reletting/p1', data = PROJECT) {
   api.get.mockImplementation(path => Promise.resolve(path.endsWith('/portal-text')
     ? { blocks: [{ key: 'facts', label: 'Eckdaten und Kosten', text: 'Warmmiete: 1.000,00 €' }], missing: ['Art des Energieausweises'] }
-    : path.endsWith('/ai-question') ? { question: 'Bitte vergleiche … Bewerbung A:', applicants: 2 } : PROJECT));
+    : path.endsWith('/ai-question') ? { question: 'Bitte vergleiche … Bewerbung A:', applicants: 2 } : data));
   return render(<MemoryRouter initialEntries={[entry]}>
     <Routes><Route path="/reletting/:id" element={<><RelettingProject /><Where /></>} />
       <Route path="*" element={<Where />} /></Routes></MemoryRouter>);
@@ -172,5 +173,17 @@ describe('Reletting project', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Exposé als PDF ansehen' })); });
     expect(api.getBlob).toHaveBeenCalledWith('/reletting/p1/expose');
     expect(screen.getByText('PDF Exposé')).toBeInTheDocument();
+  });
+
+  it.each([['open', false], ['closed', true]])('does not offer an edit form for a %s project with write access %s', async (status, canWrite) => {
+    access.canWrite = canWrite;
+    renderProject('/reletting/p1', { ...PROJECT, project: { ...PROJECT.project, status } });
+    await screen.findByRole('heading', { name: 'Helle 2-Zimmer-Wohnung' });
+    fireEvent.click(screen.getByRole('tab', { name: /Interessenten/ }));
+    expect(screen.getByText('Anna Bergmann')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Anna Bergmann', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bewerbung erfassen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Unterlagen und Fotos' })).toHaveLength(3);
   });
 });

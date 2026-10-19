@@ -141,6 +141,12 @@ export default function Leads() {
     ]},
     { key: 'notes', label: 'Notizen', type: 'textarea' },
   ];
+  const editFields = modal?.project_id ? fields.map(field => {
+    if (['unit_id', 'listing_id'].includes(field.key)) return { ...field, type: 'hidden' };
+    if (field.key !== 'status') return field;
+    return { ...field, required: true, hint: 'Die Übernahme als Mieter erfolgt im Neuvermietungsprojekt.',
+      options: field.options.filter(option => modal.status === 'accepted' ? option.value === 'accepted' : option.value !== 'accepted') };
+  }) : fields;
 
   const handleSave = async (data) => {
     const payload = { ...data, priority: Number(data.priority) || 0 };
@@ -236,7 +242,7 @@ export default function Leads() {
         <FormModal
           title={modal === 'create' ? 'Interessent erstellen' : 'Interessent bearbeiten'}
           repeatKeep={['source', 'unit_id', 'listing_id']}
-          fields={fields}
+          fields={editFields}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}

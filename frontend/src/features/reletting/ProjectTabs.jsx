@@ -37,7 +37,7 @@ export function ApplicantsTab({ data, path, canWrite, onChanged }) {
   const rows = data.applicants.map(row => ({ ...row, documents: DOCUMENTS.filter(([key]) => row[key]).length }));
   const columns = [
     { key: 'full_name', label: 'Name', filterType: 'text', render: (value, row) => (
-      <button type="button" className="link-button" onClick={() => setForm(row)}>{value}</button>) },
+      canWrite ? <button type="button" className="link-button" onClick={() => setForm(row)}>{value}</button> : value) },
     { key: 'status', label: 'Status', filterType: 'select', render: value => <Badge status={value} /> },
     { key: 'household_size', label: 'Personen', type: 'number', align: 'right', render: value => value ?? '—' },
     { key: 'net_income', label: 'Nettoeinkommen', type: 'number', align: 'right', render: value => (value == null ? '—' : formatMoney(value)) },

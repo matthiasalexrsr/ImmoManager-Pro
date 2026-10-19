@@ -11,6 +11,16 @@ from .reletting import remove_files
 router = APIRouter(prefix="/leads", tags=["Interessenten"])
 
 
+def _guard_project_decision(payload: LeadCreate, current: Lead | None = None) -> None:
+    """A project decision also links a tenant; a list status cannot replace it."""
+    if current and current.project_id and (payload.project_id != current.project_id or payload.unit_id != current.unit_id):
+        raise HTTPException(409, "Eine Projektbewerbung bleibt ihrer Einheit zugeordnet. Bitte das Neuvermietungsprojekt öffnen.")
+    if (payload.project_id or (current and current.project_id)) and (
+        (payload.status == "accepted") != bool(current and current.status == "accepted")
+    ):
+        raise HTTPException(409, "Die Übernahme als Mieter erfolgt im Neuvermietungsprojekt über „Als Mieter übernehmen“.")
+
+
 @router.get("", response_model=list[Lead])
 def list_leads(
     skip: int = Query(0, ge=0),
@@ -47,6 +57,7 @@ def create_lead(payload: LeadCreate) -> Lead:
             if project_id:
                 decided = payload.decided_at or (datetime.now(timezone.utc) if payload.status in CLOSED_OUT else None)
                 payload = payload.model_copy(update={"project_id": project_id, "unit_id": unit_id, "decided_at": decided})
+        _guard_project_decision(payload)
         return store.create_lead(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -64,8 +75,11 @@ def get_lead(lead_id: str) -> Lead:
 def update_lead(lead_id: str, payload: LeadCreate) -> Lead:
     try:
         # fields the form does not show (the applicant details of a re-letting project) stay as they are
-        current = store.get_lead(lead_id).model_dump(include=set(LeadCreate.model_fields))
-        return store.update_lead(lead_id, LeadCreate.model_validate({**current, **payload.model_dump(exclude_unset=True)}))
+        current = store.get_lead(lead_id)
+        values = current.model_dump(include=set(LeadCreate.model_fields))
+        changed = LeadCreate.model_validate({**values, **payload.model_dump(exclude_unset=True)})
+        _guard_project_decision(changed, current)
+        return store.update_lead(lead_id, changed)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -75,6 +89,9 @@ def update_lead(lead_id: str, payload: LeadCreate) -> Lead:
 @router.patch("/{lead_id}", response_model=Lead)
 def patch_lead(lead_id: str, payload: LeadPatch) -> Lead:
     try:
+        current = store.get_lead(lead_id)
+        changed = current.model_copy(update=payload.model_dump(exclude_unset=True))
+        _guard_project_decision(changed, current)
         return store._patch_entity("lead", lead_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
