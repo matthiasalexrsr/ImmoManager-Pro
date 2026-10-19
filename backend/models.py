@@ -3,6 +3,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .domain.links import web_link
 from .domain.money import money
 
 
@@ -1704,7 +1705,16 @@ class MeterCreate(BaseModel):
     removal_date: Optional[date] = None  # replacement: the old meter's last day (final reading)
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
+    # a supply contract the landlord manages for this meter: its number, its end and the provider's customer portal
+    contract_number: Optional[str] = Field(default=None, max_length=100)
+    contract_end_date: Optional[date] = None
+    portal_url: Optional[str] = None
     is_active: bool = True
+
+    @field_validator("portal_url")
+    @classmethod
+    def validate_portal_url(cls, v: Optional[str]) -> Optional[str]:
+        return web_link(v)
 
     @field_validator("removal_date")
     @classmethod
@@ -1731,7 +1741,15 @@ class MeterPatch(BaseModel):
     removal_date: Optional[date] = None
     next_inspection: Optional[date] = None
     supplier: Optional[str] = None
+    contract_number: Optional[str] = Field(default=None, max_length=100)
+    contract_end_date: Optional[date] = None
+    portal_url: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("portal_url")
+    @classmethod
+    def validate_portal_url(cls, v: Optional[str]) -> Optional[str]:
+        return web_link(v)
 
 
 # ---------------------------------------------------------------------------

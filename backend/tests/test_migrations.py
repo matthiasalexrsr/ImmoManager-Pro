@@ -898,3 +898,30 @@ def test_deposit_takeover_on_an_adopted_database(migrate):
     with sqlite3.connect(migrate.db_path) as conn:
         sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'immo_deposits_settled_update'").fetchone()[0]
     assert "carried_amount" in sql
+
+
+METER_PORTAL_REVISION = "b4d6f8a0c2e1"
+
+
+def test_meter_contract_and_portal_columns_and_the_downgrade(migrate):
+    db_path = migrate(DEPOSIT_TAKEOVER_REVISION)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    migrate(METER_PORTAL_REVISION)
+    schema = _schema(db_path)
+    assert {"contract_number", "contract_end_date", "portal_url"} <= schema["meters"]
+    assert "portal_url" in schema["service_contracts"]
+    with sqlite3.connect(db_path) as conn:
+        unit = conn.execute("SELECT id FROM units LIMIT 1").fetchone()[0]
+        conn.execute("INSERT INTO meters (id, unit_id, meter_type, is_active, portal_url, created_at, updated_at) "
+                     "VALUES ('m1', ?, 'electricity', 1, 'https://portal.example', '2025-01-01', '2025-01-01')", (unit,))
+    with pytest.raises(RuntimeError, match="customer portal"):
+        migrate.downgrade(DEPOSIT_TAKEOVER_REVISION)
+    assert _version(db_path) == METER_PORTAL_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meters SET portal_url = NULL")
+    migrate.downgrade(DEPOSIT_TAKEOVER_REVISION)
+    assert not {"contract_number", "contract_end_date", "portal_url"} & _schema(db_path)["meters"]
+    assert _triggers(db_path) == triggers          # dropped in place: the tables keep their triggers
+    migrate(METER_PORTAL_REVISION)
+    assert "portal_url" in _schema(db_path)["service_contracts"]

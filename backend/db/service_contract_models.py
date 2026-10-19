@@ -55,6 +55,7 @@ class ServiceContractORM(Base):
     cost_category: Mapped[str | None] = mapped_column(Text)
     payment_method: Mapped[str | None] = mapped_column(String(30))
     notes: Mapped[str | None] = mapped_column(Text)
+    portal_url: Mapped[str | None] = mapped_column(String(500))    # migration b4d6f8a0c2e1
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

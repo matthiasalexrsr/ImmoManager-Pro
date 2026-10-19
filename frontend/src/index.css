@@ -3689,3 +3689,6 @@ table.data-table tbody tr:last-child td {
 /* A required choice with nothing to choose yet names what is missing and links to it. */
 .form-hint.form-hint-missing { color: var(--color-warning); }
 .form-hint.form-hint-missing a { font-weight: 600; }
+
+/* A link that does something on this page (opens a record's panel) instead of going somewhere. */
+.link-button { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-align: inherit; }

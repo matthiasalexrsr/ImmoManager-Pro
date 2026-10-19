@@ -2287,7 +2287,8 @@
       "cancelledOn": "Kündigung zugegangen am",
       "effectiveDate": "Wirksam zum (optional)",
       "extraordinary": "Außerordentlich / Sonderkündigung",
-      "document": "Dokument"
+      "document": "Dokument",
+      "portalUrl": "Kundenportal (Link)"
     },
     "hints": {
       "provider": "Aus dem gemeinsamen Adressbuch (Kontakte); fehlt der Anbieter, dort zuerst anlegen.",
@@ -2301,7 +2302,8 @@
       "candidates": "Ausgaben ohne Mieterbezug der letzten 120 Tage, passende zuerst.",
       "allocated": "Leer: der noch nicht zugeordnete Rest der Buchung.",
       "cancelledOn": "Tag, an dem die Kündigung beim Empfänger eingeht.",
-      "effectiveDate": "Leer: frühestmöglicher Termin."
+      "effectiveDate": "Leer: frühestmöglicher Termin.",
+      "portalUrl": "Die Anmeldeseite des Anbieters zu diesem Vertrag; auf der Vertragsseite und im Zählerverlauf als Link."
     },
     "types": {
       "electricity": "Strom",
@@ -2415,7 +2417,8 @@
     "noDocuments": "Keine Dokumente.",
     "openDocument": "Dokument ansehen",
     "fromBill": "Beleg einer Rechnung",
-    "unlink": "Lösen"
+    "unlink": "Lösen",
+    "openPortal": "Kundenportal öffnen"
   },
   "shortcutHelp": {
     "title": "Tastenkürzel",

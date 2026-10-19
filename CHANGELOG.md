@@ -11,6 +11,19 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-19 German everywhere, meter history, re-letting
+
+- **Everything reads in German.** Lists, filter choices and badges showed stored English codes: a document type "contract", statuses ("active", "in_progress"), calendar kinds, listing states, rent adjustment kinds, notification types, an integration's "not_configured", a setting's "true" and the payment lines of record timelines ("2026-10-12 · -153.66 · booked"). They now read as words ("Mietvertrag", "In Bearbeitung", "12.10.2026 · -153,66 € · Gebucht"), booleans as Ja/Nein, setting origins and reply channels by name. Found by searching every page, tab, filter list and "Neu" form for the 132 codes stored in the test version.
+- **Number columns line up.** The heading of an amount column (Betrag, Saldo, Letzter Stand, Kaltmiete …) stood at the left while its numbers stood at the right; in the simple tables of service contracts and properties the numbers stood left too. Headings now stand over their numbers, with the sort arrow left of the label. Measured on every list and record page.
+- **The tenant account page edits the tenant** ("Mieter bearbeiten", the same form as the list) and shows e-mail, phone, address, payment method and SEPA mandate.
+- **Meter history.** The meter number opens the meter's history:
+  - its readings, newest first, with the consumption since the previous reading, the days between and the use per day;
+  - a note on a reading lower than the one before (replacement, overflow or a typo), a second reading on one day, and a day far above the usual use;
+  - consumption per calendar year as columns and as a table. A reading closes its day, so readings on 31.12. cover whole years; a year only partly covered is hatched and says how many days were read.
+  - who supplies the meter: the landlord's own contract on the meter and every service contract naming it, each with a button to the provider's customer portal.
+  The pencil in the meter list now edits the meter; it used to open the readings below the list.
+- **A meter's own supply contract is kept.** The meter form asked for "Vertragsnummer" and "Vertragslaufzeit bis", but both were dropped on save. Meters now store them and a link to the provider's customer portal; service contracts take the portal link too (form, contract page). A link must be a web address (`https://…`, "portal.anbieter.de" is completed); other schemes are refused. Migration `b4d6f8a0c2e1` adds the columns and refuses a downgrade while they are used.
+
 ## Unreleased — 2026-10-19 deposit takeover and interface round
 
 - **Deposits paid before the app can be taken over.** A deposit received before the app's bookings begin had no booking to link, so its file showed "0,00 € eingegangen", its instalments stayed overdue and it could not be settled. The deposit file now has a section "Übernahme aus dem Vorsystem": the takeover day, the deposit received until then, the interest credited until then and a note on the evidence.

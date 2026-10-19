@@ -134,6 +134,8 @@ function ServiceContractDossier({ id }) {
                   <span>{t('serviceContracts.contact')}:</span> {[contract.provider.phone, contract.provider.email].filter(Boolean).join(' · ')}</div>}
                 <div className="detail-field"><span>{t('serviceContracts.fields.contractNumber')}:</span> {contract.contract_number || '—'}</div>
                 <div className="detail-field"><span>{t('serviceContracts.fields.customerNumber')}:</span> {contract.customer_number || '—'}</div>
+                {contract.portal_url && <div className="detail-field"><span>{t('serviceContracts.fields.portalUrl')}:</span>
+                  <a href={contract.portal_url} target="_blank" rel="noopener noreferrer">{t('serviceContracts.openPortal')} ↗</a></div>}
                 <div className="detail-field"><span>{t('serviceContracts.fields.costCategory')}:</span> {contract.cost_category || '—'}</div>
                 {contract.notes && <p className="sc-notes">{contract.notes}</p>}
               </div>

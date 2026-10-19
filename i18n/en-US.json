@@ -2286,7 +2286,8 @@
       "cancelledOn": "Notice received on",
       "effectiveDate": "Effective on (optional)",
       "extraordinary": "Extraordinary termination",
-      "document": "Document"
+      "document": "Document",
+      "portalUrl": "Customer portal (link)"
     },
     "hints": {
       "provider": "From the shared address book (contacts); create the provider there first if it is missing.",
@@ -2300,7 +2301,8 @@
       "candidates": "Expenses without tenant of the last 120 days, best matches first.",
       "allocated": "Empty: the part of the booking not yet allocated.",
       "cancelledOn": "Day the notice reaches the recipient.",
-      "effectiveDate": "Empty: earliest possible date."
+      "effectiveDate": "Empty: earliest possible date.",
+      "portalUrl": "The provider's sign-in page for this contract; shown as a link on the contract page and in the meter history."
     },
     "types": {
       "electricity": "Electricity",
@@ -2414,7 +2416,8 @@
     "noDocuments": "No documents.",
     "openDocument": "View document",
     "fromBill": "Scan of a bill",
-    "unlink": "Unlink"
+    "unlink": "Unlink",
+    "openPortal": "Open customer portal"
   },
   "shortcutHelp": {
     "title": "Keyboard shortcuts",

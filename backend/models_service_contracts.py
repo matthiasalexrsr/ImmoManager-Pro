@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field, PlainSerializer, field_validator, model_validator
 
+from .domain.links import web_link
 from .domain.money import money
 from .domain.service_contract_terms import Terms
 from .models import InvoiceCreate
@@ -93,6 +94,12 @@ class ServiceContractCreate(BaseModel):
     cost_category: Optional[str] = Field(default=None, max_length=100)
     payment_method: Optional[str] = Field(default=None, max_length=30)
     notes: Optional[str] = None
+    portal_url: Optional[str] = None            # the provider's customer portal for this contract
+
+    @field_validator("portal_url")
+    @classmethod
+    def validate_portal_url(cls, value: Optional[str]) -> Optional[str]:
+        return web_link(value)
 
     @field_validator("contract_type")
     @classmethod

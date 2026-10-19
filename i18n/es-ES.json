@@ -2286,7 +2286,8 @@
       "cancelledOn": "Rescisión recibida el",
       "effectiveDate": "Efectiva el (opcional)",
       "extraordinary": "Rescisión extraordinaria",
-      "document": "Documento"
+      "document": "Documento",
+      "portalUrl": "Portal del cliente (enlace)"
     },
     "hints": {
       "provider": "De la agenda compartida (contactos); si falta, créelo allí primero.",
@@ -2300,7 +2301,8 @@
       "candidates": "Gastos sin inquilino de los últimos 120 días, primero los más adecuados.",
       "allocated": "Vacío: la parte del asiento aún no asignada.",
       "cancelledOn": "Día en que la rescisión llega al destinatario.",
-      "effectiveDate": "Vacío: la fecha más temprana posible."
+      "effectiveDate": "Vacío: la fecha más temprana posible.",
+      "portalUrl": "La página de acceso del proveedor para este contrato; se muestra como enlace en el contrato y en el historial del contador."
     },
     "types": {
       "electricity": "Electricidad",
@@ -2414,7 +2416,8 @@
     "noDocuments": "No hay documentos.",
     "openDocument": "Ver documento",
     "fromBill": "Justificante de factura",
-    "unlink": "Desvincular"
+    "unlink": "Desvincular",
+    "openPortal": "Abrir portal del cliente"
   },
   "shortcutHelp": {
     "title": "Atajos de teclado",

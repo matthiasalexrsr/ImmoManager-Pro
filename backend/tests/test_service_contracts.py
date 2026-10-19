@@ -879,3 +879,54 @@ def test_no_service_contract_read_opens_another_portfolio(client, estate):
     assert not opened, opened
     assert tried >= 60
     assert "SUEDGEHEIM" in client.get(API, headers=owner).text
+
+
+# ─── a meter's history and the provider's customer portal ─────────────────────
+
+def test_a_meters_history_shows_consumption_years_and_the_supplying_contract(client, estate):
+    owner = _owner()
+    contract = _create(client, owner, _payload(estate, portal_url="kundenportal.stadtwerke-muster.de"))
+    assert contract["portal_url"] == "https://kundenportal.stadtwerke-muster.de"
+    meter = estate["meter_n"].id
+    for day, value in (("2024-07-01", 1000.1), ("2025-01-01", 1500.2), ("2025-07-01", 1850.3), ("2026-01-01", 2400.4)):
+        reading = client.post(f"/api/v1/meters/{meter}/readings", headers=owner,
+                              json={"meter_id": estate["meter_s"].id, "reading_date": day, "value": value})
+        assert reading.status_code == 201 and reading.json()["meter_id"] == meter       # the address names the meter
+    result = client.get(f"/api/v1/meters/{meter}/history", headers=owner)
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert [(row["consumption"], row["days"]) for row in body["readings"]] == [
+        (None, None), (500.1, 184), (350.1, 181), (550.1, 184)]
+    assert body["readings"][1]["per_day"] == pytest.approx(500.1 / 184, abs=0.001)
+    years = {row["year"]: row for row in body["years"]}
+    # a reading closes its day: 1.1.2025 belongs to the interval ending then, the year 2025 is read in full
+    assert years[2025]["complete"] and years[2025]["covered_days"] == 365
+    assert years[2025]["consumption"] == pytest.approx(500.1 / 184 + 350.1 + 550.1 * 183 / 184, abs=0.001)
+    assert not years[2024]["complete"] and years[2024]["covered_days"] == 183
+    assert years[2026]["covered_days"] == 1
+    assert body["contracts"] == [{
+        "id": contract["id"], "title": "Allgemeinstrom Nordhaus", "provider": "Stadtwerke Muster",
+        "contract_number": "SW-4711", "customer_number": "K-99",
+        "portal_url": "https://kundenportal.stadtwerke-muster.de", "href": f"/service-contracts/{contract['id']}"}]
+    assert all(row["warning"] is None for row in body["readings"])
+    # a day far above the usual use is flagged
+    client.post(f"/api/v1/meters/{meter}/readings", headers=owner,
+                json={"meter_id": meter, "reading_date": "2026-01-02", "value": 2440.4})
+    flagged = client.get(f"/api/v1/meters/{meter}/history", headers=owner).json()["readings"][-1]
+    assert flagged["per_day"] == 40.0 and "Auffällig hoher Verbrauch" in flagged["warning"]
+    assert client.get("/api/v1/meters/missing/history", headers=owner).status_code == 404
+
+
+def test_a_meter_keeps_its_own_supply_contract_and_portal_links_are_web_addresses(client, estate):
+    owner = _owner()
+    meter = estate["meter_s"]
+    saved = client.put(f"/api/v1/meters/{meter.id}", headers=owner, json={
+        "unit_id": meter.unit_id, "meter_type": "electricity", "serial_number": "Z-0815", "supplier": "Stadtwerke",
+        "contract_number": "SW-1", "contract_end_date": "2027-12-31", "portal_url": "https://portal.example/login"})
+    assert saved.status_code == 200, saved.text
+    assert (saved.json()["contract_number"], saved.json()["contract_end_date"]) == ("SW-1", "2027-12-31")
+    for link in ("javascript:alert(1)", "file:///etc/passwd", "https://", "https://a b.de"):
+        refused = client.put(f"/api/v1/meters/{meter.id}", headers=owner, json={
+            "unit_id": meter.unit_id, "meter_type": "electricity", "portal_url": link})
+        assert refused.status_code in (400, 422), (link, refused.text)
+    assert client.post(API, headers=owner, json=_payload(estate, portal_url="javascript:alert(1)")).status_code in (400, 422)
