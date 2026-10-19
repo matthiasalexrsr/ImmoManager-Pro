@@ -100,6 +100,10 @@ def check_overview(sim: Simulation, client: Client, as_of: date) -> None:
                  "/reports/liquidity-forecast", "/reports/contracts-expiring", "/reports/maintenance-costs",
                  "/admin/integrity-check"]:
         client.call("GET", path, area="Berichte")
+    # the finance reports page (cash, period result, liquidity), read as the page asks for them
+    for kind in ("cash-v2", "performance-period-v2", "liquidity-v2"):
+        client.call("GET", "/reports/v2/preview", params={"definition": json.dumps({"kind": kind, "as_of": as_of.isoformat()})},
+                    area="Berichte")
 
 
 def run_checks(sim: Simulation, as_of: date) -> None:

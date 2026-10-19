@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from backend.db import schema_state
 from backend.db.deposit_models import DepositSettlementItemORM, DepositSettlementORM
 from backend.db.orm_models import BookingORM, DepositORM, ReceivableORM
+from backend.finance_models import ReportDefinition
 from backend.models import AccountCreate, ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.repositories import SQLAlchemyStore
-from backend.services import report_service
+from backend.services import finance_reports, report_service
 from backend.services.maintenance_rows import registry
 from backend.services.portfolio_scope import AccessScope, scope_context
 from backend.services.receivable_residuals import cash_reserved
@@ -165,5 +166,47 @@ def test_summary_for_a_restricted_account_reads_many_contracts_in_a_bounded_numb
             assert summary['finance']['openReceivables'] == 40 * 45.00
             assert len(reads) < 40, f'{len(reads)} SQL reads for 40 contracts'
             assert report_service.compute_summary(store, today=date(2026, 1, 20))['finance'] == summary['finance']
+            # The liquidity forecast reads every tenant's payments once (it read them per contract, twice)
+            for definition in (ReportDefinition(kind='liquidity-v2', as_of=date(2026, 1, 20)),
+                               ReportDefinition(kind='performance-period-v2', as_of=date(2026, 1, 20))):
+                reads.clear()
+                event.listen(engine, 'before_cursor_execute', count_reads)
+                try:
+                    finance_reports.compute(store, definition)
+                finally:
+                    event.remove(engine, 'before_cursor_execute', count_reads)
+                assert len(reads) < 70, f'{definition.kind}: {len(reads)} SQL reads for 40 contracts'
+    finally:
+        engine.dispose()
+
+
+def test_booking_sources_show_a_restricted_account_only_its_portfolios_bounded_once(tmp_path):
+    from backend.services.finance_ledger import FinanceFilter, booking_sources
+    engine = create_engine(f"sqlite:///{tmp_path / 'sources.db'}")
+    schema_state.initialise_empty(engine)
+    try:
+        with Session(engine) as session:
+            store = SQLAlchemyStore(session)
+            own, other = (store.create_portfolio(PortfolioCreate(name=name)) for name in ('Eigen', 'Fremd'))
+            accounts = [store.create_account(AccountCreate(portfolio_id=p.id, name='Bank', account_type='bank'))
+                        for p in (own, other)]
+            session.execute(insert(BookingORM), [{'id': f'cash-{n}', 'account_id': account.id, 'booking_date': date(2026, 1, 1),
+                                                  'amount': Decimal('10.00'), 'status': 'booked'}
+                                                 for n, account in enumerate(accounts)])
+            session.commit()
+            statements = []
+            def remember(_conn, _cursor, statement, _parameters, _context, _many):
+                if 'FROM bookings' in statement:
+                    statements.append(statement)
+            event.listen(engine, 'before_cursor_execute', remember)
+            try:
+                with scope_context(AccessScope('restricted-reader', 'readonly', False, (own.id,))):
+                    assert [b.id for b in booking_sources(store, FinanceFilter())] == ['cash-0']
+                    assert [b.id for b in booking_sources(store, FinanceFilter(portfolio_id=own.id))] == ['cash-0']
+            finally:
+                event.remove(engine, 'before_cursor_execute', remember)
+            assert {b.id for b in booking_sources(store, FinanceFilter())} == {'cash-0', 'cash-1'}
+            # the boundary is applied once, not again inside itself
+            assert statements and max(len(statement) for statement in statements) < 10000
     finally:
         engine.dispose()

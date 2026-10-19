@@ -20,6 +20,7 @@ class CachedReads:
         self._store = store
         self._contracts: list[Any] | None = None
         self._periods: dict[str, list[Any]] | None = None
+        self._units: dict[str, Any] | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._store, name)
@@ -34,6 +35,13 @@ class CachedReads:
         if tenant_id is not None:
             return self._store.list_bookings(tenant_id=tenant_id)
         return whole_table("bookings", self._store.list_bookings)
+
+    def get_unit(self, unit_id: str) -> Any:
+        """A unit from one read of all units (the rent of contracts without rent history); unknown ones as before."""
+        if self._units is None:
+            self._units = {unit.id: unit for unit in self._store.list_units()}
+        found = self._units.get(unit_id)
+        return found if found is not None else self._store.get_unit(unit_id)
 
     def list_contract_rent_periods(self, contract_id: str | None = None) -> list[Any]:
         if self._periods is None:

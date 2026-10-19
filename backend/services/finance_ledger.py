@@ -240,12 +240,9 @@ def booking_sources(store: Any, flt: FinanceFilter) -> list[Any]:
         from sqlalchemy import select
 
         from ..db.orm_models import BookingORM
-        from .portfolio_scope import scoped_clause
-
+        # The session bounds this select and each select of the filter by the portfolio scope
+        # (portfolio_scope._scope_queries), once; a boundary added here as well was bounded again.
         query = select(BookingORM).where(*_sql_conditions(flt))
-        boundary = scoped_clause(BookingORM)
-        if boundary is not None:
-            query = query.where(boundary)
         return list(store.db.scalars(query.order_by(BookingORM.booking_date, BookingORM.id)))
     dimensions = Dimensions(store, flt)
     return sorted((booking for booking in store.list_bookings() if dimensions.booking_matches(booking)),

@@ -27,6 +27,7 @@ from .finance_ledger import (
 )
 from .maintenance_projects import work
 from .maintenance_rows import Rows
+from .read_cache import CachedReads
 from .receivable_residuals import ResidualReader, digest
 from .rent_history import rent_steps
 
@@ -57,26 +58,48 @@ def _filter(d):
     return FinanceFilter(portfolio_id=d.portfolio_id, property_id=d.property_id, unit_id=d.unit_id)
 
 
-def invoice_scope_amount(store, invoice, amount, flt, period_start, period_end):
-    """One invoice identity, projected through its project or weighted contract locations."""
-    rows, dims = Rows.reading(store), Dimensions(store, flt)
-    project = rows.find("maintenance_order_invoices", invoice_id=invoice.id)
-    if project:
-        case = rows.get("maintenance_cases", project[0].case_id)
-        return amount if case and dims.matches(case.property_id, case.unit_id) else ZERO
-    linked = rows.find("service_contract_invoices", invoice_id=invoice.id)
-    if linked:
-        from ..domain.service_contract_finance import active_in
+class InvoiceScopes:
+    """The project and contract links of many invoices, read once for a whole report."""
+
+    def __init__(self, store, flt, invoices):
         from .portfolio_scope import scope_context
+        self.store, self.flt = store, flt
+        self.rows, self.dims = Rows.reading(store), Dimensions(store, flt)
+        ids = [invoice.id for invoice in invoices]
+        self.projects: dict[str, list] = defaultdict(list)
+        for link in self.rows.find("maintenance_order_invoices", invoice_id=ids):
+            self.projects[link.invoice_id].append(link)
+        self.cases = {case.id: case for case in self.rows.find(
+            "maintenance_cases", id={links[0].case_id for links in self.projects.values()})}
+        self.contracts: dict[str, list] = defaultdict(list)
+        for link in self.rows.find("service_contract_invoices", invoice_id=ids):
+            self.contracts[link.invoice_id].append(link)
         # Hidden locations must retain their budget share, without disclosing their names/IDs.
+        self.locations: dict[str, list] = defaultdict(list)
         with scope_context(None):
-            locations = rows.find("service_contract_locations", service_contract_id=linked[0].service_contract_id)
-        locations = sorted([loc for loc in locations if active_in(loc, period_start, period_end)], key=lambda loc: loc.id)
-        if locations:
-            portions = allocate_cents(amount, [Decimal(str(loc.share_weight)) for loc in locations])
-            visible = {p.id for p in store.list_properties()}
-            return sum((part for loc, part in zip(locations, portions) if loc.property_id in visible and dims.matches(loc.property_id, loc.unit_id)), ZERO)
-    return amount if not flt.unit_id and dims.matches(invoice.property_id) else ZERO
+            for location in self.rows.find("service_contract_locations", service_contract_id={
+                    links[0].service_contract_id for links in self.contracts.values()}):
+                self.locations[location.service_contract_id].append(location)
+        self._visible: set[str] | None = None
+
+    def amount(self, invoice, amount, period_start, period_end):
+        """One invoice identity, projected through its project or weighted contract locations."""
+        project = self.projects.get(invoice.id)
+        if project:
+            case = self.cases.get(project[0].case_id)
+            return amount if case and self.dims.matches(case.property_id, case.unit_id) else ZERO
+        linked = self.contracts.get(invoice.id)
+        if linked:
+            from ..domain.service_contract_finance import active_in
+            locations = sorted([loc for loc in self.locations.get(linked[0].service_contract_id, [])
+                                if active_in(loc, period_start, period_end)], key=lambda loc: loc.id)
+            if locations:
+                portions = allocate_cents(amount, [Decimal(str(loc.share_weight)) for loc in locations])
+                if self._visible is None:
+                    self._visible = {p.id for p in self.store.list_properties()}
+                return sum((part for loc, part in zip(locations, portions)
+                            if loc.property_id in self._visible and self.dims.matches(loc.property_id, loc.unit_id)), ZERO)
+        return amount if not self.flt.unit_id and self.dims.matches(invoice.property_id) else ZERO
 
 
 def location_amount(store, contract_id, amount, flt, day):
@@ -157,6 +180,7 @@ def performance(store, d):
                 values[key]["other_income"] += share
                 sources.append({"identity": "utility-statement:" + statement.id, "month": key, "amount": str(share), "contribution": "other_income",
                                 "url": "/statements?period_id=" + period.id, "basis": "Finale Abrechnungsdifferenz zu Sollvorauszahlungen"})
+    reads = CachedReads(store)
     for contract in contracts.values():
         if contract.status in NON_BILLABLE_STATUSES or not dims.contract_matches(contract):
             continue
@@ -164,12 +188,13 @@ def performance(store, d):
         if contract.start_date > last or (contract.end_date and contract.end_date < max(first, contract.start_date)):
             continue
         for line in LeaseEngine.build_monthly_receivables(contract_start=max(first, contract.start_date),
-                contract_end=contract.end_date, rent_steps=rent_steps(store, contract), until_including=last):
+                contract_end=contract.end_date, rent_steps=rent_steps(reads, contract), until_including=last):
             if month_key(line.period_start) in values:
                 sources.append({"identity": "rent:" + contract.id + ":" + month_key(line.period_start),
                                 "month": month_key(line.period_start), "amount": str(line.total_amount), "contribution": "rent_due",
                                 "url": "/contracts?contract_id=" + contract.id, "basis": "Sollwarmmiete einschließlich Vorauszahlungen"})
     invoices = store.list_invoices()
+    scopes = InvoiceScopes(store, flt, invoices)
     reviewed = flows(rows, invoices)
     links = {link.invoice_id: link for link in rows.find("service_contract_invoices", invoice_id=[i.id for i in invoices])}
     identified: dict[str, Decimal] = defaultdict(lambda: ZERO)
@@ -188,7 +213,7 @@ def performance(store, d):
         start = invoice.performance_start or (link.period_start if link else invoice.invoice_date)
         end = invoice.performance_end or (link.period_end if link else invoice.invoice_date)
         amount = reviewed.get(invoice.id, ("legacy", money(invoice.gross_amount)))[1]
-        amount = invoice_scope_amount(store, invoice, amount, flt, start, end)
+        amount = scopes.amount(invoice, amount, start, end)
         if not amount:
             continue
         if bool(invoice.performance_start) != bool(invoice.performance_end) or end < start:
@@ -258,16 +283,20 @@ def forecast(store, d):
 
     contracts = [c for c in store.list_contracts() if dims.contract_matches(c) and c.status not in NON_BILLABLE_STATUSES]
     adjustments = store.list_rent_adjustments()
+    from .payment_allocations import contract_ledger, credited_by_tenant
+    # every tenant's payments and every rent history read once, not once per contract
+    credited = credited_by_tenant(store, {c.tenant_id for c in contracts if c.tenant_id})
+    reads = CachedReads(store)
     for c in contracts:
-        steps = rent_steps(store, c)
+        steps = rent_steps(reads, c)
         for a in sorted(adjustments, key=lambda a: (a.effective_date, a.id)):
             if a.contract_id == c.id and a.status == "pending":
                 prior = charge_on(steps, a.effective_date)
                 if prior:
                     steps = [s for s in steps if s.valid_from != a.effective_date] + [RentStep(a.effective_date,
                         ChargeConfig(money(a.new_rent), prior.service_charge_advance, prior.heating_advance))]
-        from .payment_allocations import contract_ledger
-        claims, payments = contract_ledger(store, c, last, steps=steps, payments_until=d.as_of)
+        claims, payments = contract_ledger(store, c, last, credited.get(c.tenant_id, []), steps=steps,
+                                           payments_until=d.as_of)
         settled_rent = LeaseEngine.build_settlement_report(claims, payments, today=d.as_of)
         arrears = ZERO
         for line in settled_rent:
@@ -301,12 +330,13 @@ def forecast(store, d):
             event("service-instalment:" + contract.id + ":" + month_key(instalment.due_date), instalment.due_date,
                   -amount, "Abschlag " + contract.title, "/service-contracts/" + contract.id)
     settled = settlements(rows, bills, d.as_of)
+    scopes = InvoiceScopes(store, flt, bills)
     for i in bills:
         s = settled[i.id]
         if s.open > 0 and i.status not in ("cancelled", "rejected"):
             link = next((link for link in service_bills if link.invoice_id == i.id), None)
             outstanding = s.open - (money(link.advances_credited) if link else ZERO)
-            amount = invoice_scope_amount(store, i, outstanding, flt, i.performance_start or i.invoice_date, i.performance_end or i.invoice_date)
+            amount = scopes.amount(i, outstanding, i.performance_start or i.invoice_date, i.performance_end or i.invoice_date)
             event("invoice:" + i.id, max(s.due_on or i.due_date or i.invoice_date, d.as_of + timedelta(days=1)), -amount,
                   "Rechnung " + i.supplier, "/invoice-review/" + i.id)
     allocations = rows.find("invoice_payments")
@@ -387,7 +417,9 @@ def compute(store, definition):
     if definition.kind == "liquidity-v2":
         baseline = definition.model_copy(update={"rent_collection_percent": Decimal(100), "arrears_collection_percent": Decimal(0),
                                                   "vacant_unit_ids": [], "planned_flows": []})
-        data["baseline_monthly"] = forecast(store, baseline)["monthly"]
+        # without assumptions the baseline is this very forecast
+        data["baseline_monthly"] = [dict(month) for month in data["monthly"]] if baseline == definition \
+            else forecast(store, baseline)["monthly"]
     if definition.kind == "cash-v2":
         period_from, period_to = definition.date_from, definition.date_to or definition.as_of
     elif definition.kind == "performance-period-v2":

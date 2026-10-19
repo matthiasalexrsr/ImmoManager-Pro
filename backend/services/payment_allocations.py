@@ -269,6 +269,7 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
     pairs_of: dict[str, Pairs] = {}
     credited: dict[str, list[tuple[Any, str, Decimal]]] = defaultdict(list)
     candidates: dict[tuple[str, date], list[ContractCandidate]] = {}
+    reads = CachedReads(store)     # contracts and rent histories once, not per unassigned payment
     # originals first: a reversal without stored allocations mirrors its original
     for booking in sorted(bookings, key=lambda b: bool(b.reverses_booking_id)):
         if until is not None and booking.booking_date > until:
@@ -285,7 +286,7 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
         else:
             key = (booking.tenant_id, booking.booking_date)
             if key not in candidates:
-                candidates[key] = _candidates(store, booking.tenant_id, booking.booking_date)
+                candidates[key] = _candidates(reads, booking.tenant_id, booking.booking_date)
             pairs = suggest_allocation(amount, booking.booking_date, booking.unit_id, candidates[key])
         pairs_of[booking.id] = pairs
         credited[booking.tenant_id] += [(booking, contract_id, amount) for contract_id, amount in pairs]

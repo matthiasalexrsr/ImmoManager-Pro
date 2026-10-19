@@ -128,8 +128,15 @@ def cash_reserved(store, booking_ids=None):
             by_booking[edge.booking_id].append(edge)
     found: dict[str, Decimal] = defaultdict(lambda: ZERO)
     by_id = {e.id: e for e in edges}
+    # The paying bookings and their returns, read together; one missing here is read singly, as before.
+    paying = {booking.id: booking for booking in rows.find("bookings", id=set(by_booking))}
+    returns: dict[str, list] = defaultdict(list)
+    for reversal in rows.find("bookings", reverses_booking_id=set(paying)):
+        returns[reversal.reverses_booking_id].append(reversal)
     for booking_id, selected in by_booking.items():
-        for _, _, amount, kind, source in cash_events(store, store.get_booking(booking_id), selected):
+        booking = paying.get(booking_id) or store.get_booking(booking_id)
+        known = returns.get(booking_id, []) if booking_id in paying else None
+        for _, _, amount, kind, source in cash_events(store, booking, selected, known):
             key = source if kind == "reversal" else by_id[source].booking_id
             if key in wanted:
                 found[key] += amount
