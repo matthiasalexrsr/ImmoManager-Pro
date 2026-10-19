@@ -71,15 +71,16 @@ def render_pdf(review):
         ]))
         return result
 
-    story = [paragraph(data["sender_name"], "head"), paragraph(data["sender_address"], "small"), Spacer(1, 13 * mm),
-             paragraph(data["recipient_name"], "head"), paragraph(data["recipient_address"]), Spacer(1, 9 * mm),
+    story = [paragraph(data["sender_name"], "head"), paragraph(data["sender_address"], "small"), Spacer(1, 10 * mm),
+             paragraph(data["recipient_name"], "head"), paragraph(data["recipient_address"]), Spacer(1, 6 * mm),
              paragraph(issue_date, "small"), paragraph(data["subject"], "title"),
+             paragraph(f"Bezug: {reference}", "small"), Spacer(1, 1 * mm),
              paragraph(data["salutation"]), paragraph(data["intro"])]
-    story += [Spacer(1, 4 * mm), KeepTogether([table(document["totals"], [width - 45 * mm, 45 * mm],
-                  header=False, numeric_columns=(1,))]), Spacer(1, 7 * mm)]
+    story += [Spacer(1, 3 * mm), KeepTogether([table(document["totals"], [width - 45 * mm, 45 * mm],
+                  header=False, numeric_columns=(1,))]), Spacer(1, 5 * mm)]
     story += [paragraph("Die beigefügte Einzelabrechnung zeigt den Abrechnungszeitraum, Ihre Kostenanteile und die berücksichtigten Vorauszahlungen.")]
     story += [KeepTogether([Spacer(1, 3 * mm), paragraph(data["closing"]), paragraph(data["signature"])])]
-    story += [Spacer(1, 8 * mm), paragraph(f"Bezug: {reference}", "small"), PageBreak(),
+    story += [PageBreak(),
               paragraph(document["title"], "title"), paragraph("Einzelabrechnung und Berechnungsgrundlagen", "small"),
               table(document["facts"], [46 * mm, width - 46 * mm], header=False), Spacer(1, 7 * mm)]
     rows = [["Kostenposition", "Gesamtkosten", "Verteilung und Ihr Anteil", "Ihr Betrag"], *document["rows"]]

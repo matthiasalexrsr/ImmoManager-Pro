@@ -165,6 +165,25 @@ def test_letter_reference_uses_frozen_labels_without_internal_ids_and_preserves_
     assert billing.download_utility_statement_pdf(case["statement"].id).body == legacy
 
 
+def test_long_letter_keeps_reference_with_subject_and_has_no_reference_only_page(case):
+    address = ("Prießnitzstraße 15, Aufgang Süd – z. Hd. Zoë Łukasz\n"
+               "Abteilung Gebäudebetrieb und Betriebskosten\nHinterhaus, vierte Etage, rechte Tür\n01097 Dresden, Deutschland")
+    intro = ("Guten Tag, anbei erhalten Sie die geprüfte Betriebskostenabrechnung. Straße, Gebäude und Müllabfuhr "
+             "wurden vollständig berücksichtigt.\n\n" + "Bitte prüfen Sie alle Kostenpositionen und die Verteilung. " * 12)
+    payload, _ = preview(case, sender_address=address, recipient_address=address, intro=intro,
+                         subject="Betriebskostenabrechnung Brief QA 2025", signature="Zoë Łukasz Verwaltung")
+    pdf = case["client"].post(base(case) + "/letter-preview-pdf", json=payload)
+    assert pdf.status_code == 200
+    import pdfplumber
+    with pdfplumber.open(BytesIO(pdf.content)) as document:
+        texts = [page.extract_text() or "" for page in document.pages]
+    assert len(texts) == 2
+    assert texts[0].index(payload["data"]["subject"]) < texts[0].index("Bezug:") < texts[0].index(payload["data"]["salutation"])
+    assert "Mit freundlichen Grüßen" in texts[0] and "Zoë Łukasz Verwaltung" in texts[0]
+    assert "Einzelabrechnung und Berechnungsgrundlagen" in texts[1]
+    assert "Bezug:" not in texts[1]
+
+
 def test_saved_original_and_idempotent_replay_survive_later_name_changes(case):
     payload, shown, saved = publish(case)
     before = case["client"].get(saved["file_url"]).content
