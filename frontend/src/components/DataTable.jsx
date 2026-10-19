@@ -75,7 +75,7 @@ function linked(spec, row, text) {
   return <EntityLink kind={kind} id={row[idKey || ID_KEYS[kind]]} text={String(text)}>{text}</EntityLink>;
 }
 
-// Cells keep to one line; long plain text is cut with an ellipsis and shown in full on hover.
+// Long plain text takes at most two lines; the rest is cut with an ellipsis and shown in full on hover.
 function cellContent(col, row) {
   const value = row[col.key];
   if (col.render) return col.render(value, row);
@@ -95,7 +95,7 @@ function cellContent(col, row) {
       </span>
     );
   }
-  return <span className="cell-text" title={text.length > 30 ? text : undefined}>{linked(col.link, row, text)}</span>;
+  return <span className="cell-text" title={text.length > 24 ? text : undefined}>{linked(col.link, row, text)}</span>;
 }
 
 

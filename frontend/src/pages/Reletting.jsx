@@ -64,7 +64,8 @@ export default function Reletting() {
     { key: 'applicants', label: 'Bewerbungen', type: 'number', align: 'right' },
     { key: 'next_viewing', label: 'Nächste Besichtigung', render: value => formatDateTime(value) },
     { key: 'accepted', label: 'Neuer Mieter', render: value => value || '—' },
-    { key: 'purge_due', label: 'Zu löschen', type: 'number', align: 'right',
+    // the figure above the list counts them; the project names them
+    { key: 'purge_due', label: 'Zu löschen', type: 'number', align: 'right', hidden: true,
       render: value => (value ? <span className="badge badge-yellow" title="Absage liegt länger als drei Monate zurück">{value}</span> : '—') },
   ];
   const vacancyColumns = [

@@ -43,6 +43,12 @@ export function formatMoneyCompact(v, { blank = '' } = {}) {
     .format(n)} €`;
 }
 
+/** An IBAN as it is printed: groups of four (DE29 8605 5592 …), so it can be read and wrap. */
+export function formatIban(v, { blank = '—' } = {}) {
+  const compact = String(v ?? '').replace(/\s+/g, '').toUpperCase();
+  return compact ? compact.replace(/(.{4})(?=.)/g, '$1 ') : blank;
+}
+
 export function formatNumber(v, digits = 0, { blank = '—' } = {}) {
   if (isBlank(v)) return blank;
   return formatter(`num:${digits}`, () => new Intl.NumberFormat(locale, {

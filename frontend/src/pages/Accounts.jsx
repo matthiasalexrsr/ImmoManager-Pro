@@ -9,7 +9,7 @@ import KpiAction from '../components/KpiAction';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
-import { formatMoney } from '../utils/format';
+import { formatIban, formatMoney } from '../utils/format';
 
 export default function Accounts() {
   const { t } = useTranslation();
@@ -62,7 +62,7 @@ export default function Accounts() {
       render: (v, row) => <Link to={`/bookings?konto=${encodeURIComponent(row.id)}`} className="entity-link" onClick={e => e.stopPropagation()}>{v}</Link> },
     { key: 'portfolio_name', label: 'Portfolio', filterType: 'text' },
     { key: 'bank_name', label: t('finance.accounts.form.bank') || 'Bank', filterType: 'text' },
-    { key: 'iban', label: 'IBAN' },
+    { key: 'iban', label: 'IBAN', render: v => (v ? <span className="cell-iban">{formatIban(v)}</span> : '—') },
     { key: 'account_type', label: t('finance.accounts.form.type') || 'Typ', filterType: 'select' },
     { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => {

@@ -17,6 +17,27 @@
   text-transform: none; letter-spacing: .01em; background: var(--color-bg);
 }
 .data-table-workspace table.data-table td { padding-top: 16px; padding-bottom: 16px; }
+/* Lists fit a laptop screen: long text takes at most two lines (the whole text on hover), headings may wrap,
+   and when a wide list still scrolls sideways its row actions stay in view at the right edge. */
+.data-table-workspace table.data-table th { white-space: normal; vertical-align: bottom; }
+.data-table-workspace .cell-text {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  max-width: 16rem; white-space: normal; overflow-wrap: normal; hyphens: manual;
+}
+.data-table-workspace table.data-table td .party-link,
+.data-table-workspace table.data-table td .entity-link,
+.data-table-workspace table.data-table td .td-sub { white-space: normal; overflow-wrap: break-word; }
+.data-table-workspace table.data-table td .cell-inline { flex-wrap: wrap; row-gap: 4px; }
+/* an IBAN wraps between its groups of four but is never cut */
+.data-table-workspace table.data-table td .cell-iban { display: inline-block; min-width: 9.5rem; white-space: normal; font-variant-numeric: tabular-nums; }
+.data-table-workspace table.data-table th.th-actions,
+.data-table-workspace table.data-table td.action-cell {
+  position: sticky; right: 0; z-index: 1; background: var(--color-surface);
+  box-shadow: inset 1px 0 0 var(--color-border-light);
+}
+.data-table-workspace table.data-table th.th-actions { background: var(--color-bg); }
+.data-table-workspace table.data-table tbody tr:hover td.action-cell { background: var(--color-primary-50); }
+.data-table-workspace table.data-table tr.row-selected td.action-cell { background: var(--color-primary-light); }
 .data-table-workspace .table-sort-button {
   display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
   color: inherit; font: inherit; font-weight: 600; padding: 3px 0; cursor: pointer; text-align: inherit;

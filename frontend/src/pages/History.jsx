@@ -88,13 +88,13 @@ export default function History() {
     { key: 'record', label: 'Datensatz', render: (value, row) => <span className="cell-stack">
       <span>{row.record_href ? <Link to={row.record_href} className="entity-link" title={`Datensatz ${row.entity_id} öffnen`}>{value}</Link> : value}</span>
       <span className="td-sub">{row.kind}</span>
-    </span> },
+    </span>, wrap: true },
     { key: 'field', label: 'Feld' },
-    { key: 'before', label: 'Vorher', render: fullValue },
-    { key: 'after', label: 'Nachher', render: fullValue },
+    { key: 'before', label: 'Vorher', render: fullValue, wrap: true },
+    { key: 'after', label: 'Nachher', render: fullValue, wrap: true },
     { key: 'author', label: 'Geändert von' },
     { key: 'kind', label: 'Art', hidden: true },
-    { key: 'reason', label: 'Grund', render: fullValue },
+    { key: 'reason', label: 'Grund', render: fullValue, wrap: true },
   ];
 
   return (

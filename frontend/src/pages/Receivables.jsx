@@ -93,7 +93,7 @@ export default function Receivables() {
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
-    { key: 'description', label: t('ui.form.description') },
+    { key: 'description', label: t('ui.form.description'), wrap: true },
   ];
 
   const fields = [

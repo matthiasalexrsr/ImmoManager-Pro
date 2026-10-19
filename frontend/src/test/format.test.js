@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { formatArea, formatDate, formatMoney, formatMonth, formatPercent, setFormatLocale } from '../utils/format';
+import { formatArea, formatDate, formatIban, formatMoney, formatMonth, formatPercent, setFormatLocale } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 
 const nbsp = s => s.replace(/\u00a0|\u202f/g, ' ');
 
 describe('format', () => {
   afterEach(() => setFormatLocale('de-DE'));
+
+  it('prints an IBAN in groups of four', () => {
+    expect(formatIban('de29860555921100457800')).toBe('DE29 8605 5592 1100 4578 00');
+    expect(formatIban('DE29 8605 5592 1100 4578 00')).toBe('DE29 8605 5592 1100 4578 00');
+    expect(formatIban('')).toBe('—');
+    expect(formatIban(null, { blank: '' })).toBe('');
+  });
 
   it('writes amounts, dates and percentages the German way', () => {
     expect(nbsp(formatMoney(1018330))).toBe('1.018.330,00 €');
