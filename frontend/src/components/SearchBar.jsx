@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { SearchIcon, CloseIcon, PlusIcon, ENTITY_ICON_MAP } from './Icons';
 import { NAV_SECTIONS, QUICK_ACTIONS } from './navigation';
 import { mayWrite } from '../utils/permissions';
+import { codeLabel } from '../utils/codeLabels';
+import { formatMoney } from '../utils/format';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -88,6 +90,19 @@ const fold = text => String(text || '').toLowerCase().normalize('NFD').replace(/
 
 const localRoute = value => typeof value === 'string' && /^\/(?!\/)/.test(value)
   && [...value].every(character => character !== '\\' && character.charCodeAt(0) >= 32);
+
+// The second line of a hit as the lists show it: amounts in euros, stored codes as words.
+const MONEY_DETAILS = new Set(['invoice', 'booking']);
+function hitDetail(result, t) {
+  const detail = result.detail;
+  if (detail == null || detail === '') return '';
+  if (MONEY_DETAILS.has(result.entity_type) && /^-?\d+(\.\d+)?$/.test(detail)) return formatMoney(Number(detail));
+  if (/^[a-z][a-z_]*$/.test(detail)) {
+    const status = t(`status.badge.${detail}`);
+    return status && status !== `status.badge.${detail}` ? status : codeLabel(detail);
+  }
+  return detail;
+}
 
 // The records a person opened from the search, kept per signed-in user in this browser only.
 function readRecent(key) {
@@ -356,7 +371,7 @@ export default function SearchBar() {
                     <span>{tr('search.global.recentlyOpened', 'Zuletzt geöffnet')}</span>
                     <button type="button" className="search-bar-clear-recent" onClick={clearRecent}>{tr('search.global.clearRecent', 'Verlauf leeren')}</button>
                   </div>
-                  {recent.map(r => option(r, r.display, r.detail || ENTITY_LABELS[r.entity_type], ENTITY_ICON_MAP[r.entity_type]))}
+                  {recent.map(r => option(r, r.display, hitDetail(r, t) || ENTITY_LABELS[r.entity_type], ENTITY_ICON_MAP[r.entity_type]))}
                 </div>
               );
             }
@@ -384,7 +399,7 @@ export default function SearchBar() {
                         <span className="search-bar-group-count"> · {t('search.global.shownOf', { shown: items.length, total: groups[type].total })}</span>
                       )}
                     </div>
-                    {items.map(r => option(r, r.display, r.detail, ENTITY_ICON_MAP[r.entity_type]))}
+                    {items.map(r => option(r, r.display, hitDetail(r, t), ENTITY_ICON_MAP[r.entity_type]))}
                     {groups[type]?.next_cursor && (
                       <button
                         type="button"

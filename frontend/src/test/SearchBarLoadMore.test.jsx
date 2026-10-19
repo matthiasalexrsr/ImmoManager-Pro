@@ -204,3 +204,19 @@ it('behält nach dem Löschen der Suchanfrage den Fokus im Suchfeld', () => {
   expect(box).toHaveFocus();
   expect(screen.queryByRole('button', { name: 'Suche löschen' })).not.toBeInTheDocument();
 });
+
+it('shows amounts and codes of a hit in words and opens the found record', async () => {
+  auth.user = null;
+  api.get.mockResolvedValue({ results: [
+    { entity_type: 'invoice', id: 'i1', display: 'Dachdeckerei Kunze', detail: '1249.18', url: '/invoices?focus_id=i1' },
+    { entity_type: 'category', id: 'c1', display: 'Wartung', detail: 'expense', url: '/categories?focus_id=c1' },
+  ], groups: [] });
+  render(<MemoryRouter initialEntries={['/']}><SearchBar /><Routes><Route path="*" element={<WhereWithSearch />} /></Routes></MemoryRouter>);
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Kunze' } });
+  const invoice = await screen.findByRole('option', { name: /Dachdeckerei Kunze/ });
+  expect(invoice.textContent.replace(/\s/g, ' ')).toContain('1.249,18 €');
+  expect(screen.getByRole('option', { name: /Wartung/ })).toHaveTextContent('Ausgabe');
+  expect(screen.queryByText('1249.18')).toBeNull();
+  fireEvent.click(invoice);
+  expect(screen.getByTestId('where')).toHaveTextContent('/invoices?focus_id=i1');
+});
