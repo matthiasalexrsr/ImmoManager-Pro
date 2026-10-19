@@ -8,9 +8,21 @@ import DataTable from '../components/DataTable';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
+import { useConfirm } from '../components/ConfirmDialog';
+import StatementLetterDialog from '../features/billing/StatementLetterDialog';
+import StatementBreakdown from '../features/billing/StatementBreakdown';
+import { codeLabel } from '../utils/codeLabels';
 import { formatMoney } from '../utils/format';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { FileText, ListChecks, Pencil } from 'lucide-react';
 import './statements.css';
+
+const sumMoney = (rows, key) => rows.reduce((sum, row) => sum + Math.round(Number(row[key] || 0) * 100), 0) / 100;
+const COST_SUGGESTIONS = [
+  ['Grundsteuer', 'property_tax'], ['Wasser und Abwasser', 'water'], ['Müllabfuhr', 'garbage'],
+  ['Gebäudeversicherung', 'insurance'], ['Allgemeinstrom', 'electricity'],
+  ['Gebäudereinigung', 'cleaning'], ['Gartenpflege', 'garden'], ['Heizkosten', 'heating'],
+];
 
 /** Inline toast-style notification hook. */
 function useToast() {
@@ -172,7 +184,7 @@ function formatDate(iso) {
   return `${d}.${m}.${y}`;
 }
 
-function getStmtColumns(t, onError) {
+function getStmtColumns(t, onError, onLetter) {
   return [
     { key: 'unit_label', label: t('pages.statements.colUnit') || 'Einheit', link: 'unit' },
     { key: 'tenant_name', label: t('pages.statements.colParty') || 'Mieter',
@@ -201,6 +213,8 @@ function getStmtColumns(t, onError) {
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status' },
     { key: 'pdf_action', label: '',
       render: (_, row) => row.party !== 'vacancy' && (
+        <div className="billing-document-actions">
+          <button type="button" className="btn btn-sm btn-primary" onClick={event => { event.stopPropagation(); onLetter(row); }}>Anschreiben & PDF</button>
         <button
           className="btn btn-sm btn-secondary"
           title={t('pages.statements.pdfDownload') || 'PDF herunterladen'}
@@ -208,6 +222,7 @@ function getStmtColumns(t, onError) {
         >
           PDF
         </button>
+        </div>
       )},
   ];
 }
@@ -244,7 +259,7 @@ function getWorkflowStep(period, costCount, stmtCount) {
   if (period.status === 'review') return 4;
   // draft status
   if (stmtCount > 0) return 3;
-  if (costCount > 0) return 3;
+  if (costCount > 0) return 2;
   return 2;
 }
 
@@ -285,6 +300,7 @@ function StepIndicator({ currentStep, t: tr }) {
 
 export default function Statements() {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const sourceFilter = ['preflight_blockers', 'statements'].includes(params.get('filter')) ? params.get('filter') : 'all';
   const [sourceRows, setSourceRows] = useState({ items: [], loading: false, error: null });
   const [sourceAttempt, setSourceAttempt] = useState(0);
@@ -294,10 +310,14 @@ export default function Statements() {
   const [costSourceFilter, setCostSourceFilter] = useState('all');
   const [statementSourceFilter, setStatementSourceFilter] = useState('all');
   const [sourceDrilldown, setSourceDrilldown] = useState(0);
-  const openCostSources = filter => { setCostSourceFilter(filter); setSourceDrilldown(value => value + 1); costSources.current?.focus(); costSources.current?.scrollIntoView?.({ block: 'center' }); };
-  const openStatementSources = filter => { setStatementSourceFilter(filter); setSourceDrilldown(value => value + 1); statementSourceTable.current?.focus(); statementSourceTable.current?.scrollIntoView?.({ block: 'center' }); };
+  const requestedFocus = useRef(null);
+  const openCostSources = filter => { requestedFocus.current = 'costs'; setCostSourceFilter(filter); setSourceDrilldown(value => value + 1); };
+  const openStatementSources = filter => { requestedFocus.current = 'statements'; setStatementSourceFilter(filter); setSourceDrilldown(value => value + 1); };
   const { t } = useTranslation();
   const auth = useAuth();
+  const confirm = useConfirm();
+  const canManagePeriods = !auth?.user || mayWrite(auth.write, '/billing/periods');
+  const canEditCosts = !auth?.user || mayWrite(auth.write, '/billing/cost-items');
   const canRejectObjections = ['eigentuemer', 'verwalter'].includes(auth?.user?.role)
     && mayWrite(auth?.write, '/billing/objections');
   const canRecordObjections = !auth?.user || canRejectObjections;
@@ -314,11 +334,25 @@ export default function Statements() {
   const [loadError, setLoadError] = useState(null);
   const [modal, setModal] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const listReturnSearch = useRef('');
+  const [letterStatement, setLetterStatement] = useState(null);
+  const [breakdown, setBreakdown] = useState(null);
+  const [costPrefill, setCostPrefill] = useState(null);
+  const [copyResult, setCopyResult] = useState(null);
+  const [preflightError, setPreflightError] = useState(null);
+  const dataRequest = useRef(0);
+  const dataController = useRef(null);
+  const preflightRequest = useRef(0);
   const currentPeriod = useRef(null);
   currentPeriod.current = selectedPeriod?.id;
   useEffect(() => { currentPeriod.current = selectedPeriod?.id; return () => { currentPeriod.current = null; }; }, [selectedPeriod?.id]);
   const [costModal, setCostModal] = useState(null);
   const [view, setView] = useState('list');
+  useEffect(() => {
+    if (view !== 'detail' || breakdown || !requestedFocus.current) return;
+    const target = requestedFocus.current === 'costs' ? costSources.current : statementSourceTable.current;
+    if (target) { requestedFocus.current = null; target.focus(); target.scrollIntoView?.({ block: 'center' }); }
+  }, [sourceDrilldown, view, breakdown]);
   const [preflight, setPreflight] = useState(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -328,6 +362,7 @@ export default function Statements() {
   const [creatingRevision, setCreatingRevision] = useState(false);
   const [creatingReceivables, setCreatingReceivables] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
+  const [deliveryModal, setDeliveryModal] = useState(false);
   const [ocrDraft, setOcrDraft] = useState(null);
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
@@ -367,34 +402,37 @@ export default function Statements() {
     }
   };
 
-  const loadData = () => {
+  const loadData = async () => {
+    const request = ++dataRequest.current;
+    const selectedAtStart = selectedPeriod;
+    dataController.current?.abort();
+    const controller = new AbortController(); dataController.current = controller;
+    const session = api.captureSession();
     setLoadError(null);
     setSourceAttempt(value => value + 1);
-    Promise.all([
-      api.list('/billing/periods'),
-      api.list('/billing/cost-items'),
-      api.list('/billing/statements'),
-      api.list('/properties'),
-      api.list('/units'),
-      api.list('/billing/allocation-keys'),
-      api.list('/contracts'),
-      api.list('/tenants'),
-    ]).then(([bp, ci, us, props, u, ak, ctr, tn]) => {
-      setPeriods(bp || []);
-      setCostItems(ci || []);
-      setStatements(us || []);
-      setProperties(props || []);
-      setUnits(u || []);
-      setAllocationKeys(ak || []);
-      setContracts(ctr || []);
-      setTenants(tn || []);
-    }).catch(err => {
+    try {
+      const rows = await Promise.all(['/billing/periods', '/billing/cost-items', '/billing/statements',
+        '/properties', '/units', '/billing/allocation-keys', '/contracts', '/tenants']
+        .map(path => api.list(path, { signal: controller.signal })));
+      session();
+      if (request !== dataRequest.current || controller.signal.aborted) return false;
+      if (rows.some(value => !Array.isArray(value))) throw new Error('Die Abrechnungsdaten sind unvollständig. Bitte erneut laden.');
+      const [bp, ci, us, props, u, ak, ctr, tn] = rows;
+      setPeriods(bp); setCostItems(ci); setStatements(us); setProperties(props);
+      setUnits(u); setAllocationKeys(ak); setContracts(ctr); setTenants(tn);
+      // A later explicit detail read/decision wins over a list request that
+      // started before it. Never replace a newly opened correction with old data.
+      setSelectedPeriod(current => current && current === selectedAtStart ? bp.find(row => row.id === current.id) || current : current);
+      return true;
+    } catch (err) {
+      if (request !== dataRequest.current || controller.signal.aborted) return false;
       setLoadError(err.message || 'Daten konnten nicht geladen werden');
       toast.show(err.message || 'Daten konnten nicht geladen werden');
-    }).finally(() => setLoading(false));
+      return false;
+    } finally { if (request === dataRequest.current && !controller.signal.aborted) setLoading(false); }
   };
 
-  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- loadData is stable, called on mount only
+  useEffect(() => { loadData(); return () => { dataRequest.current += 1; dataController.current?.abort(); preflightRequest.current += 1; }; }, []); // eslint-disable-line react-hooks/exhaustive-deps -- initial load, guarded against stale responses
   useEffect(() => {
     setView('list'); setSelectedPeriod(null); setDrilldown(value => value + 1);
   }, [sourceFilter]);
@@ -414,9 +452,14 @@ export default function Statements() {
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  const enriched = (sourceFilter === 'preflight_blockers' ? sourceRows.items : periods).filter(bp => !params.get('period_id') || bp.id === params.get('period_id')).map(bp => {
+  const matchesPeriod = bp => (!params.get('period_id') || bp.id === params.get('period_id'))
+    && (!params.get('property_id') || bp.property_id === params.get('property_id'))
+    && (!params.get('year') || (bp.start_date <= `${params.get('year')}-12-31` && bp.end_date >= `${params.get('year')}-01-01`))
+    && (!params.get('status') || bp.status === params.get('status'));
+
+  const enriched = (sourceFilter === 'preflight_blockers' ? sourceRows.items : periods).filter(matchesPeriod).map(bp => {
     const costs = costItems.filter(ci => ci.billing_period_id === bp.id);
-    const totalCosts = costs.reduce((s, c) => s + (c.amount || 0), 0);
+    const totalCosts = sumMoney(costs, 'amount');
     const stmts = statements.filter(s => s.billing_period_id === bp.id);
     return {
       ...bp,
@@ -433,17 +476,17 @@ export default function Statements() {
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'label', label: t('pages.statements.formLabel') || 'Bezeichnung', required: true, placeholder: 'z.B. NK-Abrechnung 2025' },
     { key: 'start_date', label: t('pages.statements.formStart') || 'Beginn', type: 'date', required: true },
-    { key: 'end_date', label: t('pages.statements.formEnd') || 'Ende', type: 'date', required: true },
+    { key: 'end_date', label: t('pages.statements.formEnd') || 'Ende', type: 'date', required: true,
+      validate: (value, values) => value && values.start_date && value < values.start_date ? 'Das Ende darf nicht vor dem Beginn liegen.' : null },
     // No status field: the status changes only through the workflow (review, finalize, objection, correction).
   ];
 
   const costFields = [
-    { key: 'billing_period_id', label: t('pages.statements.formPeriod') || 'Abrechnungsperiode', type: 'select', required: true,
-      options: periods.map(p => ({ value: p.id, label: p.label || `${formatDate(p.start_date)} – ${formatDate(p.end_date)}` })) },
     { key: 'description', label: t('pages.statements.formCostType') || 'Kostenart', required: true, placeholder: 'z.B. Wasser, Heizung, Müll' },
     { key: 'amount', label: t('pages.statements.formAmount') || 'Betrag (€)', type: 'number', required: true },
-    { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true,
-      options: allocationKeys.map(k => ({ value: k.id, label: `${k.name} (${k.key_type})` })) },
+    { key: 'allocation_key_id', label: t('pages.statements.formAllocationKey') || 'Verteilerschlüssel', type: 'select', required: true, autoSelect: false,
+      options: allocationKeys.filter(k => !k.property_id || k.property_id === selectedPeriod?.property_id)
+        .map(k => ({ value: k.id, label: `${k.name} (${codeLabel(k.key_type)})` })) },
     { key: 'is_recoverable', label: t('pages.statements.formRecoverable') || 'Umlagefähig', type: 'select', required: true,
       default: 'true', options: [
         { value: 'true', label: t('pages.statements.recoverableYes') || 'Ja – wird auf die Mieter verteilt' },
@@ -452,37 +495,78 @@ export default function Statements() {
   ];
 
   const handleSave = async (data) => {
+    if (!canManagePeriods) throw new Error('Für Änderungen an Abrechnungszeiträumen fehlt die Berechtigung.');
+    const periodData = modal === 'create' ? data : { ...data,
+      property_id: modal === 'copy' ? selectedPeriod.property_id : modal.property_id };
     if (modal === 'create') {
-      await api.post('/billing/periods', data);
+      await api.post('/billing/periods', periodData);
     } else if (modal === 'copy') {
-      const newPeriod = await api.post('/billing/periods', data);
+      if (!canEditCosts) throw new Error('Zum Kopieren der Kostenpositionen fehlt die Berechtigung.');
+      const newPeriod = await api.post('/billing/periods', periodData);
       if (newPeriod && selectedPeriod) {
         const prevCosts = costItems.filter(ci => ci.billing_period_id === selectedPeriod.id);
+        const failures = [];
         for (const cost of prevCosts) {
-          await api.post('/billing/cost-items', {
-            billing_period_id: newPeriod.id,
-            description: cost.description,
-            amount: 0,
-            allocation_key_id: cost.allocation_key_id,
-            is_recoverable: cost.is_recoverable !== false,
-            cost_category: cost.cost_category,
-          }).catch(() => { toast.show('Kostenposition konnte nicht kopiert werden'); });
+          try {
+            await api.post('/billing/cost-items', {
+              billing_period_id: newPeriod.id,
+              description: cost.description,
+              amount: 0,
+              allocation_key_id: cost.allocation_key_id,
+              is_recoverable: cost.is_recoverable !== false,
+              cost_category: cost.cost_category,
+            });
+          } catch (error) { failures.push({ description: cost.description, message: error.message || 'Kopieren fehlgeschlagen' }); }
         }
+        // The period already exists. Report partial results without throwing:
+        // retrying the whole form would create another period and duplicate costs.
+        setCopyResult({ period: newPeriod, total: prevCosts.length, copied: prevCosts.length - failures.length, failures });
       }
     } else {
-      await api.put(`/billing/periods/${modal.id}`, data);
+      const saved = await api.put(`/billing/periods/${modal.id}`, periodData);
+      setSelectedPeriod(current => current?.id === saved.id ? saved : current);
     }
-    loadData();
+    await loadData();
   };
 
   const handleSaveCost = async (form) => {
-    const data = { ...form, is_recoverable: form.is_recoverable !== 'false' && form.is_recoverable !== false };
+    if (!selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) throw new Error('Diese Abrechnung kann nicht bearbeitet werden.');
+    const data = { ...(costModal !== 'create' ? costModal : costPrefill), ...form,
+      billing_period_id: selectedPeriod.id, is_recoverable: form.is_recoverable !== 'false' && form.is_recoverable !== false };
     if (costModal === 'create') {
       await api.post('/billing/cost-items', data);
     } else {
       await api.put(`/billing/cost-items/${costModal.id}`, data);
     }
-    loadData();
+    await loadData();
+    await refreshPreflight(selectedPeriod.id);
+  };
+
+  const handleDeleteCost = async row => {
+    if (!selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts || !confirm) return;
+    if (!await confirm(`Kostenposition „${row.description}“ (${formatMoney(row.amount)}) löschen?`, { action: 'delete' })) return;
+    try {
+      await api.del(`/billing/cost-items/${encodeURIComponent(row.id)}`);
+      await loadData();
+      await refreshPreflight(selectedPeriod.id);
+    } catch (error) { toast.show(error.message || 'Kostenposition konnte nicht gelöscht werden.'); }
+  };
+
+  const refreshPreflight = async periodId => {
+    if (currentPeriod.current !== periodId) return;
+    const request = ++preflightRequest.current;
+    const current = api.captureSession();
+    setPreflightLoading(true); setPreflightError(null); setPreflight(null);
+    try {
+      const result = await api.get(`/billing/periods/${encodeURIComponent(periodId)}/preflight`);
+      current();
+      if (request === preflightRequest.current && currentPeriod.current === periodId) {
+        if (!result || typeof result.has_blockers !== 'boolean') throw new Error('Die Abrechnungsprüfung ist unvollständig.');
+        setPreflight(result);
+      }
+    } catch (error) {
+      if (request === preflightRequest.current && currentPeriod.current === periodId) setPreflightError(error.message || 'Abrechnung konnte nicht geprüft werden.');
+    } finally { if (request === preflightRequest.current && currentPeriod.current === periodId) setPreflightLoading(false); }
   };
 
   const handleGenerateStatements = async () => {
@@ -491,8 +575,7 @@ export default function Statements() {
     try {
       await api.post(`/billing/periods/${selectedPeriod.id}/generate`, {});
       await loadData();
-      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
-      setPreflight(pf);
+      await refreshPreflight(selectedPeriod.id);
     } catch (err) {
       toast.show(err.message || 'Generierung fehlgeschlagen');
     } finally {
@@ -505,7 +588,7 @@ export default function Statements() {
     setSubmittingReview(true);
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/submit-review`, {});
-      setSelectedPeriod(updated);
+      setSelectedPeriod(current => current?.id === updated.id ? updated : current);
       await loadData();
     } catch (err) {
       toast.show(err.message || 'Statuswechsel fehlgeschlagen');
@@ -518,7 +601,7 @@ export default function Statements() {
     if (!selectedPeriod) return;
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/revert-draft`, {});
-      setSelectedPeriod(updated);
+      setSelectedPeriod(current => current?.id === updated.id ? updated : current);
       await loadData();
     } catch (err) {
       toast.show(err.message || 'Zurücksetzen fehlgeschlagen');
@@ -530,10 +613,9 @@ export default function Statements() {
     setFinalizing(true);
     try {
       const updated = await api.post(`/billing/periods/${selectedPeriod.id}/finalize`, {});
-      setSelectedPeriod(updated);
+      setSelectedPeriod(current => current?.id === updated.id ? updated : current);
       await loadData();
-      const pf = await api.get(`/billing/periods/${selectedPeriod.id}/preflight`).catch(() => null);
-      setPreflight(pf);
+      await refreshPreflight(selectedPeriod.id);
     } catch (err) {
       toast.show(err.message || 'Finalisierung fehlgeschlagen');
     } finally {
@@ -541,21 +623,23 @@ export default function Statements() {
     }
   };
 
-  const handleMarkDelivered = async () => {
+  const handleMarkDelivered = async ({ channel }) => {
     if (!selectedPeriod) return;
     setMarkingDelivered(true);
     try {
-      const periodStatements = (statements || []).filter(s => s.billing_period_id === selectedPeriod.id);
+      const periodStatements = statements.filter(s => s.billing_period_id === selectedPeriod.id && s.party !== 'vacancy');
       for (const stmt of periodStatements) {
         if (stmt.status !== 'delivered') {
-          await api.post(`/billing/statements/${stmt.id}/mark-delivered`, {});
+          await api.post(`/billing/statements/${stmt.id}/mark-delivered?channel=${encodeURIComponent(channel)}`, {});
         }
       }
       await loadData();
       const refreshedPeriod = await api.get(`/billing/periods/${selectedPeriod.id}`).catch(() => selectedPeriod);
-      setSelectedPeriod(refreshedPeriod || selectedPeriod);
+      setSelectedPeriod(current => current?.id === selectedPeriod.id ? refreshedPeriod || selectedPeriod : current);
+      if (currentPeriod.current === selectedPeriod.id) setDeliveryModal(false);
     } catch (err) {
       toast.show(err.message || 'Zustellstatus konnte nicht gesetzt werden');
+      throw err;
     } finally {
       setMarkingDelivered(false);
     }
@@ -591,7 +675,7 @@ export default function Statements() {
           if (res?.new_period_id) {
             const allPeriods = await api.list('/billing/periods').catch(() => []);
             const newPeriod = (allPeriods || []).find(p => p.id === res.new_period_id);
-            if (newPeriod) handleSelectPeriod(newPeriod);
+            if (newPeriod && currentPeriod.current === selectedPeriod.id) handleSelectPeriod(newPeriod);
           }
         } catch (err) {
           toast.show(err.message || t('pages.statements.revisionError') || 'Korrektur konnte nicht erstellt werden');
@@ -752,23 +836,14 @@ export default function Statements() {
     }
   };
 
-  const handleAcceptOcrDraft = async () => {
-    if (!ocrDraft?.draft) return;
+  const handleAcceptOcrDraft = () => {
+    if (!ocrDraft?.draft || !selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) return;
     const draft = ocrDraft.draft;
-    try {
-      await api.post('/billing/cost-items', {
-        billing_period_id: draft.billing_period_id,
-        description: draft.description || 'Importierte Kostenposition',
-        amount: draft.amount || 0,
-        allocation_key_id: draft.allocation_key_id || allocationKeys[0]?.id,
-        cost_category: draft.cost_category,
-        source_document_id: draft.source_document_id,
-      });
-      setOcrDraft(null);
-      loadData();
-    } catch (err) {
-      toast.show(err.message || 'Kostenposition konnte nicht gespeichert werden');
-    }
+    const key = allocationKeys.find(item => item.id === draft.allocation_key_id
+      && (!item.property_id || item.property_id === selectedPeriod.property_id));
+    setCostPrefill({ ...draft, description: draft.description || 'Importierte Kostenposition', allocation_key_id: key?.id || '' });
+    setOcrDraft(null);
+    setCostModal('create');
   };
 
   const handleExportPeriod = async () => {
@@ -815,24 +890,46 @@ export default function Statements() {
     }
   };
 
-  const handleSelectPeriod = (period) => {
+  const listSearch = query => {
+    const next = new URLSearchParams(query);
+    next.delete('period_id');
+    if (next.get('filter') !== 'statements') next.delete('focus_id');
+    ['notice_id', 'source_id'].forEach(key => next.delete(key));
+    return next.toString();
+  };
+  const handleSelectPeriod = (period, { fromUrl = false } = {}) => {
+    if (fromUrl || view !== 'detail') listReturnSearch.current = listSearch(params);
+    if (!fromUrl) setParams(current => {
+      const next = new URLSearchParams(current);
+      // period_id owns the detail selection; the surrounding list filters and
+      // search remain intact. A source receipt never follows a manual switch.
+      ['focus_id', 'notice_id', 'source_id'].forEach(key => next.delete(key));
+      next.set('period_id', period.id);
+      return next;
+    });
     setCostSourceFilter('all'); setStatementSourceFilter('all');
+    setCostModal(null); setCostPrefill(null); setOcrDraft(null); setBreakdown(null); setLetterStatement(null);
+    currentPeriod.current = period.id;
     setSelectedPeriod(period);
     setView('detail');
     setObjections([]);
     loadObjections(period.id);
-    setPreflight(null);
-    setPreflightLoading(true);
-    api.get(`/billing/periods/${period.id}/preflight`)
-      .then(setPreflight)
-      .catch(() => setPreflight(null))
-      .finally(() => setPreflightLoading(false));
+    refreshPreflight(period.id);
   };
 
-  const noticePeriod = params.get('notice_id') && !params.get('filter') ? params.get('focus_id') : null;
+  const handleBackToList = () => {
+    setView('list'); setBreakdown(null); setLetterStatement(null);
+    setParams(new URLSearchParams(listReturnSearch.current));
+  };
+  const noticePeriod = params.get('period_id') || (!params.get('filter') ? params.get('focus_id') : null);
+  const previousNoticePeriod = useRef(noticePeriod);
   useEffect(() => {
-    if (noticePeriod && !loading && !loadError && selectedPeriod?.id !== noticePeriod) {
-      const period = periods.find(row => row.id === noticePeriod); if (period) handleSelectPeriod(period);
+    if (previousNoticePeriod.current && !noticePeriod) { setView('list'); setBreakdown(null); setLetterStatement(null); }
+    previousNoticePeriod.current = noticePeriod;
+  }, [noticePeriod]);
+  useEffect(() => {
+    if (noticePeriod && !loading && !loadError && (selectedPeriod?.id !== noticePeriod || view !== 'detail')) {
+      const period = periods.find(row => row.id === noticePeriod); if (period) handleSelectPeriod(period, { fromUrl: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noticePeriod, loading, loadError, periods]);
@@ -852,15 +949,31 @@ export default function Statements() {
   const COLUMNS = getColumns(t);
   const openSourceRow = row => {
     if (sourceFilter !== 'statements') { handleSelectPeriod(row); return; }
-    const period = periods.find(item => item.id === row.billing_period_id);
-    if (period) handleSelectPeriod(period);
-    else toast.show('Der Abrechnungszeitraum ist nicht verfügbar. Bitte neu laden.');
+    setBreakdown(row);
   };
   const COST_COLUMNS = getCostColumns(t);
-  const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg));
-  const statementSources = statements.map(row => ({ ...row, unit_label: unitMap[row.unit_id]?.label || '—',
+  const STMT_COLUMNS = getStmtColumns(t, msg => toast.show(msg), setLetterStatement);
+  const statementSources = statements.filter(row => { const bp = periods.find(item => item.id === row.billing_period_id); return bp && matchesPeriod(bp); }).map(row => ({ ...row, unit_label: unitMap[row.unit_id]?.label || '—',
     tenant_id: contractMap[row.contract_id]?.tenant_id || null,
     tenant_name: tenantMap[contractMap[row.contract_id]?.tenant_id] || '—' }));
+
+  const documentDialogs = <>
+    {letterStatement && <StatementLetterDialog key={`${auth?.user?.id || ''}:${letterStatement.id}`} statementId={letterStatement.id}
+      onClose={() => setLetterStatement(null)} />}
+    {breakdown && <StatementBreakdown statement={breakdown} period={periods.find(row => row.id === breakdown.billing_period_id)}
+      onClose={() => setBreakdown(null)} onLetter={row => { setBreakdown(null); setLetterStatement(row); }}
+      onCosts={isMutable(periods.find(row => row.id === breakdown.billing_period_id)?.status) && canEditCosts ? () => {
+        const bp = periods.find(row => row.id === breakdown.billing_period_id); if (bp) handleSelectPeriod(bp);
+        setBreakdown(null); openCostSources('all');
+      } : null} />}
+  </>;
+  const periodDialog = modal && canManagePeriods && <FormModal
+    draftContext="billing/periods"
+    title={modal === 'copy' ? 'Abrechnung kopieren (neuer Zeitraum)' : modal === 'create' ? 'Abrechnung erstellen' : 'Abrechnung bearbeiten'}
+    fields={modal === 'create' ? fields : fields.map(field => field.key === 'property_id' ? { ...field, type: 'hidden' } : field)}
+    initial={modal === 'copy' && selectedPeriod ? { property_id: selectedPeriod.property_id, label: `${selectedPeriod.label} (Kopie)` }
+      : modal === 'create' ? null : modal}
+    onSave={handleSave} onClose={() => setModal(null)} />;
 
   if (loading && !modal && !costModal && !promptModal) return <div className="page-loading">{t('ui.table.loading')}</div>;
 
@@ -877,11 +990,13 @@ export default function Statements() {
           tenant_name: contract ? (tenantMap[contract.tenant_id] || '—') : '—',
         };
       });
-    const totalCosts = periodCosts.reduce((s, c) => s + (c.amount || 0), 0);
-    const nonRecoverable = periodCosts.filter(c => c.is_recoverable === false).reduce((s, c) => s + (c.amount || 0), 0);
-    const tenantShare = periodStmts.filter(s => s.party !== 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
-    const vacancyShare = periodStmts.filter(s => s.party === 'vacancy').reduce((s, st) => s + (st.total_cost || 0), 0);
+    const totalCosts = sumMoney(periodCosts, 'amount');
+    const nonRecoverable = sumMoney(periodCosts.filter(c => c.is_recoverable === false), 'amount');
+    const tenantShare = sumMoney(periodStmts.filter(s => s.party !== 'vacancy'), 'total_cost');
+    const vacancyShare = sumMoney(periodStmts.filter(s => s.party === 'vacancy'), 'total_cost');
     const editable = isMutable(selectedPeriod.status);
+    const writableCosts = editable && canEditCosts;
+    const writablePeriod = editable && canManagePeriods;
     const isFinalized = selectedPeriod.status === 'finalized';
     const canCorrect = CORRECTABLE.includes(selectedPeriod.status);
     const correctedVersion = selectedPeriod.corrects_period_id
@@ -892,12 +1007,10 @@ export default function Statements() {
     return (
       <div className="page billing-workspace">
         {toast.Toast}
-        {/* Workflow step indicator */}
-        <StepIndicator currentStep={workflowStep} t={t} />
         <NotificationArrival record={params.get('source_id') ? undefined : selectedPeriod} rows={periodCosts} ready={!loading && !loadError} />
 
         <div className="detail-header">
-          <button className="btn btn-sm btn-secondary" onClick={() => setView('list')}>
+          <button className="btn btn-sm btn-secondary" onClick={handleBackToList}>
             &larr; {t('pages.statements.back') || 'Zurück'}
           </button>
           <div className="detail-title">
@@ -907,11 +1020,12 @@ export default function Statements() {
             </span>
             <Link className="detail-title-link" to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="billing-header-actions">
             <StatusBadge status={selectedPeriod.status} />
+            {writablePeriod && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setModal(selectedPeriod)}>Zeitraum bearbeiten</button>}
 
             {/* Primary workflow action based on current step */}
-            {workflowStep === 3 && selectedPeriod.status === 'draft' && (
+            {canManagePeriods && workflowStep === 3 && selectedPeriod.status === 'draft' && (
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleSubmitReview}
@@ -920,19 +1034,19 @@ export default function Statements() {
                 {submittingReview ? t('pages.statements.submitting') : t('pages.statements.submitReview')}
               </button>
             )}
-            {workflowStep === 4 && (
+            {canManagePeriods && workflowStep === 4 && (
               <button
                 className="btn btn-sm btn-primary"
                 onClick={handleFinalizePeriod}
-                disabled={finalizing || preflightLoading || preflight?.has_blockers}
+                disabled={finalizing || preflightLoading || !preflight || preflight.has_blockers || Boolean(loadError)}
               >
                 {finalizing ? t('pages.statements.finalizing') : t('pages.statements.finalize')}
               </button>
             )}
-            {workflowStep === 5 && (
+            {canManagePeriods && workflowStep === 5 && (
               <button
                 className="btn btn-sm btn-primary"
-                onClick={handleMarkDelivered}
+                onClick={() => setDeliveryModal(true)}
                 disabled={markingDelivered}
               >
                 {markingDelivered ? t('pages.statements.markingDelivered') : t('pages.statements.markDelivered')}
@@ -940,7 +1054,7 @@ export default function Statements() {
             )}
 
             {/* Secondary actions */}
-            {selectedPeriod.status === 'review' && (
+            {canManagePeriods && selectedPeriod.status === 'review' && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleRevertDraft}
@@ -949,18 +1063,18 @@ export default function Statements() {
               </button>
             )}
 
-            {editable && (
+            {writablePeriod && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleGenerateStatements}
-                disabled={generating || preflightLoading || preflight?.has_blockers}
+                disabled={generating || preflightLoading || !preflight || preflight.has_blockers || Boolean(loadError)}
                 title={preflight?.has_blockers ? t('pages.statements.preflightBlockers') : ''}
               >
                 {generating ? t('pages.statements.generating') : t('pages.statements.generate')}
               </button>
             )}
 
-            {isFinalized && (
+            {canManagePeriods && isFinalized && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleCreateReceivables}
@@ -970,7 +1084,7 @@ export default function Statements() {
               </button>
             )}
 
-            {canCorrect && (
+            {canManagePeriods && canCorrect && (
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={handleCreateRevision}
@@ -1007,6 +1121,14 @@ export default function Statements() {
             )}
           </div>
         </div>
+
+        <StepIndicator currentStep={workflowStep} t={t} />
+        {loadError && <p className="alert alert-error" role="alert">{loadError} <button type="button" className="btn btn-sm btn-secondary" onClick={loadData}>Erneut laden</button></p>}
+        <nav className="billing-section-nav" aria-label="Bereiche der Abrechnung">
+          <button type="button" onClick={() => openCostSources('all')}><Pencil size={18} /><span>Kostenpositionen <strong>{periodCosts.length}</strong></span></button>
+          <button type="button" onClick={() => { document.getElementById('billing-preflight')?.scrollIntoView?.({ block: 'start' }); document.getElementById('billing-preflight')?.focus(); }}><ListChecks size={18} /><span>Prüfung <strong>{preflightLoading ? 'Läuft' : !preflight ? 'Offen' : preflight.has_blockers ? `${preflight.blockers?.length || 1} offen` : 'Bereit'}</strong></span></button>
+          <button type="button" onClick={() => openStatementSources('all')}><FileText size={18} /><span>Einzelabrechnungen & Schreiben <strong>{periodStmts.filter(row => row.party !== 'vacancy').length}</strong></span></button>
+        </nav>
 
         {(correctedVersion || !editable) && (
           <p className="text-muted" role="note" style={{ marginBottom: '0.75rem' }}>
@@ -1047,25 +1169,20 @@ export default function Statements() {
           </div>
         </div>
 
-        <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="card" id="billing-preflight" tabIndex={-1} style={{ marginBottom: '1rem', scrollMarginTop: '6rem' }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>{t('pages.statements.preflight')}</strong>
             <button
               className="btn btn-sm btn-secondary"
-              onClick={() => {
-                setPreflightLoading(true);
-                api.get(`/billing/periods/${selectedPeriod.id}/preflight`)
-                  .then(setPreflight)
-                  .catch(() => setPreflight(null))
-                  .finally(() => setPreflightLoading(false));
-              }}
+              onClick={() => refreshPreflight(selectedPeriod.id)}
             >
               {t('pages.statements.recheck')}
             </button>
           </div>
           <div className="card-body">
             {preflightLoading && <span className="text-muted">{t('pages.statements.checking')}</span>}
-            {!preflightLoading && !preflight && <span className="text-muted">{t('pages.statements.noPreflightData')}</span>}
+            {preflightError && <p role="alert">{preflightError} <button type="button" className="btn btn-sm btn-secondary" onClick={() => refreshPreflight(selectedPeriod.id)}>Prüfung erneut laden</button></p>}
+            {!preflightLoading && !preflight && !preflightError && <span className="text-muted">{t('pages.statements.noPreflightData')}</span>}
             {!preflightLoading && preflight && (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
                 <div>
@@ -1211,8 +1328,14 @@ export default function Statements() {
 
         <div ref={costSources} role="region" aria-label="Kostenquellen dieser Abrechnung" tabIndex={-1} style={{ marginBottom: '1.5rem' }}>
           {costSourceFilter === 'nonrecoverable' && <p>Quelle: Nicht umlagefähige Kosten. <button type="button" onClick={() => openCostSources('all')}>Alle Kosten anzeigen</button></p>}
-          {editable && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', justifyContent: 'flex-end' }}>
+          {writableCosts && <details className="billing-cost-suggestions"><summary>Häufige Kostenarten hinzufügen</summary>
+            <p>Als Vorlage verwenden und Betrag sowie Verteilung prüfen. Diese Auswahl ist keine Pflichtliste.</p>
+            <div>{COST_SUGGESTIONS.map(([description, category]) => <button key={category} type="button" className="btn btn-sm btn-secondary"
+              onClick={() => { setCostPrefill({ description, cost_category: category }); setCostModal('create'); }}>+ {description}</button>)}</div>
+          </details>}
+          {writableCosts && (
+            <div className="billing-cost-toolbar">
+              <Link to={`/allocation-keys?property_id=${encodeURIComponent(selectedPeriod.property_id)}`} className="btn btn-sm btn-secondary">Verteilerschlüssel verwalten</Link>
               <label className="btn btn-sm btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
                 {ocrUploading ? t('pages.statements.ocrRunning') : t('pages.statements.ocrImport')}
                 <input
@@ -1230,8 +1353,15 @@ export default function Statements() {
             columns={COST_COLUMNS}
             data={costSourceFilter === 'nonrecoverable' ? periodCosts.filter(row => row.is_recoverable === false) : periodCosts}
             drilldownKey={sourceDrilldown}
-            onAdd={editable ? () => setCostModal('create') : undefined}
-            onEdit={editable ? (row => setCostModal(row)) : undefined}
+            writeArea="/billing/cost-items"
+            inheritRouteFocus={false}
+            inheritRouteSearch={false}
+            settingsKey={`billing-costs:${selectedPeriod.id}`}
+            onAdd={writableCosts ? () => { setCostPrefill(null); setCostModal('create'); } : undefined}
+            onEdit={writableCosts ? (row => setCostModal(row)) : undefined}
+            onDelete={writableCosts ? handleDeleteCost : undefined}
+            rowActions={row => row.source_document_id ? [{ label: 'Quellbeleg öffnen', icon: <FileText size={16} />,
+              onClick: () => navigate(`/documents?focus_id=${encodeURIComponent(row.source_document_id)}`) }] : []}
           />
         </div>
 
@@ -1291,7 +1421,7 @@ export default function Statements() {
                     Abbrechen
                   </button>
                   <button className="btn btn-sm btn-primary" onClick={handleAcceptOcrDraft}>
-                    Als Kostenposition übernehmen
+                    Kostenposition prüfen und ergänzen
                   </button>
                 </div>
               </div>
@@ -1304,24 +1434,40 @@ export default function Statements() {
           {statementSourceFilter !== 'all' && <p>Quelle: {statementSourceFilter === 'vacancy' ? 'Leerstand (Eigentümer)' : 'Auf Mieter verteilt'}. <button type="button" onClick={() => openStatementSources('all')}>Alle Einzelabrechnungen anzeigen</button></p>}
           <DataTable
             title={t('pages.statements.statementsTitle') || 'Einzelabrechnungen je Nutzungszeitraum'}
+            inheritRouteFocus={false}
+            inheritRouteSearch={false}
+            settingsKey={`billing-statements:${selectedPeriod.id}`}
             columns={STMT_COLUMNS}
             data={statementSourceFilter === 'vacancy' ? periodStmts.filter(row => row.party === 'vacancy') : statementSourceFilter === 'tenant' ? periodStmts.filter(row => row.party !== 'vacancy') : periodStmts}
             drilldownKey={sourceDrilldown}
+            onRowClick={setBreakdown}
+            rowActions={row => [{ label: 'Aufschlüsselung öffnen', icon: <ListChecks size={16} />, onClick: () => setBreakdown(row) }]}
           />
           </section>
         )}
 
-        {costModal && editable && (
+        {periodStmts.length === 0 && <section className="billing-empty-output" ref={statementSourceTable} aria-label="Einzelabrechnungen als Verteilungsquelle" tabIndex={-1}>
+          <h2>Einzelabrechnungen & Schreiben</h2><p>Nach der Kostenerfassung und Prüfung die Einzelabrechnungen erzeugen. Anschließend können Sie die Verteilung und für jeden Mieter ein persönliches Anschreiben mit PDF prüfen.</p>
+        </section>}
+        {documentDialogs}
+        {periodDialog}
+        {deliveryModal && canManagePeriods && <FormModal title="Bereits erfolgte Zustellung vermerken" autosave={false}
+          fields={[{ key: 'channel', label: 'Wie wurden die Abrechnungen zugestellt?', type: 'select', required: true,
+            options: [{ value: 'post', label: 'Post' }, { value: 'email', label: 'E-Mail' }, { value: 'portal', label: 'Mieterportal' }],
+            hint: 'Vermerkt die bestätigte Zustellung für alle Mieterabrechnungen. Ein Versand wird hierdurch nicht ausgelöst.' }]}
+          onSave={handleMarkDelivered} onClose={() => { if (!markingDelivered) setDeliveryModal(false); }} />}
+        {costModal && writableCosts && (
           <FormModal
             draftContext="billing/cost-items"
             draftAnchor={{ kind: 'billing_period', id: selectedPeriod.id }}
             title={costModal === 'create' ? 'Kostenposition hinzufügen' : 'Kostenposition bearbeiten'}
             fields={costFields}
             initial={costModal === 'create'
-              ? { billing_period_id: selectedPeriod.id }
+              ? { billing_period_id: selectedPeriod.id, ...costPrefill }
               : { ...costModal, is_recoverable: costModal.is_recoverable === false ? 'false' : 'true' }}
             onSave={handleSaveCost}
-            onClose={() => setCostModal(null)}
+            repeatKeep={['allocation_key_id', 'is_recoverable']}
+            onClose={() => { setCostModal(null); setCostPrefill(null); }}
           />
         )}
 
@@ -1354,17 +1500,40 @@ export default function Statements() {
   return (
     <div className="page billing-workspace">
       {toast.Toast}
-      <div className="toolbar"><label className="inline-field">Quelle <select value={sourceFilter} onChange={event => setParams(current => {
+      <div className="billing-overview-heading"><div><h1>Nebenkostenabrechnungen</h1><p>Kosten, Verteilung und persönliche Abrechnungsschreiben je Immobilie und Zeitraum.</p></div></div>
+      <div className="toolbar billing-overview-filters"><label className="inline-field">Ansicht <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
         if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;
-      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label>
-        {selectedPeriod && <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>Vorjahr kopieren</button>}</div>
+      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Prüfbedarf</option></select></label>
+        <label>Immobilie <select value={params.get('property_id') || ''} onChange={event => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('period_id');
+          if (event.target.value) next.set('property_id', event.target.value); else next.delete('property_id'); return next;
+        })}><option value="">Alle Immobilien</option>{properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>
+        <label>Jahr <select value={params.get('year') || ''} onChange={event => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('period_id');
+          if (event.target.value) next.set('year', event.target.value); else next.delete('year'); return next;
+        })}><option value="">Alle Jahre</option>{[...new Set([new Date().getFullYear().toString(), ...periods.flatMap(period => {
+          const start = Number(period.start_date?.slice(0, 4)); const end = Number(period.end_date?.slice(0, 4));
+          return start > 0 && end >= start ? Array.from({ length: end - start + 1 }, (_, index) => String(start + index)) : [];
+        })])].sort().reverse().map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+        <label>Status <select value={params.get('status') || ''} onChange={event => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('period_id');
+          if (event.target.value) next.set('status', event.target.value); else next.delete('status'); return next;
+        })}><option value="">Alle Status</option>{['draft', 'review', 'finalized', 'delivered', 'disputed', 'corrected'].map(status => <option key={status} value={status}>{codeLabel(status)}</option>)}</select></label>
+        {selectedPeriod && canManagePeriods && canEditCosts && <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>Vorjahr kopieren</button>}</div>
+      {copyResult && <section className={copyResult.failures.length ? 'alert-error' : 'card'} role={copyResult.failures.length ? 'alert' : 'status'} aria-label="Ergebnis der Abrechnungskopie">
+        <p>Neuer Zeitraum „{copyResult.period.label}“ angelegt. {copyResult.copied} von {copyResult.total} Kostenpositionen als Vorlagen übernommen; die Beträge sind 0 und müssen ergänzt werden.</p>
+        {copyResult.failures.length > 0 && <><p>Diese Positionen fehlen im neuen Zeitraum. Bitte dort prüfen und bei Bedarf einzeln ergänzen; der Zeitraum wurde bereits angelegt.</p>
+          <ul>{copyResult.failures.map((failure, index) => <li key={index}>{failure.description}: {failure.message}</li>)}</ul></>}
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => handleSelectPeriod(periods.find(period => period.id === copyResult.period.id) || copyResult.period)}>Neuen Zeitraum prüfen</button>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setCopyResult(null)}>Hinweis schließen</button>
+      </section>}
       {loadError && <p role="alert">{loadError} <button type="button" onClick={loadData}>Erneut laden</button></p>}
       {sourceFilter === 'preflight_blockers' && <><p className="text-muted">Noch nicht abgeschlossene Zeiträume ohne abrechenbare Verträge, ohne Kosten oder mit einer unpassenden Schlüsselzuordnung.</p>
         {sourceRows.loading && <p role="status">Preflight-Quellen werden geladen…</p>}
         {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Preflight-Quelle erneut laden</button></p>}</>}
       <DataTable
-        title={sourceFilter === 'statements' ? 'Einzelabrechnungen · Quellzeilen' : 'Nebenkostenabrechnungen'}
+        title={sourceFilter === 'statements' ? 'Einzelabrechnungen & Schreiben' : 'Abrechnungszeiträume'}
         columns={sourceFilter === 'statements' ? STMT_COLUMNS : COLUMNS}
         data={sourceFilter === 'statements' ? statementSources : enriched}
         drilldownKey={drilldown}
@@ -1372,33 +1541,15 @@ export default function Statements() {
         viewConfig={{ column_filters: { source_filter: sourceFilter } }}
         onApplyView={config => setParams(current => { const next = new URLSearchParams(current); const value = config.column_filters?.source_filter;
           if (['statements', 'preflight_blockers'].includes(value)) next.set('filter', value); else next.delete('filter'); return next; })}
-        onAdd={sourceFilter === 'statements' ? undefined : () => setModal('create')}
+        onAdd={sourceFilter === 'statements' || !canManagePeriods ? undefined : () => setModal('create')}
         onEdit={openSourceRow}
         onRowClick={openSourceRow}
+        rowActions={row => [{ label: sourceFilter === 'statements' ? 'Aufschlüsselung öffnen' : 'Kosten und Abrechnung öffnen',
+          icon: sourceFilter === 'statements' ? <ListChecks size={16} /> : <Pencil size={16} />,
+          onClick: () => sourceFilter === 'statements' ? setBreakdown(row) : handleSelectPeriod(row) }]}
       />
-      {(modal === 'create' || modal === 'copy') && (
-        <FormModal
-          draftContext="billing/periods"
-          title={modal === 'copy' ? 'Abrechnung kopieren (neuer Zeitraum)' : 'Abrechnung erstellen'}
-          fields={fields}
-          initial={modal === 'copy' && selectedPeriod ? {
-            property_id: selectedPeriod.property_id,
-            label: `${selectedPeriod.label} (Kopie)`,
-          } : null}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
-      {modal && modal !== 'create' && modal !== 'copy' && modal.id && (
-        <FormModal
-          draftContext="billing/periods"
-          title="Abrechnung bearbeiten"
-          fields={fields}
-          initial={modal}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-        />
-      )}
+      {documentDialogs}
+      {periodDialog}
     </div>
   );
 }

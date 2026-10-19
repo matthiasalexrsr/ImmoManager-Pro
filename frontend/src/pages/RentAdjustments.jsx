@@ -9,11 +9,12 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatMoney, formatPercent } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
 
 const COLUMNS = [
   { key: 'contract_number', label: 'Vertrag', filterType: 'text', link: 'contract' },
   { key: 'adjustment_type', label: 'Art', filterType: 'select',
-    render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
+    render: v => codeLabel(v) || '—' },
   { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },
   { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', align: 'right',
     render: v => formatMoney(v) },

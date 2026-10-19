@@ -1,11 +1,14 @@
 """Alembic migrations build the schema the ORM uses, also on existing databases."""
 
 import sqlite3
+from importlib import import_module
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.operations import Operations
+from alembic.runtime.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
 
 import backend.models  # noqa: F401  (adds the UI contract columns to the ORM)
@@ -911,7 +914,7 @@ def test_history_and_deposit_branches_merge_without_rewriting_retained_data(migr
                      "VALUES ('retained-deposit','c1',1500,'held','2000-01-01','2000-01-01','2000-01-01')")
         if previous == DEPOSIT_TAKEOVER_REVISION:
             conn.execute("UPDATE deposits SET carried_on='2000-01-01',carried_amount=1500")
-    migrate()
+    migrate("f021a1b2c001")
     assert _version(db_path) == "f021a1b2c001"
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT new_value FROM change_history WHERE id='old-history'").fetchone()[0] == "Unveränderter Bestand"
@@ -926,3 +929,155 @@ def test_history_and_deposit_branches_merge_without_rewriting_retained_data(migr
         assert "idx_change_history_cursor" in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
         assert conn.execute("SELECT carried_amount FROM deposits WHERE id='retained-deposit'").fetchone()[0] == 1500
     assert _version(db_path) == "f021a1b2c001"
+
+
+METER_PORTAL_REVISION = "b4d6f8a0c2e1"
+
+
+def test_meter_contract_and_portal_columns_and_the_downgrade(migrate):
+    db_path = migrate(DEPOSIT_TAKEOVER_REVISION)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    migrate(METER_PORTAL_REVISION)
+    schema = _schema(db_path)
+    assert {"contract_number", "contract_end_date", "portal_url"} <= schema["meters"]
+    assert "portal_url" in schema["service_contracts"]
+    with sqlite3.connect(db_path) as conn:
+        unit = conn.execute("SELECT id FROM units LIMIT 1").fetchone()[0]
+        conn.execute("INSERT INTO meters (id, unit_id, meter_type, is_active, portal_url, created_at, updated_at) "
+                     "VALUES ('m1', ?, 'electricity', 1, 'https://portal.example', '2025-01-01', '2025-01-01')", (unit,))
+    with pytest.raises(RuntimeError, match="customer portal"):
+        migrate.downgrade(DEPOSIT_TAKEOVER_REVISION)
+    assert _version(db_path) == METER_PORTAL_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meters SET portal_url = NULL")
+    migrate.downgrade(DEPOSIT_TAKEOVER_REVISION)
+    assert not {"contract_number", "contract_end_date", "portal_url"} & _schema(db_path)["meters"]
+    assert _triggers(db_path) == triggers          # dropped in place: the tables keep their triggers
+    migrate(METER_PORTAL_REVISION)
+    assert "portal_url" in _schema(db_path)["service_contracts"]
+
+
+@pytest.mark.parametrize("previous", ["f021a1b2c001", METER_PORTAL_REVISION])
+def test_meter_history_merge_preserves_both_existing_branches(migrate, previous):
+    from sqlalchemy import create_engine
+
+    db_path = migrate(previous)
+    _seed_previous_schema(db_path)
+    migrate()
+    assert _version(db_path) == migrate.head
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO meters (id,unit_id,meter_type,portal_url,created_at,updated_at) "
+                     "VALUES ('m','u1','electricity','https://example.org/customer','2025-01-01','2025-01-01')")
+        conn.execute("INSERT INTO deposits (id,contract_id,amount,status,carried_on,carried_amount,created_at,updated_at) "
+                     "VALUES ('d','c1',1500,'held','2000-01-01',1500,'2000-01-01','2000-01-01')")
+        conn.execute("INSERT INTO change_history (id,entity_type,entity_id,field_name,new_value,changed_at) "
+                     "VALUES ('old-history','meter','m','serial_number','Unveränderter Verlauf','2000-01-01')")
+    before = _schema(db_path)
+    triggers = _triggers(db_path)
+    config = Config()
+    config.set_main_option("script_location", str(ROOT / "backend" / "db" / "migrations"))
+    script = ScriptDirectory.from_config(config)
+
+    def versions():
+        with sqlite3.connect(db_path) as conn:
+            return {row[0] for row in conn.execute("SELECT version_num FROM alembic_version")}
+
+    def plan(target):
+        return [item.revision for item in script.iterate_revisions(tuple(versions()), target, select_for_downgrade=True)]
+
+    def assert_unchanged(expected_versions, *, portal="https://example.org/customer", carried=1500):
+        assert versions() == expected_versions
+        assert _schema(db_path) == before
+        assert _triggers(db_path) == triggers
+        with sqlite3.connect(db_path) as conn:
+            assert "idx_change_history_cursor" in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
+            assert conn.execute("SELECT portal_url FROM meters WHERE id='m'").fetchone()[0] == portal
+            assert conn.execute("SELECT amount,carried_amount FROM deposits WHERE id='d'").fetchone() == (1500, carried)
+            assert conn.execute("SELECT new_value FROM change_history WHERE id='old-history'").fetchone()[0] == "Unveränderter Verlauf"
+
+    # Alembic unmerges; it does not remove an unrelated sibling when the target
+    # itself is a parent. Both recorded versions and all feature data remain.
+    for target, removed, remaining in (
+        ("f021a1b2c001", ["f022a1b2c001"], {"f021a1b2c001", METER_PORTAL_REVISION}),
+        (METER_PORTAL_REVISION, ["f022a1b2c001"], {"f021a1b2c001", METER_PORTAL_REVISION}),
+        ("f020a1b2c001", ["f022a1b2c001", "f021a1b2c001"], {"f020a1b2c001", METER_PORTAL_REVISION}),
+    ):
+        assert plan(target) == removed
+        migrate.downgrade(target)
+        assert_unchanged(remaining)
+        if target in {"f021a1b2c001", METER_PORTAL_REVISION}:
+            other = METER_PORTAL_REVISION if target == "f021a1b2c001" else "f021a1b2c001"
+            assert plan(other) == []
+            migrate.downgrade(other)
+            assert_unchanged(remaining)
+        migrate()
+        assert_unchanged({migrate.head})
+
+    removed = plan(ASSISTANT_REVISION)
+    assert removed.index("f020a1b2c001") < removed.index(METER_PORTAL_REVISION)
+    with pytest.raises(RuntimeError, match="customer portal"):
+        migrate.downgrade(ASSISTANT_REVISION)
+    assert_unchanged({migrate.head})
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meters SET portal_url=NULL")
+    with pytest.raises(RuntimeError, match="takeover of deposits"):
+        migrate.downgrade(ASSISTANT_REVISION)
+    assert_unchanged({migrate.head}, portal=None)
+
+    # Removing just the unused portal branch keeps the carried deposit and
+    # independent history index; the deposit revision itself is not removed.
+    assert DEPOSIT_TAKEOVER_REVISION not in plan(DEPOSIT_TAKEOVER_REVISION)
+    migrate.downgrade(DEPOSIT_TAKEOVER_REVISION)
+    assert versions() == {"f020a1b2c001", DEPOSIT_TAKEOVER_REVISION}
+    assert not {"contract_number", "contract_end_date", "portal_url"} & _schema(db_path)["meters"]
+    with sqlite3.connect(db_path) as conn:
+        assert "idx_change_history_cursor" in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
+        assert conn.execute("SELECT carried_amount FROM deposits WHERE id='d'").fetchone()[0] == 1500
+    migrate()
+    assert_unchanged({migrate.head}, portal=None)
+
+    # The earlier merge is still a preflight boundary after f022 is unmerged.
+    migrate.downgrade("f021a1b2c001")
+    with pytest.raises(RuntimeError, match="takeover of deposits"):
+        migrate.downgrade(ASSISTANT_REVISION)
+    split = {"f021a1b2c001", METER_PORTAL_REVISION}
+    assert_unchanged(split, portal=None)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meters SET portal_url='https://example.org/customer'")
+        conn.execute("UPDATE deposits SET carried_on=NULL,carried_amount=NULL")
+    with pytest.raises(RuntimeError, match="customer portal"):
+        migrate.downgrade(ASSISTANT_REVISION)
+    assert_unchanged(split, carried=None)
+
+    # Exercise the index migration's own front door before any sibling's guard:
+    # a real command context provides the full downgrade plan, and the actual
+    # retained SQLite index must survive the refusal.
+    index = import_module("backend.db.migrations.versions.f020a1b2c001_history_cursor_index")
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as connection, EnvironmentContext(config, script, destination_rev=ASSISTANT_REVISION) as environment:
+            environment.configure(connection=connection)
+            with Operations.context(environment.get_context()), pytest.raises(RuntimeError, match="customer portal"):
+                index.downgrade()
+    finally:
+        engine.dispose()
+    assert_unchanged(split, carried=None)
+
+    # Once unused, the genuinely destructive downgrade removes both additions
+    # and the history index, while keeping the original meter, deposit and row.
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meters SET portal_url=NULL")
+    migrate.downgrade(ASSISTANT_REVISION)
+    assert versions() == {ASSISTANT_REVISION}
+    schema = _schema(db_path)
+    assert not {"contract_number", "contract_end_date", "portal_url"} & schema["meters"]
+    assert "portal_url" not in schema["service_contracts"]
+    assert not DEPOSIT_TAKEOVER_COLUMNS & schema["deposits"]
+    with sqlite3.connect(db_path) as conn:
+        assert "idx_change_history_cursor" not in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
+        assert conn.execute("SELECT amount FROM deposits WHERE id='d'").fetchone()[0] == 1500
+        assert conn.execute("SELECT new_value FROM change_history WHERE id='old-history'").fetchone()[0] == "Unveränderter Verlauf"
+    migrate()
+    assert versions() == {migrate.head}
+    assert _schema(db_path) == before

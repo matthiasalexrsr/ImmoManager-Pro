@@ -193,7 +193,7 @@ function RoutedDataTable(props) {
     if (resetFilters === true) {
       // The explicit reset action also clears the destination's saved view;
       // otherwise its remount would restore filters the person just removed.
-      writeTableView(tableViewStorageKey(tableSettingsKey({ ...props, pathname }), destinationSearch),
+      writeTableView(tableViewStorageKey(tableSettingsKey({ ...props, pathname }), props.inheritRouteSearch === false ? null : destinationSearch),
         { search: '', columnFilters: {}, page: 0 });
     }
     navigate(`${pathname}${destinationSearch}`);
@@ -206,14 +206,14 @@ function TableWithKey(props) {
   // persistence can copy the previous query's state into the destination key;
   // initialization also distinguishes a fresh link from Back/Forward restoration.
   // Server-paged lists manage their query state outside this table.
-  return <TableView key={JSON.stringify([Boolean(props.serverPaged), storageKey, props.serverPaged ? null : props.routeViewKey ?? props.routeSearch])}
+  return <TableView key={JSON.stringify([Boolean(props.serverPaged), storageKey, props.inheritRouteSearch !== false, props.serverPaged ? null : props.routeViewKey ?? props.routeSearch])}
     {...props} resolvedSettingsKey={storageKey} />;
 }
 
 function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
   onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, exportLabel = 'CSV', hideTitle = false,
   resolvedSettingsKey: storageKey, pathname, routeSearch, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText,
-  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true }) {
+  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true, inheritRouteSearch = true }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
@@ -231,12 +231,19 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const [bulkRunning, setBulkRunning] = useState(false);
   const lastToggled = useRef(null);
   // search, filters and page as left in this tab (server-paged lists keep their own state)
-  const viewStorageKey = tableViewStorageKey(storageKey, routeSearch);
+  // A detail table can own a stable, record-specific settingsKey independently
+  // of its parent's URL search. Its own saved search and filters still apply.
+  const viewStorageKey = tableViewStorageKey(storageKey, inheritRouteSearch ? routeSearch : null);
   const [savedView] = useState(() => (serverPaged ? null : readTableView(viewStorageKey)));
+  const [linkedOnMount] = useState(() => {
+    if (serverPaged || typeof window === 'undefined') return false;
+    const query = new URLSearchParams(routeSearch ?? window.location.search);
+    return inheritRouteSearch ? query.size > 0 : inheritRouteFocus && query.has('focus_id');
+  });
   // A link to a list filtered to one record (/contacts?suche=Name) starts with that search.
   const [search, setSearch] = useState(() => {
-    const linkedSearch = !serverPaged && typeof window !== 'undefined' ? new URLSearchParams(routeSearch ?? window.location.search).get('suche') : null;
-    if (new URLSearchParams(routeSearch ?? window.location.search).size && (!restoreLocationState || !savedView)) return linkedSearch || '';
+    const linkedSearch = inheritRouteSearch && !serverPaged && typeof window !== 'undefined' ? new URLSearchParams(routeSearch ?? window.location.search).get('suche') : null;
+    if (linkedOnMount && (!restoreLocationState || !savedView)) return linkedSearch || '';
     return typeof savedView?.search === 'string' ? savedView.search : '';
   });
   // Sorting, rows per page and hidden columns are remembered per list in this browser.
@@ -264,7 +271,6 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     if (!hiddenCols[key] && columns.filter(col => !hiddenCols[col.key]).length <= 1) return;
     setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
   };
-  const [linkedOnMount] = useState(() => !serverPaged && typeof window !== 'undefined' && new URLSearchParams(routeSearch ?? window.location.search).size > 0);
   const [page, setPage] = useState(() => ((!linkedOnMount || restoreLocationState) && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
   const [columnFilters, setColumnFilters] = useState(() => {
     const saved = savedView?.columnFilters;

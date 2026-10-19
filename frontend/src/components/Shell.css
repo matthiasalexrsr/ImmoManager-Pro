@@ -47,6 +47,7 @@
 .workspace-shell .sidebar-header { display: flex; align-items: center; gap: 11px; padding: 25px 22px 23px; flex-shrink: 0; }
 .workspace-shell .sidebar-logo { width: 38px; height: 38px; border: 1px solid #769c91; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0; background: #d8e9e2; color: #193e39; font-weight: 750; font-size: var(--text-base); letter-spacing: -.04em; }
 .workspace-shell .sidebar-brand { display: grid; gap: 5px; min-width: 0; }
+.workspace-shell .sidebar-logo .brand-mark { width: 30px; height: 30px; }
 .workspace-shell .sidebar-brand-name { color: #f5f9f7; font-size: var(--text-lg); font-weight: 650; letter-spacing: -.025em; line-height: 1; }
 .workspace-shell .sidebar-brand-sub { color: var(--shell-muted); font-size: var(--text-2xs); font-weight: 550; letter-spacing: .09em; line-height: 1.2; text-transform: uppercase; }
 .workspace-shell .sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px 20px; scrollbar-color: #49605c transparent; scrollbar-width: thin; }

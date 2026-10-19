@@ -3,6 +3,8 @@
 import sqlalchemy as sa
 from alembic import op
 
+from backend.db.migrations.retained import guard_branch_downgrade
+
 revision = "f020a1b2c001"
 down_revision = "f019a1b2c001"
 branch_labels = None
@@ -21,5 +23,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    guard_branch_downgrade()
     if INDEX in {item["name"] for item in sa.inspect(op.get_bind()).get_indexes("change_history")}:
         op.drop_index(INDEX, table_name="change_history")

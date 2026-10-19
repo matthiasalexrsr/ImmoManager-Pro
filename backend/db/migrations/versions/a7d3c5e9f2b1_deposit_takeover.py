@@ -22,6 +22,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from backend.db.migrations.retained import guard_branch_downgrade
+
 revision: str = "a7d3c5e9f2b1"
 down_revision: str | None = "f019a1b2c001"
 branch_labels: str | Sequence[str] | None = None
@@ -67,6 +69,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    guard_branch_downgrade()
     bind = op.get_bind()
     existing = {column["name"] for column in sa.inspect(bind).get_columns("deposits")}
     names = [column.name for column in _new_columns() if column.name in existing]

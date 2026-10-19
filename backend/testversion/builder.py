@@ -693,7 +693,7 @@ class Builder:
             pdf = contract_pdf(t, self.step_on(t, t.start))
             resp = self.c.post("/api/v1/documents/import", headers=self.h["verwalter"], files={
                 "file": (f"Mietvertrag_{t.number}.pdf", pdf, "application/pdf")}, data={
-                "title": f"Mietvertrag {t.number} – {t.tenant.name}", "document_type": "contract",
+                "title": f"Mietvertrag {t.number} – {t.tenant.name}", "document_type": "Mietvertrag",
                 "document_date": t.start.isoformat(), "tags": "Mietvertrag,Testdaten",
                 "property_id": t.prop.id, "unit_id": t.unit.id, "contract_id": t.id})
             if resp.status_code >= 400:

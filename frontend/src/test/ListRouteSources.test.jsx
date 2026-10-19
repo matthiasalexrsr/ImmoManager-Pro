@@ -6,7 +6,7 @@ import Units from '../pages/Units';
 import Tenants from '../pages/Tenants';
 import Meters from '../pages/Meters';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), readings: vi.fn(), sources: {}, reload: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), history: vi.fn(), sources: {}, reload: vi.fn() }));
 vi.mock('../api', () => ({ api: { list: mocks.list, get: mocks.get } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: 'de-DE' }) }));
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => null }));
@@ -44,6 +44,7 @@ const readings = [
   { id: 'r2', meter_id: 'm2', reading_date: '2026-02-01', value: 130, notes: 'Neuer Februarstand' },
   { id: 'r3', meter_id: 'm2', reading_date: '2026-03-01', value: 160, notes: 'Neuer Märzstand' },
 ];
+const meterHistory = (id, rows) => ({ meter: meters.find(meter => meter.id === id), readings: rows, years: [], contracts: [] });
 
 function Navigation({ page, targets }) {
   const Page = page;
@@ -72,18 +73,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   sessionStorage.clear();
-  mocks.readings.mockReset().mockResolvedValue([]);
+  mocks.history.mockReset().mockImplementation(async path => meterHistory(path.split('/')[2], []));
   const source = items => ({ items, loading: false, error: null, reload: mocks.reload });
   mocks.sources = { properties: source(properties), units: source(units), contracts: source(contracts),
     tenants: source(tenants), tenants_all: source(tenants), documents: source([]), empty: source([]) };
-  mocks.get.mockResolvedValue({});
-  mocks.list.mockImplementation((path, options) => {
+  mocks.get.mockImplementation((path, options) => /^\/meters\/[^/]+\/history$/.test(path) ? mocks.history(path, options) : Promise.resolve({}));
+  mocks.list.mockImplementation(path => {
     if (path === '/units') return Promise.resolve(units);
     if (path === '/contracts') return Promise.resolve(contracts);
     if (path === '/tenants?include_archived=true') return Promise.resolve(tenants);
     if (path === '/meters') return Promise.resolve(meters);
     if (path === '/meters/readings/all') return Promise.resolve([]);
-    if (/^\/meters\/[^/]+\/readings$/.test(path)) return mocks.readings(path, options);
     return Promise.reject(new Error(`Unexpected list ${path}`));
   });
 });
@@ -149,40 +149,61 @@ describe('list pages follow route sources and browser history', () => {
     expect(screen.getByRole('button', { name: 'Aktiv', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('aborts the old meter reading request and keeps all three new readings after a late old response', async () => {
+  it('opens the new history for exact meter links and keeps all three readings after a late old response', async () => {
     const oldReadings = deferred();
     const newReadings = deferred();
-    mocks.readings.mockImplementation(path => path.includes('/m1/') ? oldReadings.promise : newReadings.promise);
+    mocks.history.mockImplementation(path => path.includes('/m1/') ? oldReadings.promise : newReadings.promise);
     mount(Meters, '/meters?focus_id=m1', { 'Anderen Zähler öffnen': '/meters?focus_id=m2' });
-    await waitFor(() => expect(mocks.readings).toHaveBeenCalledWith('/meters/m1/readings', expect.anything()));
-    const firstSignal = mocks.readings.mock.calls[0][1].signal;
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('/meters/m1/history', expect.anything()));
+    const firstSignal = mocks.history.mock.calls[0][1].signal;
     fireEvent.click(screen.getByRole('button', { name: 'Anderen Zähler öffnen' }));
-    await waitFor(() => expect(mocks.readings).toHaveBeenCalledWith('/meters/m2/readings', expect.anything()));
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledWith('/meters/m2/history', expect.anything()));
     expect(firstSignal.aborted).toBe(true);
-    await act(async () => newReadings.resolve(readings));
+    await act(async () => newReadings.resolve(meterHistory('m2', readings)));
     await screen.findByText('Neuer Märzstand');
-    const readingTable = screen.getAllByRole('table')[1];
+    const readingTable = screen.getByRole('table', { name: 'Ablesungen (3)' });
     expect(within(readingTable).getAllByRole('row')).toHaveLength(4);
     expect(within(readingTable).getByText('Neuer Januarstand')).toBeInTheDocument();
     expect(within(readingTable).getByText('Neuer Februarstand')).toBeInTheDocument();
-    await act(async () => oldReadings.resolve([{ id: 'old-r', meter_id: 'm1', reading_date: '2026-01-01', value: 1, notes: 'Veralteter Zählerstand' }]));
+    await act(async () => oldReadings.resolve(meterHistory('m1', [{ id: 'old-r', meter_id: 'm1', reading_date: '2026-01-01', value: 1, notes: 'Veralteter Zählerstand' }])));
     expect(screen.queryByText('Veralteter Zählerstand')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Ablesungen — NEU-002/ })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'NEU-002' })).toBeInTheDocument();
     expect(within(readingTable).getByText('Neuer Märzstand')).toBeInTheDocument();
   });
 
   it('shows a reading failure with retry instead of a false empty table', async () => {
-    mocks.readings.mockRejectedValueOnce(new Error('Messdienst nicht erreichbar')).mockResolvedValueOnce(readings);
+    mocks.history.mockRejectedValueOnce(new Error('Messdienst nicht erreichbar')).mockResolvedValueOnce(meterHistory('m2', readings));
     mount(Meters, '/meters?focus_id=m2', {});
     expect(await screen.findByRole('alert')).toHaveTextContent('Messdienst nicht erreichbar');
     expect(screen.getAllByRole('table')).toHaveLength(1);
     expect(screen.queryByText('Keine Einträge vorhanden.')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ Ablesung erfassen' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Ablesungen erneut laden' }));
+    expect(screen.queryByRole('button', { name: '+ Ablesung erfassen' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
     await screen.findByText('Neuer Märzstand');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getAllByRole('table')).toHaveLength(2);
     expect(screen.getByRole('button', { name: '+ Ablesung erfassen' })).toBeEnabled();
-    expect(mocks.readings).toHaveBeenCalledTimes(2);
+    expect(mocks.history).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens history from a searched serial number, follows an exact search result and leaves it on Back', async () => {
+    mocks.history.mockImplementation(async path => path.includes('/m2/') ? meterHistory('m2', readings) : meterHistory('m1', []));
+    mount(Meters, '/meters?suche=ALT-001', { 'Suchtreffer anderer Zähler': '/meters?focus_id=m2' });
+    const serial = await screen.findByRole('button', { name: 'ALT-001', exact: true });
+    expect(screen.queryByRole('button', { name: 'NEU-002', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(serial);
+    await screen.findByRole('dialog', { name: 'ALT-001' });
+    await screen.findByText('Noch keine Ablesung erfasst.');
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Suchtreffer anderer Zähler' }));
+    await screen.findByRole('dialog', { name: 'NEU-002' });
+    await screen.findByText('Neuer Märzstand');
+    expect(screen.queryByRole('button', { name: 'ALT-001', exact: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browser zurück' }));
+    await screen.findByRole('button', { name: 'ALT-001', exact: true });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Aktuelle Route')).toHaveTextContent(/^\/meters\?suche=ALT-001$/);
+    expect(mocks.history.mock.calls.map(([path]) => path)).toEqual(['/meters/m1/history', '/meters/m2/history']);
   });
 });

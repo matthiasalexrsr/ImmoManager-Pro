@@ -116,6 +116,8 @@ export function contractFields(t, { contacts, withLocation, properties = [], uni
         .map(c => ({ value: c.id, label: providerName(c) || c.id })) },
     { key: 'contract_number', label: t('serviceContracts.fields.contractNumber'), section: t('serviceContracts.sections.master') },
     { key: 'customer_number', label: t('serviceContracts.fields.customerNumber'), section: t('serviceContracts.sections.master') },
+    { key: 'portal_url', label: t('serviceContracts.fields.portalUrl'), placeholder: 'https://kundenportal.anbieter.de',
+      section: t('serviceContracts.sections.master'), hint: t('serviceContracts.hints.portalUrl') },
     { key: 'start_date', label: t('serviceContracts.fields.start'), type: 'date', required: true,
       section: t('serviceContracts.sections.term') },
     { key: 'end_date', label: t('serviceContracts.fields.end'), type: 'date', section: t('serviceContracts.sections.term'),
@@ -212,7 +214,7 @@ export function tariffInitial(tariff) {
   return { ...tariff, price_label: first?.label || '', price_unit: first?.unit || '', price: first?.price || '' };
 }
 
-const MASTER_KEYS = ['contract_type', 'title', 'provider_contact_id', 'contract_number', 'customer_number', 'start_date',
+const MASTER_KEYS = ['contract_type', 'title', 'provider_contact_id', 'contract_number', 'customer_number', 'portal_url', 'start_date',
   'end_date', 'minimum_term_months', 'renewal_mode', 'renewal_months', 'notice_period_value', 'notice_period_unit',
   'notice_to', 'reminder_days', 'recoverable', 'recoverable_percent', 'cost_category', 'notes', 'payment_method',
   'cancelled_on', 'cancellation_effective'];

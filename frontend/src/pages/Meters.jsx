@@ -9,6 +9,8 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatNumber } from '../utils/format';
 import KpiAction from '../components/KpiAction';
+import MeterHistory from '../features/meters/MeterHistory';
+import { useCanWrite } from '../contexts/AuthContext';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -21,8 +23,11 @@ const METER_TYPE_LABELS = {
 // Units the utility statement converts only by an exact factor (MWh -> kWh, l -> m³).
 const MEASURE_UNITS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
 
-const METER_COLUMNS = [
-  { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
+// The meter number opens its history (readings, consumption per year, supply contract and portal).
+const meterColumns = onOpen => [
+  { key: 'serial_number', label: 'Seriennr.', filterType: 'text',
+    render: (v, row) => <button type="button" className="entity-link link-button" title="Zählerverlauf öffnen"
+      onClick={event => { event.stopPropagation(); onOpen(row); }}>{v || row.id.slice(0, 8)}</button> },
   { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
   { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
   { key: 'meter_type', label: 'Typ', filterType: 'select',
@@ -48,16 +53,6 @@ const METER_COLUMNS = [
     render: v => v === false ? <StatusBadge status="inactive" /> : <StatusBadge status="active" /> },
 ];
 
-const READING_COLUMNS = [
-  { key: 'reading_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
-  { key: 'value', label: 'Zählerstand', type: 'number', align: 'right',
-    render: v => formatNumber(v, 2) },
-  { key: 'consumption', label: 'Verbrauch', type: 'number', align: 'right',
-    render: v => formatNumber(v, 2) },
-  { key: 'recorded_by', label: 'Erfasst von', filterType: 'text' },
-  { key: 'notes', label: 'Notizen' },
-];
-
 export default function Meters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
@@ -66,12 +61,11 @@ export default function Meters() {
   const { items: units } = useEntities('units', '/units');
   const { items: properties } = useEntities('properties', '/properties');
   const [meters, setMeters] = useState([]);
-  const [selectedMeter, setSelectedMeter] = useState(null);
-  const [readings, setReadings] = useState([]);
-  const [readingsError, setReadingsError] = useState(null);
-  const [readingsLoading, setReadingsLoading] = useState(false);
-  const readingsRequest = useRef(null);
   const focusedMeter = searchParams.get('focus_id');
+  const previousFocus = useRef(focusedMeter);
+  const [historyOf, setHistoryOf] = useState(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const canWrite = useCanWrite('/meters');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
@@ -81,7 +75,7 @@ export default function Meters() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [drilldown, setDrilldown] = useState(0);
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
-  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setSelectedMeter(null); setDrilldown(number => number + 1); };
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setHistoryOf(null); setDrilldown(number => number + 1); };
   const inspectionSoon = meter => meter.next_inspection && Math.ceil((new Date(meter.next_inspection) - new Date()) / 86400000) < 30;
   const visibleMeters = meters.filter(meter => focusedMeter || sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
     : sourceFilter === 'inspection' ? inspectionSoon(meter) : meter.meter_type === sourceFilter.slice(5)));
@@ -111,41 +105,16 @@ export default function Meters() {
     return () => request.abort();
   }, [revision, units, properties]);
 
-  const handleSelectMeter = (meter) => {
-    readingsRequest.current?.abort();
-    const request = new AbortController(); readingsRequest.current = request;
-    setSelectedMeter(meter);
-    setReadings([]); setReadingsError(null); setReadingsLoading(true);
-    api.list(`/meters/${encodeURIComponent(meter.id)}/readings`, { signal: request.signal }).then(r => {
-      if (request.signal.aborted) return;
-      if (!Array.isArray(r)) throw new Error('Die Ableseliste ist unvollständig.');
-      const sorted = [...r].sort((a, b) =>
-        (a.reading_date || '').localeCompare(b.reading_date || '')
-      );
-      const withConsumption = sorted.map((rd, i) => ({
-        ...rd,
-        consumption: i > 0 ? rd.value - sorted[i - 1].value : null,
-      }));
-      setReadings(withConsumption);
-    }).catch(failure => { if (!request.signal.aborted) setReadingsError(failure.message || 'Die Ablesungen konnten nicht geladen werden.'); })
-      .finally(() => { if (!request.signal.aborted) setReadingsLoading(false); });
-  };
-
-  useEffect(() => () => readingsRequest.current?.abort(), []);
-
-  // The readings panel sits below the (long) list: bring it into view when a meter is chosen,
-  // otherwise "Bearbeiten" seems to do nothing.
-  const readingsPanel = useRef(null);
-  useEffect(() => {
-    if (!selectedMeter?.id || !readingsPanel.current) return;
-    readingsPanel.current.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    readingsPanel.current.querySelector('h3')?.focus({ preventScroll: true });
-  }, [selectedMeter?.id]);
-
   const noticeMeter = focusedMeter;
   useEffect(() => {
-    if (noticeMeter && !loading && selectedMeter?.id !== noticeMeter) {
-      const meter = meters.find(row => row.id === noticeMeter); if (meter) handleSelectMeter(meter);
+    // Back to an ordinary list must leave the URL-opened history. A manually
+    // opened history has no URL focus and remains open during a data refresh.
+    if (previousFocus.current && !focusedMeter) setHistoryOf(null);
+    previousFocus.current = focusedMeter;
+  }, [focusedMeter]);
+  useEffect(() => {
+    if (noticeMeter && !loading && historyOf?.id !== noticeMeter) {
+      const meter = meters.find(row => row.id === noticeMeter); if (meter) setHistoryOf(meter);
     }
   // The source changes only with the loaded meter set or navigation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,6 +140,8 @@ export default function Meters() {
     { key: 'supplier', label: 'Versorger' },
     { key: 'contract_number', label: 'Vertragsnummer' },
     { key: 'contract_end_date', label: 'Vertragslaufzeit bis', type: 'date' },
+    { key: 'portal_url', label: 'Kundenportal (Link)', placeholder: 'https://kundenportal.anbieter.de',
+      hint: 'Die Anmeldeseite des Versorgers zu diesem Zähler; im Zählerverlauf als Link.' },
   ];
 
   const readingFields = [
@@ -189,6 +160,7 @@ export default function Meters() {
       await api.put(`/meters/${modal.id}`, data);
     }
     refreshData();
+    setHistoryRevision(value => value + 1);
     if (store) store.invalidateRelated('meters', 'units');
   };
 
@@ -196,17 +168,14 @@ export default function Meters() {
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
     refreshData();
+    setHistoryRevision(value => value + 1);
     if (store) store.invalidateRelated('meters', 'units');
-    if (selectedMeter) handleSelectMeter(selectedMeter);
   };
 
   const handleDeleteMeter = async (row) => {
     if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/meters/${row.id}`);
-    if (selectedMeter?.id === row.id) {
-      setSelectedMeter(null);
-      setReadings([]);
-    }
+    if (historyOf?.id === row.id) setHistoryOf(null);
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
   };
@@ -286,56 +255,27 @@ export default function Meters() {
           )}
           <DataTable
             title={group.label ? '' : 'Zähler'}
-            columns={METER_COLUMNS}
+            columns={meterColumns(setHistoryOf)}
             data={group.meters}
             drilldownKey={drilldown}
             emptyText={loadError && !meters.length ? 'Zähler noch nicht verfügbar.' : undefined}
             viewConfig={{ column_filters: { meter_filter: sourceFilter } }}
             onApplyView={config => setSourceFilter(config.column_filters?.meter_filter || 'all')}
-            onEdit={handleSelectMeter}
+            onEdit={row => setModal(row)}
+            rowActions={row => [{ label: 'Verlauf', onClick: () => setHistoryOf(row) }]}
             onAdd={gi === 0 ? () => setModal('create-meter') : undefined}
             onDelete={handleDeleteMeter}
           />
         </div>
       ))}
 
-      {/* Selected meter readings */}
-      {selectedMeter && (
-        <div ref={readingsPanel} style={{ marginTop: '1.5rem', scrollMarginTop: '6rem' }}>
-          <div className="panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <h3 style={{ margin: 0 }} tabIndex={-1}>
-                  Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
-                </h3>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  {selectedMeter.property_name !== '—' && <span>{selectedMeter.property_name} &rarr; </span>}
-                  {selectedMeter.unit_label}
-                  {selectedMeter.supplier && <span> | Versorger: {selectedMeter.supplier}</span>}
-                  {selectedMeter.contract_number && <span> | Vertrag: {selectedMeter.contract_number}</span>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="btn btn-sm btn-primary" disabled={readingsLoading || Boolean(readingsError)} onClick={() => setModal('create-reading')}>
-                  + Ablesung erfassen
-                </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
-                  Zähler bearbeiten
-                </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => { readingsRequest.current?.abort(); setSelectedMeter(null); setReadings([]); }}>
-                  Schließen
-                </button>
-              </div>
-            </div>
-          </div>
-          {readingsLoading ? <p role="status">Ablesungen werden geladen …</p> : readingsError ? <div className="alert alert-error" role="alert">{readingsError}
-            <button type="button" className="btn btn-secondary" onClick={() => handleSelectMeter(selectedMeter)}>Ablesungen erneut laden</button></div> : <DataTable
-            inheritRouteFocus={false}
-            title=""
-            columns={READING_COLUMNS}
-            data={readings}
-          />}
-        </div>
+      {historyOf && (
+        <MeterHistory meterId={historyOf.id} meterLabel={historyOf.serial_number || historyOf.id.slice(0, 8)}
+          unitLabel={historyOf.unit_label !== '—' ? historyOf.unit_label : null}
+          propertyName={historyOf.property_name !== '—' ? historyOf.property_name : null} propertyId={historyOf.property_id}
+          revision={historyRevision} covered={Boolean(modal)} canWrite={canWrite}
+          onClose={() => setHistoryOf(null)} onRecord={() => setModal('create-reading')}
+          onEdit={() => setModal(meters.find(row => row.id === historyOf.id) || historyOf)} />
       )}
 
       {modal === 'create-meter' && (
@@ -360,11 +300,11 @@ export default function Meters() {
       {modal === 'create-reading' && (
         <FormModal
           draftContext="readings"
-          draftAnchor={selectedMeter ? { kind: 'meter', id: selectedMeter.id } : undefined}
+          draftAnchor={historyOf ? { kind: 'meter', id: historyOf.id } : undefined}
           title="Ablesung erfassen"
           repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
-          initial={selectedMeter ? { meter_id: selectedMeter.id } : null}
+          initial={historyOf ? { meter_id: historyOf.id } : null}
           onSave={handleSaveReading}
           onClose={() => setModal(null)}
         />

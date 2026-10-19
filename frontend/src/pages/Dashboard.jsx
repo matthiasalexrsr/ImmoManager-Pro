@@ -263,7 +263,7 @@ export default function Dashboard() {
 
   return <div className="page dashboard-page">
     <header className="dashboard-header">
-      <div><p className="dashboard-eyebrow">Ihr Arbeitsstart</p><h1>Verwaltungsübersicht</h1><p>Offene Vorgänge, Termine und Ihr Bestand an einem Ort.</p></div>
+      <div><h1>Verwaltungsübersicht</h1></div>
       <div className="dashboard-header-side"><time dateTime={isoDate}>{dateLabel}</time><Link to="/tasks" className="btn btn-primary">Aufgaben öffnen <ArrowRightIcon size={15} /></Link></div>
     </header>
     <div className="dashboard-view-switch" aria-label="Dashboardansichten">

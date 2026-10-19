@@ -1968,6 +1968,52 @@
         "priority": "Prioridad",
         "status": "Estado"
       },
+      "recurrence": {
+        "none": "Una vez (sin repetición)",
+        "daily": "Diariamente",
+        "weekly": "Semanalmente",
+        "monthly": "Mensualmente",
+        "quarterly": "Trimestralmente",
+        "halfYearly": "Semestralmente",
+        "yearly": "Anualmente",
+        "custom": "Personalizada",
+        "configure": "Configurar repetición",
+        "frequency": "Frecuencia",
+        "interval": "Intervalo",
+        "end": "Fin de la repetición",
+        "countLabel": "Número de tareas siguientes",
+        "untilLabel": "Último día (incluido)",
+        "ends": {
+          "never": "Sin fin",
+          "count": "Tras un número de tareas siguientes",
+          "until": "En una fecha",
+          "both": "Número y fecha (se aplica el primer límite)"
+        },
+        "frequencies": {
+          "DAILY": "Días",
+          "WEEKLY": "Semanas",
+          "MONTHLY": "Meses",
+          "YEARLY": "Años"
+        },
+        "units": {
+          "DAILY": "día(s)",
+          "WEEKLY": "semana(s)",
+          "MONTHLY": "mes(es)",
+          "YEARLY": "año(s)"
+        },
+        "everySummary": "Cada {{interval}} {{unit}}",
+        "countSummary": "{{count}} tareas siguientes",
+        "untilSummary": "hasta {{date}}",
+        "expert": "Opciones avanzadas: editar regla",
+        "rawRule": "Regla de repetición (RRULE)",
+        "supported": "Se admiten: FREQ=DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT y UNTIL (AAAA-MM-DD).",
+        "retainedRule": "Esta regla existente no se puede representar por completo con estos controles. Se conserva sin cambios. Revísela o corríjala en las opciones avanzadas si es necesario.",
+        "semantics": "La primera tarea siguiente vence un intervalo después de la fecha de vencimiento. El número cuenta solo las tareas siguientes, no la original. Se incluye la fecha final. Para meses y años, los días posteriores al 28 se ajustan al 28. Cambiar la regla afecta a futuras tareas; las ya generadas se conservan.",
+        "invalidRule": "La regla debe contener una frecuencia admitida. Se permiten FREQ, INTERVAL, COUNT y UNTIL una sola vez cada uno.",
+        "invalidInterval": "El intervalo debe ser un número entero positivo.",
+        "invalidCount": "El número de tareas siguientes debe ser un entero positivo.",
+        "invalidUntil": "Introduzca una fecha final válida (AAAA-MM-DD)."
+      },
       "form": {
         "title": "Título",
         "description": "Descripción",
@@ -1976,7 +2022,7 @@
         "unit": "Unidad",
         "noneOption": "— Ninguno —",
         "dueDate": "Fecha límite",
-        "recurrence": "Recurrencia (iCal RRULE)",
+        "recurrence": "Repetición",
         "recurrencePlaceholder": "p.ej. FREQ=MONTHLY;COUNT=12",
         "priority": "Prioridad",
         "status": "Estado"
@@ -2287,7 +2333,8 @@
       "cancelledOn": "Rescisión recibida el",
       "effectiveDate": "Efectiva el (opcional)",
       "extraordinary": "Rescisión extraordinaria",
-      "document": "Documento"
+      "document": "Documento",
+      "portalUrl": "Portal del cliente (enlace)"
     },
     "hints": {
       "provider": "De la agenda compartida (contactos); si falta, créelo allí primero.",
@@ -2301,7 +2348,8 @@
       "candidates": "Gastos sin inquilino de los últimos 120 días, primero los más adecuados.",
       "allocated": "Vacío: la parte del asiento aún no asignada.",
       "cancelledOn": "Día en que la rescisión llega al destinatario.",
-      "effectiveDate": "Vacío: la fecha más temprana posible."
+      "effectiveDate": "Vacío: la fecha más temprana posible.",
+      "portalUrl": "La página de acceso del proveedor para este contrato; se muestra como enlace en el contrato y en el historial del contador."
     },
     "types": {
       "electricity": "Electricidad",
@@ -2415,7 +2463,8 @@
     "noDocuments": "No hay documentos.",
     "openDocument": "Ver documento",
     "fromBill": "Justificante de factura",
-    "unlink": "Desvincular"
+    "unlink": "Desvincular",
+    "openPortal": "Abrir portal del cliente"
   },
   "shortcutHelp": {
     "title": "Atajos de teclado",

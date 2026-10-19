@@ -432,7 +432,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=True,
-    icon=None,  # Add icon path here: 'assets/icon.ico'
+    icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
 )
 
 coll = COLLECT(

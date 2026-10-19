@@ -643,6 +643,18 @@ table.data-table .td-num {
   font-variant-numeric: tabular-nums;
 }
 
+/* A number column's heading stands over its numbers: right-aligned, the sort arrow on the left of the label.
+   The table rules above left-align every cell, so the class needs the table's weight to count. */
+:is(.data-table-wrapper, table.data-table, .simple-table, details.card) :is(th, td).text-right {
+  text-align: right;
+}
+.data-table-wrapper th.text-right .table-sort-button,
+table.data-table th.text-right .table-sort-button,
+.data-table-wrapper th.text-right .th-content,
+table.data-table th.text-right .th-content {
+  flex-direction: row-reverse;
+}
+
 .data-table-wrapper td.td-stacked,
 table.data-table td.td-stacked {
   max-width: 48rem;
@@ -1172,19 +1184,21 @@ table.data-table tbody tr:last-child td {
   margin-bottom: 2rem;
 }
 
+.brand-mark { width: 34px; height: 34px; stroke: currentColor; stroke-width: 1.85; stroke-linecap: round; stroke-linejoin: round; }
+
 .login-header .login-logo {
   width: 56px;
   height: 56px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: #183e39;
   border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: #d8e9e2;
   font-weight: 800;
   font-size: 22px;
   margin: 0 auto 1rem;
-  box-shadow: 0 4px 16px rgba(13, 148, 136, 0.25);
+  box-shadow: none;
 }
 
 .login-header h1 {
@@ -3677,3 +3691,6 @@ table.data-table tbody tr:last-child td {
 /* A required choice with nothing to choose yet names what is missing and links to it. */
 .form-hint.form-hint-missing { color: var(--color-warning); }
 .form-hint.form-hint-missing a { font-weight: 600; }
+
+/* A link that does something on this page (opens a record's panel) instead of going somewhere. */
+.link-button { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-align: inherit; }

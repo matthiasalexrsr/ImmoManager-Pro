@@ -3,6 +3,56 @@
   gap: .5rem;
 }
 
+.billing-workspace { min-width: 0; }
+.billing-overview-heading { margin: 0 0 1rem; }
+.billing-overview-heading h1 { margin: 0 0 .35rem; }
+.billing-overview-heading p { color: var(--color-text-secondary); margin: 0; }
+.billing-workspace .billing-overview-filters { display: flex; gap: .75rem; align-items: end; flex-wrap: wrap; padding: 1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.billing-workspace .billing-overview-filters label { display: grid; gap: .35rem; flex: 1 1 160px; margin: 0; font-size: var(--text-sm); min-width: 0; }
+.billing-workspace .billing-overview-filters select { width: 100%; min-width: 0; }
+.billing-header-actions, .billing-document-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.billing-document-actions { min-width: 160px; }
+.billing-workspace .detail-header { align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.billing-workspace .detail-title { flex: 1 1 260px; min-width: 0; }
+.billing-workspace .detail-title h1 { overflow-wrap: anywhere; }
+.billing-workspace .step-indicator { margin-bottom: 1rem; overflow-wrap: anywhere; }
+.billing-section-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+.billing-section-nav button { display: flex; gap: .75rem; align-items: center; padding: 1rem; text-align: left; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); color: var(--color-text); cursor: pointer; font: inherit; }
+.billing-section-nav button svg { flex-shrink: 0; color: var(--color-primary); }
+.billing-section-nav button:hover { border-color: var(--color-primary); }
+.billing-section-nav button span { display: grid; gap: .2rem; }
+.billing-section-nav button strong { color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: 500; }
+.billing-workspace .stats-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); }
+.billing-cost-suggestions { padding: .9rem 1rem; margin: .75rem 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.billing-cost-suggestions summary { cursor: pointer; font-weight: 600; }
+.billing-cost-suggestions p { color: var(--color-text-secondary); font-size: var(--text-sm); margin: .75rem 0; }
+.billing-cost-suggestions > div, .billing-cost-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; }
+.billing-cost-toolbar { justify-content: flex-end; margin: .75rem 0; }
+.billing-empty-output { border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 1.25rem; margin: 1rem 0; scroll-margin-top: 6rem; }
+.billing-empty-output h2 { font-size: var(--text-lg); margin: 0 0 .5rem; }
+.billing-empty-output p { color: var(--color-text-secondary); margin: 0; max-width: 70ch; }
+.billing-breakdown .modal-body { display: grid; gap: 1rem; }
+.billing-breakdown .modal-header p { color: var(--color-text-secondary); margin: .3rem 0 0; }
+.billing-breakdown .billing-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.billing-facts dt { color: var(--color-text-secondary); font-size: var(--text-sm); }
+.billing-facts dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
+.billing-result { display: grid; gap: .5rem; padding: 1rem; border-radius: var(--radius); background: var(--color-bg); }
+.billing-result > div { display: flex; justify-content: space-between; gap: 1rem; }
+.billing-result dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.billing-result > div:last-child { font-weight: 650; border-top: 1px solid var(--color-border); padding-top: .65rem; }
+.billing-workspace .modal-footer { flex-wrap: wrap; }
+.billing-workspace .modal-footer .btn { max-width: 100%; white-space: normal; }
+
+@media (max-width: 700px) {
+  .billing-section-nav { grid-template-columns: 1fr; gap: .5rem; }
+  .billing-section-nav button { padding: .75rem; }
+  .billing-section-nav button span { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+  .billing-header-actions { width: 100%; }
+  .billing-header-actions .btn { flex: 1 1 auto; white-space: normal; }
+  .billing-workspace .detail-header > .btn { flex: 0 0 auto; }
+  .billing-breakdown .billing-facts { grid-template-columns: 1fr; }
+}
+
 .billing-table-scroll {
   min-width: 0;
   max-width: 100%;

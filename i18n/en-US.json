@@ -1989,6 +1989,52 @@
         "priority": "Priority",
         "status": "Status"
       },
+      "recurrence": {
+        "none": "Once (no recurrence)",
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "quarterly": "Quarterly",
+        "halfYearly": "Every six months",
+        "yearly": "Yearly",
+        "custom": "Custom",
+        "configure": "Configure recurrence",
+        "frequency": "Frequency",
+        "interval": "Interval",
+        "end": "End recurrence",
+        "countLabel": "Number of follow-up tasks",
+        "untilLabel": "Last day (inclusive)",
+        "ends": {
+          "never": "No end",
+          "count": "After a number of follow-up tasks",
+          "until": "On a date",
+          "both": "Count and date (first limit applies)"
+        },
+        "frequencies": {
+          "DAILY": "Days",
+          "WEEKLY": "Weeks",
+          "MONTHLY": "Months",
+          "YEARLY": "Years"
+        },
+        "units": {
+          "DAILY": "day(s)",
+          "WEEKLY": "week(s)",
+          "MONTHLY": "month(s)",
+          "YEARLY": "year(s)"
+        },
+        "everySummary": "Every {{interval}} {{unit}}",
+        "countSummary": "{{count}} follow-up tasks",
+        "untilSummary": "until {{date}}",
+        "expert": "Expert options: edit recurrence rule",
+        "rawRule": "Recurrence rule (RRULE)",
+        "supported": "Supported: FREQ=DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT and UNTIL (YYYY-MM-DD).",
+        "retainedRule": "This existing rule cannot be fully represented by these controls. It is retained unchanged. Review or correct it in the expert options if needed.",
+        "semantics": "The first follow-up task is due one interval after the due date. The count includes follow-up tasks only, not the original task. The end date is inclusive. Monthly and yearly dates after the 28th are moved to the 28th. A changed rule affects future follow-up tasks; tasks already generated remain.",
+        "invalidRule": "The recurrence rule must contain a supported frequency. FREQ, INTERVAL, COUNT and UNTIL are allowed once each.",
+        "invalidInterval": "The interval must be a positive whole number.",
+        "invalidCount": "The number of follow-up tasks must be a positive whole number.",
+        "invalidUntil": "Enter a valid end date (YYYY-MM-DD)."
+      },
       "form": {
         "title": "Title",
         "description": "Description",
@@ -1997,7 +2043,7 @@
         "unit": "Unit",
         "noneOption": "— None —",
         "dueDate": "Due Date",
-        "recurrence": "Recurrence (iCal RRULE)",
+        "recurrence": "Recurrence",
         "recurrencePlaceholder": "e.g. FREQ=MONTHLY;COUNT=12",
         "priority": "Priority",
         "status": "Status"
@@ -2287,7 +2333,8 @@
       "cancelledOn": "Notice received on",
       "effectiveDate": "Effective on (optional)",
       "extraordinary": "Extraordinary termination",
-      "document": "Document"
+      "document": "Document",
+      "portalUrl": "Customer portal (link)"
     },
     "hints": {
       "provider": "From the shared address book (contacts); create the provider there first if it is missing.",
@@ -2301,7 +2348,8 @@
       "candidates": "Expenses without tenant of the last 120 days, best matches first.",
       "allocated": "Empty: the part of the booking not yet allocated.",
       "cancelledOn": "Day the notice reaches the recipient.",
-      "effectiveDate": "Empty: earliest possible date."
+      "effectiveDate": "Empty: earliest possible date.",
+      "portalUrl": "The provider's sign-in page for this contract; shown as a link on the contract page and in the meter history."
     },
     "types": {
       "electricity": "Electricity",
@@ -2415,7 +2463,8 @@
     "noDocuments": "No documents.",
     "openDocument": "View document",
     "fromBill": "Scan of a bill",
-    "unlink": "Unlink"
+    "unlink": "Unlink",
+    "openPortal": "Open customer portal"
   },
   "shortcutHelp": {
     "title": "Keyboard shortcuts",

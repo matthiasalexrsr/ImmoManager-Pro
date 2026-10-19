@@ -1,10 +1,14 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import TenantAccount from '../pages/TenantAccount';
 import { api } from '../api';
 
-vi.mock('../api', () => ({ api: { get: vi.fn() } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
+// the form itself is tested on its own; here only what the page gives it and does with the result
+vi.mock('../components/FormModal', () => ({ default: ({ title, initial, fields, onSave, onClose }) => <div role="dialog" aria-label={title}>
+  <span>{initial.full_name}</span><span>{fields.map(f => f.label).join(', ')}</span>
+  <button onClick={async () => { await onSave({ ...initial, phone: '0341 1234' }); onClose(); }}>Speichern</button></div> }));
 vi.mock('../components/Toast', () => ({ useToast: () => ({ error: vi.fn() }) }));
 
 const ACCOUNT = {
@@ -39,5 +43,28 @@ describe('TenantAccount', () => {
     expect(screen.getByRole('region', { name: 'Vertragsquellen zum Stichtag' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: /Nicht zugeordnet/ }));
     expect(screen.getByRole('region', { name: 'Nicht zugeordnete Zahlungsquellen zum Stichtag' })).toHaveFocus();
+  });
+
+  it('edits the tenant from the account page and shows the facts', async () => {
+    const person = { id: 't1', full_name: 'Familie Yilmaz', email: 'yilmaz@example.com', payment_method: 'sepa_direct_debit',
+      sepa_mandate: 'M-17', city: 'Leipzig', postal_code: '04109' };
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/account') ? ACCOUNT : person));
+    api.put.mockResolvedValue({ ...person, phone: '0341 1234' });
+    render(<MemoryRouter initialEntries={['/tenants/t1/account']}>
+      <Routes><Route path="/tenants/:id/account" element={<TenantAccount />} /></Routes>
+    </MemoryRouter>);
+    const facts = await screen.findByRole('region', { name: 'Stammdaten' });
+    expect(facts).toHaveTextContent('SEPA-Lastschrift');
+    expect(facts).toHaveTextContent('M-17');
+    expect(facts).toHaveTextContent('04109 Leipzig');
+    fireEvent.click(screen.getByRole('button', { name: 'Mieter bearbeiten' }));
+    const dialog = screen.getByRole('dialog', { name: 'Mieter bearbeiten' });
+    expect(dialog).toHaveTextContent('Familie Yilmaz');
+    expect(dialog).toHaveTextContent('Zahlungsart');
+    const loads = api.get.mock.calls.length;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Speichern' })); });
+    expect(api.put).toHaveBeenCalledWith('/tenants/t1', expect.objectContaining({ phone: '0341 1234' }));
+    expect(api.get.mock.calls.length).toBeGreaterThan(loads);      // the account and the person load again
+    expect(screen.queryByRole('dialog', { name: 'Mieter bearbeiten' })).not.toBeInTheDocument();
   });
 });

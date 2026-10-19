@@ -88,9 +88,9 @@ describe('exact KPI source lists', () => {
       '/units': [{ id: 'u1', label: 'Einzelabrechnung A' }, { id: 'u2', label: 'Einzelabrechnung B' }],
     }[path] || []));
     show(<Statements />, '/statements?filter=preflight_blockers');
-    expect(await screen.findByText('Mit Fehler')).toBeInTheDocument();
-    expect(screen.queryByText('Ohne Fehler')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Quelle'), { target: { value: 'statements' } });
+    expect(await screen.findByRole('cell', { name: 'Mit Fehler' })).toBeInTheDocument();
+    expect(screen.queryByRole('cell', { name: 'Ohne Fehler' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Ansicht'), { target: { value: 'statements' } });
     expect(screen.getByText('Einzelabrechnung A')).toBeInTheDocument();
     expect(screen.getByText('Einzelabrechnung B')).toBeInTheDocument();
   });

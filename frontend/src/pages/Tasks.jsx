@@ -19,16 +19,9 @@ import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import KpiAction from '../components/KpiAction';
 import InlineFieldEditor from '../features/workCenter/InlineFieldEditor';
 import UndoNotice from '../features/workCenter/UndoNotice';
+import TaskRecurrenceField from '../features/tasks/TaskRecurrenceField';
+import { recurrenceError, recurrenceSummary } from '../features/tasks/taskRecurrence';
 import '../features/workCenter/workCenter.css';
-
-function parseRecurrence(rule) {
-  if (!rule) return '—';
-  if (rule.includes('FREQ=DAILY')) return 'Täglich';
-  if (rule.includes('FREQ=WEEKLY')) return 'Wöchentlich';
-  if (rule.includes('FREQ=MONTHLY')) return 'Monatlich';
-  if (rule.includes('FREQ=YEARLY')) return 'Jährlich';
-  return rule;
-}
 
 function isOverdue(dueDate, status) {
   if (!dueDate || ['completed', 'cancelled', 'canceled', 'closed', 'done', 'archived'].includes(status)) return false;
@@ -141,7 +134,7 @@ export default function Tasks() {
     property_name: propertyMap[task.property_id] || '—',
     unit_label: unitMap[task.unit_id] || '—',
     is_overdue: isOverdue(task.due_date, task.status),
-    recurrence_label: parseRecurrence(task.recurrence_rule),
+    recurrence_label: task.recurrence_rule ? recurrenceSummary(task.recurrence_rule, t) : '—',
   }));
 
   // Filtered data
@@ -210,8 +203,11 @@ export default function Tasks() {
         .filter(u => !values.property_id || u.property_id === values.property_id)
         .map(u => ({ value: u.id, label: u.label }))] },
     { key: 'due_date', label: t('pages.tasks.form.dueDate') || 'Fällig am', type: 'date' },
-    { key: 'recurrence_rule', label: t('pages.tasks.form.recurrence') || 'Wiederholung (iCal RRULE)', placeholder: t('pages.tasks.form.recurrencePlaceholder') || 'z.B. FREQ=MONTHLY;COUNT=12',
-      hint: 'DAILY, WEEKLY, MONTHLY oder YEARLY; INTERVAL und COUNT positiv. COUNT zählt Folgeaufgaben; UNTIL (JJJJ-MM-TT) schließt den Tag ein. Monat/Jahr: Tage über 28 werden auf 28 begrenzt.' },
+    { key: 'recurrence_rule', label: t('pages.tasks.form.recurrence') || 'Wiederholung', full: true,
+      component: TaskRecurrenceField, validate: value => {
+        const error = recurrenceError(value);
+        return error ? t(`pages.tasks.recurrence.${error}`) : null;
+      } },
     { key: 'priority', label: t('pages.tasks.form.priority') || 'Priorität', type: 'select', default: 'medium', options: [
       { value: 'low', label: t('pages.tasks.priority.low') || 'Niedrig' },
       { value: 'medium', label: t('pages.tasks.priority.medium') || 'Mittel' },

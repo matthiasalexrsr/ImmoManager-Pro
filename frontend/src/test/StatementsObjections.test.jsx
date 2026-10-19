@@ -21,7 +21,7 @@ let data;
 
 function page() { return <MemoryRouter><Statements /></MemoryRouter>; }
 async function openPeriod(label = original.label) {
-  const row = (await screen.findByText(label === original.label ? 'Prüfhaus' : 'Zweites Prüfhaus')).closest('tr');
+  const row = (await screen.findByRole('cell', { name: label === original.label ? 'Prüfhaus' : 'Zweites Prüfhaus' })).closest('tr');
   fireEvent.click(within(row).getByLabelText('ui.buttons.edit'));
   await screen.findByRole('heading', { name: label });
 }
@@ -68,7 +68,7 @@ describe('Statements objection decisions', () => {
   it('opens a read-only period with Enter without exposing write actions', async () => {
     state.auth = { user: { id: 'reader', role: 'readonly' }, write: [] };
     render(page());
-    const row = (await screen.findByText('Prüfhaus')).closest('tr');
+    const row = (await screen.findByRole('cell', { name: 'Prüfhaus' })).closest('tr');
     expect(within(row).queryByLabelText('ui.buttons.edit')).not.toBeInTheDocument();
     expect(row).toHaveAttribute('tabindex', '0');
     fireEvent.keyDown(row, { key: 'Enter' });
@@ -130,7 +130,7 @@ describe('Statements objection decisions', () => {
     fireEvent.click(screen.getByText('pages.statements.dispute'));
     fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Bereits erfasster Einwand' } });
     await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
-    expect(screen.getAllByText('corrected').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Korrigiert').length).toBeGreaterThan(0);
     expect(screen.queryByText('pages.statements.dispute')).not.toBeInTheDocument();
     expect(api.post).toHaveBeenCalledTimes(1);
   });

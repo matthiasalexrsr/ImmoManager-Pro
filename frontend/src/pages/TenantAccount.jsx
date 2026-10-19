@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { Fragment, useEffect, useState, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
@@ -6,6 +6,9 @@ import { formatDate as day, formatMoney } from '../utils/format';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
+import FormModal from '../components/FormModal';
+import { useCanWrite } from '../contexts/AuthContext';
+import { PAYMENT_METHODS, TENANT_FIELDS } from '../features/tenants/tenantFields';
 
 const eur = v => formatMoney(v || 0);
 
@@ -14,6 +17,8 @@ export default function TenantAccount() {
   const { id } = useParams();
   const toast = useToast();
   const party = usePartyWorkspace();
+  const canWrite = useCanWrite('/tenants');
+  const [editing, setEditing] = useState(false);
   const [tenant, setTenant] = useState(null);
   const [account, setAccount] = useState(null);
   const [asOf, setAsOf] = useState(() => { const date = new Date();
@@ -58,6 +63,7 @@ export default function TenantAccount() {
       <div className="toolbar">
         <label htmlFor="as-of">Stichtag</label>
         <input id="as-of" type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
+        {canWrite && tenant && <button type="button" className="btn btn-sm btn-primary" onClick={() => setEditing(true)}>Mieter bearbeiten</button>}
         <Link to="/tenants" className="btn btn-sm btn-secondary">Zurück zu den Mietern</Link>
         {party && <button className="btn btn-sm btn-secondary" onClick={() => party.openParty(id, { tab: 'documents' })}>Dokumente der Partei</button>}
       </div>
@@ -66,6 +72,7 @@ export default function TenantAccount() {
         { to: '/contracts', label: 'Alle Mietverträge' },
         { to: `/bookings?tenant_id=${encodeURIComponent(id)}`, label: 'Buchungen dieses Mieters' },
       ]} />
+      {tenant && <TenantFacts tenant={tenant} />}
 
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}><div className="stat-label">Soll</div><div className="stat-value">{eur(totals.expected)}</div></button>
@@ -129,6 +136,22 @@ export default function TenantAccount() {
             </div>
           )}
       </section>
+      {editing && tenant && <FormModal title="Mieter bearbeiten" fields={TENANT_FIELDS} initial={tenant}
+        onSave={async data => { await api.put(`/tenants/${encodeURIComponent(id)}`, data); setRevision(value => value + 1); }}
+        onClose={() => setEditing(false)} />}
     </div>
   );
+}
+
+// Who the tenant is and how they pay, at a glance; "Mieter bearbeiten" changes it here.
+function TenantFacts({ tenant }) {
+  const address = [tenant.address_line, [tenant.postal_code, tenant.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const payment = PAYMENT_METHODS.find(option => option.value === tenant.payment_method)?.label;
+  const facts = [['E-Mail', tenant.email && <a href={`mailto:${tenant.email}`}>{tenant.email}</a>],
+    ['Telefon', tenant.phone && <a href={`tel:${tenant.phone}`}>{tenant.phone}</a>], ['Anschrift', address],
+    ['Zahlungsart', payment], ['SEPA-Mandat', tenant.sepa_mandate]].filter(([, value]) => value);
+  if (!facts.length) return null;
+  return <section className="card" aria-label="Stammdaten" style={{ marginBottom: '1rem' }}><div className="card-body">
+    <dl className="overview-dl">{facts.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+  </div></section>;
 }

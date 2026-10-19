@@ -3,6 +3,7 @@ import { useTranslation } from '../i18n';
 import { api } from '../api';
 import { useCanWrite } from '../contexts/AuthContext';
 import { AlertIcon, MessageIcon, ContractIcon, DocumentIcon, BuildingIcon } from '../components/Icons';
+import { codeLabel } from '../utils/codeLabels';
 
 const ICONS = { communication: MessageIcon, workflow: ContractIcon, delivery: DocumentIcon, listing: BuildingIcon };
 const initialConfig = integration => Object.fromEntries((integration.config_fields || []).map(field => [field.key,
@@ -119,7 +120,7 @@ function IntegrationCard({ integration, canWrite, update }) {
     </div>
     <div className="panel-body">
       <p>{integration.description}</p>
-      <p className="text-muted">{integration.configured ? 'Konfiguriert' : 'Nicht konfiguriert'} · {integration.health?.message || integration.health?.status}</p>
+      <p className="text-muted">{integration.configured ? 'Konfiguriert' : 'Nicht konfiguriert'} · {integration.health?.message || codeLabel(integration.health?.status)}</p>
       {integration.planned && <p>Diese Anbindung ist noch nicht implementiert.</p>}
       {integration.persistence_error && <p role="alert">{integration.persistence_error}</p>}
       {canWrite && <>

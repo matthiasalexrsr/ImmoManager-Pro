@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 // The legacy build: the modern one needs very recent browser APIs (Map.getOrInsertComputed,
 // missing before Chrome 145 and in current Safari) and showed nothing there.
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { usePartyText } from '../features/partyWorkspace/text';
 import { isOwnUploadUrl, prepareUploadAccess } from '../utils/uploadAccess';
+import '../features/partyWorkspace/fileViewer.css';
 
 const MAX_PIXELS = 16_777_216;
 const MAX_DIMENSION = 8192;
@@ -11,6 +12,7 @@ const LOAD_TIMEOUT = 30_000;
 
 export default function PdfPreview({ url, title, renderOverlay }) {
   const { text } = usePartyText();
+  const controlId = useId();
   const [pdf, setPdf] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
@@ -160,22 +162,34 @@ export default function PdfPreview({ url, title, renderOverlay }) {
 
   return <section className="pdf-preview" aria-label={text.pdfPreview}>
     {pdf && <div className="pdf-preview-toolbar">
-      <button type="button" className="btn btn-sm btn-secondary" disabled={pageNumber <= 1} onClick={() => goTo(pageNumber - 1)} aria-label={text.pdfPrevious}>←</button>
-      <form className="pdf-preview-page-form" onSubmit={event => { event.preventDefault(); goTo(Number(pageInput)); }}>
-        <label>{text.pdfPage}<input type="number" inputMode="numeric" min="1" max={pdf.numPages} step="1" value={pageInput} onChange={event => setPageInput(event.target.value)} /></label>
-        <span>{text.pdfOf} {pdf.numPages}</span>
-        <button type="submit" className="btn btn-sm btn-secondary">{text.pdfGo}</button>
-      </form>
-      <button type="button" className="btn btn-sm btn-secondary" disabled={pageNumber >= pdf.numPages} onClick={() => goTo(pageNumber + 1)} aria-label={text.pdfNext}>→</button>
-      <label className="pdf-preview-zoom">{text.pdfZoom}<select value={zoom} onChange={event => setZoom(event.target.value)}>
-        <option value="fit">{text.pdfFit}</option>
-        {[25, 50, 75, 100, 125, 150, 200, 300].map(value => <option key={value} value={value}>{value} %</option>)}
-      </select></label>
-      <button type="button" className="btn btn-sm btn-secondary" aria-pressed={showText} onClick={() => setShowText(value => !value)}>{text.pdfText}</button>
+      <div className="pdf-preview-pages" role="group" aria-label={text.pdfPage}>
+        <button type="button" className="btn btn-sm btn-secondary" disabled={pageNumber <= 1} onClick={() => goTo(pageNumber - 1)} aria-label={text.pdfPrevious}>←</button>
+        <form className="pdf-preview-page-form" aria-label={text.pdfGo} onSubmit={event => { event.preventDefault(); goTo(Number(pageInput)); }}>
+          <div className="pdf-preview-page-entry">
+            <label htmlFor={`${controlId}-page`}>{text.pdfPage}</label>
+            <input id={`${controlId}-page`} type="number" inputMode="numeric" min="1" max={pdf.numPages} step="1" required
+              value={pageInput} onChange={event => setPageInput(event.target.value)} aria-describedby={`${controlId}-count`} />
+            <span id={`${controlId}-count`} className="pdf-preview-page-count">{text.pdfOf} {pdf.numPages}</span>
+          </div>
+          <button type="submit" className="btn btn-sm btn-secondary pdf-preview-page-submit">{text.pdfGo}</button>
+        </form>
+        <button type="button" className="btn btn-sm btn-secondary" disabled={pageNumber >= pdf.numPages} onClick={() => goTo(pageNumber + 1)} aria-label={text.pdfNext}>→</button>
+      </div>
+      <div className="pdf-preview-view-controls">
+        <div className="pdf-preview-zoom">
+          <label htmlFor={`${controlId}-zoom`}>{text.pdfZoom}</label>
+          <select id={`${controlId}-zoom`} value={zoom} onChange={event => setZoom(event.target.value)}>
+            <option value="fit">{text.pdfFit}</option>
+            {[25, 50, 75, 100, 125, 150, 200, 300].map(value => <option key={value} value={value}>{value} %</option>)}
+          </select>
+        </div>
+        <button type="button" className="btn btn-sm btn-secondary" aria-pressed={showText}
+          aria-controls={`${controlId}-content`} onClick={() => setShowText(value => !value)}>{text.pdfText}</button>
+      </div>
     </div>}
     {!error && (!pdf || drawing) && <p className="pdf-preview-message" role="status">{text.pdfLoading}</p>}
     {error && <div className="pdf-preview-message" role="alert"><p>{errors[error]}</p><p>{text.pdfOriginalHelp}</p><button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>{text.retry}</button></div>}
-    <div className="pdf-preview-viewport" ref={viewportRef}>
+    <div className="pdf-preview-viewport" id={`${controlId}-content`} ref={viewportRef}>
       <div style={{ position: 'relative', display: 'inline-block' }} hidden={showText || Boolean(error)}>
         <div ref={canvasHostRef} />
         {surface && !drawing && renderOverlay?.(surface)}

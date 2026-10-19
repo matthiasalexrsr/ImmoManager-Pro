@@ -15,6 +15,7 @@ A correction is a new period that names the version it corrects.
 """
 
 import hashlib
+import json
 import logging
 import re
 from contextlib import ExitStack
@@ -22,7 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import ValidationError as ModelValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -427,6 +428,9 @@ def _statement_fingerprint(stmt: Any) -> tuple:
     return (
         stmt.unit_id, stmt.contract_id or "", stmt.party, str(stmt.usage_start or ""), str(stmt.usage_end or ""),
         round(float(stmt.total_cost), 2), round(float(stmt.advance_paid), 2),
+        round(float(stmt.balance), 2), stmt.usage_days,
+        json.dumps(json_safe(stmt.line_items or []), sort_keys=True, ensure_ascii=False),
+        json.dumps(json_safe(stmt.advance_sections or []), sort_keys=True, ensure_ascii=False),
     )
 
 
@@ -1323,11 +1327,11 @@ def _share_text(li: dict) -> str:
     return share
 
 
-def _live_statement_document(stmt: Any, period: Any = None) -> dict:
+def _live_statement_document(stmt: Any, period: Any = None, *, target: Any = None) -> dict:
     """Everything a statement shows, resolved to names from today's data: shared by PDF and text."""
     def lookup(getter: str, entity_id: Any) -> Any:
         try:
-            return getattr(store, getter)(entity_id) if entity_id else None
+            return getattr(target if target is not None else store, getter)(entity_id) if entity_id else None
         except Exception:
             logger.debug("Could not resolve %s %s for statement %s", getter, entity_id, stmt.id, exc_info=True)
             return None
@@ -1388,11 +1392,11 @@ def _live_statement_document(stmt: Any, period: Any = None) -> dict:
     }
 
 
-def _statement_document(stmt: Any) -> dict:
+def _statement_document(stmt: Any, *, target: Any = None) -> dict:
     """What the statement shows: the frozen version once finalized, otherwise from today's data."""
     frozen = getattr(stmt, "final_document", None)
     if not frozen:
-        return _live_statement_document(stmt)
+        return _live_statement_document(stmt, target=target)
     return {
         "title": frozen.get("title", "Betriebskostenabrechnung"),
         "facts": [tuple(pair) for pair in frozen.get("facts", [])],
@@ -1491,3 +1495,40 @@ def download_utility_statement_pdf(statement_id: str):
 def get_utility_statement_pdf(statement_id: str):
     """Download a PDF for a single utility statement."""
     return download_utility_statement_pdf(statement_id)
+
+
+# A reviewed covering letter is a separate archived original. The historic
+# statement PDF above is deliberately unchanged, including for old finalizations.
+from ..services.billing_letter_types import LetterPreview, LetterPublish  # noqa: E402
+
+
+@router.get("/statements/{statement_id}/letter-context")
+def billing_letter_context(statement_id: str, response: Response, actor: UserRead = Depends(auth.require_auth)):
+    from ..services import billing_letters
+    response.headers["Cache-Control"] = "private, no-store"
+    return billing_letters.context(store, statement_id, actor.id)
+
+
+@router.post("/statements/{statement_id}/letter-preview")
+def billing_letter_preview(statement_id: str, payload: LetterPreview, response: Response,
+                           actor: UserRead = Depends(auth.require_auth)):
+    from ..services import billing_letters
+    response.headers["Cache-Control"] = "private, no-store"
+    return billing_letters.preview(store, statement_id, payload, actor.id)
+
+
+@router.post("/statements/{statement_id}/letter-preview-pdf")
+def billing_letter_preview_pdf(statement_id: str, payload: LetterPreview, actor: UserRead = Depends(auth.require_auth)):
+    from ..services import billing_letters
+    raw, checksum, review_hash = billing_letters.preview_pdf(store, statement_id, payload, actor.id)
+    return Response(raw, media_type="application/pdf", headers={"Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff", "X-Content-SHA256": checksum, "X-Review-SHA256": review_hash,
+        "Content-Disposition": 'inline; filename="abrechnung-vorschau.pdf"'})
+
+
+@router.post("/statements/{statement_id}/letter-publish", status_code=201)
+def publish_billing_letter(statement_id: str, payload: LetterPublish, response: Response,
+                           actor: UserRead = Depends(auth.require_auth)):
+    from ..services import billing_letters
+    response.headers["Cache-Control"] = "private, no-store"
+    return billing_letters.publish(store, statement_id, payload, actor.id)

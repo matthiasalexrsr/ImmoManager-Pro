@@ -88,7 +88,8 @@ it('bietet in Auswahlfiltern auch echte Null- und Falsch-Werte an', () => {
   fireEvent.click(screen.getByRole('button', { name: /ui.buttons.filter|Filter/i }));
   const choice = screen.getByRole('combobox', { name: 'Merkmal filtern' });
   expect(within(choice).getByRole('option', { name: '0' })).toBeInTheDocument();
-  expect(within(choice).getByRole('option', { name: 'false' })).toBeInTheDocument();
+  // a stored false reads as "Nein"; the filter still matches the value
+  expect(within(choice).getByRole('option', { name: 'Nein' })).toBeInTheDocument();
   fireEvent.change(choice, { target: { value: 'false' } });
   const table = screen.getByRole('table', { name: 'Flaggen' });
   expect(within(table).getByText('Falsch')).toBeInTheDocument();

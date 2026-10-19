@@ -6,6 +6,7 @@ import { useCanWrite } from '../../contexts/AuthContext';
 import { PartyWorkspaceProvider, PartyLink } from './PartyWorkspace';
 
 vi.mock('../../api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({ default: '/pdf-worker-test.mjs' }));
 vi.mock('../../contexts/AuthContext', () => ({
   useCanWrite: vi.fn(() => true),
   useAuth: vi.fn(() => ({ user: { id: 'u1', role: 'verwalter' }, write: null })),
@@ -184,7 +185,8 @@ describe('party workspace', () => {
   });
 
   it('copies the address and exposes errors without replacing them with empty data', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
+    const clipboardWrite = deferred();
+    const writeText = vi.fn(() => clipboardWrite.promise);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
@@ -193,9 +195,15 @@ describe('party workspace', () => {
     // Control the transient label's clock so host load cannot skip its 2 s window.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
-      await act(async () => fireEvent.click(copyButton));
+      fireEvent.click(copyButton);
+      // A real clipboard write can wait for browser permission. Observe that
+      // promise explicitly; fireEvent itself only returns an event boolean.
+      expect(copyButton).toHaveAttribute('aria-label', 'Kopieren: Adresse');
+      await act(async () => { clipboardWrite.resolve(); await clipboardWrite.promise; });
       expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse');
-      act(() => vi.advanceTimersByTime(2000));
+      act(() => vi.advanceTimersByTime(1999));
+      expect(copyButton).toHaveAttribute('aria-label', 'Kopiert: Adresse');
+      act(() => vi.advanceTimersByTime(1));
       expect(copyButton).toHaveAttribute('aria-label', 'Kopieren: Adresse');
     } finally { vi.useRealTimers(); }
     expect(writeText).toHaveBeenCalledWith('Lindenstraße 8\n10115 Berlin\nDE');
@@ -208,6 +216,18 @@ describe('party workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     await screen.findByRole('button', { name: doc.title });
   }, 20000);
+
+  it('reports a rejected clipboard write without displaying a copied success', async () => {
+    const clipboardWrite = deferred();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => clipboardWrite.promise) } });
+    mount(); fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
+    await screen.findByRole('dialog', { name: 'Anna Müller' });
+    const copyButton = screen.getByRole('button', { name: 'Kopieren: Adresse' });
+    fireEvent.click(copyButton);
+    await act(async () => { clipboardWrite.reject(new Error('Clipboard permission denied')); await clipboardWrite.promise.catch(() => {}); });
+    expect(screen.getByRole('alert')).toHaveTextContent(/kopier/i);
+    expect(copyButton).toHaveAttribute('aria-label', 'Kopieren: Adresse');
+  });
 
   it('traps keyboard focus and supports arrow-key tab selection', async () => {
     mount();

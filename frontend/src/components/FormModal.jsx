@@ -299,6 +299,16 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     if (savingRef.current || confirmDiscard || confirmDraftDiscard || draftWaiting || draft.status === 'changed' || draftBusy) return;
     // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
     if ((again || next) && !formRef.current?.reportValidity()) return;
+    const validationErrors = Object.fromEntries(fields.flatMap(field => {
+      const message = field.validate?.(values[field.key], values);
+      return message ? [[field.key, [message]]] : [];
+    }));
+    if (Object.keys(validationErrors).length) {
+      setFieldErrors(validationErrors);
+      setError(Object.entries(validationErrors).map(([key, messages]) => `${fields.find(field => field.key === key).label}: ${messages.join(' · ')}`).join(' · '));
+      setSaveFailure(true);
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -473,10 +483,13 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 const hintId = f.hint ? `form-hint-${f.key}` : undefined;
                 const descriptionIds = [fieldErrorId, hintId].filter(Boolean).join(' ') || undefined;
                 const options = typeof f.options === 'function' ? f.options(values) : f.options;
+                const FieldComponent = f.component;
                 return (
                   <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}`}>
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
-                    {f.type === 'select' ? (
+                    {FieldComponent ? <FieldComponent id={inputId} value={values[f.key] ?? ''}
+                      onChange={value => update(f.key, value)} disabled={fieldDisabled}
+                      aria-invalid={fieldErrorId ? true : undefined} aria-describedby={descriptionIds} /> : f.type === 'select' ? (
                       <select
                         id={inputId}
                         aria-invalid={fieldErrorId ? true : undefined}

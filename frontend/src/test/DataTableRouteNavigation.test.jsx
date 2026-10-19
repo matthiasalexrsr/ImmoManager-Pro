@@ -208,4 +208,40 @@ describe('DataTable navigation within one list', () => {
     expect(within(readings).getByText('Erste Ablesung')).toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: 'Hauptvorgänge' })).queryByText('Alpha 01')).not.toBeInTheDocument();
   });
+
+  it('keeps a parent URL search on its main table while a secondary table opts out explicitly', () => {
+    render(<MemoryRouter initialEntries={['/statements?suche=Alpha&focus_id=Alpha-31']}>
+      <DataTable title="Hauptvorgänge" settingsKey="main-search" columns={columns} data={data} />
+      <DataTable title="Kosten" settingsKey="billing-costs:period-1" inheritRouteSearch={false} inheritRouteFocus={false}
+        columns={[{ key: 'title', label: 'Kostenposition' }]} data={[{ id: 'water', title: 'Wasser' }, { id: 'heat', title: 'Heizung' }]} />
+    </MemoryRouter>);
+    expect(within(screen.getByRole('table', { name: 'Hauptvorgänge' })).getByText('Alpha 31')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Hauptvorgänge durchsuchen' })).toHaveValue('Alpha');
+    expect(screen.getByRole('textbox', { name: 'Kosten durchsuchen' })).toHaveValue('');
+    expect(within(screen.getByRole('table', { name: 'Kosten' })).getByText('Wasser')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: 'Kosten' })).getByText('Heizung')).toBeInTheDocument();
+  });
+
+  it('retains the secondary table own saved search across parent query navigation without rewriting the URL', () => {
+    const key = 'billing-costs:period-1';
+    writeTableView(key, { search: 'Wasser', columnFilters: {}, page: 0 });
+    function Secondary() {
+      const navigate = useNavigate(); const location = useLocation();
+      return <><output aria-label="Elternroute">{location.search}</output>
+        <button onClick={() => navigate('/statements?suche=Beta')}>Andere Elternsuche</button>
+        <DataTable title="Kosten" settingsKey={key} inheritRouteSearch={false} inheritRouteFocus={false}
+          columns={[{ key: 'title', label: 'Kostenposition' }]} data={[{ id: 'water', title: 'Wasser' }, { id: 'heat', title: 'Heizung' }]} />
+      </>;
+    }
+    render(<MemoryRouter initialEntries={['/statements?suche=Alpha']}><Secondary /></MemoryRouter>);
+    expect(screen.getByRole('textbox', { name: 'Kosten durchsuchen' })).toHaveValue('Wasser');
+    expect(screen.getByLabelText('Elternroute')).toHaveTextContent('?suche=Alpha');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Kosten durchsuchen' }), { target: { value: 'Heizung' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Andere Elternsuche' }));
+    expect(screen.getByLabelText('Elternroute')).toHaveTextContent('?suche=Beta');
+    expect(screen.getByRole('textbox', { name: 'Kosten durchsuchen' })).toHaveValue('Heizung');
+    expect(within(screen.getByRole('table', { name: 'Kosten' })).getByText('Heizung')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: 'Kosten' })).queryByText('Wasser')).not.toBeInTheDocument();
+    expect(readTableView(key)).toEqual({ search: 'Heizung', columnFilters: {}, page: 0 });
+  });
 });

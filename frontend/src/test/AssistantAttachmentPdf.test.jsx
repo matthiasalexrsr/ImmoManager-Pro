@@ -5,6 +5,7 @@ import { api } from '../api';
 
 const engine = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => engine);
+vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({ default: '/pdf-worker-test.mjs' }));
 vi.mock('../api', () => ({ api: { captureSession: vi.fn(() => () => {}), getBlob: vi.fn() } }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

@@ -1,9 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import FileViewer from '../components/FileViewer';
 
 const engine = vi.hoisted(() => ({ getDocument: vi.fn(), GlobalWorkerOptions: {} }));
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => engine);
+vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({ default: '/pdf-worker-test.mjs' }));
 vi.mock('../api', () => ({ api: { get: vi.fn().mockResolvedValue({ has_ocr: false }) } }));
 
 const deferred = () => {
@@ -36,6 +37,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('PDF preview lifecycle', () => {
+  it('keeps labeled page controls in one navigation group and submits valid pages without accepting out-of-range input', async () => {
+    mount();
+    await screen.findByRole('img', { name: /Seite 1/ });
+    const group = screen.getByRole('group', { name: 'Seite' });
+    const input = within(group).getByRole('spinbutton', { name: 'Seite' });
+    expect(input).toHaveAccessibleDescription('von 4');
+    expect(within(group).getByRole('button', { name: 'Vorherige Seite' })).toBeDisabled();
+    fireEvent.change(input, { target: { value: '0' } });
+    fireEvent.submit(within(group).getByRole('form', { name: 'Seite anzeigen' }));
+    expect(pdf.getPage).not.toHaveBeenCalledWith(0);
+    fireEvent.change(input, { target: { value: '3' } });
+    fireEvent.submit(within(group).getByRole('form', { name: 'Seite anzeigen' }));
+    await screen.findByRole('img', { name: /Seite 3/ });
+    const toggle = screen.getByRole('button', { name: 'PDF-Text' });
+    expect(toggle).toHaveAttribute('aria-controls', document.querySelector('.pdf-preview-viewport').id);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByText('Vertragstext Seite 3')).toBeInTheDocument();
+  });
   it('renders the signed original and navigates to any page with zoom and available text', async () => {
     pdf.numPages = 1000;
     mount('https://storage.example/contract.pdf?signature=exact');

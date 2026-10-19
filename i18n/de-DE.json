@@ -1990,6 +1990,52 @@
         "priority": "Priorität",
         "status": "Status"
       },
+      "recurrence": {
+        "none": "Einmalig (ohne Wiederholung)",
+        "daily": "Täglich",
+        "weekly": "Wöchentlich",
+        "monthly": "Monatlich",
+        "quarterly": "Vierteljährlich",
+        "halfYearly": "Halbjährlich",
+        "yearly": "Jährlich",
+        "custom": "Benutzerdefiniert",
+        "configure": "Wiederholung konfigurieren",
+        "frequency": "Häufigkeit",
+        "interval": "Intervall",
+        "end": "Ende der Wiederholung",
+        "countLabel": "Anzahl der Folgeaufgaben",
+        "untilLabel": "Letzter Tag (einschließlich)",
+        "ends": {
+          "never": "Ohne Ende",
+          "count": "Nach einer Anzahl Folgeaufgaben",
+          "until": "An einem Datum",
+          "both": "Anzahl und Datum (erste Grenze gilt)"
+        },
+        "frequencies": {
+          "DAILY": "Tage",
+          "WEEKLY": "Wochen",
+          "MONTHLY": "Monate",
+          "YEARLY": "Jahre"
+        },
+        "units": {
+          "DAILY": "Tag(e)",
+          "WEEKLY": "Woche(n)",
+          "MONTHLY": "Monat(e)",
+          "YEARLY": "Jahr(e)"
+        },
+        "everySummary": "Alle {{interval}} {{unit}}",
+        "countSummary": "{{count}} Folgeaufgaben",
+        "untilSummary": "bis {{date}}",
+        "expert": "Expertenbereich: Serienregel bearbeiten",
+        "rawRule": "Serienregel (RRULE)",
+        "supported": "Unterstützt: FREQ=DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT und UNTIL (JJJJ-MM-TT).",
+        "retainedRule": "Diese bestehende Regel lässt sich nicht vollständig mit der Auswahl darstellen. Sie bleibt unverändert erhalten. Prüfen oder korrigieren Sie sie bei Bedarf im Expertenbereich.",
+        "semantics": "Die erste Folgeaufgabe entsteht ein Intervall nach dem Fälligkeitsdatum. Die Anzahl zählt nur Folgeaufgaben, nicht die ursprüngliche Aufgabe. Das Enddatum zählt mit. Bei Monaten und Jahren werden Tage über 28 auf den 28. begrenzt. Eine geänderte Regel wirkt auf künftige Folgeaufgaben; bereits erzeugte Aufgaben bleiben bestehen.",
+        "invalidRule": "Die Serienregel muss eine unterstützte Häufigkeit enthalten. Erlaubt sind FREQ, INTERVAL, COUNT und UNTIL, jeweils einmal.",
+        "invalidInterval": "Das Intervall muss eine positive ganze Zahl sein.",
+        "invalidCount": "Die Anzahl der Folgeaufgaben muss eine positive ganze Zahl sein.",
+        "invalidUntil": "Bitte ein gültiges Enddatum eingeben (JJJJ-MM-TT)."
+      },
       "form": {
         "title": "Titel",
         "description": "Beschreibung",
@@ -1998,7 +2044,7 @@
         "unit": "Einheit",
         "noneOption": "— Keine —",
         "dueDate": "Fällig am",
-        "recurrence": "Wiederholung (iCal RRULE)",
+        "recurrence": "Wiederholung",
         "recurrencePlaceholder": "z.B. FREQ=MONTHLY;COUNT=12",
         "priority": "Priorität",
         "status": "Status"
@@ -2288,7 +2334,8 @@
       "cancelledOn": "Kündigung zugegangen am",
       "effectiveDate": "Wirksam zum (optional)",
       "extraordinary": "Außerordentlich / Sonderkündigung",
-      "document": "Dokument"
+      "document": "Dokument",
+      "portalUrl": "Kundenportal (Link)"
     },
     "hints": {
       "provider": "Aus dem gemeinsamen Adressbuch (Kontakte); fehlt der Anbieter, dort zuerst anlegen.",
@@ -2302,7 +2349,8 @@
       "candidates": "Ausgaben ohne Mieterbezug der letzten 120 Tage, passende zuerst.",
       "allocated": "Leer: der noch nicht zugeordnete Rest der Buchung.",
       "cancelledOn": "Tag, an dem die Kündigung beim Empfänger eingeht.",
-      "effectiveDate": "Leer: frühestmöglicher Termin."
+      "effectiveDate": "Leer: frühestmöglicher Termin.",
+      "portalUrl": "Die Anmeldeseite des Anbieters zu diesem Vertrag; auf der Vertragsseite und im Zählerverlauf als Link."
     },
     "types": {
       "electricity": "Strom",
@@ -2416,7 +2464,8 @@
     "noDocuments": "Keine Dokumente.",
     "openDocument": "Dokument ansehen",
     "fromBill": "Beleg einer Rechnung",
-    "unlink": "Lösen"
+    "unlink": "Lösen",
+    "openPortal": "Kundenportal öffnen"
   },
   "shortcutHelp": {
     "title": "Tastenkürzel",

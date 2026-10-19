@@ -1,4 +1,5 @@
 import { useTranslation } from '../i18n';
+import { codeLabel } from '../utils/codeLabels';
 
 const COLORS = {
   active: 'badge-green', aktiv: 'badge-green', open: 'badge-blue', offen: 'badge-blue',
@@ -24,6 +25,6 @@ export default function StatusBadge({ status, label: given }) {
   const key = value.toLowerCase();
   // Statuses are stored as English codes; show the translated word where there is one.
   const translated = t(`status.badge.${key}`);
-  const label = given || (translated === `status.badge.${key}` ? value : translated);
+  const label = given || (translated === `status.badge.${key}` ? codeLabel(value) : translated);
   return <span className={`badge ${COLORS[key] || 'badge-gray'}`}>{label}</span>;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRegistrationStatus, login, register } from '../api';
 import { useTranslation } from '../i18n';
+import BrandMark from '../components/BrandMark';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -47,9 +48,8 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <div className="login-logo">IM</div>
+          <div className="login-logo"><BrandMark /></div>
           <h1>ImmoManager <span className="pro">Pro</span></h1>
-          <p>{t('brand.slogan')}</p>
         </div>
         <form onSubmit={handleSubmit}>
           {error && <div className="alert-error">{error}</div>}

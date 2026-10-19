@@ -49,6 +49,7 @@ CONTEXTS = {
     "invoice-review": ("invoice", "InvoiceCreate"), "dunning": ("contract", "ContractCreate"),
     "conversation-note": ("contact", "ConversationNote"),
     "housing-confirmation": ("contract", "HousingForm"),
+    "billing-statement-letter": ("utility_statement", "BillingStatementLetter"),
     "handover-protocol-content": ("handover_protocol", "HandoverContent"),
     "rent-payment": ("contract", "RentPayment"),
     "invoice-review-action": ("invoice", "InvoiceReviewAction"),
@@ -58,6 +59,8 @@ CONTEXTS = {
     "contract-wizard": ("contract", "ContractWizard"),
 }
 CUSTOM_FIELDS = {
+    "BillingStatementLetter": {"sender_name", "sender_address", "recipient_name", "recipient_address", "issue_date",
+                              "subject", "salutation", "intro", "closing", "signature"},
     "InternalMessageReply": {"body"},
     "EmailComposition": {"to", "cc", "bcc", "subject", "body", "connection_id", "template_id", "reply_to_item_id", "attachments", "snippet_ids"},
     "ContractWizard": {"form"},
@@ -157,7 +160,7 @@ def context_area(context: str) -> str:
     return {"email-compose": "/messages", "message-reply": "/messages", "conversation-note": "/messages", "housing-confirmation": "/contracts", "contract-wizard": "/contracts",
             "handover-protocol-content": "/handover-protocols", "rent-payment": "/rent-charges",
             "invoice-review-action": "/invoices", "maintenance-protocol": "/maintenance",
-            "dunning-action": "/dunning"}.get(key, "/" + key)
+            "dunning-action": "/dunning", "billing-statement-letter": "/billing/statements"}.get(key, "/" + key)
 
 
 def _service_contract_form_fields() -> set[str]:
@@ -362,6 +365,19 @@ def resolve_context(store, entity_type: str, entity_id: str, actor_id: str, *, l
         portfolios = _portfolios(store, table_name, values, set(), properties)
         dependencies = sorted(_dependencies(store, table_name, values, set()), key=lambda item: (item["table"], item["id"])) \
             if include_dependencies else []
+        if include_dependencies and kind == "utility_statement":
+            # Correspondence depends on the recipient through the normal FKs,
+            # and on the actor's effective briefhead defaults through this small
+            # derived revision. No unrelated settings/history are materialized.
+            from .document_versions import Unit, memory_archive
+            from .settings_catalogue import effective
+            unit = Unit(store, getattr(store, "db", None), user, None if hasattr(store, "db") else memory_archive(store))
+            billing_property = _row(store, "billing_periods", str(values["billing_period_id"]))["property_id"]
+            defaults = {key: effective(unit, key, billing_property)[0] for key in
+                        ("document_sender", "document_address", "document_signature")}
+            dependencies.append({"table": "billing_letter_settings", "id": str(values["id"]),
+                "revision": hashlib.sha256(json.dumps(defaults, sort_keys=True, ensure_ascii=False).encode()).hexdigest()})
+            dependencies.sort(key=lambda item: (item["table"], item["id"]))
         title = next((str(values[key]) for key in ("title", "full_name", "name", "contract_number", "label",
                      "supplier", "description", "payment_text", "serial_number") if values.get(key)), kind)
         if kind == "contact":

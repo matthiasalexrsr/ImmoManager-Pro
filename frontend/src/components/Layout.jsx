@@ -5,6 +5,7 @@ import './Shell.css';
 import { useTranslation } from '../i18n';
 import { usePreferences } from '../contexts/PreferencesContext';
 import SearchBar from './SearchBar';
+import BrandMark from './BrandMark';
 import QuickAccess from '../features/workCenter/QuickAccess';
 import NotificationBell from './NotificationBell';
 import { TutorialProvider, useTutorial } from './Tutorial';
@@ -224,8 +225,8 @@ function LayoutFrame() {
       <aside ref={sidebarRef} className="sidebar" role={mobileNavOpen ? 'dialog' : undefined}
         aria-modal={mobileNavOpen ? true : undefined} aria-label={words.navigation} inert={mobile && !mobileNavOpen ? true : undefined}>
         <div className="sidebar-header">
-          <div className="sidebar-logo" aria-hidden="true">IM</div>
-          <div className="sidebar-brand"><span className="sidebar-brand-name">ImmoManager</span><span className="sidebar-brand-sub">PRO · {words.workspace}</span></div>
+          <div className="sidebar-logo"><BrandMark /></div>
+          <div className="sidebar-brand"><span className="sidebar-brand-name">ImmoManager</span><span className="sidebar-brand-sub">Pro</span></div>
           {mobile && <button ref={closeRef} type="button" className="sidebar-mobile-close" onClick={() => setMobileNavOpen(false)} aria-label={words.close}><CloseIcon size={20} /></button>}
         </div>
         <nav className="sidebar-nav" id="primary-navigation" aria-label={words.navigation}>
@@ -265,7 +266,7 @@ function LayoutFrame() {
         <div className="top-bar">
           <div className="top-bar-left">
             {mobile && <button ref={menuRef} type="button" className="top-bar-mobile-toggle" onClick={() => setMobileNavOpen(true)} aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={words.open}><MenuIcon size={20} /></button>}
-            <div className="top-bar-page-title"><span className="shell-context">{activeSection ? tr(activeSection.labelKey, activeSection.fallback) : words.workspace}</span><span className="shell-context-divider" aria-hidden="true">/</span><span>{currentPageTitle}</span>
+            <div className="top-bar-page-title">{activeSection && <><span className="shell-context">{tr(activeSection.labelKey, activeSection.fallback)}</span><span className="shell-context-divider" aria-hidden="true">/</span></>}<span>{currentPageTitle}</span>
               {activeItem && PINNABLE_PATHS.includes(activeItem.to) && (() => {
                 const pinned = favorites.includes(activeItem.to);
                 return <button type="button" className={`favorite-toggle${pinned ? ' is-pinned' : ''}`} aria-pressed={pinned}

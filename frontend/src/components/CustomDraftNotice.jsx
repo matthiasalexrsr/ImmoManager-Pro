@@ -3,6 +3,8 @@ import { useTranslation } from '../i18n';
 import './workspace.css';
 
 const LABELS = { body: 'Notiz', notes: 'Notizen', protocol_date: 'Übergabedatum', rooms: 'Räume', defects: 'Mängel', keys: 'Schlüssel', meters: 'Zähler',
+  sender_name: 'Absender', sender_address: 'Absenderanschrift', recipient_name: 'Empfänger', recipient_address: 'Empfängeranschrift',
+  subject: 'Betreff', salutation: 'Anrede', intro: 'Einleitung', closing: 'Schlussformel', signature: 'Unterschrift / Name',
   dwelling_address: 'Wohnungsanschrift', dwelling_label: 'Wohnung', housing_provider_name: 'Wohnungsgeber', housing_provider_address: 'Anschrift des Wohnungsgebers',
   owner_name: 'Eigentümer', actual_move_in_date: 'Tatsächlicher Einzug', issue_date: 'Ausstellungsdatum', issuer_name: 'Aussteller', issuer_role: 'Rolle',
   occupants: 'Einziehende Personen', owner_relation: 'Eigentümerbezug', tenant_signature: 'Unterschrift Mieter', landlord_signature: 'Unterschrift Vermieter',
