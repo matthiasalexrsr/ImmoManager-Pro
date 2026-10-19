@@ -573,7 +573,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     filterToggleRef.current?.focus();
   };
   // A table titled like its page ("Buchungen" under "Buchungen") shows the title to
-  // screen readers only: the same words twice add nothing on screen.
+  // screen readers only, and not as a second heading: it just names the table.
   const wrapperRef = useRef(null);
   const [repeatsPageTitle, setRepeatsPageTitle] = useState(false);
   useLayoutEffect(() => {
@@ -590,7 +590,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   return (
     <div ref={wrapperRef} className={`data-table-wrapper data-table-workspace${titleHidden ? ' table-title-hidden' : ''}`}>
       <div className="table-header">
-        <h2 id={titleId} className={titleHidden ? 'sr-only' : undefined}>{title}</h2>
+        {titleHidden ? <span id={titleId} className="sr-only">{title}</span> : <h2 id={titleId}>{title}</h2>}
         <div className="table-actions">
           {!serverPaged && <input
             ref={searchInputRef}
