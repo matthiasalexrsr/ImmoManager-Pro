@@ -696,7 +696,8 @@
         "date": "Date",
         "paymentText": "Booking text",
         "receiptUrl": "Receipt URL"
-      }
+      },
+      "account": "Account"
     },
     "categories": {
       "rentIncome": "Rent Income",

@@ -248,7 +248,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
-    { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text',
+    { key: 'account_name', hidden: true, label: t('finance.bookings.account') || 'Konto', filterType: 'text',
       render: (v, row) => (row.account_id ? <Link to={`/bookings?konto=${encodeURIComponent(row.account_id)}`} className="entity-link"
         onClick={e => e.stopPropagation()}>{v}</Link> : v) },
     { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
@@ -281,7 +281,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   ];
 
   const fields = [
-    { key: 'account_id', label: t('finance.accounts.form.name') || 'Konto', required: true, type: 'select',
+    { key: 'account_id', label: t('finance.bookings.account') || 'Konto', required: true, type: 'select',
       options: accounts.map(a => ({ value: a.id, label: a.name })) },
     { key: 'category_id', label: t('finance.bookings.form.category') || 'Kategorie', type: 'select',
       options: [{ value: '', label: noneOpt }, ...categories.map(c => ({ value: c.id, label: c.name }))] },

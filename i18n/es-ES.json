@@ -696,7 +696,8 @@
         "date": "Fecha",
         "paymentText": "Concepto",
         "receiptUrl": "URL del justificante"
-      }
+      },
+      "account": "Cuenta"
     },
     "categories": {
       "rentIncome": "Ingresos por alquiler",

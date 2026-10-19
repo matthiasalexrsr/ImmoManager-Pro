@@ -697,7 +697,8 @@
         "date": "Datum",
         "paymentText": "Buchungstext",
         "receiptUrl": "Beleg-URL"
-      }
+      },
+      "account": "Konto"
     },
     "categories": {
       "rentIncome": "Mieteinnahmen",
