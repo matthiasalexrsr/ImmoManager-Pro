@@ -840,3 +840,61 @@ def test_contract_takeover_upgrade_keeps_contracts_and_guards_the_downgrade(migr
     assert _triggers(db_path) == triggers      # dropped in place: the table keeps its triggers
     migrate(TAKEOVER_REVISION)
     assert {"ledger_start", "carried_balance"} <= _schema(db_path)["contracts"]
+
+
+ASSISTANT_REVISION = "f019a1b2c001"
+DEPOSIT_TAKEOVER_REVISION = "a7d3c5e9f2b1"
+DEPOSIT_TAKEOVER_COLUMNS = {"carried_on", "carried_amount", "carried_interest", "carried_note"}
+
+
+def test_deposit_takeover_upgrade_guards_settled_deposits_and_the_downgrade(migrate):
+    db_path = migrate(ASSISTANT_REVISION)
+    _seed_previous_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            INSERT INTO deposits (id, contract_id, amount, status, held_date, created_at, updated_at)
+                VALUES ('d1', 'c1', 1500, 'held', '2020-01-01', '2025-01-01', '2025-01-01');
+            INSERT INTO deposits (id, contract_id, amount, status, held_date, created_at, updated_at)
+                VALUES ('d2', 'c1', 600, 'held', '2021-01-01', '2025-01-01', '2025-01-01');
+            INSERT INTO deposit_settlements (id, deposit_id, kind, settlement_date, finalized_at)
+                VALUES ('s1', 'd1', 'final', '2026-06-30', '2026-07-01');
+        """)
+    migrate(DEPOSIT_TAKEOVER_REVISION)
+    assert DEPOSIT_TAKEOVER_COLUMNS <= _schema(db_path)["deposits"]
+    with sqlite3.connect(db_path) as conn:      # existing deposits are not taken over by the update
+        assert conn.execute("SELECT id, carried_on, carried_amount FROM deposits ORDER BY id").fetchall() == [
+            ("d1", None, None), ("d2", None, None)]
+        for statement in ("UPDATE deposits SET carried_amount = 1500 WHERE id = 'd1'",
+                          "UPDATE deposits SET amount = 1 WHERE id = 'd1'"):
+            with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+                conn.execute(statement)
+        conn.execute("UPDATE deposits SET carried_note = 'Vermerk', status = 'returned' WHERE id = 'd1'")
+        conn.execute("UPDATE deposits SET carried_on = '2025-01-01', carried_amount = 600 WHERE id = 'd2'")
+    with pytest.raises(RuntimeError, match="takeover of deposits"):
+        migrate.downgrade(ASSISTANT_REVISION)
+    assert _version(db_path) == DEPOSIT_TAKEOVER_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE deposits SET carried_note = NULL WHERE id = 'd1'")      # the note is not guarded
+        conn.execute("UPDATE deposits SET carried_on = NULL, carried_amount = NULL WHERE id = 'd2'")
+    triggers = _triggers(db_path)
+    migrate.downgrade(ASSISTANT_REVISION)
+    assert not DEPOSIT_TAKEOVER_COLUMNS & _schema(db_path)["deposits"]
+    assert _triggers(db_path) == triggers       # the earlier guard is back, the others untouched
+    with sqlite3.connect(db_path) as conn:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute("UPDATE deposits SET amount = 1 WHERE id = 'd1'")
+    migrate(DEPOSIT_TAKEOVER_REVISION)
+    assert DEPOSIT_TAKEOVER_COLUMNS <= _schema(db_path)["deposits"]
+
+
+def test_deposit_takeover_on_an_adopted_database(migrate):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{migrate.db_path}")
+    Base.metadata.create_all(engine)       # the columns and the extended guard exist already
+    engine.dispose()
+    migrate()
+    assert _version(migrate.db_path) == migrate.head and _missing_from(_schema(migrate.db_path)) == {}
+    with sqlite3.connect(migrate.db_path) as conn:
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'immo_deposits_settled_update'").fetchone()[0]
+    assert "carried_amount" in sql

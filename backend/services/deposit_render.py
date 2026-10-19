@@ -128,8 +128,12 @@ def render_pdf(review: dict) -> bytes:
                       for r in interest["rates"]) or "kein Zinssatz erfasst"
     facts = [("Zinssätze", rates),
              ("Berechnung", "Zinstage vom Eingang bis zum Stichtag (ausschließlich), tatsächliche Tage je "
-                            "Kalenderjahr; je Jahr kaufmännisch auf Cent gerundet und zum 31.12. gutgeschrieben."),
-             ("Berechnete Zinsen", euro(interest["computed"]))]
+                            "Kalenderjahr; je Jahr kaufmännisch auf Cent gerundet und zum 31.12. gutgeschrieben.")]
+    if interest.get("carried") is not None:      # a deposit taken over: interest credited before the takeover
+        carried = Decimal(interest["carried"])
+        facts += [("Bis zur Übernahme gutgeschrieben", euro(carried)),
+                  ("Seit der Übernahme berechnet", euro(Decimal(interest["computed"]) - carried))]
+    facts.append(("Berechnete Zinsen", euro(interest["computed"])))
     if interest.get("override") is not None:
         facts.append(("Angesetzte Zinsen", f"{euro(interest['override'])} – {interest.get('reason') or ''}"))
     story.append(_facts(facts, styles, width))

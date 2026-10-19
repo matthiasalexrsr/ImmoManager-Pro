@@ -6,14 +6,15 @@ remaining-claim receivable). From then on:
 
 * the settlement row and its items refuse UPDATE and DELETE;
 * the deposit's instalments, payments and interest rates refuse UPDATE and DELETE;
-* the deposit itself keeps its contract, amount and form (its status may still
-  change: a later release of a retention closes it), and cannot be deleted.
+* the deposit itself keeps its contract, amount, form and takeover (its status
+  may still change: a later release of a retention closes it), and cannot be deleted.
 
 INSERT is not guarded so that snapshot imports can rebuild a finalized file
 parents first; the application refuses new rows of a settled deposit itself.
 
 Installed wherever the tables are created: by Base.metadata.create_all() through
-the after_create event in deposit_models and by migration 3c7e9a1d5f20 (frozen copy).
+the after_create event in deposit_models and by migration 3c7e9a1d5f20 (frozen copy);
+migration a7d3c5e9f2b1 adds the takeover columns to the deposit's guarded columns.
 """
 
 MESSAGE = "finalized deposit settlements are immutable"
@@ -21,7 +22,7 @@ SETTLED = "SELECT 1 FROM deposit_settlements s WHERE s.deposit_id = OLD.{column}
 # (table, column naming the deposit) of the parts frozen with a finalized settlement
 PART_TABLES = (("deposit_instalments", "deposit_id"), ("deposit_interest_rates", "deposit_id"),
                ("deposit_payments", "deposit_id"))
-DEPOSIT_GUARDED = ("contract_id", "amount", "form")
+DEPOSIT_GUARDED = ("contract_id", "amount", "form", "carried_on", "carried_amount", "carried_interest")
 TRIGGERS_SQLITE = (
     ["immo_deposit_settlements_update", "immo_deposit_settlements_delete",
      "immo_deposit_settlement_items_update", "immo_deposit_settlement_items_delete",

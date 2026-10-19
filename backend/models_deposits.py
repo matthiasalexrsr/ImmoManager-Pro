@@ -168,6 +168,31 @@ class SecurityRequest(StrictModel):
     _multi = field_validator("release_note")(lambda v: _text(v, multi=True))
 
 
+class TakeoverRequest(StrictModel):
+    """A deposit paid before this app's bookings: received and credited until the takeover day.
+
+    All values empty removes the takeover."""
+    base_revision: str = Field(min_length=1, max_length=200)
+    carried_on: Optional[date] = None
+    carried_amount: Optional[float] = Field(None, gt=0, le=10_000_000)
+    carried_interest: Optional[float] = Field(None, ge=0, le=10_000_000)
+    carried_note: Optional[str] = Field(None, max_length=2000)
+
+    _multi = field_validator("carried_note")(lambda v: _text(v, multi=True))
+
+
+class LegacyTakeoverRequest(StrictModel):
+    """Deposits of the earlier plain records to take over as received on their receipt date."""
+    deposit_ids: list[str] = Field(min_length=1, max_length=2000)
+
+    @field_validator("deposit_ids")
+    @classmethod
+    def distinct(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Jede Kaution nur einmal angeben.")
+        return value
+
+
 class SettlementCreate(StrictModel):
     kind: SettlementKind = "final"
     settlement_date: Optional[date] = None

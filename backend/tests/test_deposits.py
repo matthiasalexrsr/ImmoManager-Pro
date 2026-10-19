@@ -316,6 +316,148 @@ def test_interest_periods_are_exact_and_need_no_invented_rate(client):
     assert [(y["year"], y["interest"]) for y in years[:2]] == [(2024, "15.00"), (2025, "7.58")]
 
 
+# ─── Takeover of a deposit paid before the app ───────────────────────────────
+
+def _take_over(client, deposit_id, **values):
+    revision = client.get(f"{BASE}/{deposit_id}/file").json()["deposit"]["revision"]
+    return client.put(f"{BASE}/{deposit_id}/takeover", json={"base_revision": revision, **values})
+
+
+def test_a_deposit_paid_before_the_app_is_taken_over_and_settled_with_its_interest(client):
+    estate = _estate()
+    detail = _file(client, estate)                               # 3 × 500 from 1 January 2024
+    deposit_id = detail["deposit"]["id"]
+    assert (detail["received"], detail["stage"]) == (0.0, "agreed")
+    client.put(f"{BASE}/{deposit_id}/interest-rates", json={
+        "base_revision": detail["deposit"]["revision"], "rates": [{"valid_from": "2024-01-01", "rate_percent": "1"}]})
+    before = _book(client, estate, 100, "2024-12-01", text="Kaution Rest (im Vorsystem verbucht)")
+
+    taken = _take_over(client, deposit_id, carried_on="2025-01-01", carried_amount=1500, carried_interest=15,
+                       carried_note="Kontoauszug Sparkasse vom 31.12.2024")
+    assert taken.status_code == 200, taken.text
+    detail = taken.json()
+    assert (detail["received"], detail["outstanding"], detail["surplus"], detail["stage"]) == (
+        1500.0, 0.0, 0.0, "received")
+    assert [i["status"] for i in detail["instalments"]] == ["paid", "paid", "paid"]
+    assert detail["deposit"]["carried_note"] == "Kontoauszug Sparkasse vom 31.12.2024"
+    # interest from the takeover day on 1500 + the 15.00 credited until then: 2025 = 1515 × 1 % = 15.15
+    assert detail["interest"]["carried"] == 15.0
+    assert (detail["interest"]["years"][0]["year"], detail["interest"]["years"][0]["principal_start"],
+            detail["interest"]["years"][0]["interest"]) == (2025, "1515.00", "15.15")
+    assert detail["interest"]["total"] == 15.0 + sum(float(y["interest"]) for y in detail["interest"]["years"])
+    listed = client.get(f"{BASE}/files").json()["items"][0]
+    assert (listed["received"], listed["outstanding"], listed["stage"]) == (1500.0, 0.0, "received")
+    # a booking before the takeover day is part of the carried amount
+    candidates = client.get(f"{BASE}/{deposit_id}/payment-candidates").json()["items"]
+    assert before["id"] not in {row["booking_id"] for row in candidates}
+    refused = _receive(client, deposit_id, before["id"])
+    assert refused.status_code == 400 and "Übernahmetag" in _message(refused)
+
+    draft = client.post(f"{BASE}/{deposit_id}/settlements", json={"kind": "final"}).json()["settlements"][0]
+    assert not any(p["code"] in ("no_receipt", "not_fully_received") for p in draft["problems"])
+    # 15.00 carried + 2025: 15.15 + 2026 to 30 June: 1530.15 × 1 % × 180/365 = 7.5459 → 7.55
+    assert draft["interest"]["carried"] == 15.0 and draft["interest"]["computed"] == 37.7
+    assert (draft["outcome"]["principal"], draft["outcome"]["interest"], draft["outcome"]["payout"]) == (
+        "1500.00", "37.70", "1537.70")
+    preview, final = _finalize(client, deposit_id, draft["id"])
+    assert final.status_code == 200, final.text
+    done = final.json()
+    assert done["stage"] == "settled"
+    original = done["settlements"][0]["original"]
+    assert original["outcome"]["payout"] == "1537.70" and original["interest"]["carried"] == "15.00"
+    payout = next(b for b in store.list_bookings() if b.id == done["settlements"][0]["payout_booking_id"])
+    assert payout.amount == -1537.70
+    # a settled deposit keeps its takeover
+    assert _take_over(client, deposit_id).status_code == 409
+    if SQL:
+        with store.db.get_bind().connect() as connection:
+            for statement in ("UPDATE deposits SET carried_amount = 1", "UPDATE deposits SET carried_on = NULL"):
+                with pytest.raises(sa.exc.DBAPIError, match="immutable"):
+                    with connection.begin():
+                        connection.exec_driver_sql(statement)
+
+
+def test_takeover_rules(client):
+    estate = _estate()
+    deposit_id = _file(client, estate)["deposit"]["id"]
+    for values, status, text in (
+            ({"carried_on": "2099-01-01", "carried_amount": 500}, 400, "Zukunft"),
+            ({"carried_amount": 500}, 400, "Übernahmetag"),
+            ({"carried_on": "2025-01-01"}, 400, "Übernahmetag"),
+            ({"carried_on": "2025-01-01", "carried_amount": 500.005}, 400, "Nachkommastellen"),
+            ({"carried_interest": 5}, 400, "übernommenen Betrag"),
+    ):
+        response = _take_over(client, deposit_id, **values)
+        assert response.status_code == status and text in _message(response), (values, response.text)
+    stale = client.put(f"{BASE}/{deposit_id}/takeover", json={"base_revision": "stale", "carried_on": "2025-01-01",
+                                                              "carried_amount": 500})
+    assert stale.status_code == 409
+    # a receipt linked before the day would count twice
+    early = _book(client, estate, 500, "2024-01-01")
+    assert _receive(client, deposit_id, early["id"]).status_code == 200
+    clash = _take_over(client, deposit_id, carried_on="2025-01-01", carried_amount=1000)
+    assert clash.status_code == 409 and "doppelt" in _message(clash)
+    # with a takeover from 1 January 2024 the receipt that day counts in addition
+    combined = _take_over(client, deposit_id, carried_on="2024-01-01", carried_amount=1000).json()
+    assert (combined["received"], combined["stage"]) == (1500.0, "received")
+    assert _agreement(client, estate).status_code == 201       # another file of the contract is untouched
+    guarantee = client.put(f"{BASE}/{deposit_id}/agreement", json={
+        "base_revision": combined["deposit"]["revision"], "contract_id": estate["contract"].id, "amount": 1500,
+        "form": "guarantee"})
+    assert guarantee.status_code == 409
+    removed = _take_over(client, deposit_id).json()
+    assert removed["received"] == 500.0 and removed["deposit"]["carried_on"] is None
+    # read-only roles cannot take over
+    readonly = _client(_user("rita", "readonly"))
+    assert _take_over(readonly, deposit_id, carried_on="2024-01-01", carried_amount=1000).status_code == 403
+
+
+def test_earlier_plain_records_are_taken_over_in_one_step(client):
+    north, south, east = _estate("Nord", "N-1"), _estate("Süd", "S-1"), _estate("Ost", "O-1")
+    held = client.post(BASE, json={"contract_id": north["contract"].id, "amount": 1500, "status": "held",
+                                   "held_date": "2024-01-01"}).json()
+    other = client.post(BASE, json={"contract_id": south["contract"].id, "amount": 900.5, "status": "held",
+                                    "held_date": "2023-05-02"}).json()
+    undated = client.post(BASE, json={"contract_id": east["contract"].id, "amount": 800}).json()
+    returned = client.post(BASE, json={"contract_id": east["contract"].id, "amount": 700, "status": "returned",
+                                       "held_date": "2020-01-01", "return_date": "2023-12-31"}).json()
+    agreement = _file(client, east)["deposit"]["id"]          # a file of this version: not a plain record
+    stages = {row["id"]: row["stage"] for row in client.get(f"{BASE}/files").json()["items"]}
+    assert stages[returned["id"]] == "settled"                 # returned with the earlier record, not "agreed"
+
+    candidates = client.get(f"{BASE}/legacy-takeover").json()
+    assert {row["id"] for row in candidates["items"]} == {held["id"], other["id"]}
+    assert (candidates["count"], candidates["amount"]) == (2, 2400.5)
+    assert undated["id"] not in {row["id"] for row in candidates["items"]} and agreement
+    readonly = _client(_user("rita", "readonly"))
+    assert readonly.post(f"{BASE}/legacy-takeover", json={"deposit_ids": [held["id"]]}).status_code == 403
+
+    done = client.post(f"{BASE}/legacy-takeover", json={"deposit_ids": [row["id"] for row in candidates["items"]]})
+    assert done.status_code == 200 and done.json() == {"taken_over": 2}
+    north_file = client.get(f"{BASE}/{held['id']}/file").json()
+    assert (north_file["received"], north_file["stage"], north_file["deposit"]["carried_on"]) == (
+        1500.0, "received", "2024-01-01")
+    assert "bisherigen Kautionsdatensatz" in north_file["deposit"]["carried_note"]
+    assert north_file["legacy_candidate"] is False
+    assert client.get(f"{BASE}/legacy-takeover").json()["count"] == 0
+    # all or none: a record that is no longer a plain one refuses the whole request
+    again = client.post(f"{BASE}/legacy-takeover", json={"deposit_ids": [held["id"]]})
+    assert again.status_code == 409 and "nichts wurde übernommen" in _message(again)
+    # a restricted account takes over only what it sees
+    later = client.post(BASE, json={"contract_id": south["contract"].id, "amount": 300, "status": "held",
+                                    "held_date": "2024-02-01"}).json()
+    staff = _client(_user("staff", "verwalter", portfolio_access="selected", portfolio_ids=[north["portfolio"].id]))
+    assert staff.get(f"{BASE}/legacy-takeover").json()["count"] == 0
+    assert staff.post(f"{BASE}/legacy-takeover", json={"deposit_ids": [later["id"]]}).status_code == 404
+    # the takeover travels with snapshots
+    data = export_snapshot(store)
+    _reset_data()
+    import_snapshot(store, data, replace=True)
+    restored = client.get(f"{BASE}/{other['id']}/file").json()
+    assert (restored["received"], restored["deposit"]["carried_on"], restored["deposit"]["carried_amount"]) == (
+        900.5, "2023-05-02", 900.5)
+
+
 # ─── Settlement ──────────────────────────────────────────────────────────────
 
 def _move_out_protocol(client, estate):

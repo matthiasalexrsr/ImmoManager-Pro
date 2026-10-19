@@ -14,6 +14,11 @@
   the offset receivables. Releasing a retention later is its own settlement with its
   own original.
 * Guarantee / pledged savings book: no booking; provided and released with date and proof.
+* Takeover: a deposit paid before this app's bookings begin has no booking to link. The
+  file takes the day from which the app keeps it, the deposit received and the interest
+  credited until then; that amount counts as received on that day (instalments,
+  interest, settlement), and bookings before that day are part of it. The plain records
+  of earlier versions (status "held" with a receipt date) can be taken over in one step.
 
 All database work runs in document_versions.work() units (SQL session, or memory with
 undo) called from synchronous endpoints in the thread pool. Writes re-check the
@@ -65,11 +70,13 @@ from ..models_deposits import (
     DepositSettlement,
     DepositSettlementItem,
     FinalizeRequest,
+    LegacyTakeoverRequest,
     RatesRequest,
     ReceiptRequest,
     SecurityRequest,
     SettlementContent,
     SettlementCreate,
+    TakeoverRequest,
 )
 from ..storage import NotFoundError
 from . import document_versions as archive
@@ -290,6 +297,28 @@ def _receipts(unit: archive.Unit, deposit_id: str) -> list[tuple[DepositPayment,
     return sorted(result, key=lambda pair: (pair[1].booking_date if pair[1] else date.min, pair[0].id))
 
 
+def _carried(deposit: Deposit) -> tuple[date, Decimal, Decimal] | None:
+    """The takeover of a deposit paid before the app's bookings: day, amount received, interest credited."""
+    if deposit.carried_on is None or not deposit.carried_amount:
+        return None
+    return deposit.carried_on, money(deposit.carried_amount), money(deposit.carried_interest or 0)
+
+
+def _received(deposit: Deposit, links: Iterable[DepositPayment]) -> Decimal:
+    """The deposit received: the takeover plus the linked receipts (corrections negative)."""
+    carried = _carried(deposit)
+    return (carried[1] if carried else ZERO) + sum((money(link.amount) for link in links if link.kind == "receipt"),
+                                                    ZERO)
+
+
+def _events(deposit: Deposit, pairs: Iterable[tuple[DepositPayment, Booking | None]]) -> list[tuple[date, Decimal]]:
+    """The balance changes that bear interest: the takeover (with the interest credited until then) and the
+    visible receipts."""
+    carried = _carried(deposit)
+    events = [(carried[0], carried[1] + carried[2])] if carried else []
+    return events + [(booking.booking_date, money(link.amount)) for link, booking in pairs if booking is not None]
+
+
 def _rates(unit: archive.Unit, deposit_id: str) -> list[rules.RatePeriod]:
     return [rules.RatePeriod(rate.valid_from, rules.parse_rate(rate.rate_percent))
             for rate in unit.store.list_deposit_interest_rates(deposit_id)]
@@ -300,8 +329,7 @@ def _interest(unit: archive.Unit, deposit: Deposit, until: date,
     if deposit.form not in rules.MONEY_FORMS:
         return rules.InterestResult(ZERO)
     if events is None:
-        events = [(booking.booking_date, money(link.amount)) for link, booking in _receipts(unit, deposit.id)
-                  if booking is not None]
+        events = _events(deposit, _receipts(unit, deposit.id))
     return rules.interest(events, _rates(unit, deposit.id), until)
 
 
@@ -331,6 +359,8 @@ def _stage(deposit: Deposit, received: Decimal, settlements: list[DepositSettlem
             "settlement_draft" if release is not None else "settled")
     if final is not None:
         return "settlement_draft"
+    if deposit.status in ("returned", "partially_returned"):
+        return "settled"        # returned with an earlier version's plain record, before the deposit file
     if received <= 0:
         return "agreed"
     return "received" if received >= money(deposit.amount) else "partially_received"
@@ -453,6 +483,9 @@ def update_agreement(store, deposit_id: str, payload: AgreementRequest, actor_id
         if links and payload.form in rules.SECURITY_FORMS:
             raise _conflict("Für diese Kaution sind Zahlungen erfasst; Bürgschaft oder Sparbuch passen nicht dazu. "
                             "Bitte zuerst die Zahlungen lösen.")
+        if deposit.carried_on is not None and payload.form in rules.SECURITY_FORMS:
+            raise _conflict("Für diese Kaution ist ein übernommener Bestand erfasst; Bürgschaft oder Sparbuch passen "
+                            "nicht dazu. Bitte zuerst die Übernahme entfernen.")
         if deposit.form in rules.SECURITY_FORMS and deposit.released_on:
             raise _conflict("Die Sicherheit ist freigegeben; die Vereinbarung bleibt unverändert.")
         contract, prop, *_ = _parents(unit, payload.contract_id, lock=payload.contract_id != deposit.contract_id)
@@ -534,10 +567,13 @@ def payment_candidates(store, deposit_id: str, actor_id: str) -> dict[str, Any]:
         contract, *_ = _parents(unit, deposit.contract_id)
         receipts = {link.booking_id: link for link, _ in _receipts(unit, deposit.id)}
         linked = {link.booking_id for link in unit.store.list_deposit_payments(deposit.id)}
+        carried = _carried(deposit)
         found = []
         if deposit.form in rules.MONEY_FORMS:
             for booking in unit.store.list_bookings(tenant_id=contract.tenant_id):
                 if booking.id in linked or (deposit.account_id and booking.account_id != deposit.account_id):
+                    continue
+                if carried and booking.booking_date < carried[0]:
                     continue
                 if money(booking.amount) < 0 and booking.reverses_booking_id not in receipts:
                     continue
@@ -571,6 +607,10 @@ def add_receipt(store, deposit_id: str, payload: ReceiptRequest, actor_id: str) 
             raise HTTPException(400, "Die Buchung liegt nicht auf dem Konto, auf dem die Kaution geführt wird.")
         if any(link.booking_id == booking.id for link in unit.store.list_deposit_payments(deposit.id)):
             raise _conflict("Diese Buchung ist der Kaution bereits zugeordnet.")
+        carried = _carried(deposit)
+        if carried and booking.booking_date < carried[0]:
+            raise HTTPException(400, f"Die Buchung vom {booking.booking_date:%d.%m.%Y} liegt vor dem Übernahmetag "
+                                     f"{carried[0]:%d.%m.%Y}; sie ist im übernommenen Bestand enthalten.")
         receipts = {link.booking_id: link for link, _ in _receipts(unit, deposit.id)}
         if money(booking.amount) < 0 and booking.reverses_booking_id not in receipts:
             raise HTTPException(400, "Eine Rückbuchung zählt nur als Korrektur einer zugeordneten Kautionszahlung.")
@@ -644,6 +684,117 @@ def set_rates(store, deposit_id: str, payload: RatesRequest, actor_id: str) -> d
                 note=rate.note, created_at=stamp, updated_at=stamp))
         _flush(unit)
         return _detail(unit, _touch(unit, deposit))
+
+
+# ─── Takeover (deposit paid before this app's bookings) ─────────────────────
+
+TAKEOVER_FIELDS = ("carried_on", "carried_amount", "carried_interest", "carried_note")
+
+
+def _cents(value: float | None, label: str) -> Decimal | None:
+    if value is None:
+        return None
+    amount = money(value)
+    if amount != Decimal(str(value)):
+        raise HTTPException(400, f"{label} hat höchstens zwei Nachkommastellen.")
+    return amount
+
+
+def _takeover_changes(unit: archive.Unit, deposit: Deposit, payload: TakeoverRequest) -> dict[str, Any]:
+    amount = _cents(payload.carried_amount, "Der übernommene Betrag")
+    interest = _cents(payload.carried_interest, "Die übernommenen Zinsen")
+    if amount is None and payload.carried_on is None:
+        if interest or payload.carried_note:
+            raise HTTPException(400, "Zinsen und Vermerk gehören zu einem übernommenen Betrag mit Übernahmetag.")
+        return dict.fromkeys(TAKEOVER_FIELDS)
+    if deposit.form not in rules.MONEY_FORMS:
+        raise _conflict("Bürgschaft und verpfändetes Sparbuch werden mit Datum und Nachweis erfasst, nicht übernommen.")
+    if amount is None or payload.carried_on is None:
+        raise HTTPException(400, "Für die Übernahme bitte den Übernahmetag und den bis dahin eingegangenen Betrag "
+                                 "angeben.")
+    if payload.carried_on > date.today():
+        raise HTTPException(400, "Der Übernahmetag liegt in der Zukunft.")
+    earlier = [booking for link, booking in _receipts(unit, deposit.id)
+               if booking is not None and booking.booking_date < payload.carried_on]
+    if earlier:
+        raise _conflict(f"{len(earlier)} zugeordnete Zahlung(en) liegen vor dem Übernahmetag und wären doppelt "
+                        "gezählt. Bitte sie zuerst lösen oder einen früheren Übernahmetag wählen.")
+    return {"carried_on": payload.carried_on, "carried_amount": float(amount),
+            "carried_interest": float(interest) if interest else None, "carried_note": payload.carried_note}
+
+
+def set_takeover(store, deposit_id: str, payload: TakeoverRequest, actor_id: str) -> dict[str, Any]:
+    """Record (or remove) what was received and credited before the app's bookings begin."""
+    with archive.work(store, actor_id, write_areas=EDIT_AREAS) as unit:
+        deposit = _deposit(unit, deposit_id)
+        _parents(unit, deposit.contract_id, lock=True, deposit_id=deposit.id)
+        deposit = _deposit(unit, deposit_id)
+        _check_revision(deposit, payload.base_revision)
+        _require_open(unit, deposit)
+        updated = deposit.model_copy(update={**_takeover_changes(unit, deposit, payload), "updated_at": now()})
+        _put(unit, "deposits", updated)
+        _flush(unit)
+        return _detail(unit, updated)
+
+
+def _legacy_candidate(unit: archive.Unit, deposit: Deposit, used: set[str] | None = None) -> bool:
+    """A plain record of an earlier version: held since its receipt date, nothing of the file recorded yet.
+
+    `used` names the deposits with payments, settlements or instalments (read once for a list)."""
+    if not (deposit.form in rules.MONEY_FORMS and deposit.status == "held" and deposit.held_date is not None
+            and deposit.held_date <= date.today() and money(deposit.amount) > 0 and deposit.carried_on is None):
+        return False
+    if used is not None:
+        return deposit.id not in used
+    return not (unit.store.list_deposit_payments(deposit.id) or _settlements(unit, deposit.id)
+                or unit.store.list_deposit_instalments(deposit.id))
+
+
+def legacy_candidates(store, actor_id: str) -> dict[str, Any]:
+    """The earlier plain records the takeover in one step would take over as received."""
+    with archive.work(store, actor_id) as unit:
+        contracts = {c.id: c for c in unit.store.list_contracts()}
+        tenants = {t.id: t for t in unit.store.list_tenants()}
+        used = ({row.deposit_id for row in unit.store.list_deposit_payments()}
+                | {row.deposit_id for row in unit.store.list_deposit_settlements()}
+                | {row.deposit_id for row in unit.store.list_deposit_instalments()})
+        items = []
+        for deposit in unit.store.list_deposits():
+            contract = contracts.get(deposit.contract_id)
+            if contract is None or not _legacy_candidate(unit, deposit, used):
+                continue
+            tenant = tenants.get(contract.tenant_id)
+            items.append({"id": deposit.id, "contract_id": contract.id, "contract_number": contract.contract_number,
+                          "tenant_name": tenant.full_name if tenant else None,
+                          "amount": _num(money(deposit.amount)), "held_date": deposit.held_date.isoformat()})
+        items.sort(key=lambda row: ((row["tenant_name"] or "").casefold(), row["contract_number"] or "", row["id"]))
+        return {"items": items, "count": len(items),
+                "amount": _num(sum((Decimal(str(row["amount"])) for row in items), ZERO))}
+
+
+def take_over_legacy(store, payload: LegacyTakeoverRequest, actor_id: str) -> dict[str, Any]:
+    """Take over the named plain records as received on their receipt date, all or none."""
+    with archive.work(store, actor_id, write_areas=EDIT_AREAS) as unit:
+        stamp = now()
+        refused = []
+        for deposit_id in sorted(payload.deposit_ids):         # one lock order for parallel requests
+            deposit = _deposit(unit, deposit_id)
+            _parents(unit, deposit.contract_id, lock=True, deposit_id=deposit.id)
+            deposit = _deposit(unit, deposit_id)
+            if not _legacy_candidate(unit, deposit):
+                refused.append(deposit_id)
+                continue
+            assert deposit.held_date is not None
+            _put(unit, "deposits", deposit.model_copy(update={
+                "carried_on": deposit.held_date, "carried_amount": float(money(deposit.amount)),
+                "carried_interest": None,
+                "carried_note": f"Aus dem bisherigen Kautionsdatensatz übernommen (Eingang {deposit.held_date:%d.%m.%Y}).",
+                "updated_at": stamp}))
+            _flush(unit)       # before the next lock: reading again (expire_all) would drop unflushed changes
+        if refused:
+            raise _conflict(f"{len(refused)} der Kautionen sind inzwischen keine Altbestände mehr (Zahlungen, "
+                            "Raten oder Abrechnung erfasst). Bitte die Liste neu laden; nichts wurde übernommen.")
+        return {"taken_over": len(payload.deposit_ids)}
 
 
 # ─── Guarantee and pledged savings book ──────────────────────────────────────
@@ -870,21 +1021,27 @@ def _evaluate(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlemen
     problems: list[dict[str, Any]] = []
     previous = None
     receipts: list[dict[str, Any]] = []
+    carried_interest: Decimal | None = None      # credited before the takeover (final settlement only)
     if settlement.kind == "final":
         pairs = _receipts(unit, deposit.id)
         if any(booking is None for _, booking in pairs):
             problems.append(_problem("hidden_receipt", "Nicht alle Kautionszahlungen sind für dieses Konto sichtbar."))
         visible = [(link, booking) for link, booking in pairs if booking is not None]
-        principal = sum((money(link.amount) for link, _ in pairs), ZERO)
-        receipts = [{"booking_id": booking.id, "booking_date": booking.booking_date.isoformat(),
-                     "amount": _text(money(link.amount)),
-                     "label": booking.payment_text or ("Korrektur" if money(link.amount) < 0 else "Zahlungseingang")}
-                    for link, booking in visible]
-        events = [(booking.booking_date, money(link.amount)) for link, booking in visible]
+        principal = _received(deposit, [link for link, _ in pairs])
+        carried = _carried(deposit)
+        if carried:
+            carried_interest = carried[2]
+            receipts.append({"booking_id": None, "booking_date": carried[0].isoformat(), "amount": _text(carried[1]),
+                             "label": "Übernommener Bestand (vor Beginn der Buchungen in der App)"})
+        receipts += [{"booking_id": booking.id, "booking_date": booking.booking_date.isoformat(),
+                      "amount": _text(money(link.amount)),
+                      "label": booking.payment_text or ("Korrektur" if money(link.amount) < 0 else "Zahlungseingang")}
+                     for link, booking in visible]
+        events = _events(deposit, visible)
         if principal <= 0:
             problems.append(_problem("no_receipt", "Es ist kein Eingang der Kaution erfasst; eine Abrechnung ohne "
                                                    "Kaution ist nicht nötig."))
-        if any(booking.booking_date > day for _, booking in visible):
+        if any(booking.booking_date > day for _, booking in visible) or (carried and carried[0] > day):
             problems.append(_problem("receipt_after_date", "Ein Eingang liegt nach dem Abrechnungstag.",
                                      blocking=False))
         if principal < money(deposit.amount):
@@ -912,10 +1069,11 @@ def _evaluate(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlemen
             problems.append(_problem("date_before_final", "Die Freigabe liegt vor der Kautionsabrechnung."))
     computed = (rules.interest(events, _rates(unit, deposit.id), day) if deposit.form in rules.MONEY_FORMS
                 else rules.InterestResult(ZERO))
-    interest_amount = computed.total
+    computed_total = computed.total + (carried_interest or ZERO)
+    interest_amount = computed_total
     if settlement.interest_amount is not None:
         interest_amount = money(settlement.interest_amount)
-        if interest_amount != computed.total and not settlement.interest_reason:
+        if interest_amount != computed_total and not settlement.interest_reason:
             problems.append(_problem("interest_reason", "Abweichende Zinsen brauchen eine Begründung (z. B. "
                                                         "Gutschrift laut Kontoauszug)."))
 
@@ -966,7 +1124,8 @@ def _evaluate(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlemen
     if outcome is not None and (outcome.payout > 0 or arrears > 0) and not deposit.account_id:
         problems.append(_problem("account_needed", "Für Auszahlung und Verrechnung beim Abschluss ein Konto wählen.",
                                  blocking=False))
-    return {"items": items, "principal": principal, "computed": computed, "interest": interest_amount,
+    return {"items": items, "principal": principal, "computed": computed, "computed_total": computed_total,
+            "carried_interest": carried_interest, "interest": interest_amount,
             "outcome": outcome, "problems": problems, "receipts": receipts, "previous": previous, "arrears": arrears}
 
 
@@ -997,7 +1156,7 @@ def _review(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlement)
                    "amount": _text(money(i.amount)), "reason": i.reason, "handover_defect_id": i.handover_defect_id,
                    "receivable_id": i.receivable_id} for i in evaluation["items"]],
         "receipts": evaluation["receipts"],
-        "interest": {"computed": _text(computed.total),
+        "interest": {"computed": _text(evaluation["computed_total"]),
                      "override": _text(money(settlement.interest_amount))
                      if settlement.interest_amount is not None else None,
                      "reason": settlement.interest_reason,
@@ -1008,6 +1167,8 @@ def _review(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlement)
         "previous": evaluation["previous"],
         "source": _source(contract, prop, location, tenant, portfolio),
     }
+    if evaluation["carried_interest"] is not None:     # only with a takeover: other reviews keep their shape
+        review["interest"]["carried"] = _text(evaluation["carried_interest"])
     pdf = render_pdf(review) if review["outcome"] is not None else b""
     review["pdf_sha256"] = hashlib.sha256(pdf).hexdigest()
     return review, digest(review), pdf, evaluation, (contract, prop, location, tenant, portfolio)
@@ -1289,7 +1450,10 @@ def _settlement_json(unit: archive.Unit, deposit: Deposit, settlement: DepositSe
     taken = {item.receivable_id for item in items if item.receivable_id}
     result.update({
         "outcome": _outcome_json(evaluation["outcome"]),
-        "interest": {"computed": _num(evaluation["computed"].total), "years": _interest_json(evaluation["computed"])},
+        "interest": {"computed": _num(evaluation["computed_total"]),
+                     "carried": _num(evaluation["carried_interest"])
+                     if evaluation["carried_interest"] is not None else None,
+                     "years": _interest_json(evaluation["computed"])},
         "problems": evaluation["problems"],
         "suggestions": {
             "defects": [{"id": defect.id, "room": room, "description": defect.description, "remedy": defect.remedy,
@@ -1309,8 +1473,7 @@ def _settlement_json(unit: archive.Unit, deposit: Deposit, settlement: DepositSe
 
 def _brief(unit: archive.Unit, deposit: Deposit) -> dict[str, Any]:
     settlements = _settlements(unit, deposit.id)
-    received = sum((money(link.amount) for link in unit.store.list_deposit_payments(deposit.id)
-                    if link.kind == "receipt"), ZERO)
+    received = _received(deposit, unit.store.list_deposit_payments(deposit.id))
     final = _final(settlements)
     retention = (_retention(unit.store.list_deposit_settlement_items(final.id))
                  if final is not None and final.finalized_at is not None else ZERO)
@@ -1324,10 +1487,14 @@ def _detail(unit: archive.Unit, deposit: Deposit) -> dict[str, Any]:
     settlements = _settlements(unit, deposit.id)
     links = unit.store.list_deposit_payments(deposit.id)
     receipts = _receipts(unit, deposit.id)
-    received = sum((money(link.amount) for link, _ in receipts), ZERO)
-    states, surplus = rules.apply_receipts(
+    received = _received(deposit, [link for link, _ in receipts])
+    carried = _carried(deposit)
+    states, _ = rules.apply_receipts(
         _instalments(unit, deposit.id),
-        [(booking.booking_date if booking else date.min, money(link.amount)) for link, booking in receipts])
+        ([(carried[0], carried[1])] if carried else [])
+        + [(booking.booking_date if booking else date.min, money(link.amount)) for link, booking in receipts])
+    # beyond the agreed amount (the plain records of earlier versions have no instalments to compare with)
+    surplus = max(received - money(deposit.amount), ZERO)
     final = _final(settlements)
     retention = (_retention(unit.store.list_deposit_settlement_items(final.id))
                  if final is not None and final.finalized_at is not None else ZERO)
@@ -1368,8 +1535,10 @@ def _detail(unit: archive.Unit, deposit: Deposit) -> dict[str, Any]:
                      for row in sorted(links, key=lambda r: (
                          bookings[r.booking_id].booking_date if bookings.get(r.booking_id) else date.min, r.id))],
         "interest_rates": [r.model_dump(mode="json") for r in unit.store.list_deposit_interest_rates(deposit.id)],
-        "interest": {"until": until.isoformat(), "total": _num(interest.total), "years": _interest_json(interest),
+        "interest": {"until": until.isoformat(), "total": _num(interest.total + (carried[2] if carried else ZERO)),
+                     "carried": _num(carried[2]) if carried else None, "years": _interest_json(interest),
                      "balance": _num(interest.balance)},
+        "legacy_candidate": _legacy_candidate(unit, deposit),
         "retention": _num(retention),
         "settlements": [_settlement_json(unit, deposit, s, contract)
                         for s in sorted(settlements, key=lambda s: order.get(s.kind, 9))],
@@ -1404,7 +1573,7 @@ def files(store, actor_id: str, *, contract_id: str | None = None, stage: str | 
             contract = contracts.get(deposit.contract_id)
             if contract is None or (contract_id and deposit.contract_id != contract_id):
                 continue
-            received = sum((money(link.amount) for link in links[deposit.id] if link.kind == "receipt"), ZERO)
+            received = _received(deposit, links[deposit.id])
             final = _final(settlements[deposit.id])
             retention = (_retention(unit.store.list_deposit_settlement_items(final.id))
                          if final is not None and final.finalized_at is not None else ZERO)

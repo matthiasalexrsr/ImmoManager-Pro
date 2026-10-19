@@ -1045,6 +1045,11 @@ class Deposit(DepositCreate):
     released_on: Optional[date] = None
     release_document_id: Optional[str] = None
     release_note: Optional[str] = None
+    # takeover of a deposit paid before the app's bookings: set through the takeover endpoint only
+    carried_on: Optional[date] = None
+    carried_amount: Optional[float] = None
+    carried_interest: Optional[float] = None
+    carried_note: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
