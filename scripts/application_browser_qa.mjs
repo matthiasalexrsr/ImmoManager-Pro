@@ -213,9 +213,11 @@ try {
   for (const width of [320, 360, 1440]) {
     await step(`All ${routes.length} application pages at ${width}px: visible text, navigation targets, errors and overflow`, async () => {
       await page.setViewportSize({ width, height: 1000 });
+      const failures = [];
       for (const route of routes) {
         current = `${route} (${width}px)`;
         const started = Date.now();
+        try {
         await page.goto(base.origin + route);
         await page.waitForLoadState('networkidle');
         await fits();
@@ -237,7 +239,13 @@ try {
           assert.ok(validPaths.some(pattern => pattern.test(pathname)), `${current}: unknown internal page ${pathname}`);
         }
         report.pages.push({ route, width, ok: true, duration_ms: Date.now() - started });
+        } catch (error) {
+          const failure = { route, width, ok: false, error: String(error) };
+          report.pages.push(failure); failures.push(failure);
+          await page.screenshot({ path: path.join(output, `failure-${width}-${route.replace(/[^a-z0-9]/gi, '_')}.png`), fullPage: true });
+        }
       }
+      assert.deepEqual(failures, [], 'Application pages failed: ' + JSON.stringify(failures));
       await shot(`application-last-page-${width}.png`);
     });
   }

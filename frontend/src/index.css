@@ -329,7 +329,8 @@ a:hover {
 :where(.main-content-body .page > h1, .main-content-body .page-header) { margin-bottom: var(--space-5); }
 :where(.main-content-body .page-header) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
 :where(.main-content-body .page-header > h1) { margin: 0; }
-.page-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.page-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.page-header-actions .btn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 
 .page-subtitle {
   color: var(--color-text-secondary);
