@@ -130,7 +130,7 @@ describe('Statements objection decisions', () => {
     fireEvent.click(screen.getByText('pages.statements.dispute'));
     fireEvent.change(screen.getByLabelText('Begründung des Widerspruchs'), { target: { value: 'Bereits erfasster Einwand' } });
     await act(async () => { fireEvent.click(screen.getByText('Widerspruch speichern')); });
-    expect(screen.getAllByText('corrected').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Korrigiert').length).toBeGreaterThan(0);
     expect(screen.queryByText('pages.statements.dispute')).not.toBeInTheDocument();
     expect(api.post).toHaveBeenCalledTimes(1);
   });

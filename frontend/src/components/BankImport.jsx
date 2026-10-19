@@ -109,8 +109,8 @@ export default function BankImport({ accounts, onImported }) {
       {profileError && <p role="status">{profileError}</p>}
       <label>Konto <select value={account} onChange={e => { setAccount(e.target.value); setHistory(null); }}><option value="">Bitte auswählen</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>{' '}
       <label>Originaldatei <input type="file" onChange={e => setFile(e.target.files[0])} /></label>
-      <label>Format <select value={format} onChange={e => setFormat(e.target.value)}>{['csv', 'mt940', 'camt'].map(v => <option key={v}>{v}</option>)}</select></label>{' '}
-      <label>Kodierung <select value={encoding} onChange={e => setEncoding(e.target.value)}>{['utf-8-sig', 'cp1252', 'iso-8859-1', 'utf-16'].map(v => <option key={v}>{v}</option>)}</select></label>
+      <label>Format <select value={format} onChange={e => setFormat(e.target.value)}>{[['csv', 'CSV'], ['mt940', 'MT940'], ['camt', 'CAMT.053']].map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label>{' '}
+      <label>Kodierung <select value={encoding} onChange={e => setEncoding(e.target.value)}>{[['utf-8-sig', 'UTF-8 (Standard)'], ['cp1252', 'Windows-1252'], ['iso-8859-1', 'ISO-8859-1'], ['utf-16', 'UTF-16']].map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></label>
       {format === 'csv' && <div><label>Trennzeichen <select value={delimiter} onChange={e => setDelimiter(e.target.value)}><option value=";">Semikolon</option><option value=",">Komma</option><option value={'\t'}>Tabulator</option></select></label>{' '}
         <label>Dezimalzeichen <select value={decimal} onChange={e => setDecimal(e.target.value)}><option value=".">Punkt</option><option value=",">Komma</option></select></label>{' '}
         <label>Datumsformat <select value={dateFormat} onChange={e => setDateFormat(e.target.value)}><option value="%Y-%m-%d">JJJJ-MM-TT</option><option value="%d.%m.%Y">TT.MM.JJJJ</option></select></label>

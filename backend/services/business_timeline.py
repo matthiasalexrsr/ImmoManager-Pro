@@ -30,7 +30,12 @@ from ..db.orm_models import (
 )
 from . import business_qol as office
 from . import document_versions as archive
+from .notifier import eur
 from .workspace_contexts import resolve_context
+
+# a booking's state as the bookings page names it
+BOOKING_STATES = {"booked": "Gebucht", "open": "Offen", "matched": "Zugeordnet", "reversed": "Storniert",
+                  "cancelled": "Storniert", "pending": "Ausstehend"}
 
 
 def _selected(store: Any, orm: Any, collection: str, condition: Any, matches: Any,
@@ -149,7 +154,7 @@ def related_events(store: Any, context: dict, actor_id: str, before: Any, limit:
                 if error.status_code != 404:
                     raise
                 continue
-            body = (f"{row.booking_date.isoformat()} · {row.amount:.2f} · {row.status}"
+            body = (f"{row.booking_date:%d.%m.%Y} · {eur(row.amount)} · {BOOKING_STATES.get(row.status, row.status)}"
                     if entity_kind == "booking" else getattr(row, "description", None) or source["title"])
             values.append({"id": entity_kind + ":" + row.id, "occurred_at": office.utc(row.created_at).isoformat(),
                 "kind": "payment" if entity_kind == "booking" else entity_kind, "title": titles[entity_kind],

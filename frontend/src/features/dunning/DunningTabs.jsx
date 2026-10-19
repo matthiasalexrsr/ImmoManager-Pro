@@ -270,7 +270,7 @@ export function RepliesTab({ say, canWrite }) {
           <label>{say('received')}<input name="received_on" type="date" defaultValue={today()} /></label>
           <label>{say('channel')}
             <select name="channel" defaultValue="letter">
-              {['letter', 'email', 'phone', 'note', 'other'].map(c => <option key={c} value={c}>{c}</option>)}
+              {['letter', 'email', 'phone', 'note', 'other'].map(c => <option key={c} value={c}>{say(`via_${c}`)}</option>)}
             </select>
           </label>
           <label>{say('sender')}<input name="sender" maxLength={200} /></label>

@@ -8,6 +8,13 @@ import './catalogue.css';
 import SessionInventory from './SessionInventory';
 import ConfigurationContract from './ConfigurationContract';
 
+
+// where a value comes from, in words (the server reports its configuration sources as keys)
+const ORIGINS = { explicit: 'Beim Start übergeben', process_env: 'Umgebungsvariable', dotenv_file: '.env-Datei',
+  secret_file: 'Geheimnisdatei', default: 'Standard', global: 'Installation', personal: 'Persönlich',
+  launcher_env_file: '.env-Datei des Starters' };
+const originLabel = origin => ORIGINS[origin] || (String(origin || '').startsWith('object:') ? 'Ausgewähltes Objekt' : origin);
+
 function SettingField({ item, onSaved }) {
   const storage = privateStorageKey(`setting-draft:${item.scope}:${item.key}`);
   const [recovery] = useState(() => { try { return JSON.parse(sessionStorage.getItem(storage) || 'null'); } catch { return null; } });
@@ -60,14 +67,14 @@ function SettingField({ item, onSaved }) {
   const id = `setting-${item.scope}-${item.key}`;
   return <article className="setting-card">
     <label htmlFor={id} className="setting-card-title">{item.label}</label>
-    <p className="setting-card-meta">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {item.origin}</p>
+    <p className="setting-card-meta">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {originLabel(item.origin)}</p>
     {item.editable ? <div className="setting-controls">
       {item.choices ? <select id={id} value={String(value)} onChange={e => edit(e.target.value)} disabled={busy}>
         {item.choices.map(choice => <option key={String(choice.value ?? choice)} value={String(choice.value ?? choice)}>{choice.label || (choice === true ? 'Ja' : choice === false ? 'Nein' : choiceLabels[choice] || String(choice))}</option>)}
       </select> : item.key === 'document_address' ? <textarea id={id} value={value} onChange={e => edit(e.target.value)} disabled={busy} /> : <input id={id} type={item.input_type || "number"} min={item.key === 'reminder_days' ? 0 : 1} max={item.key === 'reminder_days' ? 365 : item.key === 'default_due_day' ? 31 : undefined} value={value} onChange={e => edit(e.target.value)} disabled={busy} />}
       <button className="btn btn-primary" onClick={() => save()} disabled={busy || !dirty}>{busy ? 'Speichert …' : 'Speichern'}</button>
       {dirty && <small>Ungespeicherte Eingabe (in diesem Tab gesichert)</small>}
-    </div> : <p id={id}>{String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}
+    </div> : <p id={id}>{typeof item.value === 'boolean' ? (item.value ? 'Ja' : 'Nein') : String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}
     {item.editable && <button className="btn btn-ghost btn-sm setting-reset" disabled={busy} onClick={() => { expected.current = item.revision; pending.current = null; setDirty(true); save(true); }}>Vorgabe übernehmen</button>}
     {dirty && item.revision !== expected.current && <p role="status">Aktuell gespeichert: {String(item.value)}. Ihre Eingabe: {String(value)}. <button onClick={() => { expected.current = item.revision; pending.current = null; setError(null); }}>Mit aktuellem Stand vergleichen und eigene Eingabe behalten</button></p>}
     {error && <p role="alert">{error} Eingabe bleibt erhalten. Bei Konflikt zuerst den aktuellen Stand laden und vergleichen.</p>}
