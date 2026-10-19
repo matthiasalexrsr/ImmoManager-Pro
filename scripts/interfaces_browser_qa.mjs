@@ -133,12 +133,14 @@ try {
     assert.ok(value.ok()); pdfs.push(await value.body());
   }
   const reason = 'QA Einwand gegen die Flächenzuordnung';
+  const issuedPeriod = await call('GET', '/billing/periods/' + fixture.billing_period);
   await step('Objection: actual date and individual statement are captured in the browser', async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(base.origin + '/statements?period_id=' + fixture.billing_period);
-    await expect(page.getByRole('row').nth(1)).toContainText('Haus A');
-    await page.getByRole('row').nth(1).focus();
-    await page.keyboard.press('Enter');
+    // A period link now opens its workspace directly. Confirm its identity
+    // instead of selecting an unrelated row from the first embedded table.
+    await expect(page.getByRole('heading', { name: issuedPeriod.label, exact: true })).toBeVisible();
+    await expect(page.locator('.detail-title')).toContainText('Haus A');
     await page.getByRole('button', { name: 'Widerspruch', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Widerspruch erfassen', exact: true });
     await dialog.getByLabel('Betroffene Abrechnung').selectOption(fixture.statement_ids[0]);
@@ -185,8 +187,8 @@ try {
     await call('POST', `/billing/periods/${fixture.billing_period}/objections`, {
       statement_id: fixture.statement_ids[1], received_on: '2026-10-18', reason: 'QA Nachgereichte Kosten prüfen' });
     await page.reload();
-    await expect(page.getByRole('row').nth(1)).toContainText('Haus A');
-    await page.getByRole('row').nth(1).click();
+    await expect(page.getByRole('heading', { name: issuedPeriod.label, exact: true })).toBeVisible();
+    await expect(page.locator('.detail-title')).toContainText('Haus A');
     await page.getByRole('button', { name: 'Abrechnung überarbeiten: QA Nachgereichte Kosten prüfen', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Abrechnung begründet überarbeiten', exact: true });
     await dialog.getByLabel('Sachliche Begründung (mindestens 12 Zeichen)').fill('QA Neue Kostenunterlagen erfordern eine getrennte Korrekturfassung.');

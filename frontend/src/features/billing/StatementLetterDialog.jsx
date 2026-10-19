@@ -222,7 +222,7 @@ function StatementLetterSession({ statementId, onClose, onPublished, service, al
         {state.conflict && <div className="statement-letter-warning"><p>Die Abrechnung oder ihre Briefdaten wurden geändert. Laden Sie den aktuellen Stand; Ihre Briefeingaben bleiben erhalten. Anschließend ist eine neue PDF-Prüfung nötig.</p><button type="button" className="btn btn-secondary" disabled={Boolean(busy) || uncertain} onClick={() => load(true)}>Aktuellen Stand laden, Eingaben behalten</button></div>}
         {!state.loading && !state.context && !state.denied && <button type="button" className="btn btn-secondary" onClick={() => load()}>Erneut laden</button>}
         {state.context && state.form && <>
-          {!state.context.can_publish && <p className="statement-letter-warning">Entwurf – diese Fassung kann noch nicht als Original archiviert werden. Dazu muss die Mieterabrechnung finalisiert sein und die nötige Berechtigung vorliegen.</p>}
+          {!state.context.can_publish && <p className="statement-letter-warning">Diese Fassung kann hier nicht als Original archiviert werden. Dafür müssen eine finalisierte Mieterabrechnung und die nötige Berechtigung vorliegen.</p>}
           {state.context.warnings?.length > 0 && <ul className="statement-letter-warning">{state.context.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
           <div className="statement-letter-columns">
             <form id={`${id}-form`} className="statement-letter-fields" onSubmit={preview}>

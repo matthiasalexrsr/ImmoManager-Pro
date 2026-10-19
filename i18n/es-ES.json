@@ -1372,7 +1372,7 @@
       "costItems": "Partidas de coste",
       "individualStatements": "Liquidaciones individuales",
       "statementsPerUnit": "Liquidaciones por unidad",
-      "preflight": "Preflight (preparación de facturación)",
+      "preflight": "Comprobar liquidación",
       "recheck": "Verificar de nuevo",
       "checking": "Verificando…",
       "noPreflightData": "No hay datos de preflight disponibles.",

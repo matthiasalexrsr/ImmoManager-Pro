@@ -1637,7 +1637,7 @@
       "costItems": "Kostenpositionen",
       "individualStatements": "Einzelabrechnungen",
       "statementsPerUnit": "Einzelabrechnungen pro Einheit",
-      "preflight": "Preflight (Abrechnungsbereitschaft)",
+      "preflight": "Abrechnung prüfen",
       "recheck": "Neu prüfen",
       "checking": "Prüfung läuft…",
       "noPreflightData": "Keine Preflight-Daten verfügbar.",

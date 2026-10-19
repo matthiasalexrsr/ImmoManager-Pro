@@ -1636,7 +1636,7 @@
       "costItems": "Cost Items",
       "individualStatements": "Individual Statements",
       "statementsPerUnit": "Statements per Unit",
-      "preflight": "Preflight (Billing Readiness)",
+      "preflight": "Check statement",
       "recheck": "Recheck",
       "checking": "Checking…",
       "noPreflightData": "No preflight data available.",

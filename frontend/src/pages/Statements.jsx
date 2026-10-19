@@ -1530,14 +1530,14 @@ export default function Statements() {
       </section>}
       {loadError && <p role="alert">{loadError} <button type="button" onClick={loadData}>Erneut laden</button></p>}
       {sourceFilter === 'preflight_blockers' && <><p className="text-muted">Noch nicht abgeschlossene Zeiträume ohne abrechenbare Verträge, ohne Kosten oder mit einer unpassenden Schlüsselzuordnung.</p>
-        {sourceRows.loading && <p role="status">Preflight-Quellen werden geladen…</p>}
-        {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Preflight-Quelle erneut laden</button></p>}</>}
+        {sourceRows.loading && <p role="status">Abrechnungsprüfungen werden geladen…</p>}
+        {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Abrechnungsprüfungen erneut laden</button></p>}</>}
       <DataTable
         title={sourceFilter === 'statements' ? 'Einzelabrechnungen & Schreiben' : 'Abrechnungszeiträume'}
         columns={sourceFilter === 'statements' ? STMT_COLUMNS : COLUMNS}
         data={sourceFilter === 'statements' ? statementSources : enriched}
         drilldownKey={drilldown}
-        emptyText={sourceFilter === 'preflight_blockers' && (sourceRows.loading || sourceRows.error) ? 'Preflight-Quelle noch nicht verfügbar.' : loadError ? 'Daten noch nicht verfügbar.' : undefined}
+        emptyText={sourceFilter === 'preflight_blockers' && (sourceRows.loading || sourceRows.error) ? 'Abrechnungsprüfungen noch nicht verfügbar.' : loadError ? 'Daten noch nicht verfügbar.' : undefined}
         viewConfig={{ column_filters: { source_filter: sourceFilter } }}
         onApplyView={config => setParams(current => { const next = new URLSearchParams(current); const value = config.column_filters?.source_filter;
           if (['statements', 'preflight_blockers'].includes(value)) next.set('filter', value); else next.delete('filter'); return next; })}

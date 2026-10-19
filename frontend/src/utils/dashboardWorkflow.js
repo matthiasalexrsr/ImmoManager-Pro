@@ -295,7 +295,7 @@ export function buildDashboardWorkflow({ stats = {}, expiring = null } = {}) {
       actionFallback: allocationKeys === 0
         ? 'Schlüssel pflegen'
         : billingPreflightBlockers > 0
-          ? 'Preflight prüfen'
+          ? 'Abrechnung prüfen'
           : 'Abrechnung öffnen',
       metricKey: 'pages.dashboard.workflow.metrics.openInvoices',
       metricFallback: '{{count}} offene Rechnungen',
@@ -391,7 +391,7 @@ export function buildDashboardWorkflow({ stats = {}, expiring = null } = {}) {
       tone: 'critical',
       icon: 'billing',
       titleKey: 'pages.dashboard.attention.billingPreflightBlockers',
-      titleFallback: 'Abrechnungen mit Preflight-Fehlern',
+      titleFallback: 'Abrechnungen mit Prüfbedarf',
       value: billingPreflightBlockers,
       to: '/statements?filter=preflight_blockers',
     },

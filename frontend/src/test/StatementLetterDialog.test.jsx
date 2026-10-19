@@ -21,7 +21,7 @@ const context = (extra = {}) => ({ source_revision: 'revision-one', statement_st
 const review = (body, draft = false) => ({ state: 'preview', review_hash: 'a'.repeat(64), pdf_sha256: hash, size_bytes: bytes.length, review: { source_revision: body.source_revision, data: body.data, draft, pdf_sha256: hash } });
 const result = { document_id: 'doc-1', version_id: 'version-1', review_hash: 'a'.repeat(64), pdf_sha256: hash, download_url: '/files/download?key=billing-letters%2Fdoc-1.pdf', created_at: '2026-10-19T10:00:00Z' };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-const serviceFor = (source = context()) => ({ loadContext: vi.fn().mockResolvedValue(source), preview: vi.fn(async (_id, body) => review(body, !source.can_publish)), previewPdf: vi.fn().mockResolvedValue(blob), publish: vi.fn().mockResolvedValue(result), downloadOriginal: vi.fn().mockResolvedValue(blob) });
+const serviceFor = (source = context()) => ({ loadContext: vi.fn().mockResolvedValue(source), preview: vi.fn(async (_id, body) => review(body, source.statement_status === 'draft')), previewPdf: vi.fn().mockResolvedValue(blob), publish: vi.fn().mockResolvedValue(result), downloadOriginal: vi.fn().mockResolvedValue(blob) });
 const mount = (service = serviceFor(), props = {}) => ({ service, ...render(<MemoryRouter><StatementLetterDialog statementId="statement-1" service={service} onClose={vi.fn()} {...props} /></MemoryRouter>) });
 const ready = async () => screen.findByLabelText('Betreff *');
 async function makePreview() { fireEvent.click(screen.getByRole('button', { name: 'PDF-Vorschau erstellen' })); await screen.findByRole('img', { name: 'Echte Briefvorschau' }); }
@@ -43,6 +43,14 @@ describe('statement letter review and immutable original', () => {
     expect(screen.getByRole('heading', { name: 'Entwurf – nicht archiviert' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Als Original archivieren' })).toBeDisabled();
     expect(screen.getByRole('checkbox')).toBeDisabled(); expect(service.publish).not.toHaveBeenCalled();
+  });
+  it('does not mislabel an issued PDF as a draft when only publication permission is missing', async () => {
+    mocks.auth = { user: { id: 'reader', role: 'readonly' }, write: [] };
+    mount(serviceFor(context({ can_publish: false, statement_status: 'issued', period_status: 'finalized' })));
+    await ready(); await makePreview();
+    expect(screen.getByRole('heading', { name: 'PDF-Vorschau – noch nicht archiviert' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Entwurf –/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Als Original archivieren' })).toBeDisabled();
   });
   it('archives only an explicitly reviewed final PDF and preserves previous originals with protected downloads', async () => {
     const old = { ...result, document_id: 'old-document', version_id: 'old-version' };
