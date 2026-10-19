@@ -92,9 +92,12 @@ def _list_rules(**kw):
     )
 
 
+_HISTORY_READER: Any = SimpleNamespace(id="history-reader")
+
+
 def _list_history(**kw):
     return history.list_history(
-        actor=SimpleNamespace(id="history-reader"),
+        actor=_HISTORY_READER,
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         entity_type=kw.get("entity_type"), entity_id=kw.get("entity_id"),
     )

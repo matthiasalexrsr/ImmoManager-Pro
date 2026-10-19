@@ -3,6 +3,7 @@
 Found by filling every "Neu" form in Chromium with only its required fields and saving it.
 """
 
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -40,7 +41,7 @@ def estate():
     unit = store.create_unit(UnitCreate(property_id=prop.id, label="WE 3", unit_type="residential", cold_rent=500))
     tenant = store.create_tenant(TenantCreate(full_name="Mia Muster"))
     contract = store.create_contract(ContractCreate(contract_number="V-1", property_id=prop.id, unit_id=unit.id,
-                                                    tenant_id=tenant.id, start_date="2024-01-01", status="active"))
+                                                    tenant_id=tenant.id, start_date=date(2024, 1, 1), status="active"))
     return {"property": prop, "contract": contract}
 
 
