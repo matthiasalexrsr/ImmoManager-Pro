@@ -12,8 +12,8 @@ def test_equal_timestamps_have_stable_pages_and_entity_order(monkeypatch):
             for id_ in ("a", "c", "b")]
     monkeypatch.setattr(history, "store", SimpleNamespace(
         list_change_history=lambda: list(rows), get_entity_history=lambda *args: list(rows)))
-    pages = [history.list_history(skip=i, limit=1, entity_type=None, entity_id=None)[0].id for i in range(3)]
+    pages = [history._page(None, None, i, 1)[0].id for i in range(3)]
     assert pages == ["c", "b", "a"]
     rows.reverse()
-    assert [history.list_history(skip=i, limit=1, entity_type=None, entity_id=None)[0].id for i in range(3)] == pages
+    assert [history._page(None, None, i, 1)[0].id for i in range(3)] == pages
     assert [row.id for row in history.get_entity_history("tenant", "t1")] == ["c", "b", "a"]

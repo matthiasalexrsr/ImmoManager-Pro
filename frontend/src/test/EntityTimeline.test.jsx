@@ -47,7 +47,8 @@ it('preserves zero, false, free text, long multiline and unknown field values', 
     change('description', null, longText), change('notes', '', '  '), change('title', 'invoice', 'false'),
     change('custom_field', false, { label: 'Unbekannt', amount: 0 }), change('sepa_mandate', 'False', 'True'),
   ]);
-  expect(values('Änderung: Betrag')).toEqual(['0', '0']);
+  // amounts read as money, a zero stays a zero
+  expect(values('Änderung: Betrag').map(value => value.replace(/\s/g, ' '))).toEqual(['0,00 €', '0,00 €']);
   expect(values('Änderung: Archiviert')).toEqual(['Nein', 'Ja']);
   expect(values('Änderung: Aktiv')).toEqual(['Nein', '1']);
   expect(values('Änderung: Beschreibung')).toEqual(['Nicht angegeben', longText]);

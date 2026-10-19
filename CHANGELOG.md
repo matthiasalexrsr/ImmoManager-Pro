@@ -28,6 +28,8 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
   - **Invoices:** VAT and gross follow net and rate until one of them is typed by hand.
   - **Messages:** server messages use the form's labels instead of field keys and German money, and the expected gross is rounded to the cent.
 - **Confirmations name their action:** "Wirklich löschen?" with a red "Löschen" only for deletions. Otherwise "Bitte bestätigen" with "Als bezahlt markieren", "Stornieren", "Archivieren", "Deaktivieren", "Kündigung zurücknehmen", "Zuordnung lösen" or "Update anwenden".
+- **The change history reads in words.** The date column was titled "Status", "Aktion" and "Benutzername" were always empty, and fields and values were stored codes ("status", "in_progress", "480.0"). Each change now names the record with a link to it, its kind, the field, both values as the forms show them (status words, dates, euros) and who changed it. Deleted records stay listed as "nicht mehr vorhanden". The list is read page by page in the database, and "Ältere Änderungen laden" continues after 500. Record timelines show amounts in euros too.
+- **Phones:** dialog footers wrap, so three actions are no longer cut off at 390 px. The booking form names its account field "Konto".
 - **Fixes:**
   - the first visit of a list and every unmarked favourite logged a failed request;
   - TEHA, document intake and duplicate check named themselves "Dashboard";

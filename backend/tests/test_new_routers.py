@@ -7,6 +7,7 @@ skip/limit and filter params must always be passed explicitly.
 """
 
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -93,6 +94,7 @@ def _list_rules(**kw):
 
 def _list_history(**kw):
     return history.list_history(
+        actor=SimpleNamespace(id="history-reader"),
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         entity_type=kw.get("entity_type"), entity_id=kw.get("entity_id"),
     )
@@ -831,8 +833,9 @@ class TestHistory:
         # Separate the chronology contract from Windows wall-clock resolution.
         e1 = e1.model_copy(update={"changed_at": datetime(2026, 1, 1, tzinfo=timezone.utc)})
         e2 = e2.model_copy(update={"changed_at": datetime(2026, 1, 2, tzinfo=timezone.utc)})
-        monkeypatch.setattr(history.store, "list_change_history", lambda: [e1, e2])
-        result = _list_history()
+        # the memory store's order; the database orders the same way in its query
+        monkeypatch.setattr(history, "store", SimpleNamespace(list_change_history=lambda: [e1, e2]))
+        result = history._page(None, None, 0, L)
         # The explicit later timestamp must come first.
         assert result[0].id == e2.id
         assert result[1].id == e1.id
