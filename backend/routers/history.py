@@ -1,5 +1,6 @@
 """Change history router (T18: Historisierung)."""
 
+from contextlib import nullcontext
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +11,8 @@ from ..db.orm_models import ChangeHistoryORM
 from ..dependencies import store
 from ..models import ChangeHistoryEntry, UserRead
 from ..services.business_timeline import display_actors
-from ..services.workspace_contexts import resolve_context
+from ..services.workspace_contexts import actor as account_of
+from ..services.workspace_contexts import bound_actor, resolve_context
 
 router = APIRouter(prefix="/history", tags=["Änderungshistorie"])
 Actor = Annotated[UserRead, Depends(require_auth)]
@@ -48,12 +50,18 @@ def _page(entity_type, entity_id, skip, limit) -> list[ChangeHistoryEntry]:
 
 def _described(entries: list[ChangeHistoryEntry], actor_id: str) -> list[ChangeHistoryListEntry]:
     sources: dict[tuple[str, str], tuple[str | None, str | None]] = {}
-    for key in {(entry.entity_type, entry.entity_id) for entry in entries}:
-        try:
-            source = resolve_context(store, key[0], key[1], actor_id)
-            sources[key] = (source["title"], source["href"])
-        except HTTPException:
-            sources[key] = (None, None)      # deleted since, or a kind without a page
+    try:
+        user = account_of(actor_id, store)
+    except HTTPException:
+        user = None
+    # the account is read once for the whole page, not once per record
+    with bound_actor(user) if user else nullcontext():
+        for key in {(entry.entity_type, entry.entity_id) for entry in entries}:
+            try:
+                source = resolve_context(store, key[0], key[1], actor_id)
+                sources[key] = (source["title"], source["href"])
+            except HTTPException:
+                sources[key] = (None, None)      # deleted since, or a kind without a page
     actors = [{"actor": entry.changed_by} for entry in entries]
     display_actors(store, actors)
     return [ChangeHistoryListEntry(**entry.model_dump(), entity_title=sources[(entry.entity_type, entry.entity_id)][0],
