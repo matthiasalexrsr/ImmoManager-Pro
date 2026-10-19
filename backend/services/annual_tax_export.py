@@ -31,7 +31,7 @@ def prepare_download(store, projection_id, *, parent=None):
     manifest = read_projection(projection_row(store, projection_id))
     profile = get_profile(store, manifest["profile_version_id"])
     if profile["sha256"] != manifest["profile_sha256"]:
-        raise HTTPException(503, "annual_tax_saved_profile_integrity_failed")
+        raise HTTPException(503, "annual_tax_saved_profile_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     preparation = None
     if profile["spec"].get("wiso_preparation"):
         from .wiso_preparation import saved_preparation
@@ -66,7 +66,7 @@ def prepare_download(store, projection_id, *, parent=None):
                         part["exclusion_kind"] if part else ""]
                     writer.writerow([csv_cell(value) for value in raw])
         if count != manifest["source_rows"] or totals != {key: int(value) for key, value in manifest["totals"].items()}:
-            raise HTTPException(503, "annual_tax_saved_totals_integrity_failed")
+            raise HTTPException(503, "annual_tax_saved_totals_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
         with lines_path.open("x", encoding="utf-8-sig", newline="") as lines:
             writer = csv.writer(lines, delimiter=";", lineterminator="\r\n")
             writer.writerow(("tax_year", "property_id", "property_name", "treatment", "user_reviewed_form_line", "amount_cents", "source_parts"))
@@ -104,7 +104,7 @@ def prepare_download(store, projection_id, *, parent=None):
                 archive.writestr(info, content)
         with ZipFile(path) as archive:
             if archive.testzip() is not None:
-                raise HTTPException(503, "annual_tax_archive_integrity_failed")
+                raise HTTPException(503, "annual_tax_archive_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
         with path.open("rb") as source:
             digest = hashlib.file_digest(source, "sha256").hexdigest()
         refresh_scope(current_scope())

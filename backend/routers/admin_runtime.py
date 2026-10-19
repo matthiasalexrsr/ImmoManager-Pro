@@ -30,7 +30,7 @@ _BACKUP_DIR = get_backup_dir()
 def _resolve_backup_path(backup_name: str) -> Path:
     candidate = Path(backup_name)
     if candidate.is_absolute() or candidate.name != backup_name:
-        raise HTTPException(400, "Invalid backup name")
+        raise HTTPException(400, "Ungültiger Name der Sicherung")
     return _BACKUP_DIR / candidate.name
 
 
@@ -114,14 +114,14 @@ def restore_backup(backup_name: str):
 
     backup_path = _resolve_backup_path(backup_name)
     if not backup_path.exists():
-        raise HTTPException(404, f"Backup not found: {backup_name}")
+        raise HTTPException(404, f"Sicherung nicht gefunden: {backup_name}")
 
     db_path = _live_sqlite_path()
     if backup_path.suffix == ".json":
         try:
             data = json.loads(backup_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise HTTPException(400, f"Invalid JSON backup: {exc}") from exc
+            raise HTTPException(400, f"Die JSON-Sicherung ist nicht lesbar: {exc}") from exc
         try:
             prepared = prepare_import(store, data, replace=True)
         except SnapshotError as exc:
@@ -132,9 +132,9 @@ def restore_backup(backup_name: str):
         return {"restored_from": backup_name, "safety_backup": safety.name, **result}
 
     if db_path is None:
-        raise HTTPException(400, "Binary DB restore is only supported for SQLite databases")
+        raise HTTPException(400, "Eine Datenbankdatei lässt sich nur bei SQLite wiederherstellen.")
     if not is_sqlite_database(backup_path):
-        raise HTTPException(400, f"Not a SQLite database: {backup_name}")
+        raise HTTPException(400, f"Keine SQLite-Datenbank: {backup_name}")
 
     from ..db.schema_state import NEWER, inspect_sqlite_file, run_migrations
 

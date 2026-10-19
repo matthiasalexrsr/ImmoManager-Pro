@@ -21,6 +21,11 @@ from .secret_box import SecretError, default_secret_box
 from .tax_support import _memory_lock, finance_write
 
 
+def _open_points(counts) -> int:
+    """How many blocking findings the preflight still reports (counted per kind)."""
+    return sum(int(value) for value in counts.values()) if isinstance(counts, dict) else len(counts or ())
+
+
 def memory_state(store):
     raw = object.__getattribute__(store, "__dict__")
     with _memory_lock:
@@ -68,14 +73,14 @@ def verified_json(encoded, expected, kind):
     except (ValueError, TypeError, UnicodeError):
         valid = False
     if not valid:
-        raise HTTPException(503, f"annual_tax_saved_{kind}_integrity_failed")
+        raise HTTPException(503, f"annual_tax_saved_{kind}_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     return value
 
 
 def get_profile(store, identifier):
     row = store.db.scalar(select(AnnualTaxProfileORM).where(AnnualTaxProfileORM.id == identifier)) if hasattr(store, "db") else memory_state(store).profiles.get(identifier)
     if row is None:
-        raise HTTPException(404, "annual_tax_profile_not_found")
+        raise HTTPException(404, "annual_tax_profile_not_found: Steuerprofil nicht gefunden.")
     store.get_portfolio(row.portfolio_id)
     profile = read_profile(row)
     check_preparation_objects(store, profile)
@@ -93,7 +98,7 @@ def check_preparation_objects(store, profile):
         if exists:
             prop = store.get_property(identifier)
             if prop.portfolio_id != profile["portfolio_id"]:
-                raise HTTPException(404, "annual_tax_preparation_object_not_accessible")
+                raise HTTPException(404, "annual_tax_preparation_object_not_accessible: Immobilie nicht gefunden.")
 
 
 def list_profiles(store, portfolio_id, tax_year=None, offset=0, limit=100):
@@ -121,17 +126,17 @@ def create_profile(store, command, actor_id):
         raise HTTPException(422, "annual_tax_currency: Das Portfolio muss ausdrücklich EUR verwenden.")
     for rule in command.rules:
         if store.get_account(rule.account_id).portfolio_id != command.portfolio_id:
-            raise HTTPException(422, "annual_tax_mapping_account_portfolio")
+            raise HTTPException(422, "annual_tax_mapping_account_portfolio: Das Konto gehört nicht zum gewählten Portfolio.")
         if rule.category_id and store.get_category(rule.category_id).portfolio_id != command.portfolio_id:
-            raise HTTPException(422, "annual_tax_mapping_category_portfolio")
+            raise HTTPException(422, "annual_tax_mapping_category_portfolio: Die Kategorie gehört nicht zum gewählten Portfolio.")
     if command.wiso_preparation:
         for item in command.wiso_preparation.objects:
             if store.get_property(item.property_id).portfolio_id != command.portfolio_id:
-                raise HTTPException(422, "annual_tax_preparation_object_portfolio")
+                raise HTTPException(422, "annual_tax_preparation_object_portfolio: Die Immobilie gehört nicht zum gewählten Portfolio.")
     if command.previous_version_id:
         previous = get_profile(store, command.previous_version_id)
         if (previous["portfolio_id"], previous["tax_year"]) != (command.portfolio_id, command.tax_year):
-            raise HTTPException(422, "annual_tax_profile_revision_year_portfolio")
+            raise HTTPException(422, "annual_tax_profile_revision_year_portfolio: Eine neue Fassung braucht dasselbe Steuerjahr und Portfolio wie die vorherige.")
     spec = command.model_dump(mode="json", exclude={"idempotency_key", "previous_version_id"})
     if spec.get("wiso_preparation") is None:
         # Preserve legacy profile hashes/idempotent command replays across this
@@ -143,7 +148,7 @@ def create_profile(store, command, actor_id):
     def replay(row):
         store.get_portfolio(row.portfolio_id)
         if row.sha256 != digest or row.previous_version_id != command.previous_version_id:
-            raise HTTPException(409, "annual_tax_profile_idempotency_conflict")
+            raise HTTPException(409, "annual_tax_profile_idempotency_conflict: Diese Anfrage wurde bereits mit anderen Angaben gespeichert. Bitte neu laden.")
         return read_profile(row)
 
     values = dict(id=str(uuid4()), portfolio_id=command.portfolio_id, tax_year=command.tax_year,
@@ -176,7 +181,7 @@ def create_profile(store, command, actor_id):
         old = db.scalar(select(AnnualTaxProfileORM).where(AnnualTaxProfileORM.idempotency_key == key))
         if old:
             return replay(old)
-        raise HTTPException(409, "annual_tax_profile_save_conflict") from None
+        raise HTTPException(409, "annual_tax_profile_save_conflict: Das Profil wurde gleichzeitig geändert. Bitte neu laden.") from None
     except BaseException:
         db.rollback()
         raise
@@ -204,7 +209,7 @@ def read_projection(row):
     except (ValueError, TypeError, AttributeError, KeyError, UnicodeError):
         valid = False
     if not valid:
-        raise HTTPException(503, "annual_tax_saved_request_integrity_failed")
+        raise HTTPException(503, "annual_tax_saved_request_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     return {"id": row.id, "actor_id": row.actor_id, "previous_projection_id": row.previous_projection_id,
         **manifest, "profile_version_id": row.profile_version_id, "review_request": reviewed}
 
@@ -212,7 +217,7 @@ def read_projection(row):
 def projection_row(store, identifier):
     row = store.db.scalar(select(AnnualTaxProjectionORM).where(AnnualTaxProjectionORM.id == identifier)) if hasattr(store, "db") else memory_state(store).projections.get(identifier)
     if row is None:
-        raise HTTPException(404, "annual_tax_projection_not_found")
+        raise HTTPException(404, "annual_tax_projection_not_found: Jahresfassung nicht gefunden.")
     store.get_portfolio(row.portfolio_id)
     # Preparation labels are part of the manifest returned by ordinary history
     # routes too; their current object rights must cover those routes as well.
@@ -252,7 +257,7 @@ def create_projection(store, command, actor_id):
     def replay(row):
         store.get_portfolio(row.portfolio_id)
         if row.request_json != request:
-            raise HTTPException(409, "annual_tax_projection_idempotency_conflict")
+            raise HTTPException(409, "annual_tax_projection_idempotency_conflict: Diese Anfrage wurde bereits mit anderen Angaben gespeichert. Bitte neu laden.")
         return read_projection(row)
 
     if old := existing():
@@ -260,12 +265,13 @@ def create_projection(store, command, actor_id):
     profile = get_profile(store, command.profile_version_id)
     previous = read_projection(projection_row(store, command.previous_projection_id)) if command.previous_projection_id else None
     if previous and (previous["portfolio_id"], previous["tax_year"]) != (profile["portfolio_id"], profile["tax_year"]):
-        raise HTTPException(422, "annual_tax_projection_revision_year_portfolio")
+        raise HTTPException(422, "annual_tax_projection_revision_year_portfolio: Eine Korrekturfassung braucht dasselbe Steuerjahr und Portfolio wie die vorherige.")
     compiled = compile_projection(store, profile, command)
     try:
         manifest = compiled.manifest
         if not manifest["ready"]:
-            raise HTTPException(422, {"code": "annual_tax_preflight_blocked", "issues": manifest["blocking_issue_counts"]})
+            raise HTTPException(422, "annual_tax_preflight_blocked: Die Vorprüfung meldet noch "
+                                f"{_open_points(manifest['blocking_issue_counts'])} offene Punkte. Bitte diese zuerst klären.")
         if not hmac.compare_digest(manifest["preview_hash"], command.preview_hash):
             raise HTTPException(409, "annual_tax_source_changed: Die Vorprüfung erneut ansehen und bestätigen.")
         manifest = {**manifest, "revision_number": previous["revision_number"] + 1 if previous else 1,
@@ -359,7 +365,7 @@ def saved_sources(store, projection_id):
             digest.update(encoded)
             yield record
     if not hmac.compare_digest(digest.hexdigest(), read_projection(row)["source_sha256"]):
-        raise HTTPException(503, "annual_tax_saved_evidence_incomplete")
+        raise HTTPException(503, "annual_tax_saved_evidence_incomplete: Der gespeicherte Steuerbeleg ist unvollständig. Bitte Vollbackup und Schlüssel prüfen.")
     refresh_scope(captured)
 
 

@@ -16,12 +16,12 @@ class TaxClassification(BaseModel):
     @model_validator(mode="after")
     def classification(self):
         if not self.reason.strip():
-            raise ValueError("Every classification needs a review reason")
+            raise ValueError("Jede Zuordnung braucht eine Prüfbegründung.")
         if self.treatment == "excluded":
             if self.form_line or self.exclusion_kind is None:
-                raise ValueError("Excluded amounts need an exclusion reason/type and no tax form line")
+                raise ValueError("Ausgeschlossene Beträge brauchen einen Ausschlussgrund und gehören zu keiner Formularzeile.")
         elif not self.form_line or not self.form_line.strip() or self.exclusion_kind:
-            raise ValueError("Transferred income/expense needs an explicitly reviewed form line")
+            raise ValueError("Übernommene Einnahmen und Ausgaben brauchen eine ausdrücklich geprüfte Formularzeile.")
         return self
 
 
@@ -59,7 +59,7 @@ class WisoPreparation(BaseModel):
         for keys in ([item.property_id for item in self.objects], [item.object_number for item in self.objects],
                      [(item.treatment, item.form_line) for item in self.lines]):
             if len(keys) != len(set(keys)):
-                raise ValueError("WISO preparation needs unique object IDs, object numbers and treatment/form-line mappings")
+                raise ValueError("Die WISO-Vorbereitung braucht eindeutige Objektkennungen und Objektnummern sowie Zuordnungen zu Behandlung und Formularzeile.")
         return self
 
 
@@ -79,12 +79,12 @@ class AnnualTaxProfileCreate(BaseModel):
     @model_validator(mode="after")
     def reviewed(self):
         if not self.review_confirmed or not self.name.strip() or not self.reviewed_by.strip():
-            raise ValueError("The classification profile must be explicitly reviewed")
+            raise ValueError("Das Zuordnungsprofil muss ausdrücklich als geprüft gekennzeichnet sein.")
         keys = [(rule.account_id, rule.category_id) for rule in self.rules]
         if len(set(keys)) != len(keys):
-            raise ValueError("Each account/category pair needs exactly one classification")
+            raise ValueError("Jedes Paar aus Konto und Kategorie braucht genau eine Zuordnung.")
         if self.wiso_preparation and self.tax_year != self.wiso_preparation.tax_year:
-            raise ValueError("The observed WISO preparation contract is limited to tax year 2026")
+            raise ValueError("Die WISO-Vorbereitung ist derzeit nur für das Steuerjahr 2026 möglich.")
         return self
 
 
@@ -96,7 +96,7 @@ class AnnualTaxPart(TaxClassification):
     @model_validator(mode="after")
     def property_assignment(self):
         if self.treatment != "excluded" and not self.property_id:
-            raise ValueError("Transferred amounts must be assigned to an explicit property")
+            raise ValueError("Übernommene Beträge müssen einer bestimmten Immobilie zugeordnet sein.")
         return self
 
 
@@ -111,7 +111,7 @@ class AnnualTaxOverride(BaseModel):
     @model_validator(mode="after")
     def explained(self):
         if not self.reason.strip():
-            raise ValueError("A changed/object-split classification needs an explicit reason")
+            raise ValueError("Eine geänderte oder auf Objekte aufgeteilte Zuordnung braucht eine Begründung.")
         return self
 
 
@@ -128,9 +128,9 @@ class AnnualTaxPreflightCreate(BaseModel):
     def unique_overrides(self):
         ids = [item.booking_id for item in self.overrides]
         if len(ids) != len(set(ids)):
-            raise ValueError("Each booking can have only one explicit allocation override")
+            raise ValueError("Jede Buchung kann nur eine abweichende Zuordnung haben.")
         if any(value is not None and not value.strip() for value in (self.pending_review_reason, self.empty_cash_review_reason)):
-            raise ValueError("Ignoring unconfirmed/missing cash entries needs an explicit review reason")
+            raise ValueError("Unbestätigte oder fehlende Kassenbuchungen nur mit Prüfbegründung unberücksichtigt lassen.")
         return self
 
 
@@ -143,5 +143,5 @@ class AnnualTaxProjectionCreate(AnnualTaxPreflightCreate):
     @model_validator(mode="after")
     def revision(self):
         if bool(self.previous_projection_id) != bool(self.revision_reason and self.revision_reason.strip()):
-            raise ValueError("A revision needs its previous projection and an explicit explanation")
+            raise ValueError("Eine Korrekturfassung braucht die vorherige Jahresfassung und eine Erläuterung.")
         return self

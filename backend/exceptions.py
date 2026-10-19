@@ -16,6 +16,7 @@ request ID, user ID, exception type, and traceback where applicable.
 """
 
 import logging
+import re
 import traceback
 from enum import Enum
 from typing import Any
@@ -100,6 +101,17 @@ def _error_response(
 _STANDARD_TEXTS = {"Not Found": "Nicht gefunden", "Method Not Allowed": "Diese Aktion ist hier nicht möglich",
                    "Not authenticated": "Bitte anmelden", "Unauthorized": "Bitte anmelden",
                    "Forbidden": "Keine Berechtigung", "Internal Server Error": "Interner Fehler"}
+
+# Some modules lead a German message with a machine code ("annual_tax_source_changed: Die …",
+# "DATEV source_changed: …"). People read the text; the log keeps the code.
+_CODED = re.compile(r"^(DATEV )?[a-z][a-z0-9]*_[a-z0-9_]+: (.+)$", re.DOTALL)
+
+
+def readable(message: str) -> str:
+    coded = _CODED.match(message)
+    if coded is None:
+        return message
+    return ("DATEV: " if coded.group(1) else "") + coded.group(2)
 
 _FIELD_TEXT = {
     "float_parsing": "Bitte eine gültige Zahl angeben", "float_type": "Bitte eine gültige Zahl angeben",
@@ -246,7 +258,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc.status_code, request.method, request.url.path,
             code.value, msg, ctx,
         )
-        return _error_response(exc.status_code, code, msg)
+        return _error_response(exc.status_code, code, readable(msg))
 
     @app.exception_handler(StorageUnavailable)
     async def storage_unavailable_handler(request: Request, exc: StorageUnavailable):

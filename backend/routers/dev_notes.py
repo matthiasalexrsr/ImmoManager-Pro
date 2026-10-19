@@ -182,14 +182,14 @@ def get_log_content():
 @router.get("/{note_id}", response_model=DevNote)
 def get_dev_note(note_id: str) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     return _notes[note_id]
 
 
 @router.patch("/{note_id}", response_model=DevNote)
 def update_dev_note(note_id: str, payload: DevNoteUpdate) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     note = _notes[note_id]
     updates = payload.model_dump(exclude_unset=True)
     updated = note.model_copy(update=updates)
@@ -201,7 +201,7 @@ def update_dev_note(note_id: str, payload: DevNoteUpdate) -> DevNote:
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_dev_note(note_id: str) -> None:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     del _notes[note_id]
     _write_log_file()
 
@@ -209,7 +209,7 @@ def delete_dev_note(note_id: str) -> None:
 @router.post("/{note_id}/resolve", response_model=DevNote)
 def resolve_dev_note(note_id: str) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     note = _notes[note_id]
     updated = note.model_copy(update={"resolved": True})
     _notes[note_id] = updated

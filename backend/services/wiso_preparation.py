@@ -102,7 +102,7 @@ def prepare(profile, manifest):
         row["property_id"], row["treatment"], row["form_line"]))
     reconciled = all(mapped_totals[key] + unmapped_totals[key] == int(manifest["totals"][key]) for key in mapped_totals)
     if not reconciled:
-        raise HTTPException(503, "wiso_preparation_totals_integrity_failed")
+        raise HTTPException(503, "wiso_preparation_totals_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     report = {"schema": "immomanager.wiso-manual-preparation.v1", "compatibility": "manual_transfer_only",
         "target_product": configuration["target_product"], "tax_year": manifest["tax_year"],
         "profile_version_id": profile["id"], "profile_sha256": profile["sha256"],
@@ -127,7 +127,7 @@ def saved_preparation(store, projection_id):
     manifest = storage.read_projection(storage.projection_row(store, projection_id))
     profile = storage.get_profile(store, manifest["profile_version_id"])
     if profile["sha256"] != manifest["profile_sha256"]:
-        raise HTTPException(503, "wiso_preparation_profile_integrity_failed")
+        raise HTTPException(503, "wiso_preparation_profile_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     groups: dict[tuple, dict[str, Any]] = {}
     totals: defaultdict[str, int] = defaultdict(int)
     count = 0
@@ -151,12 +151,12 @@ def saved_preparation(store, projection_id):
     expected_groups = [group | {"amount_cents": str(group["amount_cents"])} for _, group in sorted(groups.items())]
     if (count != manifest["source_rows"] or canonical(expected_groups) != canonical(manifest["groups"])
             or any(totals[key] != int(value) for key, value in manifest["totals"].items())):
-        raise HTTPException(503, "wiso_preparation_source_integrity_failed")
+        raise HTTPException(503, "wiso_preparation_source_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     report = prepare(profile, manifest)
     if report is None:
         raise HTTPException(422, "wiso_preparation_profile_missing: Eine neue Profil-/Jahresfassung mit manuellen Zielzuordnungen erstellen.")
     if canonical(report) != canonical(manifest.get("wiso_preparation")):
-        raise HTTPException(503, "wiso_preparation_snapshot_integrity_failed")
+        raise HTTPException(503, "wiso_preparation_snapshot_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
     return report
 
 

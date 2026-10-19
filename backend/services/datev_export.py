@@ -390,7 +390,7 @@ def compile_export(store, command, version_id, export_id, generated_at, *, expec
                 manifest["sha256"] = hashlib.file_digest(completed_archive, "sha256").hexdigest()
             manifest["size"] = archive_path.stat().st_size
             if expected is not None and not hmac.compare_digest(manifest["sha256"], expected["sha256"]):
-                raise HTTPException(409, "DATEV source_changed: bookings/account/category changed since preview; create a new preview")
+                raise HTTPException(409, "DATEV source_changed: Buchungen, Konten oder Kategorien haben sich seit der Vorschau geändert. Bitte eine neue Vorschau erstellen.")
             scope_helpers().refresh_scope(captured)
         return CompiledExport(archive_path, manifest, cleanup)
     except OSError:

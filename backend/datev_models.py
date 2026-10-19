@@ -39,18 +39,18 @@ class DatevProfileCreate(BaseModel):
     @model_validator(mode="after")
     def checked_profile(self):
         if not self.review_confirmed or not self.calendar_year or not self.reviewed_by.strip() or not self.name.strip():
-            raise ValueError("A reviewed profile and reviewer reference are required")
+            raise ValueError("Bitte das Profil als geprüft kennzeichnen und die prüfende Person angeben.")
         keys = [(rule.account_id, rule.category_id, rule.flow) for rule in self.rules]
         if len(keys) != len(set(keys)):
-            raise ValueError("Each account/category/direction needs one unambiguous mapping")
+            raise ValueError("Jede Kombination aus Konto, Kategorie und Richtung braucht genau eine eindeutige Zuordnung.")
         for rule in self.rules:
             if not rule.no_vat_nonautomatic:
-                raise ValueError("This export requires reviewed accounts without automatic VAT")
+                raise ValueError("Für diesen Export nur geprüfte Sachkonten ohne Steuerautomatik verwenden.")
             maximum = self.gl_length + (rule.counter_kind == "person")
             if (len(rule.bank_gl) > self.gl_length or len(rule.counter_gl) > maximum
                     or int(rule.bank_gl) == 0 or int(rule.counter_gl) == 0
                     or int(rule.bank_gl) == int(rule.counter_gl)):
-                raise ValueError("Invalid account numbers for this G/L account length")
+                raise ValueError("Die Kontonummern passen nicht zur gewählten Sachkontenlänge.")
         return self
 
 
@@ -67,7 +67,7 @@ class DatevPreviewCreate(BaseModel):
         # DATEV's published header regex is 20xx. Application history remains
         # unrestricted; this is a format constraint, not a data retention rule.
         if self.start_date > self.end_date:
-            raise ValueError("Start date must precede end date")
+            raise ValueError("Das Startdatum muss vor dem Enddatum liegen.")
         if not 2000 <= self.start_date.year <= self.end_date.year <= 2099:
-            raise ValueError("DATEV EXTF 700 header dates must be within 2000–2099; use the general booking CSV export for other years")
+            raise ValueError("DATEV-Stapel (EXTF 700) gibt es nur für Daten von 2000 bis 2099; für andere Jahre den allgemeinen Buchungsexport (CSV) verwenden.")
         return self
