@@ -156,6 +156,11 @@ def test_create_receivables_from_finalized_period():
 
     receivables = store.list_receivables()
     assert len(receivables) >= 1
+    from backend.routers.receivables import list_receivables
+    selected = receivables[-1]
+    page = list_receivables(skip=0, limit=1, contract_id=None, status_filter=None,
+                            sort_by="id", sort_order="asc", statement_id=selected.statement_id)
+    assert len(page) == 1 and page[0].statement_id == selected.statement_id
 
 
 def test_create_receivables_rejects_draft_period():

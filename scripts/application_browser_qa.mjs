@@ -230,8 +230,11 @@ try {
     await picker.locator('li').filter({ hasText: 'QA RE-REST Auswahl älter' }).getByRole('button', { name: 'Auswählen', exact: true }).click();
     const payment = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Zahlung', exact: true }) });
     await expect(payment.getByLabel('Betrag', { exact: true })).toHaveValue('83.45');
+    const savedPayment = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/invoices/${financialInvoice.id}/payments`
+      && response.request().method() === 'POST');
     await payment.getByRole('button', { name: 'Speichern', exact: true }).click();
-    await expect(payment.getByRole('link', { name: /QA RE-REST Auswahl älter/ })).toBeVisible();
+    assert.equal((await savedPayment).status(), 201);
+    await expect(payment.locator('ul').getByRole('link', { name: /QA RE-REST Auswahl älter/ })).toBeVisible();
     const details = await call('GET', `/invoices/${financialInvoice.id}/review`);
     assert.equal(details.settlement.paid, 123.45); assert.equal(details.settlement.open, 0);
     const overview = (await call('GET', '/invoices/overview')).find(item => item.id === financialInvoice.id);

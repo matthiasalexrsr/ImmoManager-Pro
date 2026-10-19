@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from backend.dependencies import store
 from backend.maintenance_models import InvoicePaymentCreate
-from backend.models import AccountCreate, BookingCreate, InvoiceCreate, PortfolioCreate, PropertyCreate
+from backend.models import AccountCreate, BookingCreate, InvoiceCreate, PortfolioCreate, PropertyCreate, TenantCreate
 from backend.routers import invoices
 from backend.services import invoice_overview, maintenance_projects
 
@@ -89,3 +89,27 @@ def test_cancelled_invoice_has_no_payment_proposal(finance):
     with pytest.raises(HTTPException) as exc:
         invoices.match_invoice_to_bookings(target.id)
     assert exc.value.status_code == 409
+
+
+def test_suggestions_never_spend_tenant_money_or_use_a_different_property(finance):
+    invoice, booking, _ = finance
+    target = invoice()
+    tenant = store.create_tenant(TenantCreate(full_name="Partei"))
+    tenant_payment = booking(-100, tenant_id=tenant.id)
+    other = store.create_property(PropertyCreate(portfolio_id=store.get_property(target.property_id).portfolio_id,
+                                                 name="Anderes Haus", property_type="MFH"))
+    store.create_booking(BookingCreate(account_id=tenant_payment.account_id, property_id=other.id,
+                                       amount=-100, booking_date=date.today(), status="open"))
+    result = invoices.match_invoice_to_bookings(target.id)
+    assert result["allocations"] == []
+    assert result["unmatched_amount"] == 100
+
+
+def test_invoice_overview_continues_after_the_default_first_hundred_records(finance):
+    invoice, _, _ = finance
+    expected = {invoice().id for _ in range(101)}
+    first = invoices.invoice_overview(skip=0, limit=100)
+    second = invoices.invoice_overview(skip=100, limit=100)
+    assert len(first) == 100 and len(second) == 1
+    assert [i["id"] for i in first + second] == sorted(expected)
+    assert all(i["payment_summary"]["open"] == 100 for i in first + second)
