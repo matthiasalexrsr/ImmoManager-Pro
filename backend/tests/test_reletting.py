@@ -144,6 +144,24 @@ def test_generic_lead_edit_retains_the_project_and_its_unit(client, method):
     assert unchanged["project_id"] == project_id and unchanged["unit_id"] == estate["unit"].id
 
 
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_a_project_applicant_declined_on_the_leads_page_counts_from_the_decision(client, method):
+    estate = _estate()
+    project_id = _project(client, estate)["project"]["id"]
+    lead = client.post(f"{BASE}/{project_id}/applicants", json=WEAK).json()["applicants"][0]
+    url, name = f"{API}/leads/{lead['id']}", {"full_name": lead["full_name"]}
+    declined = getattr(client, method)(url, json={**name, "status": "rejected"})
+    assert declined.status_code == 200, declined.text
+    stamped = declined.json()["decided_at"]
+    assert stamped                                  # the deletion hint counts from here, as in the project
+    row = _applicants(client.get(f"{BASE}/{project_id}").json())["Bernd Krause"]
+    assert row["deletable"] is True and row["days_since_decision"] == 0
+    noted = getattr(client, method)(url, json={**name, "status": "rejected", "notes": "rief an"})
+    assert noted.status_code == 200 and noted.json()["decided_at"] == stamped
+    reopened = getattr(client, method)(url, json={**name, "status": "contacted"})
+    assert reopened.status_code == 200 and reopened.json()["decided_at"] is None
+
+
 def test_a_project_starts_from_the_unit_and_the_overview_shows_vacancies(client):
     estate = _estate()
     overview = client.get(BASE).json()
