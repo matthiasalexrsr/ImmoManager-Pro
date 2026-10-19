@@ -250,5 +250,6 @@ export function locationPayload(values) {
 }
 
 export function yearWindow(year) {
-  return { date_from: `${year}-01-01`, date_to: `${year}-12-31` };
+  const calendarYear = String(year).padStart(4, '0');
+  return { date_from: `${calendarYear}-01-01`, date_to: `${calendarYear}-12-31` };
 }

@@ -29,6 +29,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Globale Suche (Strg+K):** findet Datensätze und Seiten und bietet Schnellaktionen wie „Neue Buchung“.
 
 ### Mieten und Finanzen
+- **Mietanpassungen nachträglich korrigieren:** Betrag, Datum, Vertrag und Mietverlauf ändern sich gemeinsam. Bei einem Fehler bleibt der vorherige Stand vollständig erhalten. Der Prozentsatz wird aus den Mietbeträgen berechnet.
+- **Passende Vertragsübersicht:** Vom Mieterkonto führen die Links zu den Verträgen und Buchungen dieser Partei. Übernommene Objekt- und Parteifilter sind sichtbar und lassen sich aufheben.
 - **Echte Mietzahlungen** mit Konto, Datum und Betrag, dem Vertrag zugeordnet; ältere Rückstände werden zuerst gedeckt. Dazu eine Mietübersicht mit Soll und Ist je Monat.
 - **Cent-genaue Finanzen:**
   - Stornos neutralisieren ihre Buchung;
@@ -46,6 +48,9 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 ### Haus und Betrieb
 - **Übergabeprotokolle:** Räume, Mängel, Fotos, Schlüssel und Zählerstände; abgeschlossen als unveränderliches PDF.
 - **Objektverträge** (Strom, Gas, Wärme, Hausmeister …) mit Tarifen und Fristen. An Fristen erinnert das Programm von selbst.
+- **Objektvertragsfinanzen über alle Jahre:** freie Jahreswahl, vollständige Zahlungsvorschläge aus dem gewählten Jahr und direkte Links zu Rechnungen und Buchungen. Fehlgeschlagene Auswahldaten lassen sich gezielt erneut laden.
+- **Vertragsdokumente:** eindeutige Dokumentauswahl über mehrere Standorte und direkter Sprung in die Dokumentenakte; Ladefehler bleiben als solche erkennbar.
+- **Termine und Versicherungen:** Die Einheitenauswahl folgt der Immobilie; beim Immobilienwechsel wird eine nicht mehr passende Einheit zurückgesetzt. Kalendereinträge zeigen verlinkte Immobilien und Einheiten.
 - **Wartungsfall als Projektakte:** Angebot, Auftrag, Nachträge, Rechnungen und Zahlungen.
 - **Wohnungsgeberbestätigung** als PDF mit Original im Archiv.
 - **Zählerverlauf:** Ein Klick auf die Zählernummer zeigt alle Ablesungen mit Verbrauch je Zeitraum und je Kalenderjahr, weist auf Auffälligkeiten hin und verlinkt den eigenen Versorgungsvertrag sowie das Kundenportal des Anbieters.

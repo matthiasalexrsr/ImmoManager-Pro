@@ -51,10 +51,25 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
     from .. import models  # the UI contract fields extend some models at import time
     from .. import models_service_contracts as sc
     from ..db.finance_models import ReceivableSettlementORM, SavedFinanceReportORM
-    from ..db.orm_models import PaymentAllocationORM, ReceivableORM
+    from ..db.orm_models import (
+        ContractORM,
+        ContractRentPeriodORM,
+        InsuranceORM,
+        PaymentAllocationORM,
+        PropertyORM,
+        ReceivableORM,
+        RentAdjustmentORM,
+        UnitORM,
+    )
     from ..finance_models import SavedReport, Settlement
 
     return {
+        "properties": (PropertyORM, models.Property),
+        "units": (UnitORM, models.Unit),
+        "contracts": (ContractORM, models.Contract),
+        "rent_adjustments": (RentAdjustmentORM, models.RentAdjustment),
+        "contract_rent_periods": (ContractRentPeriodORM, models.ContractRentPeriod),
+        "insurances": (InsuranceORM, models.Insurance),
         "receivable_settlements": (ReceivableSettlementORM, Settlement),
         "saved_finance_reports": (SavedFinanceReportORM, SavedReport),
         "receivables": (ReceivableORM, models.Receivable),

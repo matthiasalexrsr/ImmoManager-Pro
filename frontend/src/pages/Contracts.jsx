@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -34,6 +35,7 @@ const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Miet
 
 export default function Contracts() {
   const [filter, setFilter, params] = useListRouteFilter(['all', 'active', 'ending_soon', 'expiring90', 'missing_documents', 'terminated', 'draft', 'no_deposit'], ['focus_id', 'contract_id']);
+  const [, setContextParams] = useSearchParams();
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -105,7 +107,10 @@ export default function Contracts() {
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
 
-  const enriched = contracts.filter(c => !params.get('contract_id') || c.id === params.get('contract_id')).map(c => {
+  const contextKeys = ['tenant_id', 'property_id', 'unit_id'];
+  const hasContext = contextKeys.some(key => params.get(key));
+  const enriched = contracts.filter(c => (!params.get('contract_id') || c.id === params.get('contract_id'))
+    && contextKeys.every(key => !params.get(key) || c[key] === params.get(key))).map(c => {
     const unit = unitMap[c.unit_id];
     const remaining = remainingDays(c.end_date);
     return {
@@ -265,6 +270,15 @@ export default function Contracts() {
         <KpiAction label="Ohne Kaution" value={noDeposit} onClick={() => openSources('no_deposit')} />
       </div>}
 
+      {hasContext && <div className="filter-chips" aria-label="Vertragsauswahl">
+        <span>Verträge für:</span>
+        {params.get('tenant_id') && <PartyLink tenantId={params.get('tenant_id')}>{tenantMap[params.get('tenant_id')] || 'Ausgewählte Partei'}</PartyLink>}
+        {params.get('property_id') && <Link to={`/properties/${encodeURIComponent(params.get('property_id'))}`}>{propMap[params.get('property_id')] || 'Ausgewählte Immobilie'}</Link>}
+        {params.get('unit_id') && <Link to={`/units/${encodeURIComponent(params.get('unit_id'))}`}>{unitMap[params.get('unit_id')]?.label || 'Ausgewählte Einheit'}</Link>}
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setContextParams(current => {
+          const next = new URLSearchParams(current); contextKeys.forEach(key => next.delete(key)); return next;
+        })}>Objekt- und Parteifilter aufheben</button>
+      </div>}
       {/* Filter tabs */}
       <div className="filter-chips">
         {[

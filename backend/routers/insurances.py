@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Insurance, InsuranceCreate, InsurancePatch
+from ..services.office_records import save_record
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -34,7 +35,7 @@ def list_insurances(
 @router.post("", response_model=Insurance, status_code=status.HTTP_201_CREATED)
 def create_insurance(payload: InsuranceCreate) -> Insurance:
     try:
-        return store.create_insurance(payload)
+        return save_record(store, "insurances", payload)
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -50,7 +51,7 @@ def get_insurance(insurance_id: str) -> Insurance:
 @router.put("/{insurance_id}", response_model=Insurance)
 def update_insurance(insurance_id: str, payload: InsuranceCreate) -> Insurance:
     try:
-        return store.update_insurance(insurance_id, payload)
+        return save_record(store, "insurances", payload, insurance_id)
     except (NotFoundError, ValidationError) as exc:
         code = 404 if isinstance(exc, NotFoundError) else 400
         raise HTTPException(status_code=code, detail=str(exc)) from exc
@@ -59,9 +60,9 @@ def update_insurance(insurance_id: str, payload: InsuranceCreate) -> Insurance:
 @router.patch("/{insurance_id}", response_model=Insurance)
 def patch_insurance(insurance_id: str, payload: InsurancePatch) -> Insurance:
     try:
-        return store._patch_entity("insurance", insurance_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return save_record(store, "insurances", payload, insurance_id, partial=True)
+    except (NotFoundError, ValidationError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, NotFoundError) else 400, detail=str(exc)) from exc
 
 
 @router.delete("/{insurance_id}", status_code=status.HTTP_204_NO_CONTENT)

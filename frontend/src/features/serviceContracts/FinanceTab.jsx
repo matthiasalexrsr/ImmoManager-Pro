@@ -1,39 +1,72 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useTranslation } from '../../i18n';
 import FormModal from '../../components/FormModal';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { formatDate, formatMoney } from '../../utils/format';
 import { yearWindow } from './model';
+import { financeChoices } from './financeChoices';
+
+const EMPTY_CHOICES = Object.freeze({});
 
 // Expectation (planned instalments), bills and payments of one contract, each counted once (see the backend).
 export default function FinanceTab({ contract, canWrite, today }) {
+  return <ContractFinance key={contract.id} contract={contract} canWrite={canWrite} today={today} />;
+}
+
+function ContractFinance({ contract, canWrite, today }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const thisYear = Number((today || new Date().toISOString()).slice(0, 4));
-  const [year, setYear] = useState(thisYear);
-  const [data, setData] = useState(null);
+  const [year, setYear] = useState(String(thisYear));
+  const validYear = /^\d{1,4}$/.test(year) && Number(year) >= 1 ? Number(year) : null;
+  const [dataState, setData] = useState(null);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [modal, setModal] = useState(null);     // existingBill | newBill | payment | transfer
-  const [choices, setChoices] = useState({});
+  const [choiceState, setChoices] = useState({});
+  const [choiceAttempt, setChoiceAttempt] = useState(0);
   const [revision, setRevision] = useState(0);
   const base = `/service-contracts/${encodeURIComponent(contract.id)}`;
+  const reportKey = `${base}:${validYear}`;
+  const data = dataState?.key === reportKey ? dataState.value : null;
+  const propertySignature = JSON.stringify(contract.property_ids || []);
+  const choiceKey = JSON.stringify([reportKey, modal, propertySignature, choiceAttempt]);
+  const choices = choiceState.key === choiceKey ? choiceState.value || EMPTY_CHOICES : EMPTY_CHOICES;
+  const choiceError = choiceState.key === choiceKey ? choiceState.error : null;
+  const choicesReady = modal === 'newBill' || Boolean(choiceState.key === choiceKey && choiceState.ready);
+  const writable = canWrite && Boolean(data) && !error;
 
   useEffect(() => {
     const controller = new AbortController();
-    const range = new URLSearchParams(yearWindow(year));
+    if (!validYear) { setError('Bitte ein gültiges Jahr zwischen 1 und 9999 eingeben.'); return () => controller.abort(); }
+    const range = new URLSearchParams(yearWindow(validYear));
     const options = { signal: controller.signal };
     setError(null);
     Promise.all([
       api.get(`${base}/reconciliation?${range}`, options),
       api.get(`${base}/invoices`, options),
       api.get(`${base}/payments`, options),
-    ]).then(([reconciliation, bills, payments]) => setData({ reconciliation, bills, payments }))
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); });
+    ]).then(([reconciliation, bills, payments]) => {
+      if (controller.signal.aborted) return;
+      if (!reconciliation || typeof reconciliation !== 'object' || Array.isArray(reconciliation) || !Array.isArray(bills) || !Array.isArray(payments)) {
+        throw new Error('Die Vertragsfinanzen konnten nicht vollständig gelesen werden.');
+      }
+      setData({ key: reportKey, value: { reconciliation, bills, payments } });
+    }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
-  }, [base, year, revision]);
+  }, [base, validYear, reportKey, revision]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!modal || modal === 'newBill' || !validYear) return () => controller.abort();
+    financeChoices(modal, base, JSON.parse(propertySignature), validYear, controller.signal)
+      .then(value => { if (!controller.signal.aborted) setChoices({ key: choiceKey, value, ready: true, error: null }); })
+      .catch(failure => { if (!controller.signal.aborted) setChoices({ key: choiceKey, ready: false, error: failure.message }); });
+    return () => controller.abort();
+  }, [modal, base, validYear, propertySignature, choiceKey]);
 
   const reload = () => setRevision(value => value + 1);
   const run = async (action, done) => {
@@ -42,23 +75,7 @@ export default function FinanceTab({ contract, canWrite, today }) {
     try { await action(); if (done) setNotice(done); reload(); } catch (failure) { setActionError(failure.message); }
   };
 
-  const open = useCallback(kind => {
-    setModal(kind);
-    setChoices({});
-    if (kind === 'existingBill') {
-      api.list('/invoices').then(invoices => setChoices({ invoices })).catch(() => setChoices({ invoices: [] }));
-    } else if (kind === 'payment') {
-      api.get(`${base}/payment-candidates?limit=200`).then(found => setChoices({ candidates: found.items || [] }))
-        .catch(failure => setChoices({ candidates: [], error: failure.message }));
-    } else if (kind === 'transfer') {
-      const properties = new Set(contract.property_ids);
-      Promise.all([api.list('/billing/periods'), api.list('/billing/allocation-keys'), api.list('/properties')])
-        .then(([periods, keys, props]) => setChoices({
-          periods: periods.filter(p => properties.has(p.property_id) && ['draft', 'review'].includes(p.status)),
-          keys, names: Object.fromEntries(props.map(p => [p.id, p.name])) }))
-        .catch(() => setChoices({ periods: [], keys: [], names: {} }));
-    }
-  }, [base, contract.property_ids]);
+  const open = kind => { setModal(kind); setActionError(null); };
 
   const billFields = kind => {
     const period = [
@@ -110,13 +127,13 @@ export default function FinanceTab({ contract, canWrite, today }) {
 
   const paymentFields = useMemo(() => [
     { key: 'booking_id', label: t('serviceContracts.fields.booking'), type: 'select', required: true,
-      hint: choices.error || t('serviceContracts.hints.candidates'),
+      hint: `Buchungen im Jahr ${year}. ${t('serviceContracts.hints.candidates')}`,
       options: (choices.candidates || []).map(c => ({ value: c.booking_id,
-        label: `${formatDate(c.booking_date)} · ${formatMoney(c.amount)} · ${c.payment_text || '—'}` })) },
+        label: `${formatDate(c.booking_date)} · ${formatMoney(c.open_amount ?? Math.abs(c.amount))} verfügbar · ${c.payment_text || '—'}` })) },
     { key: 'amount', label: t('serviceContracts.fields.allocated'), type: 'number', hint: t('serviceContracts.hints.allocated') },
     { key: 'service_contract_invoice_id', label: t('serviceContracts.fields.forBill'), type: 'select',
       options: (data?.bills || []).map(b => ({ value: b.id, label: `${formatDate(b.invoice.invoice_date)} · ${formatMoney(b.invoice.gross_amount)}` })) },
-  ], [t, choices, data]);
+  ], [t, choices, data, year]);
 
   const transferFields = useMemo(() => [
     { key: 'billing_period_id', label: t('serviceContracts.fields.billingPeriod'), type: 'select', required: true,
@@ -144,18 +161,27 @@ export default function FinanceTab({ contract, canWrite, today }) {
     <div className="sc-finance">
       <div className="sc-finance-toolbar">
         <label htmlFor="sc-year">{t('serviceContracts.year')}</label>
-        <select id="sc-year" value={year} onChange={e => setYear(Number(e.target.value))}>
-          {[thisYear + 1, thisYear, thisYear - 1, thisYear - 2, thisYear - 3].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="sc-year-controls" role="group" aria-label="Auswertungsjahr">
+        <button type="button" className="btn btn-sm btn-secondary" aria-label="Vorheriges Jahr" disabled={!validYear || validYear <= 1 || Boolean(modal)} onClick={() => setYear(String(validYear - 1))}>←</button>
+        <input id="sc-year" type="number" min="1" max="9999" step="1" value={year} disabled={Boolean(modal)} onChange={e => setYear(e.target.value)} />
+        <button type="button" className="btn btn-sm btn-secondary" aria-label="Nächstes Jahr" disabled={!validYear || validYear >= 9999 || Boolean(modal)} onClick={() => setYear(String(validYear + 1))}>→</button>
+        </div>
         {canWrite && <>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={() => open('newBill')}>{t('serviceContracts.newBill')}</button>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={() => open('existingBill')}>{t('serviceContracts.linkBill')}</button>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={() => open('payment')}>{t('serviceContracts.linkPayment')}</button>
-          {contract.recoverable && <button type="button" className="btn btn-sm btn-primary" onClick={() => open('transfer')}>
+          <button type="button" className="btn btn-sm btn-secondary" disabled={!writable || Boolean(modal)} onClick={() => open('newBill')}>{t('serviceContracts.newBill')}</button>
+          <button type="button" className="btn btn-sm btn-secondary" disabled={!writable || Boolean(modal)} onClick={() => open('existingBill')}>{t('serviceContracts.linkBill')}</button>
+          <button type="button" className="btn btn-sm btn-secondary" disabled={!writable || Boolean(modal)} onClick={() => open('payment')}>{t('serviceContracts.linkPayment')}</button>
+          {contract.recoverable && <button type="button" className="btn btn-sm btn-primary" disabled={!writable || Boolean(modal)} onClick={() => open('transfer')}>
             {t('serviceContracts.transfer')}</button>}
         </>}
       </div>
-      {error && <div role="alert" className="alert alert-error">{error}</div>}
+      {error && <div role="alert" className="alert alert-error">{error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={reload}>{t('serviceContracts.retry')}</button></div>}
+      {!data && !error && <p role="status">{t('serviceContracts.loading')}</p>}
+      {modal && !choicesReady && <div role={choiceError ? 'alert' : 'status'} className={choiceError ? 'alert alert-error' : ''}>
+        {choiceError || t('serviceContracts.loading')}{' '}
+        {choiceError && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChoiceAttempt(value => value + 1)}>Auswahl erneut laden</button>}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModal(null)}>{t('ui.buttons.cancel')}</button>
+      </div>}
       {actionError && <div role="alert" className="alert alert-error">{actionError}</div>}
       {notice && <div role="status" className="alert alert-info">{notice}</div>}
       {r?.partial && <p className="text-muted">{t('serviceContracts.partialFigures')}</p>}
@@ -166,7 +192,7 @@ export default function FinanceTab({ contract, canWrite, today }) {
           </div>
         ))}
       </div>}
-      <p className="text-muted sc-note">{t('serviceContracts.figuresNote')}</p>
+      {data && <><p className="text-muted sc-note">{t('serviceContracts.figuresNote')}</p>
 
       <section className="panel">
         <div className="panel-header">{t('serviceContracts.bills')}</div>
@@ -185,7 +211,7 @@ export default function FinanceTab({ contract, canWrite, today }) {
                 <tbody>
                   {data.bills.map(bill => (
                     <tr key={bill.id}>
-                      <td>{formatDate(bill.invoice.invoice_date)}<div className="text-muted sc-small">{bill.invoice.invoice_number || bill.invoice.supplier}</div></td>
+                      <td><Link to={`/invoice-review/${encodeURIComponent(bill.invoice.id)}`}>{formatDate(bill.invoice.invoice_date)}</Link><div className="text-muted sc-small">{bill.invoice.invoice_number || bill.invoice.supplier}</div></td>
                       <td>{formatDate(bill.period_start)} – {formatDate(bill.period_end)}</td>
                       <td className="text-right">{formatMoney(bill.invoice.gross_amount)}</td>
                       <td className="text-right">{bill.kind === 'settlement' ? formatMoney(bill.advances_credited) : '—'}
@@ -222,7 +248,7 @@ export default function FinanceTab({ contract, canWrite, today }) {
                   {data.payments.map(payment => (
                     <tr key={payment.id}>
                       <td>{formatDate(payment.booking.booking_date)}</td>
-                      <td className="sc-break">{payment.booking.payment_text || '—'}</td>
+                      <td className="sc-break"><Link to={`/bookings?booking_id=${encodeURIComponent(payment.booking.id)}`}>{payment.booking.payment_text || 'Buchung öffnen'}</Link></td>
                       <td className="text-right">{formatMoney(payment.amount)}</td>
                       <td>{canWrite && <button type="button" className="btn btn-sm btn-danger"
                         aria-label={`${t('serviceContracts.remove')}: ${formatDate(payment.booking.booking_date)}`}
@@ -244,18 +270,18 @@ export default function FinanceTab({ contract, canWrite, today }) {
             {r.instalments.map(item => <li key={item.due_date}><span>{formatDate(item.due_date)}</span><span>{formatMoney(item.amount)}</span></li>)}
           </ul>
         </details>
-      )}
+      )}</>}
 
-      {(modal === 'newBill' || modal === 'existingBill') && <FormModal
+      {canWrite && choicesReady && (modal === 'newBill' || modal === 'existingBill') && <FormModal
         title={modal === 'newBill' ? t('serviceContracts.newBill') : t('serviceContracts.linkBill')}
         fields={billFields(modal)} onSave={saveBill} onClose={() => setModal(null)} />}
-      {modal === 'payment' && <FormModal title={t('serviceContracts.linkPayment')} fields={paymentFields}
+      {canWrite && choicesReady && modal === 'payment' && <FormModal title={t('serviceContracts.linkPayment')} fields={paymentFields}
         onSave={async values => {
           await api.post(`${base}/payments`, { booking_id: values.booking_id, amount: values.amount ?? null,
             service_contract_invoice_id: values.service_contract_invoice_id || null });
           reload();
         }} onClose={() => setModal(null)} />}
-      {modal === 'transfer' && <FormModal title={t('serviceContracts.transfer')} fields={transferFields}
+      {canWrite && choicesReady && modal === 'transfer' && <FormModal title={t('serviceContracts.transfer')} fields={transferFields}
         onSave={async values => {
           const result = await api.post(`${base}/cost-transfers`, values);
           setNotice(t('serviceContracts.transferDone', { created: result.created.length, skipped: result.skipped.length }));

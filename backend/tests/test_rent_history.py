@@ -114,3 +114,128 @@ def test_deleting_a_contract_removes_its_rent_history(client):
 
     assert client.delete(f"/api/v1/contracts/{contract['id']}").status_code == 204
     assert store.list_contract_rent_periods(contract["id"]) == []
+
+
+@pytest.mark.parametrize("method", ["put", "patch"])
+def test_editing_applied_amount_updates_the_same_rent_period(client, method):
+    _, contract = _we05(client)
+    adjustment = _adjustment(client, contract, status="applied")
+    original = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    payload = {"new_rent": 900}
+    if method == "put":
+        payload = {**{key: adjustment[key] for key in (
+            "contract_id", "adjustment_type", "effective_date", "previous_rent", "status")}, **payload}
+
+    response = getattr(client, method)(f"/api/v1/rent-adjustments/{adjustment['id']}", json=payload)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["new_rent"] == 900
+    assert response.json()["increase_percent"] == 15.3846
+    periods = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    assert len(periods) == 2
+    assert periods[-1]["id"] == original[-1]["id"]
+    assert periods[-1]["cold_rent"] == 900
+    assert periods[-1]["service_charge_advance"] == 190
+    assert periods[-1]["heating_advance"] == 100
+    assert _expected(client, contract) == 87390
+    assert any(entry.entity_id == contract['id'] and entry.field_name == 'rent_adjustment'
+               and '820,00' in (entry.old_value or '') and '900,00' in (entry.new_value or '')
+               for entry in store.list_change_history())
+
+
+def test_editing_applied_date_moves_the_period_and_the_calculation(client):
+    _, contract = _we05(client)
+    adjustment = _adjustment(client, contract, status="applied")
+
+    response = client.patch(f"/api/v1/rent-adjustments/{adjustment['id']}",
+                            json={"effective_date": "2025-03-01"})
+
+    assert response.status_code == 200, response.text
+    periods = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    assert len(periods) == 2
+    assert periods[-1]["valid_from"] == "2025-03-01"
+    assert _expected(client, contract) == 86830
+
+
+def test_failed_applied_create_leaves_no_adjustment_or_history(client):
+    _, contract = _we05(client)
+    before = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    response = client.post("/api/v1/rent-adjustments", json={
+        "contract_id": contract["id"], "adjustment_type": "index", "status": "applied",
+        "effective_date": "2025-01-15", "previous_rent": 780, "new_rent": 820})
+
+    assert response.status_code == 400, response.text
+    assert client.get("/api/v1/rent-adjustments").json() == []
+    assert client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json() == before
+
+
+def test_failed_applied_edit_preserves_both_records(client):
+    _, contract = _we05(client)
+    adjustment = _adjustment(client, contract, status="applied")
+    before = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+
+    response = client.patch(f"/api/v1/rent-adjustments/{adjustment['id']}",
+                            json={"new_rent": 910, "effective_date": "2025-01-15"})
+
+    assert response.status_code == 400, response.text
+    assert client.get(f"/api/v1/rent-adjustments/{adjustment['id']}").json() == adjustment
+    assert client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json() == before
+
+
+@pytest.mark.parametrize("operation", ["apply", "edit", "revert"])
+def test_failure_after_a_history_write_rolls_back_the_entire_operation(client, monkeypatch, operation):
+    from backend.services.maintenance_rows import Rows
+    from backend.storage import ValidationError
+
+    _, contract = _we05(client)
+    adjustment = _adjustment(client, contract, status="pending" if operation == "apply" else "applied")
+    original = client.get(f"/api/v1/rent-adjustments/{adjustment['id']}").json()
+    periods = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    method = {"apply": "add", "edit": "update", "revert": "delete"}[operation]
+    history = store.list_change_history()
+    original_method = getattr(Rows, method)
+
+    def fail_after_write(self, table, *args, **kwargs):
+        result = original_method(self, table, *args, **kwargs)
+        if table == "contract_rent_periods":
+            raise ValidationError("Prüffehler nach dem Schreiben des Mietverlaufs")
+        return result
+
+    monkeypatch.setattr(Rows, method, fail_after_write)
+    url = f"/api/v1/rent-adjustments/{adjustment['id']}"
+    response = client.patch(url, json={"new_rent": 900}) if operation == "edit" else client.post(f"{url}/{operation}", json={})
+    assert response.status_code == 400, response.text
+    assert client.get(url).json() == original
+    assert client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json() == periods
+    assert store.list_change_history() == history
+
+
+def test_colliding_effective_date_does_not_replace_an_independent_rent_period(client):
+    _, contract = _we05(client)
+    adjustment = _adjustment(client, contract, status="applied")
+    client.post(f"/api/v1/contracts/{contract['id']}/rent-periods", json={
+        "contract_id": contract["id"], "valid_from": "2025-03-01", "cold_rent": 850})
+    original = client.get(f"/api/v1/rent-adjustments/{adjustment['id']}").json()
+    periods = client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json()
+    response = client.patch(f"/api/v1/rent-adjustments/{adjustment['id']}", json={"effective_date": "2025-03-01"})
+    assert response.status_code == 400, response.text
+    assert client.get(f"/api/v1/rent-adjustments/{adjustment['id']}").json() == original
+    assert client.get(f"/api/v1/contracts/{contract['id']}/rent-periods").json() == periods
+
+
+def test_moving_an_applied_adjustment_moves_its_single_period_and_preserves_advances(client):
+    unit, first = _we05(client)
+    other_unit = client.post("/api/v1/units", json={"property_id": unit["property_id"],
+        "label": "WE 06", "unit_type": "flat", "cold_rent": 1000, "service_charge_advance": 50}).json()
+    second = client.post("/api/v1/contracts", json={"contract_number": "MV-006", "property_id": unit["property_id"],
+        "unit_id": other_unit["id"], "tenant_id": first["tenant_id"], "start_date": "2025-01-01"}).json()
+    adjustment = _adjustment(client, first, effective_date="2025-03-01", status="applied")
+    response = client.patch(f"/api/v1/rent-adjustments/{adjustment['id']}", json={"contract_id": second["id"]})
+    assert response.status_code == 200, response.text
+    assert len(client.get(f"/api/v1/contracts/{first['id']}/rent-periods").json()) == 1
+    periods = client.get(f"/api/v1/contracts/{second['id']}/rent-periods").json()
+    assert len(periods) == 2
+    assert periods[-1]["service_charge_advance"] == 50
+    assert periods[-1]["heating_advance"] == 0
+    assert _expected(client, first) == 86670
+    assert _expected(client, second) == 5580

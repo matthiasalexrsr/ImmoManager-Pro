@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import RentAdjustment, RentAdjustmentCreate, RentAdjustmentPatch
+from ..services.rent_adjustments import delete_adjustment as delete_with_history
+from ..services.rent_adjustments import save_adjustment
 from ..services.rent_history import apply_rent_adjustment, revert_rent_adjustment
 from ..storage import NotFoundError, ValidationError
 
@@ -28,10 +30,7 @@ def list_rent_adjustments(
 @router.post("", response_model=RentAdjustment, status_code=status.HTTP_201_CREATED)
 def create_rent_adjustment(payload: RentAdjustmentCreate):
     try:
-        created = store.create_rent_adjustment(payload)
-        if created.status == "applied":
-            created, _ = apply_rent_adjustment(store, created.id)
-        return created
+        return save_adjustment(store, payload)
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -44,20 +43,10 @@ def get_rent_adjustment(adj_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def _save_with_status(adj_id: str, save) -> RentAdjustment:
-    """Save, then make the rent history follow the status.
-
-    "applied" writes the adjustment into the contract's rent history, leaving
-    "applied" takes it out again, so the old status-only UI cannot bypass it.
-    """
+def _save_with_status(adj_id: str, payload, *, partial: bool = False) -> RentAdjustment:
+    """The adjustment and its rent history either both change or both stay intact."""
     try:
-        before = store.get_rent_adjustment(adj_id)
-        saved = save()
-        if saved.status == "applied":
-            saved, _ = apply_rent_adjustment(store, adj_id)
-        elif before.status == "applied":
-            saved = revert_rent_adjustment(store, adj_id, status=saved.status)
-        return saved
+        return save_adjustment(store, payload, adj_id, partial=partial)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -66,12 +55,12 @@ def _save_with_status(adj_id: str, save) -> RentAdjustment:
 
 @router.put("/{adj_id}", response_model=RentAdjustment)
 def update_rent_adjustment(adj_id: str, payload: RentAdjustmentCreate):
-    return _save_with_status(adj_id, lambda: store.update_rent_adjustment(adj_id, payload))
+    return _save_with_status(adj_id, payload)
 
 
 @router.patch("/{adj_id}", response_model=RentAdjustment)
 def patch_rent_adjustment(adj_id: str, payload: RentAdjustmentPatch):
-    return _save_with_status(adj_id, lambda: store._patch_entity("rent_adjustment", adj_id, payload))
+    return _save_with_status(adj_id, payload, partial=True)
 
 
 @router.post("/{adj_id}/apply")
@@ -98,6 +87,6 @@ def revert_adjustment(adj_id: str):
 @router.delete("/{adj_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rent_adjustment(adj_id: str):
     try:
-        store.delete_rent_adjustment(adj_id)
+        delete_with_history(store, adj_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -18,6 +18,7 @@ const FIELD_LABELS = {
   property_id: 'Immobilienkennung', unit_id: 'Einheitenkennung', tenant_id: 'Parteikennung', contract_id: 'Vertragskennung',
   document_id: 'Dokumentkennung', account_id: 'Kontokennung', category_id: 'Kategorienkennung',
   statement_id: 'Abrechnungskennung',
+  rent_adjustment: 'Mietanpassung',
   area_sqm: 'Fläche (m²)', rooms: 'Zimmerzahl', person_count: 'Personenzahl',
   net_amount: 'Nettobetrag', gross_amount: 'Bruttobetrag', vat_amount: 'Mehrwertsteuerbetrag', vat_rate: 'Mehrwertsteuersatz',
   invoice_number: 'Rechnungsnummer', supplier: 'Lieferant', currency: 'Währung', payment_reference: 'Verwendungszweck',

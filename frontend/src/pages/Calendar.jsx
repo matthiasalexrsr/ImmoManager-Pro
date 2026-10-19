@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
+import { useEntities } from '../contexts/DataStoreContext';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
@@ -24,6 +25,8 @@ const COLUMNS = [
     render: v => <StatusBadge status={v} /> },
   { key: 'event_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'event_time', label: 'Uhrzeit' },
+  { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'location', label: 'Ort', filterType: 'text' },
   { key: 'participants', label: 'Teilnehmer' },
 ];
@@ -33,6 +36,8 @@ export default function Calendar() {
   const confirm = useConfirm();
   const [events, setEvents] = useState([]);
   const [properties, setProperties] = useState([]);
+  const unitSource = useEntities('units', '/units');
+  const units = unitSource.items;
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   // values of a duplicated appointment for the New form (null: an empty form)
@@ -62,17 +67,24 @@ export default function Calendar() {
     });
     return () => request.abort();
   }, [revision]);
-  const choicesReady = !loading && !propertyError;
+  const choicesReady = !loading && !propertyError && !unitSource.loading && !unitSource.error;
+  const propertyNames = new Map(properties.map(property => [property.id, property.name]));
+  const unitNames = new Map(units.map(unit => [unit.id, unit.label]));
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
     { key: 'event_type', label: 'Typ', type: 'select', required: true, options: EVENT_TYPES },
     { key: 'event_date', label: 'Datum', type: 'date', required: true },
-    { key: 'event_time', label: 'Uhrzeit', placeholder: 'z.B. 14:00' },
+    { key: 'event_time', label: 'Uhrzeit', type: modal?.event_time && !/^\d{2}:\d{2}(:\d{2})?$/.test(modal.event_time) ? 'text' : 'time' },
     { key: 'location', label: 'Ort' },
     { key: 'participants', label: 'Teilnehmer' },
-    { key: 'property_id', label: 'Immobilie', type: 'select',
+    { key: 'property_id', label: 'Immobilie', type: 'select', clearOnChange: ['unit_id'],
       options: properties.map(p => ({ value: p.id, label: p.name })) },
+    { key: 'unit_id', label: 'Einheit (optional)', type: 'select',
+      options: values => units.filter(unit => !values.property_id || unit.property_id === values.property_id)
+        .map(unit => ({ value: unit.id, label: values.property_id ? unit.label : `${propertyNames.get(unit.property_id) || 'Immobilie'} · ${unit.label}` })),
+      validate: (value, values) => value && values.property_id && units.find(unit => unit.id === value)?.property_id !== values.property_id
+        ? 'Bitte eine Einheit der ausgewählten Immobilie wählen.' : null },
     { key: 'description', label: 'Beschreibung', type: 'textarea' },
   ];
 
@@ -107,6 +119,8 @@ export default function Calendar() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
       {propertyError && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyError}{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Auswahl erneut laden</button></p>}
+      {unitSource.error && <p className="alert-error" role="alert">Die Einheitenauswahl ist nicht verfügbar. {unitSource.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={unitSource.reload}>Einheiten erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -116,7 +130,7 @@ export default function Calendar() {
       <DataTable
         title={t('navigation.main.calendar') || 'Kalender'}
         columns={COLUMNS}
-        data={events}
+        data={events.map(event => ({ ...event, property_name: propertyNames.get(event.property_id) || '—', unit_label: unitNames.get(event.unit_id) || '—' }))}
         rowName={row => row.title || row.id}
         bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),
           finished: () => refreshData() })]}

@@ -69,7 +69,7 @@ export default function TenantAccount() {
       </div>
 
       <RelatedPageLinks items={[
-        { to: '/contracts', label: 'Alle Mietverträge' },
+        { to: `/contracts?tenant_id=${encodeURIComponent(id)}`, label: 'Verträge dieses Mieters' },
         { to: `/bookings?tenant_id=${encodeURIComponent(id)}`, label: 'Buchungen dieses Mieters' },
       ]} />
       {tenant && <TenantFacts tenant={tenant} />}
@@ -131,7 +131,7 @@ export default function TenantAccount() {
                 </tbody>
               </table>
               <p className="text-muted" style={{ padding: '0 1rem 1rem' }}>
-                Zuordnen unter <Link to="/bookings">Buchungen</Link> → Filter „Nicht zugeordnet“ → „Aufteilen“.
+                Zuordnen unter <Link to={`/bookings?tenant_id=${encodeURIComponent(id)}`}>Buchungen</Link> → Filter „Nicht zugeordnet“ → „Aufteilen“.
               </p>
             </div>
           )}

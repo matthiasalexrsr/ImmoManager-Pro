@@ -30,10 +30,13 @@ export default function Insurances() {
     retry: () => { propertySource.reload(); unitSource.reload(); } };
 
   const fields = [
-    { key: 'property_id', label: t('pages.insurances.form.property') || 'Immobilie', required: true, type: 'select',
+    { key: 'property_id', label: t('pages.insurances.form.property') || 'Immobilie', required: true, type: 'select', clearOnChange: ['unit_id'],
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('pages.insurances.form.unit') || 'Einheit (optional)', type: 'select',
-      options: units.map(u => ({ value: u.id, label: u.label })) },
+      options: values => units.filter(unit => !values.property_id || unit.property_id === values.property_id)
+        .map(unit => ({ value: unit.id, label: values.property_id ? unit.label : `${propertyNames.get(unit.property_id) || 'Immobilie'} · ${unit.label}` })),
+      validate: (value, values) => value && values.property_id && units.find(unit => unit.id === value)?.property_id !== values.property_id
+        ? 'Bitte eine Einheit der ausgewählten Immobilie wählen.' : null },
     { key: 'insurance_type', label: t('pages.insurances.form.type') || 'Versicherungsart', required: true, type: 'select', options: [
       { value: 'building', label: t('pages.insurances.types.building') || 'Gebäudeversicherung' },
       { value: 'liability', label: t('pages.insurances.types.liability') || 'Haftpflicht' },

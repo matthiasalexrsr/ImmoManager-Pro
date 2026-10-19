@@ -9,8 +9,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from ..domain.lease_engine import ChargeConfig, RentStep, charge_on
-from ..models import ContractRentPeriod, ContractRentPeriodCreate, RentAdjustmentCreate
-from ..storage import ValidationError
+from ..models import ContractRentPeriod, ContractRentPeriodCreate
 
 
 def _charge(cold_rent: Any, service_charge_advance: Any, heating_advance: Any) -> ChargeConfig:
@@ -88,56 +87,13 @@ def follow_contract_start(store: Any, contract: Any) -> None:
             "valid_from": contract.start_date}))
 
 
-def _period_of(store: Any, adjustment: Any) -> Optional[ContractRentPeriod]:
-    return next((p for p in store.list_contract_rent_periods(adjustment.contract_id)
-                 if p.rent_adjustment_id == adjustment.id), None)
-
-
 def apply_rent_adjustment(store: Any, adjustment_id: str) -> tuple[Any, list[str]]:
-    """Write the adjustment into the rent history (once) and mark it applied.
-
-    Returns the adjustment and warnings, e.g. when its previous rent differs
-    from the rent the history shows for that date.
-    """
-    adjustment = store.get_rent_adjustment(adjustment_id)
-    contract = store.get_contract(adjustment.contract_id)
-    warnings: list[str] = []
-    if _period_of(store, adjustment) is None:
-        if adjustment.status == "rejected":
-            raise ValidationError("Eine abgelehnte Mietanpassung kann nicht angewendet werden")
-        if adjustment.new_rent is None or adjustment.new_rent <= 0:
-            raise ValidationError("Die neue Miete muss größer als 0 sein")
-        if adjustment.effective_date.day != 1:
-            raise ValidationError("Eine Mietanpassung gilt ab einem Monatsersten")
-        if adjustment.effective_date < contract.start_date:
-            raise ValidationError("Eine Mietanpassung kann nicht vor Vertragsbeginn gelten")
-        start_rent_history(store, contract)
-        current = charge_for(store, contract, adjustment.effective_date)
-        assert current is not None
-        if adjustment.previous_rent and Decimal(str(adjustment.previous_rent)) != current.cold_rent:
-            warnings.append(
-                f"Bisherige Miete der Anpassung ({adjustment.previous_rent:.2f} €) weicht vom Mietverlauf "
-                f"ab ({current.cold_rent:.2f} €)")
-        store.create_contract_rent_period(ContractRentPeriodCreate(
-            contract_id=contract.id, valid_from=adjustment.effective_date, cold_rent=adjustment.new_rent,
-            service_charge_advance=float(current.service_charge_advance),
-            heating_advance=float(current.heating_advance),
-            source="adjustment", rent_adjustment_id=adjustment.id))
-    if adjustment.status != "applied":
-        adjustment = _with_status(store, adjustment, "applied")
-    return adjustment, warnings
+    """Apply once, including the status and rent period in the same transaction."""
+    from .rent_adjustments import apply_adjustment
+    return apply_adjustment(store, adjustment_id)
 
 
 def revert_rent_adjustment(store: Any, adjustment_id: str, status: str = "pending") -> Any:
-    """Take the adjustment out of the rent history again."""
-    adjustment = store.get_rent_adjustment(adjustment_id)
-    period = _period_of(store, adjustment)
-    if period is not None:
-        store.delete_contract_rent_period(period.id)
-    return _with_status(store, adjustment, status) if adjustment.status != status else adjustment
-
-
-def _with_status(store: Any, adjustment: Any, status: str) -> Any:
-    data = RentAdjustmentCreate(**{**adjustment.model_dump(include=set(RentAdjustmentCreate.model_fields)),
-                                   "status": status})
-    return store.update_rent_adjustment(adjustment.id, data)
+    """Take the adjustment out of the rent history in the same transaction."""
+    from .rent_adjustments import revert_adjustment
+    return revert_adjustment(store, adjustment_id, status)

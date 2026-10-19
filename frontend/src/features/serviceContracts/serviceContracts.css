@@ -149,13 +149,19 @@
   gap: 0.5rem;
 }
 
-.sc-finance-toolbar select {
+.sc-finance-toolbar select,
+.sc-finance-toolbar input {
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-surface);
   color: var(--color-text);
+  font: inherit;
 }
+
+.sc-year-controls { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; }
+.sc-year-controls input { width: 6rem; min-width: 0; }
+.sc-finance-toolbar .sc-year-controls .btn { flex: 0 0 auto; }
 
 .sc-figures {
   grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));

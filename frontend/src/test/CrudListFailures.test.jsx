@@ -5,6 +5,7 @@ import { api } from '../api';
 import { DataStoreProvider, useEntities } from '../contexts/DataStoreContext';
 import CrudPage from '../pages/CrudPage';
 import Insurances from '../pages/Insurances';
+import Calendar from '../pages/Calendar';
 
 vi.mock('../api', () => ({ api: { list: vi.fn(), get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'owner', role: 'eigentuemer' } }), useCanWrite: () => true }));
@@ -50,4 +51,29 @@ it('links insurance names to the exact property and unit and gates missing form 
   unavailable = false;
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Auswahl erneut laden' })));
   expect(await screen.findByRole('link', { name: 'Haus am Park' })).toHaveAttribute('href', '/properties/p1');
+});
+
+it.each([
+  [Insurances, '/insurances', 'Einheit (optional)'],
+  [Calendar, '/calendar', 'Einheit (optional)'],
+])('limits dependent units to the selected property and clears a previous choice', async (Page, endpoint, unitLabel) => {
+  api.list.mockImplementation(async path => {
+    if (path === endpoint) return [];
+    if (path === '/properties') return [{ id: 'p1', name: 'Haus Nord' }, { id: 'p2', name: 'Haus Süd' }];
+    if (path === '/units') return [{ id: 'u1', property_id: 'p1', label: 'Wohnung Nord' }, { id: 'u2', property_id: 'p2', label: 'Wohnung Süd' }];
+    return [];
+  });
+  show(<Page />);
+  await screen.findByRole('button', { name: 'Neu' });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Neu' })));
+  const property = screen.getByLabelText(/Immobilie/);
+  fireEvent.change(property, { target: { value: 'p1' } });
+  const unit = screen.getByLabelText(unitLabel);
+  expect(unit).toHaveTextContent('Wohnung Nord');
+  expect(unit).not.toHaveTextContent('Wohnung Süd');
+  fireEvent.change(unit, { target: { value: 'u1' } });
+  fireEvent.change(property, { target: { value: 'p2' } });
+  expect(unit).toHaveValue('');
+  expect(unit).toHaveTextContent('Wohnung Süd');
+  expect(unit).not.toHaveTextContent('Wohnung Nord');
 });

@@ -1,4 +1,4 @@
-"""Exercise settings and personal notification navigation on a new owned server."""
+"""Exercise real management workflows on a new owned synthetic application server."""
 from __future__ import annotations
 
 import argparse
@@ -56,7 +56,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--playwright', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/daily-browser')
-    parser.add_argument('--suite', choices=('daily', 'qol', 'interfaces'), default='daily')
+    parser.add_argument('--suite', choices=('daily', 'qol', 'interfaces', 'application'), default='daily')
     parser.add_argument('--binary', type=Path, help='Optional built application inside this checkout')
     options = parser.parse_args()
     module = options.playwright.resolve(strict=True)
@@ -97,7 +97,7 @@ def main() -> int:
             process, job = start_owned(['node', str(ROOT / 'scripts' / f'{options.suite}_browser_qa.mjs')],
                 cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT)
             try:
-                result['exit_code'] = process.wait(timeout=300)
+                result['exit_code'] = process.wait(timeout=600 if options.suite == 'application' else 300)
             finally:
                 stop_owned(process, job, hard=True)
         if result['exit_code']:

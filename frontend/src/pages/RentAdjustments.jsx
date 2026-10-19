@@ -20,11 +20,23 @@ const COLUMNS = [
     render: v => formatMoney(v) },
   { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', align: 'right',
     render: v => formatMoney(v) },
-  { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number', align: 'right',
+  { key: 'increase_percent', label: 'Änderung (%)', type: 'number', align: 'right',
     render: v => formatPercent(v) },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
+
+function CalculatedIncrease(props) {
+  return <input id={props.id} type="text" readOnly value={formatPercent(props.value)} disabled={props.disabled}
+    aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']} />;
+}
+
+function rentChange(values) {
+  const previous = Number(String(values.previous_rent ?? '').replace(',', '.'));
+  const next = Number(String(values.new_rent ?? '').replace(',', '.'));
+  return { increase_percent: previous > 0 && values.new_rent !== '' && values.new_rent != null && Number.isFinite(next)
+    ? Math.round((next - previous) / previous * 1000000) / 10000 : '' };
+}
 
 export default function RentAdjustments() {
   const { t } = useTranslation();
@@ -90,7 +102,8 @@ export default function RentAdjustments() {
     { key: 'effective_date', label: 'Wirksamkeitsdatum', type: 'date', required: true },
     { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', required: true },
     { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', required: true },
-    { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number' },
+    { key: 'increase_percent', label: 'Änderung (%)', type: 'number', component: CalculatedIncrease,
+      hint: 'Wird aus bisheriger und neuer Kaltmiete berechnet.' },
     { key: 'index_base_year', label: 'Index-Basisjahr', type: 'number' },
     { key: 'index_value', label: 'Indexwert', type: 'number' },
     { key: 'status', label: 'Status', type: 'select', default: 'pending', options: [
@@ -153,6 +166,7 @@ export default function RentAdjustments() {
         <FormModal
           title={modal === 'create' ? 'Mietanpassung erstellen' : 'Mietanpassung bearbeiten'}
           fields={fields}
+          derive={rentChange}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}

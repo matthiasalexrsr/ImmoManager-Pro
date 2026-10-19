@@ -70,6 +70,22 @@ describe('Kennzahlen öffnen ihre fachlichen Quellen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sicherung läuft');
     expect(screen.queryByRole('button', { name: 'Geplant gesamt: Quellvorgänge anzeigen' })).not.toBeInTheDocument();
   });
+  it.each([
+    ['tenant_id=party-a', ['a', 'b']],
+    ['property_id=house-a', ['a']],
+    ['unit_id=unit-b', ['b']],
+    ['tenant_id=party-a&property_id=house-b', ['b']],
+  ])('retains the record context of a contract link (%s)', async (query, ids) => {
+    api.list.mockResolvedValue([
+      { id: 'a', tenant_id: 'party-a', property_id: 'house-a', unit_id: 'unit-a', status: 'active' },
+      { id: 'b', tenant_id: 'party-a', property_id: 'house-b', unit_id: 'unit-b', status: 'active' },
+      { id: 'c', tenant_id: 'party-c', property_id: 'house-c', unit_id: 'unit-c', status: 'active' },
+    ]);
+    api.get.mockResolvedValue({});
+    mount(<Contracts />, `/contracts?${query}`);
+    await screen.findByRole('list');
+    expect(screen.getAllByRole('listitem').map(row => row.textContent)).toEqual(ids);
+  });
   it('matches occupancy dates, terminated tenancies, drafts and manually occupied units', () => {
     const units = ['current', 'future', 'past', 'manual', 'draft'].map(id => ({ id, status: 'occupied' }));
     const contracts = [

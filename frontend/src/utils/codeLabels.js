@@ -44,7 +44,7 @@ const DE = {
   vacancy: 'Leerstand', property: 'Immobilie', unit: 'Einheit', contact: 'Kontakt', document: 'Dokument',
   installation: 'Einbau', replacement: 'Austausch', reading: 'Ablesung', manual: 'Manuell', auto: 'Automatisch',
   deposit_account: 'Kautionskonto', guarantee: 'Bürgschaft', pledged_savings: 'Verpfändetes Sparbuch',
-  credit_note: 'Gutschrift', service_contract: 'Objektvertrag', letter: 'Schreiben',
+  credit_note: 'Gutschrift', service_contract: 'Objektvertrag', letter: 'Schreiben', rent_adjustment: 'Mietanpassung',
   housing_confirmation: 'Wohnungsgeberbestätigung', handover_protocol: 'Übergabeprotokoll', dunning_letter: 'Mahnschreiben',
   billing_statement_letter: 'Abrechnungsschreiben',
   deposit_settlement: 'Kautionsabrechnung', maintenance_protocol: 'Instandhaltungsprotokoll', teha_original: 'TEHA-Original',
