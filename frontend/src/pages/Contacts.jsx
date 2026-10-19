@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
@@ -48,23 +48,32 @@ export default function Contacts() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState('all');
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
 
-  const loadData = () => {
-    api.list('/contacts').then(data => {
+  const loadData = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/contacts', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Kontakte konnten nicht vollständig gelesen werden.');
       // Add display_name for each contact
-      const enriched = (data || []).map(c => ({
+      const enriched = data.map(c => ({
         ...c,
         display_name: c.company_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unbenannt',
       }));
-      setContacts(enriched);
-    }).catch(() => setContacts([])).finally(() => setLoading(false));
-  };
-
-  useEffect(() => { loadData(); }, []);
+      setContacts(enriched); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Kontakte konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -81,7 +90,12 @@ export default function Contacts() {
     loadData();
   };
 
-  const filtered = tab === 'all' ? contacts : contacts.filter(c => c.contact_type === tab);
+  const activeTab = params.get('focus_id') || params.get('suche') ? 'all' : tab;
+  const filtered = activeTab === 'all' ? contacts : contacts.filter(c => c.contact_type === activeTab);
+  const chooseTab = value => {
+    setTab(value);
+    setParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; });
+  };
 
   const counts = {
     all: contacts.length,
@@ -91,10 +105,14 @@ export default function Contacts() {
     manager: contacts.filter(c => c.contact_type === 'manager').length,
   };
 
-  if (loading && !modal) return <div className="page-loading">Laden...</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">Laden...</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={loadData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Kontakte konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={loadData}>Erneut laden</button></p>}
       <div className="tab-bar" style={{ marginBottom: '1rem' }}>
         {[
           { key: 'all', label: 'Alle' },
@@ -105,8 +123,8 @@ export default function Contacts() {
         ].map(t => (
           <button
             key={t.key}
-            className={`detail-tab ${tab === t.key ? 'active' : ''}`}
-            onClick={() => setTab(t.key)}
+            className={`detail-tab ${activeTab === t.key ? 'active' : ''}`}
+            onClick={() => chooseTab(t.key)}
           >
             {t.label} ({counts[t.key]})
           </button>

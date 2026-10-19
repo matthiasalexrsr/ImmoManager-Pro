@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import DraftDefaults from '../components/DraftDefaults';
+import useLookupChoices from '../hooks/useLookupChoices';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate, formatMoney } from '../utils/format';
 import { Empty, Modal, Pill } from '../features/maintenanceProject/ProjectUi';
@@ -17,17 +18,12 @@ const STATUSES = ['pending', 'received', 'query', 'approved', 'partially_approve
 export default function InvoiceReview() {
   const { tx } = useReviewText();
   const [tab, setTab] = useState('inbox');
-  const [properties, setProperties] = useState([]);
+  const propertyChoices = useLookupChoices({ properties: '/properties' });
+  const properties = propertyChoices.data.properties || [];
   const canReceive = useCanWrite('/invoice-review/receipts');
   const canSettings = useCanWrite('/invoice-review/settings');
   const [dialog, setDialog] = useState(null);
   const [revision, setRevision] = useState(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api.list('/properties', { signal: controller.signal }).then(setProperties).catch(() => {});
-    return () => controller.abort();
-  }, []);
 
   return (
     <div className="page ir-page">
@@ -36,25 +32,27 @@ export default function InvoiceReview() {
         <div className="mp-actions">
           {canSettings && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDialog('settings')}>
             {tx.settings}</button>}
-          {canReceive && <button type="button" className="btn btn-primary btn-sm" onClick={() => setDialog('new')}>
+          {canReceive && <button type="button" className="btn btn-primary btn-sm" disabled={!propertyChoices.ready} onClick={() => setDialog('new')}>
             {tx.newInvoice}</button>}
         </div>
       </div>
+      {propertyChoices.error && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyChoices.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={propertyChoices.reload}>Auswahl erneut laden</button></p>}
       <div className="ir-tabs" role="tablist" aria-label={tx.title}>
         {['inbox', 'proposals'].map(key => (
           <button key={key} type="button" role="tab" aria-selected={tab === key}
             className={`ir-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
         ))}
       </div>
-      {tab === 'inbox' ? <Inbox properties={properties} revision={revision} /> : <Proposals revision={revision} />}
-      {dialog === 'new' && <NewInvoice properties={properties} onClose={() => setDialog(null)}
+      {tab === 'inbox' ? <Inbox properties={properties} choicesReady={propertyChoices.ready} revision={revision} /> : <Proposals revision={revision} />}
+      {dialog === 'new' && propertyChoices.ready && <NewInvoice properties={properties} onClose={() => setDialog(null)}
         onSaved={() => setRevision(value => value + 1)} />}
       {dialog === 'settings' && <Settings onClose={() => setDialog(null)} />}
     </div>
   );
 }
 
-function Inbox({ properties, revision }) {
+function Inbox({ properties, choicesReady, revision }) {
   const { tx } = useReviewText();
   const [filters, setFilters] = useState({ status: '', due: '', skonto: false, property_id: '', q: '' });
   const [skip, setSkip] = useState(0);
@@ -92,7 +90,7 @@ function Inbox({ properties, revision }) {
           </select>
         </label>
         <label className="form-group">{tx.property}
-          <select value={filters.property_id} onChange={event => set('property_id', event.target.value)}>
+          <select disabled={!choicesReady} value={filters.property_id} onChange={event => set('property_id', event.target.value)}>
             <option value="">{tx.all}</option>
             {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>

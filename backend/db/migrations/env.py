@@ -31,7 +31,7 @@ target_metadata = Base.metadata
 # schema-sync migration, which then adds whatever their version lacks.
 ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 ORM_ADOPTION_HEAD = "f016a1b2c001"
-ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001"})
+ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001", "f020a1b2c001"})
 
 
 def _current_addition_names():

@@ -6,12 +6,14 @@ import { privateStorageKey } from '../utils/workspaceIdentity';
 export default function NotificationArrival({ rows = [], record, ready = true }) {
   const noticeId = new URLSearchParams(window.location.search).get('notice_id');
   const focusId = new URLSearchParams(window.location.search).get('source_id') || new URLSearchParams(window.location.search).get('focus_id');
-  const row = record || rows.find(candidate => String(candidate.id) === focusId);
+  const foreignParent = Boolean(record && focusId && String(record.id) !== focusId);
+  const row = foreignParent ? null : record || rows.find(candidate => String(candidate.id) === focusId);
   const [result, setResult] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const rowId = row?.id;
   const rowRevision = row?.updated_at;
   const rowIdentity = row ? JSON.stringify(row) : null;
+  const arrivalKey = JSON.stringify([noticeId, rowId, rowIdentity, ready]);
   useEffect(() => {
     if (!noticeId || !rowId || !ready) return;
     let live = true; const same = api.captureSession();
@@ -32,12 +34,13 @@ export default function NotificationArrival({ rows = [], record, ready = true })
       try { sessionStorage.setItem(storage, JSON.stringify(body)); } catch { /* optional recovery */ }
       await api.post(`/notifications/${encodeURIComponent(noticeId)}/receipt`, body);
       same(); if (!live) return;
-      sessionStorage.removeItem(storage); setResult({ ok: true }); window.dispatchEvent(new Event('notification-receipt'));
-    })().catch(failure => { if ((failure.statusCode || failure.status) === 409) sessionStorage.removeItem(storage); if (live) setResult({ error: failure.message }); });
+      sessionStorage.removeItem(storage); setResult({ key: arrivalKey, ok: true }); window.dispatchEvent(new Event('notification-receipt'));
+    })().catch(failure => { if ((failure.statusCode || failure.status) === 409) sessionStorage.removeItem(storage); if (live) setResult({ key: arrivalKey, error: failure.message }); });
     return () => { live = false; };
-  }, [noticeId, rowId, rowRevision, rowIdentity, ready, attempt]);
-  if (!noticeId) return null;
-  if (result?.error) return <p role="alert">Lesebestätigung nicht bestätigt: {result.error} Der Hinweis bleibt erhalten. <button onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button></p>;
-  if (result?.ok) return <p role="status">Hinweis persönlich gelesen und archiviert.</p>;
+  }, [noticeId, rowId, rowRevision, rowIdentity, ready, attempt, arrivalKey]);
+  if (!noticeId || foreignParent) return null;
+  const current = result?.key === arrivalKey ? result : null;
+  if (current?.error) return <p role="alert">Lesebestätigung nicht bestätigt: {current.error} Der Hinweis bleibt erhalten. <button onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button></p>;
+  if (current?.ok) return <p role="status">Hinweis persönlich gelesen und archiviert.</p>;
   return <p role="status">Der Hinweis wird erst nach erfolgreichem Laden der zugehörigen Quelle bestätigt.</p>;
 }

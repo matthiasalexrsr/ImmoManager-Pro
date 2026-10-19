@@ -18,7 +18,7 @@ import DepositsDialog from '../features/deposits/DepositsDialog';
 import { depositText } from '../features/deposits/depositText';
 import { formatDate, formatMoney } from '../utils/format';
 import { nextNumber } from '../utils/nextNumber';
-import { useSearchParams } from 'react-router-dom';
+import useListRouteFilter from '../hooks/useListRouteFilter';
 import KpiAction from '../components/KpiAction';
 
 const RENT_MODEL_LABELS = { index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete' };
@@ -33,8 +33,7 @@ function remainingDays(endDate) {
 const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
 
 export default function Contracts() {
-  const [params, setParams] = useSearchParams();
-  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
+  const [filter, setFilter, params] = useListRouteFilter(['all', 'active', 'ending_soon', 'expiring90', 'missing_documents', 'terminated', 'draft', 'no_deposit'], ['focus_id', 'contract_id']);
   const { t, locale } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -121,7 +120,7 @@ export default function Contracts() {
   });
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return enriched;
+    if (filter === 'all' || params.get('focus_id') || params.get('contract_id')) return enriched;
     if (filter === 'active') return enriched.filter(c => c.status === 'active');
     if (filter === 'ending_soon') return enriched.filter(c => c.remaining_days != null && c.remaining_days > 0 && c.remaining_days <= 90 && c.status === 'active');
     if (filter === 'expiring90') return enriched.filter(c => c.remaining_days != null && c.remaining_days >= 0 && c.remaining_days <= 90);
@@ -133,7 +132,7 @@ export default function Contracts() {
     if (filter === 'draft') return enriched.filter(c => c.status === 'draft');
     if (filter === 'no_deposit') return enriched.filter(c => !c.deposit_amount || Number(c.deposit_amount) === 0);
     return enriched;
-  }, [enriched, filter, documentState.items]);
+  }, [enriched, filter, documentState.items, params]);
 
   // Summary stats
   const totalActive = enriched.filter(c => c.status === 'active').length;
@@ -250,7 +249,7 @@ export default function Contracts() {
   return (
     <div className="page">
       <h1 className="page-title">{t('tenantsContracts.contracts.title') || 'Verträge'}</h1>
-      {params.get('contract_id') && <p>Vertragsquelle des Finanzberichts <button type="button" onClick={() => setParams({})}>Alle Verträge anzeigen</button></p>}
+      {params.get('contract_id') && <p>Direkt geöffneter Vertrag <button type="button" onClick={() => setFilter('all')}>Alle Verträge anzeigen</button></p>}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
         {[loadError, ...lookupErrors].filter(Boolean).join(' · ')}{' '}
         <button className="btn btn-secondary btn-sm" onClick={retry} disabled={loading}>Erneut laden</button>

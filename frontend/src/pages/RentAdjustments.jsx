@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -31,27 +31,29 @@ export default function RentAdjustments() {
   const toast = useToast();
   const canWrite = useCanWrite();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
+  const contractState = useEntities('contracts', '/contracts');
+  const contracts = contractState.items;
   const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const choicesReady = !contractState.loading && !contractState.error;
 
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
-      .then(adj => setAdjustments(adj || []))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.list('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
-      .then(data => { if (!cancelled) setAdjustments(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/rent-adjustments', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Mietanpassungen konnten nicht vollständig gelesen werden.');
+      setAdjustments(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Mietanpassungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   // Applying writes the new rent into the contract's rent history from its effective date.
   const runAction = async (row, action) => {
@@ -66,7 +68,7 @@ export default function RentAdjustments() {
     }
   };
 
-  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => !canWrite ? null : (row.status === 'applied'
+  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => !canWrite || !choicesReady ? null : (row.status === 'applied'
     ? <button className="btn btn-sm btn-secondary" onClick={() => runAction(row, 'revert')}>Zurücknehmen</button>
     : row.status !== 'rejected' && (
       <button className="btn btn-sm btn-primary" onClick={() => runAction(row, 'apply')}>Anwenden</button>)) }];
@@ -99,6 +101,7 @@ export default function RentAdjustments() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Vertragsauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/rent-adjustments', data);
     } else {
@@ -121,10 +124,16 @@ export default function RentAdjustments() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && adjustments.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Mietanpassungen konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {contractState.error && <p className="alert-error" role="alert">Die Vertragsauswahl ist nicht verfügbar. {contractState.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={contractState.reload}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -135,8 +144,8 @@ export default function RentAdjustments() {
         title="Mietanpassungen"
         columns={columns}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
       {modal && (

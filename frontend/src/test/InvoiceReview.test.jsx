@@ -105,7 +105,7 @@ describe('invoice review view', () => {
     expect(within(links).getByRole('link', { name: 'Finanzen der Immobilie' }))
       .toHaveAttribute('href', '/properties/p1?tab=finance');
     expect(within(links).getByRole('link', { name: 'Rechnung in der Liste' }))
-      .toHaveAttribute('href', '/invoices?suche=RE-1');
+      .toHaveAttribute('href', '/invoices?focus_id=i1');
     expect(within(links).getByRole('link', { name: 'Wartungsfall öffnen' }))
       .toHaveAttribute('href', '/maintenance/c1');
     expect(api.post).not.toHaveBeenCalled();
@@ -126,7 +126,9 @@ describe('invoice review view', () => {
       review: { ...VIEW.review, property_id: null }, assignment: { kind: 'free', cost_category: 'Sonstiges' } };
     showDetail(source);
     await screen.findByRole('heading', { name: 'Dach Müller GmbH' });
-    expect(screen.queryByRole('navigation', { name: 'Verknüpfte Seiten' })).not.toBeInTheDocument();
+    const links = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
+    expect(within(links).getAllByRole('link')).toHaveLength(1);
+    expect(within(links).getByRole('link', { name: 'Rechnung in der Liste' })).toHaveAttribute('href', '/invoices?focus_id=i1');
     expect(screen.getByRole('link', { name: 'Zur Rechnungsprüfung' })).toHaveAttribute('href', '/invoice-review');
   });
 

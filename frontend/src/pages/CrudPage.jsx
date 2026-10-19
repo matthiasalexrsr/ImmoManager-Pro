@@ -33,7 +33,7 @@ const _RELATED_ENTITIES = {
   categories: ['bookings'],
 };
 
-export default function CrudPage({ title, endpoint, columns, formFields, onRowClick }) {
+export default function CrudPage({ title, endpoint, columns, formFields, onRowClick, enrichRow, formAvailability }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -41,6 +41,8 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   const { items, loading, error, reload } = useEntities(eKey, endpoint);
   const [modal, setModal] = useState(null); // null | 'create' | item
   const [deleteError, setDeleteError] = useState(null);
+  const formReady = !formAvailability?.loading && !formAvailability?.error;
+  const openForm = value => { if (formReady) setModal(value); };
 
   const invalidateAfterMutation = () => {
     if (!store) { reload(); return; }
@@ -79,10 +81,13 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
   // An open form owns draft cleanup and closing after its mutation triggers a reload.
   if (loading && items.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error && !modal) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (error && !modal && items.length === 0) return <div className="page"><div role="alert" className="alert alert-error">{error}</div><button type="button" className="btn btn-secondary" onClick={reload}>Erneut laden</button></div>;
 
   return (
     <div className="page">
+      {error && <div role="alert" className="alert alert-error">{error} Die letzte erfolgreich geladene Ansicht bleibt sichtbar. <button type="button" onClick={reload}>Erneut laden</button></div>}
+      {formAvailability?.loading && <p role="status">Die Auswahl für das Bearbeitungsformular wird geladen…</p>}
+      {formAvailability?.error && <div role="alert" className="alert alert-error">{formAvailability.error} Das Bearbeitungsformular ist erst nach erfolgreichem Laden verfügbar. <button type="button" onClick={formAvailability.retry}>Auswahl erneut laden</button></div>}
       {deleteError && (
         <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -92,9 +97,9 @@ export default function CrudPage({ title, endpoint, columns, formFields, onRowCl
       <DataTable
         title={title}
         columns={tableColumns}
-        data={items}
-        onAdd={() => setModal('create')}
-        onEdit={(row) => setModal(row)}
+        data={enrichRow ? items.map(enrichRow) : items}
+        onAdd={() => openForm('create')}
+        onEdit={openForm}
         onDelete={handleDelete}
         onRowClick={onRowClick}
         bulkActions={[bulkDelete({ one: 'Eintrag', many: 'Einträge', remove: row => api.del(`${endpoint}/${row.id}`),

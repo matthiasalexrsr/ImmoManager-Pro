@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
@@ -38,36 +38,31 @@ export default function Calendar() {
   // values of a duplicated appointment for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [propertyError, setPropertyError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
 
-  const refreshData = () => {
-    Promise.all([
-      api.list('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.list('/properties').catch(() => []),
-    ]).then(([ev, props]) => {
-      setEvents(ev || []);
-      setProperties(props || []);
-    }).finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.list('/calendar').catch(err => { console.warn('[Calendar]', err.message); return []; }),
-      api.list('/properties').catch(err => { console.warn('[Calendar] properties:', err.message); return []; }),
-    ]).then(([first, second]) => {
-      if (cancelled) return;
-      setEvents(first || []);
-      setProperties(second || []);
-    }).catch(e => {
-      if (!cancelled) console.warn('[Calendar] load failed:', e.message);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
+    const request = new AbortController();
+    setLoading(true);
+    Promise.allSettled([
+      api.list('/calendar', { signal: request.signal }),
+      api.list('/properties', { signal: request.signal }),
+    ]).then(([calendar, properties]) => {
+      if (request.signal.aborted) return;
+      if (calendar.status === 'fulfilled' && Array.isArray(calendar.value)) {
+        setEvents(calendar.value); setLoaded(true); setLoadError(null);
+      } else setLoadError(calendar.reason?.message || 'Termine konnten nicht vollständig gelesen werden.');
+      if (properties.status === 'fulfilled' && Array.isArray(properties.value)) {
+        setProperties(properties.value); setPropertyError(null);
+      } else setPropertyError(properties.reason?.message || 'Immobilien konnten nicht gelesen werden.');
+      setLoading(false);
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => request.abort();
+  }, [revision]);
+  const choicesReady = !loading && !propertyError;
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -82,6 +77,7 @@ export default function Calendar() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Immobilienauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/calendar', data);
     } else {
@@ -101,10 +97,16 @@ export default function Calendar() {
     }
   };
 
-  if (loading && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Termine konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {propertyError && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyError}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -118,11 +120,11 @@ export default function Calendar() {
         rowName={row => row.title || row.id}
         bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),
           finished: () => refreshData() })]}
-        onAdd={() => { setPrefill(null); setModal('create'); }}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => { setPrefill(null); setModal('create'); } : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
-        rowActions={row => [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
-          onClick: () => { setPrefill(duplicateOf(row)); setModal('create'); } }]}
+        rowActions={row => choicesReady ? [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
+          onClick: () => { setPrefill(duplicateOf(row)); setModal('create'); } }] : []}
       />
       {modal && (
         <FormModal

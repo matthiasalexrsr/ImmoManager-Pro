@@ -156,10 +156,14 @@ def _permitted(unit, data, kind: str, identifier: str) -> dict:
     properties, units, values = _roots(unit.store, kind, identifier)
     if properties.intersection(selected.property_ids) or units.intersection(selected.unit_ids):
         return source
-    if kind == "property" and any(contexts._row(unit.store, "units", unit_id).get("property_id") == identifier
-                                   for unit_id in selected.unit_ids):
-        # Parent metadata does not authorize that property's other units.
-        return source
+    if kind in ("property", "unit"):
+        # Read only the precise parent metadata of an explicitly selected
+        # record. The original grant remains unchanged: reading a parent does
+        # not authorize its siblings, whole-property reports or its timeline.
+        for selected_kind, selected_id in sorted(exact):
+            parent_properties, parent_units, _ = _roots(unit.store, selected_kind, selected_id)
+            if identifier in (parent_properties if kind == "property" else parent_units):
+                return source
     if any(values.get(field) in getattr(selected, field.replace("_id", "_ids"), [])
            for field in ("tenant_id", "contract_id", "meter_id", "billing_period_id")):
         return source

@@ -36,6 +36,8 @@ export default function Tenants() {
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('active');
+  const focusId = searchParams.get('focus_id');
+  const activeFilter = focusId ? 'all' : filter;
   const [drilldown, setDrilldown] = useState(0);
   const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setFilter(value); setDrilldown(number => number + 1); };
   const [revision, setRevision] = useState(0);
@@ -114,7 +116,7 @@ export default function Tenants() {
   });
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return enriched;
+    if (focusId || filter === 'all') return enriched;
     if (filter === 'active') return enriched.filter(t => !t.archived);
     if (filter === 'archived') return enriched.filter(t => t.archived);
     if (filter === 'with_contract') return enriched.filter(t => !t.archived && t.current_contracts.length > 0);
@@ -122,7 +124,7 @@ export default function Tenants() {
     if (filter === 'no_sepa') return enriched.filter(t => !t.archived && !t.sepa_mandate);
     if (filter === 'no_email') return enriched.filter(t => !t.archived && !t.email);
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, focusId]);
 
   // Summary stats
   const activeTenants = enriched.filter(t => !t.archived);
@@ -244,6 +246,9 @@ export default function Tenants() {
       </div>
 
       {/* Filter tabs */}
+      {focusId && <div className="alert" role="status">Direkt geöffnete Partei – auch archivierte Einträge bleiben sichtbar.
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSources('all')}>Alle Parteien anzeigen</button>
+      </div>}
       <div className="filter-chips list-view-filters" role="group" aria-label="Parteien filtern">
         {[
           { key: 'active', label: 'Aktiv' },
@@ -254,7 +259,7 @@ export default function Tenants() {
           { key: 'no_sepa', label: 'Ohne SEPA' },
           { key: 'no_email', label: 'Ohne E-Mail' },
         ].map(f => (
-          <button key={f.key} aria-pressed={filter === f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
+          <button key={f.key} aria-pressed={activeFilter === f.key} className={`btn btn-sm ${activeFilter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}

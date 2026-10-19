@@ -899,6 +899,7 @@ class EscalationRuleORM(Base):
 
 class ChangeHistoryORM(Base):
     __tablename__ = "change_history"
+    __table_args__ = (Index("idx_change_history_cursor", "changed_at", "id"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[str] = mapped_column(String(36))

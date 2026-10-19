@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -138,8 +139,10 @@ export default function Viewings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: leads } = useEntities('leads', '/leads');
-  const { items: units } = useEntities('units', '/units');
+  const [params] = useSearchParams();
+  const leadState = useEntities('leads', '/leads');
+  const unitState = useEntities('units', '/units');
+  const leads = leadState.items, units = unitState.items;
   const [viewings, setViewings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -147,21 +150,28 @@ export default function Viewings() {
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'table'
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const lookupErrors = [leadState.error, unitState.error].filter(Boolean);
+  const choicesReady = !leadState.loading && !unitState.loading && !lookupErrors.length;
 
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
-      .then(v => setViewings(v || []))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.list('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
-      .then(data => { if (!cancelled) setViewings(data || []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/viewings', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Besichtigungen konnten nicht vollständig gelesen werden.');
+      setViewings(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Besichtigungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
+  const focusedId = params.get('focus_id');
+  useEffect(() => {
+    if (focusedId && viewings.some(row => String(row.id) === focusedId)) setViewMode('table');
+  }, [focusedId, viewings]);
 
   const leadMap = Object.fromEntries(leads.map(l => [l.id, l]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -215,6 +225,7 @@ export default function Viewings() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Interessenten- und Einheitenauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/viewings', data);
     } else {
@@ -237,12 +248,18 @@ export default function Viewings() {
   };
 
   // only the first load replaces the list; a reload keeps the table (its search, selection, results)
-  if (loading && viewings.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Besichtigungen konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {lookupErrors.length > 0 && <p className="alert-error" role="alert">Die Interessenten- oder Einheitenauswahl ist nicht verfügbar. {lookupErrors.join(' · ')}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { leadState.reload(); unitState.reload(); }}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -266,7 +283,7 @@ export default function Viewings() {
           >
             Tabelle
           </button>
-          <button className="btn btn-primary" onClick={() => setModal('create')}>
+          <button className="btn btn-primary" disabled={!choicesReady} onClick={() => setModal('create')}>
             + Besichtigung
           </button>
         </div>
@@ -316,7 +333,7 @@ export default function Viewings() {
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
                           cursor: 'pointer',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={() => { if (choicesReady) setModal(v); }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
@@ -350,7 +367,7 @@ export default function Viewings() {
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
                           cursor: 'pointer',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={() => { if (choicesReady) setModal(v); }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
@@ -378,8 +395,8 @@ export default function Viewings() {
         rowName={row => row.lead_name || row.id}
         bulkActions={[bulkDelete({ one: 'Besichtigung', many: 'Besichtigungen', remove: row => api.del(`/viewings/${row.id}`),
           finished: () => { refreshData(); store?.invalidateRelated('viewings', 'leads', 'units'); } })]}
-          onAdd={() => setModal('create')}
-          onEdit={row => setModal(row)}
+          onAdd={choicesReady ? () => setModal('create') : undefined}
+          onEdit={choicesReady ? row => setModal(row) : undefined}
           onDelete={handleDelete}
         />
       )}

@@ -3,7 +3,7 @@ import ChannelPanel from '../features/channels/ChannelPanel';
 import NotificationArrival from '../components/NotificationArrival';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { prepareUploadAccess } from '../utils/uploadAccess';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -85,7 +85,8 @@ export default function Listings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: units } = useEntities('units', '/units');
+  const unitState = useEntities('units', '/units');
+  const units = unitState.items;
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -93,6 +94,10 @@ export default function Listings() {
   const [previewListing, setPreviewListing] = useState(null);
   const [previewPortal, setPreviewPortal] = useState('immoscout24');
   const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const choicesReady = !unitState.loading && !unitState.error;
 
   const photoId = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('source_id') : null;
   const [noticePhoto, setNoticePhoto] = useState(null);
@@ -105,21 +110,18 @@ export default function Listings() {
     return () => { live = false; };
   }, [photoId]);
 
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/listings').catch(() => [])
-      .then(l => setListings(l || []))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.list('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
-      .then(data => { if (!cancelled) setListings(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/listings', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Inserate konnten nicht vollständig gelesen werden.');
+      setListings(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Inserate konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const enriched = listings.map(l => ({
@@ -154,6 +156,7 @@ export default function Listings() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Einheitenauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/listings', data);
     } else {
@@ -201,10 +204,16 @@ export default function Listings() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && listings.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Inserate konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {unitState.error && <p className="alert-error" role="alert">Die Einheitenauswahl ist nicht verfügbar. {unitState.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={unitState.reload}>Auswahl erneut laden</button></p>}
       {noticePhoto && listings.some(row => row.id === noticePhoto.listing_id) && <section aria-label="Inseratfoto aus dem Hinweis">
         <h2>{noticePhoto.title || 'Inseratfoto'}</h2><img style={{ maxWidth: '100%' }} src={resolveFileUrl(noticePhoto.file_url)} alt={noticePhoto.title || 'Inseratfoto'} onLoad={() => setNoticePhoto(photo => ({ ...photo, imageReady: true }))} />
         <NotificationArrival record={noticePhoto} ready={noticePhoto.imageReady === true} />
@@ -220,8 +229,8 @@ export default function Listings() {
         title="Inserate"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
         onRowClick={row => setPreviewListing(row)}
       />

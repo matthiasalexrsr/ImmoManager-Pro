@@ -1,10 +1,11 @@
 import { useState, useEffect, lazy, Suspense, Fragment } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
 import './components/notificationInbox.css';
 import DevModeOverlay from './components/DevModeOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
+import { NavigationProtectionProvider } from './components/UnsavedNavigationGuard';
 import { usePreferences } from './contexts/PreferencesContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDevMode } from './contexts/DevModeContext';
@@ -149,11 +150,12 @@ function DevModeWrapper({ children }) {
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <DevModeWrapper>
-      <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
+  // History is an owned effect: StrictMode's rehearsal and an actual app
+  // unmount both dispose their listeners, and imports have no side effects.
+  const [router, setRouter] = useState(null);
+  useEffect(() => {
+    const instance = createBrowserRouter(createRoutesFromElements(
+      <Route element={<NavigationProtectionProvider><DevModeWrapper><Suspense fallback={<LoadingSpinner />}><Outlet /></Suspense></DevModeWrapper></NavigationProtectionProvider>}>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<StartPage />} />
@@ -216,9 +218,10 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>
-      </Routes>
-      </Suspense>
-      </DevModeWrapper>
-    </BrowserRouter>
-  );
+      </Route>
+    ));
+    setRouter(instance);
+    return () => instance.dispose();
+  }, []);
+  return router ? <RouterProvider router={router} /> : <LoadingSpinner />;
 }

@@ -23,6 +23,7 @@ import DossierTabs from '../components/DossierTabs';
 import { currentContractsOn, localDay, occupancyMapOn } from '../utils/occupancy';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
+import usePhotoNotification from '../hooks/usePhotoNotification';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -85,6 +86,9 @@ function PropertyDossier({ id }) {
   const [tenants, setTenants] = useState([]);
   const [tenantError, setTenantError] = useState(null);
   const [editing, setEditing] = useState(null);       // the portfolios for the edit form, once loaded
+  const [editError, setEditError] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const editRequest = useRef(null);
   const [activityRevision, setActivityRevision] = useState(0);
   const contractView = params.get('contracts') === 'active' ? 'active' : 'all';
   const maintenanceView = params.get('maintenance') === 'open' ? 'open' : 'all';
@@ -96,6 +100,9 @@ function PropertyDossier({ id }) {
   const setContractView = value => setView('contracts', value);
   const setMaintenanceView = value => setView('maintenance', value);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const photoNotice = usePhotoNotification('property', id);
+  useEffect(() => { if (photoNotice.open) setPhotosOpen(true); }, [photoNotice.open]);
+  useEffect(() => () => editRequest.current?.abort(), []);
   const rentSources = useRef(null);
   const focusRentSources = () => { rentSources.current?.focus(); rentSources.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); };
   const canEdit = useCanWrite('/properties');
@@ -205,8 +212,19 @@ function PropertyDossier({ id }) {
   const contractRows = contracts.map(c => ({ ...c, tenant_name: tenantName[c.tenant_id], unit_name: unitName[c.unit_id] }));
 
   const openEdit = async () => {
-    const portfolios = await api.list('/portfolios').catch(() => []);
-    setEditing({ portfolios });
+    if (editRequest.current) return;
+    const controller = new AbortController();
+    editRequest.current = controller;
+    setEditLoading(true); setEditError(null);
+    try {
+      const portfolios = await api.list('/portfolios', { signal: controller.signal });
+      if (!Array.isArray(portfolios)) throw new Error('Portfolioauswahl konnte nicht gelesen werden.');
+      if (!controller.signal.aborted) setEditing({ portfolios });
+    } catch (failure) {
+      if (!controller.signal.aborted) setEditError(failure.message || 'Portfolioauswahl konnte nicht geladen werden.');
+    } finally {
+      if (!controller.signal.aborted) { editRequest.current = null; setEditLoading(false); }
+    }
   };
   const saveProperty = async data => {
     await api.put(`/properties/${encodeURIComponent(id)}`, data);
@@ -244,13 +262,15 @@ function PropertyDossier({ id }) {
         <div className="dossier-actions">
           <Link className="btn btn-secondary btn-sm" to={`/reports?kind=cash-v2&property_id=${encodeURIComponent(id)}`}>Auswertungen dieses Objekts</Link>
           <Link className="btn btn-secondary btn-sm" to={`/teha?property_id=${encodeURIComponent(id)}`}>TEHA Kundenportal</Link>
-          {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit}><EditIcon size={15} /> Bearbeiten</button>}
+          {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit} disabled={editLoading}><EditIcon size={15} /> {editLoading ? 'Auswahl wird geladen…' : 'Bearbeiten'}</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
           <EntityActions entityType="property" entityId={id} entityRevision={property.updated_at} title={property.name}
             onChanged={() => setActivityRevision(value => value + 1)} />
         </div>
       </div>
 
+      {editError && <div role="alert" className="alert alert-error">Bearbeitung noch nicht geöffnet: {editError} <button type="button" onClick={openEdit} disabled={editLoading}>Erneut versuchen</button></div>}
+      {photoNotice.error && <div role="alert" className="alert alert-error">{photoNotice.error} Der Hinweis bleibt ungelesen. <button type="button" onClick={photoNotice.retry}>Hinweisquelle erneut laden</button></div>}
       {tab !== 'finance' && <RelatedPageLinks items={[
         { to: `/bookings?property_id=${encodeURIComponent(id)}`, label: 'Buchungen dieser Immobilie' },
         { to: '/rent-overview', label: 'Mietübersicht' },

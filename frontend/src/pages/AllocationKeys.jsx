@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -35,7 +35,7 @@ const COLUMNS = [
     render: (v, row) => (v === 'consumption' && row.meter_type
       ? `${KEY_TYPE_LABELS[v]} (${METER_TYPE_LABELS[row.meter_type] || row.meter_type}${row.measure_unit ? `, ${row.measure_unit}` : ''})`
       : (KEY_TYPE_LABELS[v] || v)) },
-  { key: 'property_label', label: 'Immobilie' },
+  { key: 'property_label', label: 'Immobilie', link: 'property' },
   { key: 'description', label: 'Beschreibung' },
 ];
 
@@ -43,28 +43,28 @@ export default function AllocationKeys() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
+  const propertyState = useEntities('properties', '/properties');
+  const properties = propertyState.items;
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const choicesReady = !propertyState.loading && !propertyState.error;
 
-  const refreshData = () => {
-    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
-      .then(k => setKeys(k || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.list('/billing/allocation-keys').catch(err => { console.warn('[AllocationKeys] keys:', err.message); return []; })
-      .then(data => { if (!cancelled) setKeys(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController(); setLoading(true);
+    api.list('/billing/allocation-keys', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Verteilerschlüssel konnten nicht vollständig gelesen werden.');
+      setKeys(data); setLoaded(true); setError(null);
+    }).catch(failure => { if (!request.signal.aborted) setError(failure.message || 'Verteilerschlüssel konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = keys.map(k => ({ ...k, property_label: propertyMap[k.property_id] || '—' }));
@@ -81,6 +81,7 @@ export default function AllocationKeys() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Immobilienauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/billing/allocation-keys', data);
     } else {
@@ -103,11 +104,16 @@ export default function AllocationKeys() {
     }
   };
 
-  if (loading && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error && !modal) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (error && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{error}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {error && <p className="alert-error" role="alert">Verteilerschlüssel konnten nicht aktualisiert werden. {error} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {propertyState.error && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyState.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={propertyState.reload}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -118,8 +124,8 @@ export default function AllocationKeys() {
         title="Verteilerschlüssel"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
       {modal && (

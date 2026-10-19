@@ -5,6 +5,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import FormModal from '../components/FormModal';
+import useLookupChoices from '../hooks/useLookupChoices';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatMoney, formatPercent } from '../utils/format';
 import {
@@ -35,7 +36,7 @@ function ServiceContractDossier({ id }) {
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [modal, setModal] = useState(null);     // edit | cancel
-  const [contacts, setContacts] = useState([]);
+  const contactChoices = useLookupChoices({ contacts: '/contacts' }, modal === 'edit', id);
   const [revision, setRevision] = useState(0);
   const path = `/service-contracts/${encodeURIComponent(id)}`;
   const requestedTab = new URLSearchParams(location.search).get('tab');
@@ -65,13 +66,13 @@ function ServiceContractDossier({ id }) {
   useEffect(() => {
     const controller = new AbortController();
     setError(null);
-    api.get(path, { signal: controller.signal }).then(setContract)
-      .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message); });
+    api.get(path, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setContract(value); })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [path, revision]);
 
   const reload = () => setRevision(value => value + 1);
-  const editFields = useMemo(() => contractFields(t, { contacts, withLocation: false }), [t, contacts]);
+  const editFields = useMemo(() => contractFields(t, { contacts: contactChoices.data.contacts || [], withLocation: false }), [t, contactChoices.data.contacts]);
   const cancelFields = useMemo(() => [
     { key: 'cancelled_on', label: t('serviceContracts.fields.cancelledOn'), type: 'date', required: true,
       hint: t('serviceContracts.hints.cancelledOn') },
@@ -92,7 +93,7 @@ function ServiceContractDossier({ id }) {
     setActionError(null);
     try { await action(); } catch (failure) { setActionError(failure.message); }
   };
-  const openEdit = () => { setModal('edit'); api.list('/contacts').then(setContacts).catch(() => setContacts([])); };
+  const openEdit = () => setModal('edit');
   const terms = contract.terms || {};
   const next = contract.next_deadline;
   const visibleLocations = contract.restricted ? [] : (contract.locations || []);
@@ -128,6 +129,10 @@ function ServiceContractDossier({ id }) {
       {contract.restricted && <div role="note" className="alert alert-info">{t('serviceContracts.restrictedNote')}</div>}
       <RelatedPageLinks items={relatedItems} />
       {actionError && <div role="alert" className="alert alert-error">{actionError}</div>}
+      {modal === 'edit' && !contactChoices.ready && <div className="panel"><p role={contactChoices.error ? 'alert' : 'status'}>
+        {contactChoices.error || 'Kontakte für die Vertragsbearbeitung werden geladen …'}{' '}
+        {contactChoices.error && <button type="button" className="btn btn-secondary btn-sm" onClick={contactChoices.reload}>Auswahl erneut laden</button>}</p>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModal(null)}>Abbrechen</button></div>}
 
       <div className="stats-grid sc-kpis">
         <div className="stat-card"><div className="stat-label">{t('serviceContracts.fields.nextDeadline')}</div>
@@ -206,8 +211,9 @@ function ServiceContractDossier({ id }) {
         })}>{t('serviceContracts.delete')}</button>
       </div>}
 
-      {modal === 'edit' && <FormModal title={t('serviceContracts.editContract')} fields={editFields}
+      {modal === 'edit' && contactChoices.ready && <FormModal title={t('serviceContracts.editContract')} fields={editFields}
         initial={contract} onSave={async values => {
+          if (!contactChoices.ready) throw new Error('Bitte zuerst die Kontaktauswahl erneut laden.');
           await api.put(path, { ...contractPayload(values, contract), updated_at: values.updated_at });
           reload();
         }} onClose={() => setModal(null)} />}

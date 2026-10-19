@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import useLookupChoices from '../hooks/useLookupChoices';
 import { formatDate, formatMoney } from '../utils/format';
 import {
   CONTRACT_TYPES, STATUS_BADGE, contractFields, createPayload, deadlineLabel, intervalLabel, statusLabel, typeLabel,
@@ -22,8 +23,9 @@ export default function ServiceContracts() {
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({ q: '', contract_type: '', status: '' });
   const [creating, setCreating] = useState(false);
-  const [choices, setChoices] = useState({ contacts: [], properties: [], units: [], meters: [] });
+  const choices = useLookupChoices({ contacts: '/contacts', properties: '/properties', units: '/units', meters: '/meters' }, creating);
   const [revision, setRevision] = useState(0);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -34,23 +36,21 @@ export default function ServiceContracts() {
       api.list(`/service-contracts${query.size ? `?${query}` : ''}`, { signal: controller.signal }),
       api.get('/service-contracts/deadlines?days=90', { signal: controller.signal }),
     ]).then(([list, upcoming]) => {
-      setRows(list || []);
-      setDeadlines(upcoming || []);
+      if (controller.signal.aborted) return;
+      if (!Array.isArray(list) || !Array.isArray(upcoming)) throw new Error('Objektverträge und Fristen konnten nicht vollständig gelesen werden.');
+      setRows(list); setDeadlines(upcoming); setLoaded(true);
     }).catch(failure => {
-      if (failure.name !== 'AbortError') setError(failure.message || t('serviceContracts.loadError'));
+      if (!controller.signal.aborted) setError(failure.message || t('serviceContracts.loadError'));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [filters, revision, t]);
 
-  const openCreate = useCallback(() => {
-    setCreating(true);
-    Promise.all(['/contacts', '/properties', '/units', '/meters'].map(path => api.list(path).catch(() => [])))
-      .then(([contacts, properties, units, meters]) => setChoices({ contacts, properties, units, meters }));
-  }, []);
+  const openCreate = () => setCreating(true);
 
-  const fields = useMemo(() => contractFields(t, { ...choices, withLocation: true }), [t, choices]);
+  const fields = useMemo(() => choices.ready ? contractFields(t, { ...choices.data, withLocation: true }) : [], [t, choices.ready, choices.data]);
 
   const save = async values => {
+    if (!choices.ready) throw new Error('Bitte zuerst die Auswahllisten erneut laden.');
     const created = await api.post('/service-contracts', createPayload(values));
     setRevision(value => value + 1);
     navigate(`/service-contracts/${encodeURIComponent(created.id)}`);
@@ -88,13 +88,14 @@ export default function ServiceContracts() {
           {['active', 'cancelled', 'upcoming', 'ended'].map(s => <option key={s} value={s}>{statusLabel(t, s)}</option>)}
         </select>
       </div>
-      {error && <div role="alert" className="alert alert-error">{error}
+      {error && <div role="alert" className="alert alert-error">{error} {loaded && 'Angezeigt wird der zuletzt geladene Stand.'}
         <button type="button" className="btn btn-sm btn-secondary" onClick={() => setRevision(v => v + 1)}>
           {t('serviceContracts.retry')}</button></div>}
       <section className="panel service-contracts-deadlines" aria-labelledby="sc-deadlines-title">
         <div className="panel-header" id="sc-deadlines-title">{t('serviceContracts.upcomingTitle')}</div>
         <div className="panel-body">
-          {deadlines.length === 0 ? <p className="empty-text">{t('serviceContracts.noUpcoming')}</p> : (
+          {!loaded ? <p role="status">{error ? 'Fristen sind derzeit nicht verfügbar.' : t('serviceContracts.loading')}</p>
+            : deadlines.length === 0 ? <p className="empty-text">{t('serviceContracts.noUpcoming')}</p> : (
             <ul className="service-contracts-deadline-list">
               {deadlines.map(d => (
                 <li key={`${d.service_contract_id}-${d.kind}-${d.date}`} className={d.days_left <= 14 ? 'is-urgent' : ''}>
@@ -108,11 +109,15 @@ export default function ServiceContracts() {
           )}
         </div>
       </section>
-      {loading ? <div className="page-loading" role="status">{t('serviceContracts.loading')}</div> : (
+      {loading ? <div className="page-loading" role="status">{t('serviceContracts.loading')}</div> : loaded && (
         <DataTable title={t('serviceContracts.title')} columns={columns} data={rows} writeArea="/service-contracts"
           onAdd={canWrite ? openCreate : undefined} />
       )}
-      {creating && <FormModal title={t('serviceContracts.create')} fields={fields} onSave={save}
+      {creating && !choices.ready && <div className="panel"><p role={choices.error ? 'alert' : 'status'}>
+        {choices.error || 'Auswahllisten für den Objektvertrag werden geladen …'}{' '}
+        {choices.error && <button type="button" className="btn btn-secondary btn-sm" onClick={choices.reload}>Auswahl erneut laden</button>}</p>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCreating(false)}>Abbrechen</button></div>}
+      {creating && choices.ready && <FormModal title={t('serviceContracts.create')} fields={fields} onSave={save}
         onClose={() => setCreating(false)} />}
     </div>
   );

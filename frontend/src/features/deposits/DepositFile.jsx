@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useInRouterContext } from 'react-router-dom';
+import UnsavedNavigationGuard, { NavigationScopeNotice } from '../../components/UnsavedNavigationGuard';
+import { navigationDiscardLabel, useNavigationProtection } from '../../components/navigationProtectionContext';
 import RelatedPageLinks from '../../components/RelatedPageLinks';
 import { entityHref } from '../../utils/entityLinks';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
@@ -192,6 +194,8 @@ function Security({ say, file, service, canEdit, onFile, onError, onDirtyChange,
 /** The deposit file of one deposit: agreement, instalments, payments, interest, settlement and release. */
 export default function DepositFile({ depositId, onClose, onChanged, service = depositService }) {
   const canNavigate = useInRouterContext();
+  const protection = useNavigationProtection();
+  const allowRouteLeaveRef = useRef(false);
   const auth = useAuth();
   const canEdit = mayWrite(auth?.write ?? null, '/deposits');
   const { locale } = useTranslation();
@@ -224,7 +228,18 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
   }), []);
   const hasUnsaved = Object.keys(dirtyParts).length > 0;
   const hasPendingAction = busy || Object.keys(busyParts).length > 0;
+  const routeBlocked = useCallback(request => {
+    if (request.cancelled) { setLeaveRequest(previous => previous?.kind === 'route' ? null : previous); return; }
+    if (request.pending) {
+      setLeaveBlocked(true);
+      setLeaveRequest(previous => previous?.kind === 'route' ? null : previous);
+      return;
+    }
+    leaveSourceRef.current = document.activeElement;
+    setLeaveRequest({ kind: 'route', ...request });
+  }, []);
   const returnToEditing = () => {
+    leaveRequest?.reset?.();
     setLeaveRequest(null);
     if (leaveSourceRef.current?.isConnected) leaveSourceRef.current.focus();
   };
@@ -241,6 +256,7 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
   // Capture only ordinary same-tab internal link activation. Modified clicks
   // open a separate tab and leave the edited file safely in place.
   const guardLink = event => {
+    if (protection) return;
     const anchor = event.target.closest?.('a[href]');
     if (!anchor || anchor.dataset.depositLeaveConfirmed === 'true' || event.button !== 0
       || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
@@ -252,6 +268,12 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
     if (hasPendingAction) { setLeaveBlocked(true); return; }
     leaveSourceRef.current = anchor;
     setLeaveRequest({ kind: 'navigate', to: href });
+  };
+  const confirmClose = () => {
+    if (hasPendingAction) { setLeaveBlocked(true); return; }
+    // Closing the URL-owned file is itself navigation, already confirmed here.
+    allowRouteLeaveRef.current = true;
+    onClose?.();
   };
   useLayoutEffect(() => { if (leaveRequest) keepEditingRef.current?.focus(); }, [leaveRequest]);
   useEffect(() => { if (!hasPendingAction) setLeaveBlocked(false); }, [hasPendingAction]);
@@ -312,6 +334,9 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
 
   return createPortal(<div className="deposit__overlay" role="presentation"
     onMouseDown={event => { if (event.target === event.currentTarget) requestClose(); }}>
+    <UnsavedNavigationGuard when={hasUnsaved || hasPendingAction}
+      pending={hasPendingAction} bypassRef={allowRouteLeaveRef} onBlocked={routeBlocked}
+      label={`${say('fileTitle')}${source?.contract?.contract_number ? ` · ${source.contract.contract_number}` : ''}`} />
     <section className="deposit" ref={dialogRef} role="dialog" aria-modal="true"
       aria-labelledby={titleId} tabIndex={-1} onClickCapture={guardLink}>
       <header className="deposit__header">
@@ -328,12 +353,17 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
         </p>}
         {leaveRequest && <div className="deposit__leave-confirmation" role="group" aria-label={say('leaveTitle')}>
           <p role="alert">{say('leaveWarning')}</p>
+          <NavigationScopeNotice labels={leaveRequest.scopeLabels} locale={locale} />
           <div className="deposit__leave-actions">
             <button ref={keepEditingRef} type="button" className="btn btn-secondary"
               onClick={returnToEditing}>{say('keepEditing')}</button>
             {leaveRequest.kind === 'close'
-              ? <button type="button" className="btn btn-danger" onClick={() => onClose?.()}>
+              ? <button type="button" className="btn btn-danger" disabled={hasPendingAction} onClick={confirmClose}>
                 {say('leaveWithoutSaving')}</button>
+              : leaveRequest.kind === 'route'
+                ? <button type="button" className="btn btn-danger" disabled={hasPendingAction} onClick={() => {
+                  if (!hasPendingAction) leaveRequest.proceed();
+                }}>{navigationDiscardLabel(leaveRequest.scopeLabels, locale, say('leaveWithoutSaving'))}</button>
               : <Link data-deposit-leave-confirmed="true" className="btn btn-danger"
                 to={leaveRequest.to} onClick={event => {
                   if (hasPendingAction) { event.preventDefault(); setLeaveBlocked(true); }

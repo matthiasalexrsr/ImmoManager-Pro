@@ -108,7 +108,7 @@ describe('dunning overview', () => {
     });
     render(<MemoryRouter><Dunning /></MemoryRouter>);
     fireEvent.click(screen.getByRole('tab', { name: 'Mahnlauf' }));
-    const calculate = screen.getByRole('button', { name: 'Vorschau berechnen' });
+    const calculate = await screen.findByRole('button', { name: 'Vorschau berechnen' });
     await waitFor(() => expect(calculate).toBeEnabled());
     fireEvent.click(calculate);
     expect(await screen.findByText('Fällige Schreiben: 1')).toBeInTheDocument();

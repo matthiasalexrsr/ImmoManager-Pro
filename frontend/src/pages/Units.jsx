@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import useListRouteFilter from '../hooks/useListRouteFilter';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -14,7 +15,7 @@ import KpiAction from '../components/KpiAction';
 import { occupancyMapOn } from '../utils/occupancy';
 
 export default function Units() {
-  const [params] = useSearchParams();
+  const [filter, setFilter] = useListRouteFilter(['all', 'occupied', 'vacant', 'reserved', 'no_contract', 'no_area', 'no_person_count', 'with_rent']);
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -31,7 +32,6 @@ export default function Units() {
   const [modal, setModal] = useState(null);
   // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
   const [prefill, setPrefill] = useState(null);
-  const [filter, setFilter] = useState(() => params.get('status') || params.get('filter') || 'all');
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
@@ -64,53 +64,44 @@ export default function Portfolios() {
   const confirm = useConfirm();
   const toast = useToast();
   const [portfolios, setPortfolios] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [units, setUnits] = useState([]);
+  const [properties, setProperties] = useState(null);
+  const [units, setUnits] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [aggregateErrors, setAggregateErrors] = useState([]);
+  const [revision, setRevision] = useState(0);
 
-  const refreshData = () => {
-    setLoading(true);
-    Promise.all([
-      api.list('/portfolios').catch(() => []),
-      api.list('/properties').catch(() => []),
-      api.list('/units').catch(() => []),
-    ]).then(([p, props, u]) => {
-      setPortfolios(Array.isArray(p) ? p : []);
-      setProperties(Array.isArray(props) ? props : []);
-      setUnits(Array.isArray(u) ? u : []);
-    }).finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.list('/portfolios').catch(() => []),
-      api.list('/properties').catch(() => []),
-      api.list('/units').catch(() => []),
-    ]).then(([p, props, u]) => {
-      if (cancelled) return;
-      setPortfolios(Array.isArray(p) ? p : []);
-      setProperties(Array.isArray(props) ? props : []);
-      setUnits(Array.isArray(u) ? u : []);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
+    const request = new AbortController(); setLoading(true);
+    Promise.allSettled(['/portfolios', '/properties', '/units'].map(path => api.list(path, { signal: request.signal })))
+      .then(([portfolios, properties, units]) => {
+      if (request.signal.aborted) return;
+      if (portfolios.status === 'fulfilled' && Array.isArray(portfolios.value)) {
+        setPortfolios(portfolios.value); setLoaded(true); setLoadError(null);
+      } else setLoadError(portfolios.reason?.message || 'Portfolios konnten nicht vollständig gelesen werden.');
+      const errors = [];
+      if (properties.status === 'fulfilled' && Array.isArray(properties.value)) setProperties(properties.value);
+      else errors.push('Immobilien: ' + (properties.reason?.message || 'Die Datenquelle konnte nicht vollständig gelesen werden.'));
+      if (units.status === 'fulfilled' && Array.isArray(units.value)) setUnits(units.value);
+      else errors.push('Einheiten: ' + (units.reason?.message || 'Die Datenquelle konnte nicht vollständig gelesen werden.'));
+      setAggregateErrors(errors); setLoading(false);
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => request.abort();
+  }, [revision]);
+  const countsReady = properties !== null && units !== null && !aggregateErrors.length && !loadError;
 
   // Enrich portfolios with property & unit counts
   const enriched = portfolios.map(pf => {
-    const pfProperties = properties.filter(p => p.portfolio_id === pf.id);
+    const pfProperties = (properties || []).filter(p => p.portfolio_id === pf.id);
     const pfPropertyIds = new Set(pfProperties.map(p => p.id));
-    const pfUnits = units.filter(u => pfPropertyIds.has(u.property_id));
+    const pfUnits = (units || []).filter(u => pfPropertyIds.has(u.property_id));
     return {
       ...pf,
-      property_count: pfProperties.length,
-      total_units: pfUnits.length,
+      property_count: countsReady ? pfProperties.length : null,
+      total_units: countsReady ? pfUnits.length : null,
     };
   });
 
@@ -147,11 +138,17 @@ export default function Portfolios() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && portfolios.length === 0 && !modal) return <div className="page-loading">Lade Portfolios...</div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">Lade Portfolios...</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
       <h1 className="page-title">Portfolios</h1>
+      {loadError && <p className="alert-error" role="alert">Portfolios konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {aggregateErrors.length > 0 && <p className="alert-error" role="alert">Die Anzahl der Immobilien und Einheiten ist derzeit unbekannt. {aggregateErrors.join(' · ')}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Bestandszahlen erneut laden</button></p>}
 
       {/* Owner summary cards */}
       {ownerSummary.length > 0 && (
@@ -163,7 +160,7 @@ export default function Portfolios() {
             }}>
               <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{owner}</div>
               <div className="text-muted" style={{ fontSize: '0.8rem' }}>
-                {data.count} Portfolio{data.count !== 1 ? 's' : ''} · {data.properties} Immobilien · {data.units} Einheiten
+                {data.count} Portfolio{data.count !== 1 ? 's' : ''} · {countsReady ? `${data.properties} Immobilien · ${data.units} Einheiten` : 'Immobilien und Einheiten unbekannt'}
               </div>
             </div>
           ))}

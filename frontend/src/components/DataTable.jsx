@@ -1,5 +1,5 @@
 import NotificationArrival from './NotificationArrival';
-import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
+import { startTransition, useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
 import { useInRouterContext, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -114,6 +114,14 @@ function defaultSettingsKey(title, pathname) {
   return `${path}|${title}`;
 }
 
+function tableSettingsKey(props) {
+  return props.settingsKey === undefined ? defaultSettingsKey(props.title, props.pathname) : props.settingsKey;
+}
+
+function tableViewStorageKey(storageKey, routeSearch) {
+  return storageKey && routeSearch ? `${storageKey}|query:${routeSearch}` : storageKey;
+}
+
 // Totals in whole cents, so 0.1 + 0.2 is 0.30 and long lists do not drift.
 function centsTotal(rows, key) {
   return rows.reduce((total, row) => {
@@ -161,23 +169,51 @@ function RoutedDataTable(props) {
   const { pathname, search } = useLocation();
   const navigation = useNavigationType();
   const navigate = useNavigate();
-  return <TableWithKey {...props} pathname={pathname} routeSearch={search} restoreLocationState={navigation === 'POP'} clearFocusedRow={() => {
-    const query = new URLSearchParams(search); query.delete('focus_id'); navigate(`${pathname}${query.size ? `?${query}` : ''}`);
+  const [viewRoute, setViewRoute] = useState({ search, version: 0, applying: false });
+  if (viewRoute.search !== search) {
+    setViewRoute({ search, version: viewRoute.version + (viewRoute.applying ? 0 : 1), applying: false });
+  }
+  // A named view can synchronously change page-owned URL filters. Keep its just-
+  // applied local table state for that transition, then resume normal navigation.
+  useEffect(() => {
+    if (viewRoute.applying) setViewRoute(current => ({ ...current, applying: false }));
+  }, [viewRoute.applying]);
+  const applyView = props.onApplyView && (config => {
+    startTransition(() => {
+      setViewRoute(current => ({ ...current, applying: true }));
+      props.onApplyView(config);
+    });
+  });
+  return <TableWithKey {...props} onApplyView={applyView} pathname={pathname} routeSearch={search} routeViewKey={viewRoute.version}
+    restoreLocationState={navigation === 'POP'} clearFocusedRow={resetFilters => {
+    const query = new URLSearchParams(search);
+    query.delete('focus_id');
+    if (resetFilters === true) query.delete('suche');
+    const destinationSearch = query.size ? `?${query}` : '';
+    if (resetFilters === true) {
+      // The explicit reset action also clears the destination's saved view;
+      // otherwise its remount would restore filters the person just removed.
+      writeTableView(tableViewStorageKey(tableSettingsKey({ ...props, pathname }), destinationSearch),
+        { search: '', columnFilters: {}, page: 0 });
+    }
+    navigate(`${pathname}${destinationSearch}`);
   }} />;
 }
 
 function TableWithKey(props) {
-  const storageKey = props.settingsKey === undefined ? defaultSettingsKey(props.title, props.pathname) : props.settingsKey;
-  // A different list owns different state. Remount before persistence effects can
-  // copy the previous list's filters, selection or settings into the new key.
-  return <TableView key={`${props.serverPaged ? 'server' : 'client'}:${storageKey ?? ''}`}
+  const storageKey = tableSettingsKey(props);
+  // Each client-side route query owns its search, filters and page. Remount before
+  // persistence can copy the previous query's state into the destination key;
+  // initialization also distinguishes a fresh link from Back/Forward restoration.
+  // Server-paged lists manage their query state outside this table.
+  return <TableView key={JSON.stringify([Boolean(props.serverPaged), storageKey, props.serverPaged ? null : props.routeViewKey ?? props.routeSearch])}
     {...props} resolvedSettingsKey={storageKey} />;
 }
 
 function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
-  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, hideTitle = false,
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, exportLabel = 'CSV', hideTitle = false,
   resolvedSettingsKey: storageKey, pathname, routeSearch, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText,
-  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false }) {
+  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
@@ -195,7 +231,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const [bulkRunning, setBulkRunning] = useState(false);
   const lastToggled = useRef(null);
   // search, filters and page as left in this tab (server-paged lists keep their own state)
-  const viewStorageKey = storageKey && routeSearch ? `${storageKey}|query:${routeSearch}` : storageKey;
+  const viewStorageKey = tableViewStorageKey(storageKey, routeSearch);
   const [savedView] = useState(() => (serverPaged ? null : readTableView(viewStorageKey)));
   // A link to a list filtered to one record (/contacts?suche=Name) starts with that search.
   const [search, setSearch] = useState(() => {
@@ -334,7 +370,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     if (serverPaged) return data;
     let items = data;
     const focusedId = new URLSearchParams(routeSearch ?? window.location.search).get('focus_id');
-    if (focusedId) items = items.filter(row => String(row.id) === focusedId);
+    if (inheritRouteFocus && focusedId) items = items.filter(row => String(row.id) === focusedId);
 
     if (search) {
       const q = search.toLowerCase();
@@ -379,7 +415,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       }
     }
     return items;
-  }, [data, search, columnFilters, columns, serverPaged, routeSearch]);
+  }, [data, search, columnFilters, columns, serverPaged, routeSearch, inheritRouteFocus]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -574,7 +610,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   };
   const clearTableFilters = () => {
     setSearch(''); setColumnFilters({}); setPage(0);
-    if (new URLSearchParams(routeSearch ?? window.location.search).has('focus_id')) clearFocusedRow?.();
+    if (inheritRouteFocus && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id')) clearFocusedRow?.(true);
   };
 
   return (
@@ -637,7 +673,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               )}
             </div>
             <button onClick={exportCsv} disabled={exporting} aria-busy={exporting}
-                    className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : 'CSV'}</button>
+                    className="btn btn-sm btn-secondary">{exporting ? 'CSV …' : exportLabel}</button>
             {onAdd && !hideAddButton && (
               <button onClick={() => onAdd()} className="btn btn-primary" data-table-add="">
                 <PlusIcon size={16} /> {addLabel || t('ui.buttons.new')}
@@ -667,7 +703,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
         </div>
       )}
       {(!serverPaged || onApplyView) && <NamedViews context={viewContext} config={namedConfig} onApply={applyView} anchor={viewAnchor} />}
-      {!serverPaged && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id') && <p role="status">Ausgewählter Vorgang
+      {!serverPaged && inheritRouteFocus && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id') && <p role="status">Ausgewählter Vorgang
         {clearFocusedRow && <button type="button" className="btn btn-sm btn-ghost" onClick={clearFocusedRow}>Alle Vorgänge anzeigen</button>}</p>}
       {exportError && <p className="error-message" role="alert">{exportError}</p>}
       {selectable && (selectedRows.length > 0 || bulkReport || bulkRunning) && (

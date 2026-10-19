@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../api';
 import { base64Blob, blobBase64 } from './documentWorkApi';
+import UnsavedNavigationGuard, { NavigationScopeNotice } from '../../components/UnsavedNavigationGuard';
+import { navigationDiscardLabel } from '../../components/navigationProtectionContext';
+import { useTranslation } from '../../i18n';
+import { loadDocumentEditor } from './documentEditorRuntime';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-export default function DocxEditor({ documentId, session, onSession, onPublished, disabled }) {
+export default function DocxEditor({ documentId, session, onSession, onPublished, disabled, onLeaveGuard }) {
+  const { locale } = useTranslation();
   const host = useRef(null);
   const editor = useRef(null);
   const currentSession = useRef(session);
@@ -16,8 +21,39 @@ export default function DocxEditor({ documentId, session, onSession, onPublished
   const [status, setStatus] = useState('Editor wird geöffnet …');
   const [track, setTrack] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [leaveRequest, setLeaveRequest] = useState(null);
+  const [leaveBlocked, setLeaveBlocked] = useState(false);
+  const keepEditingRef = useRef(null);
+  const allowRouteLeaveRef = useRef(false);
+  const routeBlocked = useCallback(request => {
+    if (request.cancelled || request.pending) {
+      setLeaveRequest(null);
+      if (request.pending) setLeaveBlocked(true);
+      return;
+    }
+    setLeaveRequest(request);
+  }, []);
+  useEffect(() => { if (leaveRequest) keepEditingRef.current?.focus(); }, [leaveRequest]);
+  useEffect(() => { if (!busy && !pending.current) setLeaveBlocked(false); }, [busy, error]);
   const check = useRef(null);
   currentSession.current = session;
+  const requestLeave = useCallback(proceed => {
+    if (busy || pending.current) { setLeaveBlocked(true); return; }
+    if (ready && !disabled) {
+      setLeaveRequest({ proceed: () => {
+        allowRouteLeaveRef.current = true;
+        const result = proceed();
+        if (result === false) allowRouteLeaveRef.current = false;
+        return result;
+      }, reset: () => {} });
+      return;
+    }
+    proceed();
+  }, [busy, ready, disabled]);
+  useLayoutEffect(() => {
+    onLeaveGuard?.(requestLeave);
+    return () => onLeaveGuard?.(null);
+  }, [onLeaveGuard, requestLeave]);
 
   useEffect(() => {
     let active = true;
@@ -33,8 +69,7 @@ export default function DocxEditor({ documentId, session, onSession, onPublished
         current();
         if (!active) return;
         // Only a locally built, same-origin optional component. No CDN/account.
-        const moduleUrl = '/document-editor/editor.js';
-        const component = await import(/* @vite-ignore */ moduleUrl);
+        const component = await loadDocumentEditor();
         current();
         if (!active) return;
         if (!document.querySelector('link[data-document-editor]')) {
@@ -102,12 +137,29 @@ export default function DocxEditor({ documentId, session, onSession, onPublished
   useEffect(() => {
     if (!ready || disabled) return;
     const timer = setInterval(() => { void save(true); }, 20000);
+    return () => clearInterval(timer);
+  }, [ready, save, disabled]);
+  useEffect(() => {
+    if ((!ready || disabled) && !busy && !pending.current) return;
     const warn = event => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
-    return () => { clearInterval(timer); window.removeEventListener('beforeunload', warn); };
-  }, [ready, save, disabled]);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [ready, busy, disabled, error]);
 
   return <section aria-label="DOCX bearbeiten">
+    <UnsavedNavigationGuard when={(ready && !disabled) || busy || Boolean(pending.current)}
+      pending={busy || Boolean(pending.current)} bypassRef={allowRouteLeaveRef}
+      onBlocked={routeBlocked} label={`DOCX · ${session.filename || documentId}`} />
+    {leaveBlocked && <p role="alert">Ein Speicherauftrag läuft noch oder sein Ergebnis ist ungewiss. Bitte erst das Ergebnis prüfen, bevor Sie den Editor verlassen.</p>}
+    {leaveRequest && <div role="group" aria-label="DOCX-Editor verlassen">
+      <p role="alert">Die Änderungen seit dem letzten gesicherten Zwischenstand können beim Verlassen verloren gehen.</p>
+      <NavigationScopeNotice labels={leaveRequest.scopeLabels} locale={locale} />
+      <button ref={keepEditingRef} type="button" className="btn btn-secondary" onClick={() => {
+        leaveRequest.reset(); setLeaveRequest(null);
+      }}>Weiter bearbeiten</button>
+      <button type="button" className="btn btn-danger" disabled={busy || Boolean(pending.current)}
+        onClick={() => leaveRequest.proceed()}>{navigationDiscardLabel(leaveRequest.scopeLabels, locale, 'Ohne weiteres Sichern verlassen')}</button>
+    </div>}
     <p>Absätze, Zeichen, Tabellen und Seiten bearbeiten Sie direkt im lokalen Word-Editor. Die Speicherung übernimmt native DOCX-Bytes. Prüfen Sie komplexe Layouts zusätzlich in Ihrer Textverarbeitung.</p>
     {error && <div role="alert"><p>{error}</p>{pending.current
       ? <><button className="btn btn-secondary" disabled={busy} onClick={() => send(pending.current)}>Denselben Speicherauftrag wiederholen</button>

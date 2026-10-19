@@ -40,7 +40,8 @@ const COLUMNS = [
 ];
 
 export default function Leads() {
-  const [, setSearchParams] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
+  const focused = Boolean(params.get('focus_id'));
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [leads, setLeads] = useState([]);
@@ -79,7 +80,7 @@ export default function Leads() {
   }));
 
   // Sort by priority (higher priority = lower number = first), then by name
-  const sorted = enriched.filter(row => statusFilter === 'all' || row.status === statusFilter).sort((a, b) => {
+  const sorted = enriched.filter(row => focused || statusFilter === 'all' || row.status === statusFilter).sort((a, b) => {
     const pa = a.priority || 99;
     const pb = b.priority || 99;
     if (pa !== pb) return pa - pb;
@@ -88,7 +89,7 @@ export default function Leads() {
 
   // Group leads
   const getGrouped = () => {
-    if (groupBy === 'none') return [{ label: null, leads: sorted }];
+    if (focused || groupBy === 'none' || !sorted.length) return [{ label: null, leads: sorted }];
 
     const groups = {};
     sorted.forEach(l => {
@@ -191,7 +192,7 @@ export default function Leads() {
         ].map(opt => (
           <button
             key={opt.value}
-            className={`btn btn-sm ${groupBy === opt.value ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${(focused ? 'none' : groupBy) === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
             style={{ fontSize: '0.8rem', padding: '4px 10px' }}
           >

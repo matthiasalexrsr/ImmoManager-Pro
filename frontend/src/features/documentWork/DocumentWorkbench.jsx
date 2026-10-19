@@ -9,6 +9,7 @@ import DocxEditor from './DocxEditor';
 import InvoiceTakeover from './InvoiceTakeover';
 import PlainTextEditor from './PlainTextEditor';
 import { blobBase64, downloadVersion, pageNumbers, sourceCommand } from './documentWorkApi';
+import UnsavedNavigationGuard from '../../components/UnsavedNavigationGuard';
 import './documentWork.css';
 
 const kinds = { highlight: 'Hervorhebung', comment: 'Kommentar', text: 'Textnotiz', freehand: 'Freihand',
@@ -27,7 +28,23 @@ export default function DocumentWorkbench({ documentId, onClose }) {
   const [source, setSource] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [leaveBlocked, setLeaveBlocked] = useState(false);
   const [tab, setTab] = useState('work');
+  const editorLeaveGuard = useRef(null);
+  const registerEditorLeave = useCallback(guard => { editorLeaveGuard.current = guard; }, []);
+  const requestLeave = useCallback(action => {
+    const checkedAction = () => {
+      if (busyRef.current || pending.current) { setLeaveBlocked(true); return false; }
+      return action();
+    };
+    if (busyRef.current || pending.current) { setLeaveBlocked(true); return; }
+    if (editorLeaveGuard.current) editorLeaveGuard.current(checkedAction); else checkedAction();
+  }, []);
+  const pendingNavigation = useCallback(() => Boolean(busyRef.current || pending.current), []);
+  const routeBlocked = useCallback(() => setLeaveBlocked(true), []);
+  useEffect(() => { if (!busy && !pending.current) setLeaveBlocked(false); }, [busy, error]);
+  const closeWorkbench = useCallback(() => requestLeave(onClose), [requestLeave, onClose]);
+  const selectTab = next => { if (next !== tab) requestLeave(() => setTab(next)); };
   const [session, setSession] = useState(null);
   const [annotations, setAnnotations] = useState([]);
   const [layerRevision, setLayerRevision] = useState(0);
@@ -58,7 +75,7 @@ export default function DocumentWorkbench({ documentId, onClose }) {
   const choiceKind = tab === 'evidence' ? 'protocols' : ['insert', 'merge'].includes(operation) ? 'pdfs' : null;
   const canWrite = useCanWrite('/documents');
   const canInvoice = useCanWrite('/invoices');
-  useModalDialog(dialog, onClose, true);
+  useModalDialog(dialog, closeWorkbench, true);
 
   const load = useCallback(async () => {
     const current = api.captureSession();
@@ -200,8 +217,11 @@ export default function DocumentWorkbench({ documentId, onClose }) {
   const isDocx = source?.inspection.format === 'docx';
   return createPortal(<div className="document-work-backdrop"><section className="document-work" role="dialog" aria-modal="true"
     aria-labelledby="document-work-title" tabIndex={-1} ref={dialog}>
+    <UnsavedNavigationGuard when={busy || Boolean(pending.current)} pending={pendingNavigation}
+      onBlocked={routeBlocked} label={`Dokumentwerkzeuge · ${source?.document.title || documentId}`} />
     <header><div><h2 id="document-work-title">Dokumentwerkzeuge{source ? ` – ${source.document.title}` : ''}</h2>
-      <p>Original bewahren · Änderungen als neue Fassung speichern</p></div><button type="button" className="btn btn-secondary" onClick={onClose}>Schließen</button></header>
+      <p>Original bewahren · Änderungen als neue Fassung speichern</p></div><button type="button" className="btn btn-secondary" onClick={closeWorkbench}>Schließen</button></header>
+    {leaveBlocked && <p role="alert">Ein Dokumentauftrag läuft noch oder sein Ergebnis ist ungewiss. Bitte erst das Ergebnis prüfen, bevor Sie den Bereich verlassen.</p>}
     {error && <div role="alert"><p>{error}</p><div className="document-work-toolbar">
       {pending.current && <><button className="btn btn-secondary" disabled={busy} onClick={() => send(pending.current)}>Denselben Auftrag wiederholen</button>
         <button className="btn btn-secondary" disabled={busy} onClick={() => { pending.current = null; setError(null); }}>Auftrag verwerfen, Eingaben behalten</button></>}
@@ -223,13 +243,13 @@ export default function DocumentWorkbench({ documentId, onClose }) {
       {!source.version && <p className="document-work-notice">Die Eingangsdatei muss vor Bearbeitung und Übernahme als unveränderliches Original archiviert werden.
         <button className="btn btn-primary" disabled={disabled} onClick={() => perform(`${base}/archive`, sourceCommand(source), refresh)}>Original jetzt archivieren</button></p>}
       <nav className="document-work-toolbar" aria-label="Dokumentbereiche">{[['work', 'Bearbeiten'], ['invoice', 'Rechnung übernehmen'], ['evidence', 'Übergabenachweis'], ['history', 'Fassungen und Wiederanlauf']].map(([value, label]) =>
-        <button type="button" className="btn btn-secondary" aria-pressed={tab === value} key={value} onClick={() => setTab(value)}>{label}</button>)}</nav>
+        <button type="button" className="btn btn-secondary" aria-pressed={tab === value} key={value} onClick={() => selectTab(value)}>{label}</button>)}</nav>
       {tab === 'work' && <>
         {source.inspection.format === 'text' && <>{session?.mode === 'text' ? <PlainTextEditor documentId={documentId} session={session}
           onSession={setSession} onPublished={refresh} disabled={!canWrite} /> : <button className="btn btn-primary" disabled={disabled || !source.version}
           onClick={() => perform(`${base}/sessions`, { ...sourceCommand(source), mode: 'text' }, setSession)}>Text bearbeiten</button>}</>}
         {isDocx && <>{session?.mode === 'docx' ? <DocxEditor key={session.session_id} documentId={documentId} session={session}
-          onSession={setSession} onPublished={refresh} disabled={!canWrite} /> : <button className="btn btn-primary" disabled={disabled || !source.version}
+          onSession={setSession} onPublished={refresh} disabled={!canWrite} onLeaveGuard={registerEditorLeave} /> : <button className="btn btn-primary" disabled={disabled || !source.version}
           onClick={() => perform(`${base}/sessions`, { ...sourceCommand(source), mode: 'docx' }, setSession)}>DOCX im lokalen Editor öffnen</button>}
           <p>DOCX-Vorlagen können als normale Datei hochgeladen, archiviert und als neue Fassung bearbeitet werden. PDF-Ausgabe benötigt das separat eingerichtete lokale LibreOffice.</p></>}
         {isPdf && <div className="document-work-grid"><div>
@@ -333,9 +353,9 @@ export default function DocumentWorkbench({ documentId, onClose }) {
         {versions?.next_before && <button className="btn btn-secondary" onClick={() => getMore('versions', versions.next_before)}>Ältere Fassungen laden</button>}
         <h3>Verlauf und Wiederanlauf</h3><ul className="document-work-history">{history?.items.map(event => <li key={event.id}>
           {({ archive: 'Original archiviert', session: 'Bearbeitungssitzung', export: 'Ausgabeauftrag', analysis: 'Erkennungsauftrag', annotations: 'Anmerkungsebene', invoice_proposal: 'Erkennung geprüft', invoice_taken: 'Rechnung übernommen', evidence: 'Übergabenachweis' })[event.kind]} · {event.created_at}
-          {event.kind === 'session' && <button className="btn btn-secondary" disabled={disabled} onClick={() => { void recover(event.resource_id); setTab('work'); }}>Sitzung / Zwischenstand wieder öffnen</button>}
-          {event.kind === 'export' && <button className="btn btn-secondary" onClick={() => { setJob(event.payload); setTab('work'); }}>Ausgabeauftrag öffnen</button>}
-          {event.kind === 'analysis' && <button className="btn btn-secondary" onClick={() => { setAnalysis(event.payload); setTab('invoice'); }}>Erkennungsauftrag öffnen</button>}
+          {event.kind === 'session' && <button className="btn btn-secondary" disabled={disabled} onClick={() => { void recover(event.resource_id); selectTab('work'); }}>Sitzung / Zwischenstand wieder öffnen</button>}
+          {event.kind === 'export' && <button className="btn btn-secondary" onClick={() => { setJob(event.payload); selectTab('work'); }}>Ausgabeauftrag öffnen</button>}
+          {event.kind === 'analysis' && <button className="btn btn-secondary" onClick={() => { setAnalysis(event.payload); selectTab('invoice'); }}>Erkennungsauftrag öffnen</button>}
           {event.kind === 'evidence' && <p>{event.payload.purpose === 'signed_return' ? 'Unterschriebene Rückfassung' : 'Originalfoto'} · Protokoll {event.payload.protocol_id} · <code>{event.payload.sha256}</code></p>}
         </li>)}</ul>
         {history?.next_after && <button className="btn btn-secondary" onClick={() => getMore('history', history.next_after)}>Weiteren Verlauf laden</button>}

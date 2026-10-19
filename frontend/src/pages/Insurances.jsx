@@ -8,6 +8,8 @@ export default function Insurances() {
 
   const COLUMNS = [
     { key: 'provider', label: t('pages.insurances.columns.provider') || 'Versicherer', filterType: 'text' },
+    { key: 'property_label', label: 'Immobilie', filterType: 'text', link: 'property' },
+    { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
     { key: 'insurance_type', label: t('pages.insurances.columns.type') || 'Art', filterType: 'select' },
     { key: 'policy_number', label: t('pages.insurances.columns.policyNumber') || 'Policennr.', filterType: 'text' },
     { key: 'premium_amount', label: t('pages.insurances.columns.premium') || 'Prämie (€)', type: 'number', align: 'right',
@@ -17,8 +19,15 @@ export default function Insurances() {
     { key: 'status', label: t('pages.insurances.columns.status') || 'Status', type: 'status', filterType: 'select' },
   ];
 
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const propertySource = useEntities('properties', '/properties');
+  const unitSource = useEntities('units', '/units');
+  const { items: properties } = propertySource;
+  const { items: units } = unitSource;
+  const propertyNames = new Map(properties.map(property => [property.id, property.name]));
+  const unitNames = new Map(units.map(unit => [unit.id, unit.label || unit.unit_number]));
+  const formAvailability = { loading: propertySource.loading || unitSource.loading,
+    error: [propertySource.error, unitSource.error].filter(Boolean).join(' · '),
+    retry: () => { propertySource.reload(); unitSource.reload(); } };
 
   const fields = [
     { key: 'property_id', label: t('pages.insurances.form.property') || 'Immobilie', required: true, type: 'select',
@@ -54,5 +63,9 @@ export default function Insurances() {
     ]},
   ];
 
-  return <CrudPage title={t('pages.insurances.title') || 'Versicherungen'} endpoint="/insurances" columns={COLUMNS} formFields={fields} />;
+  return <CrudPage title={t('pages.insurances.title') || 'Versicherungen'} endpoint="/insurances" columns={COLUMNS} formFields={fields}
+    formAvailability={formAvailability} enrichRow={row => ({ ...row,
+      property_label: propertyNames.get(row.property_id) || row.property_id || '—',
+      unit_label: unitNames.get(row.unit_id) || row.unit_id || '—',
+    })} />;
 }

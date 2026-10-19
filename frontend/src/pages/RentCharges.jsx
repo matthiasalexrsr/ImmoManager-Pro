@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -15,30 +15,31 @@ export default function RentCharges() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
-  const { items: tenants } = useEntities('tenants', '/tenants');
+  const contractState = useEntities('contracts', '/contracts');
+  const tenantState = useEntities('tenants', '/tenants');
+  const contracts = contractState.items, tenants = tenantState.items;
   const [charges, setCharges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const lookupErrors = [contractState.error, tenantState.error].filter(Boolean);
+  const choicesReady = !contractState.loading && !tenantState.loading && !lookupErrors.length;
 
-  const refreshData = () => {
-    setLoading(true);
-    api.list('/rent-charges').catch(() => [])
-      .then(ch => setCharges(ch || []))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.list('/rent-charges').catch(err => { console.warn('[RentCharges] charges:', err.message); return []; })
-      .then(data => { if (!cancelled) setCharges(data || []); })
-      .catch(e => { if (!cancelled) setError(e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/rent-charges', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Sollstellungen konnten nicht vollständig gelesen werden.');
+      setCharges(data); setLoaded(true); setError(null);
+    }).catch(error => { if (!request.signal.aborted) setError(error.message || 'Sollstellungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
@@ -62,7 +63,7 @@ export default function RentCharges() {
   });
 
   const COLUMNS = [
-    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'contract_label', label: 'Vertrag', filterType: 'text', link: { kind: 'contract', idKey: 'contract_id' } },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
     { key: 'month', label: 'Monat', filterType: 'text', render: v => formatMonth(v) },
@@ -96,6 +97,7 @@ export default function RentCharges() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Vertrags- und Mieterauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/rent-charges', data);
     } else {
@@ -118,11 +120,16 @@ export default function RentCharges() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && charges.length === 0 && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (error && !modal) return <div className="page"><div className="alert alert-error">{error}</div></div>;
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (error && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{error}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {error && <p className="alert-error" role="alert">Sollstellungen konnten nicht aktualisiert werden. {error} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {lookupErrors.length > 0 && <p className="alert-error" role="alert">Die Vertrags- oder Mieterauswahl ist nicht verfügbar. {lookupErrors.join(' · ')}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { contractState.reload(); tenantState.reload(); }}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -133,8 +140,8 @@ export default function RentCharges() {
         title="Sollstellung"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
       {modal && (

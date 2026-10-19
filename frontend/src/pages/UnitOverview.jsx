@@ -16,6 +16,7 @@ import EntityActions from '../features/workCenter/EntityActions';
 import EntityTimeline from '../features/workCenter/EntityTimeline';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
+import usePhotoNotification from '../hooks/usePhotoNotification';
 import './propertyDossier.css';
 
 // What can be started from a unit, each opened prefilled with the unit and its property.
@@ -37,6 +38,8 @@ export default function UnitOverview() {
   const [activityRevision, setActivityRevision] = useState(0);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [photosOpen, setPhotosOpen] = useState(false);
+  const photoNotice = usePhotoNotification('unit', id);
+  useEffect(() => { if (photoNotice.open) setPhotosOpen(true); }, [photoNotice.open]);
   const canContract = useCanWrite('/contracts');
 
   useEffect(() => {
@@ -98,6 +101,7 @@ export default function UnitOverview() {
         ...(activeContract?.tenant_id ? [{ to: entityHref('tenantAccount', activeContract.tenant_id), label: 'Mieterkonto öffnen' }] : []),
       ]} />
 
+      {photoNotice.error && <div role="alert" className="alert alert-error">{photoNotice.error} Der Hinweis bleibt ungelesen. <button type="button" onClick={photoNotice.retry}>Hinweisquelle erneut laden</button></div>}
       <details className="panel dossier-media" open={photosOpen} onToggle={event => setPhotosOpen(event.currentTarget.open)}>
         <summary className="panel-header">Fotos der Einheit</summary>
         {photosOpen && <div className="panel-body"><PhotoDropZone entityType="unit" entityId={id} /></div>}

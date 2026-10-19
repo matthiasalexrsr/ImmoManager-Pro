@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
@@ -68,6 +68,10 @@ export default function Meters() {
   const [meters, setMeters] = useState([]);
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [readings, setReadings] = useState([]);
+  const [readingsError, setReadingsError] = useState(null);
+  const [readingsLoading, setReadingsLoading] = useState(false);
+  const readingsRequest = useRef(null);
+  const focusedMeter = searchParams.get('focus_id');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
@@ -79,7 +83,7 @@ export default function Meters() {
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
   const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setSelectedMeter(null); setDrilldown(number => number + 1); };
   const inspectionSoon = meter => meter.next_inspection && Math.ceil((new Date(meter.next_inspection) - new Date()) / 86400000) < 30;
-  const visibleMeters = meters.filter(meter => sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
+  const visibleMeters = meters.filter(meter => focusedMeter || sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
     : sourceFilter === 'inspection' ? inspectionSoon(meter) : meter.meter_type === sourceFilter.slice(5)));
 
   useEffect(() => {
@@ -108,9 +112,14 @@ export default function Meters() {
   }, [revision, units, properties]);
 
   const handleSelectMeter = (meter) => {
+    readingsRequest.current?.abort();
+    const request = new AbortController(); readingsRequest.current = request;
     setSelectedMeter(meter);
-    api.list(`/meters/${meter.id}/readings`).then(r => {
-      const sorted = (r || []).sort((a, b) =>
+    setReadings([]); setReadingsError(null); setReadingsLoading(true);
+    api.list(`/meters/${encodeURIComponent(meter.id)}/readings`, { signal: request.signal }).then(r => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(r)) throw new Error('Die Ableseliste ist unvollständig.');
+      const sorted = [...r].sort((a, b) =>
         (a.reading_date || '').localeCompare(b.reading_date || '')
       );
       const withConsumption = sorted.map((rd, i) => ({
@@ -118,10 +127,13 @@ export default function Meters() {
         consumption: i > 0 ? rd.value - sorted[i - 1].value : null,
       }));
       setReadings(withConsumption);
-    }).catch(() => setReadings([]));
+    }).catch(failure => { if (!request.signal.aborted) setReadingsError(failure.message || 'Die Ablesungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setReadingsLoading(false); });
   };
 
-  const noticeMeter = searchParams.get('notice_id') ? searchParams.get('focus_id') : null;
+  useEffect(() => () => readingsRequest.current?.abort(), []);
+
+  const noticeMeter = focusedMeter;
   useEffect(() => {
     if (noticeMeter && !loading && selectedMeter?.id !== noticeMeter) {
       const meter = meters.find(row => row.id === noticeMeter); if (meter) handleSelectMeter(meter);
@@ -192,7 +204,7 @@ export default function Meters() {
 
   // Group meters
   const getGroupedMeters = () => {
-    if (groupBy === 'none') return [{ label: null, meters: visibleMeters }];
+    if (focusedMeter || groupBy === 'none' || !visibleMeters.length) return [{ label: null, meters: visibleMeters }];
 
     const groups = {};
     visibleMeters.forEach(m => {
@@ -226,7 +238,7 @@ export default function Meters() {
   return (
     <div className="page">
       {loadError && <p role="alert">{loadError} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
-      {sourceFilter === 'inspection' && <p className="text-muted">Prüftermine in weniger als 30 Tagen, einschließlich überfälliger Termine und inaktiver Zähler.</p>}
+      {!focusedMeter && sourceFilter === 'inspection' && <p className="text-muted">Prüftermine in weniger als 30 Tagen, einschließlich überfälliger Termine und inaktiver Zähler.</p>}
       {/* Summary Cards */}
       <div className="kpi-row">
         <KpiAction label="Zähler gesamt" value={loadError && !meters.length ? '—' : stats.total} onClick={() => openSources('all')} />
@@ -246,7 +258,7 @@ export default function Meters() {
         ].map(opt => (
           <button
             key={opt.value}
-            className={`btn btn-sm ${groupBy === opt.value ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${(focusedMeter ? 'none' : groupBy) === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
             style={{ fontSize: '0.8rem', padding: '4px 10px' }}
           >
@@ -295,23 +307,25 @@ export default function Meters() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => setModal('create-reading')}>
+                <button className="btn btn-sm btn-primary" disabled={readingsLoading || Boolean(readingsError)} onClick={() => setModal('create-reading')}>
                   + Ablesung erfassen
                 </button>
                 <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
                   Zähler bearbeiten
                 </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => { setSelectedMeter(null); setReadings([]); }}>
+                <button className="btn btn-sm btn-secondary" onClick={() => { readingsRequest.current?.abort(); setSelectedMeter(null); setReadings([]); }}>
                   Schließen
                 </button>
               </div>
             </div>
           </div>
-          <DataTable
+          {readingsLoading ? <p role="status">Ablesungen werden geladen …</p> : readingsError ? <div className="alert alert-error" role="alert">{readingsError}
+            <button type="button" className="btn btn-secondary" onClick={() => handleSelectMeter(selectedMeter)}>Ablesungen erneut laden</button></div> : <DataTable
+            inheritRouteFocus={false}
             title=""
             columns={READING_COLUMNS}
             data={readings}
-          />
+          />}
         </div>
       )}
 

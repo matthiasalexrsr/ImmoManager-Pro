@@ -92,8 +92,9 @@ function ScopedDataStore({ children, scopeKey }) {
 
     try {
       const data = await api.list(endpoint);
+      if (!Array.isArray(data)) throw new Error('Die Datenliste konnte nicht gelesen werden. Bitte erneut laden.');
       cacheScope.cache[entityKey] = {
-        data: Array.isArray(data) ? data : [],
+        data,
         loading: false,
         error: null,
         fetchedAt: Date.now(),

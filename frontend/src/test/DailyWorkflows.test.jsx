@@ -60,6 +60,24 @@ it('failed authorization preserves item without acknowledgement', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Nicht zugänglich');
   expect(api.post).not.toHaveBeenCalled();
 });
+it('does not carry a previous notification success into an unloaded next target', async () => {
+  window.history.replaceState({}, '', '/tasks?focus_id=task-id&notice_id=notice-id');
+  const view = render(<NotificationArrival rows={[{ id: 'task-id', updated_at: revision }]} />);
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('archiviert'));
+  window.history.replaceState({}, '', '/tasks?focus_id=next-id&notice_id=next-notice');
+  view.rerender(<NotificationArrival rows={[]} />);
+  expect(screen.getByRole('status')).toHaveTextContent('erst nach erfolgreichem Laden');
+  expect(screen.queryByText(/persönlich gelesen/)).not.toBeInTheDocument();
+  expect(api.post).toHaveBeenCalledTimes(1);
+});
+it('leaves a child photo notification to the photo view instead of the parent record', async () => {
+  window.history.replaceState({}, '', '/properties/p1?source_id=photo1&notice_id=notice-photo');
+  const { container } = render(<NotificationArrival record={{ id: 'p1', updated_at: revision }} />);
+  await act(async () => {});
+  expect(container).toBeEmptyDOMElement();
+  expect(api.get).not.toHaveBeenCalled();
+  expect(api.post).not.toHaveBeenCalled();
+});
 it('inbox provides native keyboard and new-tab links and complete server snapshot', async () => {
   const notice = { id: 'notice-id', title: 'Sehr langer deutscher Hinweis', content: 'Prüfen', target: { title: 'Quelle' }, open_href: '/tasks?focus_id=task-id&notice_id=notice-id' };
   api.get.mockResolvedValue({ items: [notice], total: 27, unread_count: 27, snapshot: 'complete-authorized-inbox' });

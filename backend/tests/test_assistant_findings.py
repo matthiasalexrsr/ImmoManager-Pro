@@ -1,5 +1,6 @@
 """Evidence-bound findings use the existing reviewed draft and task boundaries."""
 from copy import deepcopy
+from datetime import date
 from typing import Any
 
 import pytest
@@ -10,11 +11,25 @@ from backend import auth
 from backend.app import app
 from backend.assistant_models import ProposalApply, ProposalPreview, RevisionCommand
 from backend.dependencies import store
-from backend.models import PortfolioCreate, PropertyCreate, TaskCreate, UnitCreate
-from backend.services import assistant, assistant_context, assistant_findings as findings, assistant_runner, workspace
+from backend.models import (
+    ContractCreate,
+    InvoiceCreate,
+    PortfolioCreate,
+    PropertyCreate,
+    TaskCreate,
+    TenantCreate,
+    UnitCreate,
+)
+from backend.services import assistant, assistant_context, assistant_runner, workspace
+from backend.services import assistant_findings as findings
 from backend.services import assistant_storage as db
-from backend.tests.test_assistant_workspace import (
-    clean, command, conversation, fake_execute, isolated_assistant, submit,
+from backend.tests.test_assistant_workspace import (  # noqa: F401 -- shared autouse fixtures
+    clean,
+    command,
+    conversation,
+    fake_execute,
+    isolated_assistant,
+    submit,
 )
 
 
@@ -269,10 +284,12 @@ def test_changed_source_cannot_be_handed_off_after_preparation(owner, estate, st
     unit = estate[1]
     store.update_unit(unit.id, UnitCreate(**{**unit.model_dump(exclude={"id", "created_at", "updated_at"}), "area_sqm": 75}))
     if stage == "preview":
-        action = lambda: assistant.proposal_preview(store, owner.id, proposal["id"], preview)
+        def action():
+            return assistant.proposal_preview(store, owner.id, proposal["id"], preview)
     else:
         body = ProposalApply(**command(expected_revision=proposal["revision"], review_hash=review["review_hash"]))
-        action = lambda: assistant.decide_proposal(store, owner.id, proposal["id"], body)
+        def action():
+            return assistant.decide_proposal(store, owner.id, proposal["id"], body)
     assert_failure(409, action)
     assert workspace.list_records(store, owner.id, "drafts")["items"] == []
     assert store.list_tasks() == []
@@ -332,3 +349,41 @@ def test_run_list_retains_normalized_findings_and_tool_budget_after_reload(owner
         "exhausted": call_count >= MAX_CALLS,
         "continuation": "followup" if call_count >= MAX_CALLS else None,
     }
+
+
+@pytest.mark.parametrize("kind", ["contract", "invoice"])
+def test_selected_record_parents_prepare_without_granting_siblings_or_aggregate(owner, estate, kind):
+    from backend.tests.test_assistant_tools import tool
+    house, unit = estate
+    sibling = store.create_unit(UnitCreate(property_id=house.id, label="Nicht ausgewählte Nachbareinheit", unit_type="flat"))
+    record: Any
+    if kind == "contract":
+        tenant = store.create_tenant(TenantCreate(full_name="Prüfpartei"))
+        record = store.create_contract(ContractCreate(property_id=house.id, unit_id=unit.id, tenant_id=tenant.id,
+            contract_number="MV-Prüfung", start_date=date(2020, 1, 1), end_date=date(2020, 12, 31)))
+    else:
+        record = store.create_invoice(InvoiceCreate(property_id=house.id, supplier="Prüfrechnung", invoice_date=date(2020, 1, 1),
+            due_date=date(2020, 2, 1), net_amount=100, vat_amount=19, gross_amount=119))
+    queued = submit(owner, conversation(owner, provider="codex"), context={kind + "_ids": [record.id]}, data_scope="selected")
+
+    def execute(actor_id, provider, request, emit, cancelled):
+        connection = request["_application_mcp"]
+        assert tool(connection, "immo_read", {"kind": "property", "id": house.id})["ok"]
+        if kind == "contract":
+            assert tool(connection, "immo_read", {"kind": "unit", "id": unit.id})["ok"]
+        assert not tool(connection, "immo_read", {"kind": "unit", "id": sibling.id})["ok"]
+        assert not tool(connection, "immo_timeline", {"kind": "property", "id": house.id})["ok"]
+        assert not tool(connection, "immo_report", {"definition": {"version": 2, "kind": "cash-v2",
+            "as_of": "2026-10-19", "property_id": house.id}})["ok"]
+        return {"text": "Ausgewählte Akte und deren Stammdaten geprüft."}
+
+    assistant_runner.run(store, queued["id"], owner.id, execute=execute)
+    run = assistant.get_run(store, owner.id, queued["id"])
+    assert run["state"] == "completed", run
+    selected = next(item for item in run["findings"] if item["evidence"][0]["kind"] == kind)
+    proposal = prepare(owner, run, selected)["proposal"]["payload"]
+    assert proposal["values"]["property_id"] == house.id
+    assert proposal["anchor"] == {"kind": kind, "id": record.id}
+    assert any(item["kind"] == "property" and item["id"] == house.id for item in proposal["evidence"])
+    if kind == "contract":
+        assert proposal["values"]["unit_id"] == unit.id

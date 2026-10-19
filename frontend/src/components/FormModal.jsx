@@ -12,6 +12,8 @@ import { fieldValidationErrors } from '../utils/formValidationFeedback';
 import './workspace.css';
 import DuplicateHints from './DuplicateHints';
 import DraftDefaults from './DraftDefaults';
+import UnsavedNavigationGuard, { NavigationScopeNotice } from './UnsavedNavigationGuard';
+import { navigationDiscardLabel } from './navigationProtectionContext';
 
 const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
   && f.options.every(o => o.value === 'true' || o.value === 'false');
@@ -35,7 +37,7 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 // entry (a series of bookings on one account, readings of one day); every other field starts over.
 export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep, draftContext, draftAnchor, autosave = true,
   onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
   const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
@@ -75,6 +77,30 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const discardCancelRef = useRef(null);
   const restoreLeaveFocusRef = useRef(false);
   const unloadRef = useRef(null);
+  const allowRouteLeaveRef = useRef(false);
+  const routeResetRef = useRef(null);
+  const discardClearingRef = useRef(false);
+  const draftBusyRef = useRef(false);
+  useLayoutEffect(() => { draftBusyRef.current = draftBusy; }, [draftBusy]);
+  const pendingNavigation = useCallback(() => savingRef.current || draftBusyRef.current, []);
+  const [routeBusy, setRouteBusy] = useState(false);
+  const [routeScopes, setRouteScopes] = useState([]);
+  const routeBlocked = useCallback(request => {
+    if (request.cancelled || request.pending) {
+      routeResetRef.current = null;
+      leaveRef.current = null;
+      setConfirmDiscard(false);
+      setRouteScopes([]);
+      if (request.pending) setRouteBusy(true);
+      return;
+    }
+    routeResetRef.current = request.reset;
+    setRouteScopes(request.scopeLabels || []);
+    leaveRef.current = request.proceed;
+    leaveFocusRef.current = modalRef.current?.contains(document.activeElement) ? document.activeElement : null;
+    setConfirmDiscard(true);
+  }, []);
+  useEffect(() => { if (!saving) setRouteBusy(false); }, [saving]);
   useLayoutEffect(() => {
     activeSession.current = sessionKey;
     return () => { activeSession.current = null; };
@@ -163,13 +189,17 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const requestLeave = useCallback(action => {
     if (savingRef.current) return;
     if (dirty) {
-      leaveRef.current = action;
+      setRouteScopes([]);
+      leaveRef.current = () => { allowRouteLeaveRef.current = true; action(); };
       leaveFocusRef.current = modalRef.current?.contains(document.activeElement) ? document.activeElement : null;
       setConfirmDiscard(true);
-    } else action();
+    } else { allowRouteLeaveRef.current = true; action(); }
   }, [dirty]);
 
   const cancelDiscard = useCallback(() => {
+    if (discardClearingRef.current) return;
+    routeResetRef.current?.();
+    routeResetRef.current = null;
     leaveRef.current = null;
     restoreLeaveFocusRef.current = true;
     setConfirmDiscard(false);
@@ -197,12 +227,12 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
 
   // Reloading or closing the browser also protects an unsaved draft.
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !saving) return;
     const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
     unloadRef.current = beforeUnload;
     window.addEventListener('beforeunload', beforeUnload);
     return () => { window.removeEventListener('beforeunload', beforeUnload); if (unloadRef.current === beforeUnload) unloadRef.current = null; };
-  }, [dirty]);
+  }, [dirty, saving]);
 
   // Escape closes (or asks first); a second Escape on the question returns to editing.
   // Ctrl/Cmd+Enter saves from any field, including multi-line notes.
@@ -306,6 +336,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         setSavedCount(count => count + 1);
         return;
       }
+      allowRouteLeaveRef.current = true;
       onClose();
     } catch (err) {
       if (isCurrentSession()) {
@@ -327,6 +358,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     <div className="modal-overlay" role="presentation"
       onMouseDown={e => { pressStartedOnOverlay.current = e.target === e.currentTarget; }}
       onClick={e => { if (pressStartedOnOverlay.current && e.target === e.currentTarget) requestClose(); pressStartedOnOverlay.current = false; }}>
+      <UnsavedNavigationGuard when={dirty || saving || draftBusy} pending={pendingNavigation}
+        holdRef={discardClearingRef} bypassRef={allowRouteLeaveRef} onBlocked={routeBlocked} label={title} />
       <div
         className={`modal${wide ? ' modal-wide' : ''}`}
         ref={modalRef}
@@ -342,6 +375,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
         </div>
         <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
+            {routeBusy && <p role="alert">Ein Speichervorgang läuft noch. Bitte warten Sie auf das Ergebnis, bevor Sie das Formular verlassen.</p>}
             {error && <div className="alert-error form-error-feedback" role="alert" tabIndex={-1} ref={errorRef}>
               <p>{error}</p>
               {saveFailure && <>
@@ -527,17 +561,35 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
           {confirmDiscard ? (
             <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
               <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
-              <button ref={discardCancelRef} type="button" onClick={cancelDiscard} className="btn btn-secondary">{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
-              <button type="button" disabled={draftBusy} onClick={async () => {
+              <NavigationScopeNotice labels={routeScopes} locale={locale} />
+              <button ref={discardCancelRef} type="button" disabled={draftBusy || saving} onClick={cancelDiscard} className="btn btn-secondary">{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
+              <button type="button" disabled={draftBusy || saving} onClick={async () => {
+                if (savingRef.current) return;
+                const approvedLeave = leaveRef.current || onClose;
+                const finishLeave = () => {
+                  if (approvedLeave() !== false) { setDirty(false); setConfirmDiscard(false); }
+                };
                 // A plain prerequisite link may leave the browser page immediately.
                 // The explicit discard has already answered its unload question.
                 if (unloadRef.current) window.removeEventListener('beforeunload', unloadRef.current);
-                if (!draft.enabled) { setDirty(false); setConfirmDiscard(false); (leaveRef.current || onClose)(); return; }
+                if (!draft.enabled) { finishLeave(); return; }
+                discardClearingRef.current = true;
+                draftBusyRef.current = true;
                 setDraftBusy(true);
-                try { await draft.clear(); if (isCurrentSession()) { setDirty(false); setConfirmDiscard(false); (leaveRef.current || onClose)(); } }
-                catch (failure) { if (isCurrentSession()) { setError(failure.message); setConfirmDiscard(false); } }
-                finally { if (isCurrentSession()) setDraftBusy(false); }
-              }} className="btn btn-danger">{tr('ui.form.discard', 'Verwerfen')}</button>
+                try {
+                  await draft.clear();
+                  if (isCurrentSession()) {
+                    discardClearingRef.current = false; draftBusyRef.current = false;
+                    setDraftBusy(false); finishLeave();
+                  }
+                } catch (failure) { if (isCurrentSession()) {
+                  setError(failure.message); routeResetRef.current?.(); setConfirmDiscard(false);
+                } }
+                finally {
+                  discardClearingRef.current = false; draftBusyRef.current = false;
+                  if (isCurrentSession()) setDraftBusy(false);
+                }
+              }} className="btn btn-danger">{navigationDiscardLabel(routeScopes, locale, tr('ui.form.discard', 'Verwerfen'))}</button>
             </div>
           ) : (
             <div className="modal-footer">

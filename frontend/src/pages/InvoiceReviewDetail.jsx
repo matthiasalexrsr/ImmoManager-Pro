@@ -1,9 +1,9 @@
 import NotificationArrival from '../components/NotificationArrival';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api';
 import FileViewer from '../components/FileViewer';
 import RelatedPageLinks from '../components/RelatedPageLinks';
+import useLookupChoices from '../hooks/useLookupChoices';
 import { entityHref } from '../utils/entityLinks';
 import PdfPreview from '../components/PdfPreview';
 import { fileKind, resolveFileUrl } from '../features/partyWorkspace/files';
@@ -30,7 +30,8 @@ function InvoiceReviewSession({ id }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [properties, setProperties] = useState([]);
+  const propertyChoices = useLookupChoices({ properties: '/properties' }, Boolean(view && !view.review && view.abilities.receive), id);
+  const properties = propertyChoices.data.properties || [];
   const reload = useCallback(() => setRevision(value => value + 1), []);
 
   useEffect(() => {
@@ -40,13 +41,6 @@ function InvoiceReviewSession({ id }) {
       .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message || tx.loadFailed); });
     return () => controller.abort();
   }, [id, revision, tx]);
-
-  useEffect(() => {
-    if (!view || view.review) return undefined;
-    const controller = new AbortController();
-    api.list('/properties', { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setProperties(value); }).catch(() => {});
-    return () => controller.abort();
-  }, [view]);
 
   if (error) {
     return (
@@ -64,7 +58,7 @@ function InvoiceReviewSession({ id }) {
   const assignment = view.assignment || {};
   const relatedItems = [
     ...(propertyId ? [{ to: `${entityHref('property', propertyId)}?tab=finance`, label: 'Finanzen der Immobilie' }] : []),
-    ...(invoice.invoice_number ? [{ to: entityHref('invoice', null, invoice.invoice_number), label: 'Rechnung in der Liste' }] : []),
+    ...(invoice.id ? [{ to: entityHref('invoice', invoice.id), label: 'Rechnung in der Liste' }] : []),
     ...(assignment.kind === 'maintenance_order' && assignment.case_id
       ? [{ to: entityHref('maintenance', assignment.case_id), label: 'Wartungsfall öffnen' }] : []),
     ...(assignment.kind === 'service_contract' && assignment.service_contract_id
@@ -88,7 +82,10 @@ function InvoiceReviewSession({ id }) {
         <div className="ir-panels">
           <Summary view={view} />
           <Findings view={view} />
-          {!view.review && abilities.receive && <ReceiptForm view={view} properties={properties} onChanged={reload} />}
+          {!view.review && abilities.receive && !propertyChoices.ready && <p className="alert-error" role={propertyChoices.error ? 'alert' : 'status'}>
+            {propertyChoices.error || 'Immobilien für den Rechnungseingang werden geladen …'}{' '}
+            {propertyChoices.error && <button type="button" className="btn btn-secondary btn-sm" onClick={propertyChoices.reload}>Auswahl erneut laden</button>}</p>}
+          {!view.review && abilities.receive && propertyChoices.ready && <ReceiptForm view={view} properties={properties} onChanged={reload} />}
           {view.review && <Checks key={`checks-${revision}`} view={view} onChanged={reload} />}
           <Decision key={`decision-${revision}`} view={view} onChanged={reload} />
           <Payment key={`payment-${revision}`} view={view} onChanged={reload} />

@@ -24,6 +24,15 @@ beforeEach(() => { mocks.list.mockReset(); mocks.related = {}; mocks.reload.mock
 afterEach(cleanup);
 
 describe('accessible list workspace', () => {
+  it('keeps a directly linked archived party visible and lets the user return to all parties', async () => {
+    mocks.list.mockResolvedValue([{ id: 'old', full_name: 'Archivierte Partei', archived: true }, { id: 'new', full_name: 'Aktive Partei', archived: false }]);
+    render(<MemoryRouter initialEntries={['/tenants?focus_id=old']}><Tenants /></MemoryRouter>);
+    expect(await screen.findByRole('button', { name: 'Archivierte Partei' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Aktive Partei' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Alle Parteien anzeigen' }));
+    expect(await screen.findByRole('button', { name: 'Aktive Partei' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Archivierte Partei' })).toBeInTheDocument();
+  });
   it('shows area totals with their unit while keeping money totals cent exact', () => {
     setFormatLocale('de-DE');
     render(<MemoryRouter><DataTable title="Flächen und Mieten" columns={[

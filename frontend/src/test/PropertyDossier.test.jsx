@@ -106,6 +106,7 @@ beforeEach(() => {
     if (route === '/units') return Promise.resolve(units[id] || []);
     if (route === '/documents') return Promise.resolve(documents[id] || []);
     if (['/contracts', '/maintenance', '/insurances'].includes(route)) return Promise.resolve([]);
+    if (route === '/portfolios') return Promise.resolve([]);
     return Promise.reject(new Error(`Unexpected LIST ${path}`));
   });
 });
@@ -404,6 +405,19 @@ describe('property page as the place to act on a property', () => {
     fireEvent.submit(form.querySelector('form'));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/properties/p1', expect.objectContaining({ year_built: 1928 })));
     expect(await screen.findByText('1928')).toBeInTheDocument();
+  });
+
+  it('keeps the dossier visible and retries a failed edit lookup before opening the form', async () => {
+    const normalList = api.list.getMockImplementation();
+    api.list.mockImplementation(path => path === '/portfolios' ? Promise.reject(new Error('Portfoliozugriff unterbrochen')) : normalList(path));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Portfoliozugriff unterbrochen');
+    expect(screen.getByRole('heading', { name: 'Haus Alpha' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Immobilie bearbeiten' })).not.toBeInTheDocument();
+    api.list.mockImplementation(normalList);
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByRole('dialog', { name: 'Immobilie bearbeiten' })).toBeInTheDocument();
   });
 
   it('offers no actions to roles that may not change the property', async () => {
