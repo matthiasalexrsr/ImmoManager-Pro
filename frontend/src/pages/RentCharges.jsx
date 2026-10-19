@@ -81,7 +81,7 @@ export default function RentCharges() {
   const fields = [
     { key: 'contract_id', label: t('tenantsContracts.contracts.title'), required: true, type: 'select',
       options: contracts.map(c => ({ value: c.id, label: c.contract_number })) },
-    { key: 'month', label: 'Monat (YYYY-MM)', required: true, placeholder: '2026-06' },
+    { key: 'month', label: 'Monat', type: 'month', required: true, placeholder: 'JJJJ-MM' },
     { key: 'cold_rent', label: 'Kaltmiete (EUR)', ...numberDefaults },
     { key: 'service_charge', label: 'Betriebskosten (EUR)', ...numberDefaults },
     { key: 'heating_charge', label: 'Heizkosten (EUR)', ...numberDefaults },

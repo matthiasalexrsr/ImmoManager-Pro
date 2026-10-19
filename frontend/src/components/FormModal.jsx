@@ -8,7 +8,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { formContext } from '../utils/workspaceClient';
 import useFormDraft from '../hooks/useFormDraft';
-import { fieldValidationErrors } from '../utils/formValidationFeedback';
+import { fieldValidationErrors, labelledMessage } from '../utils/formValidationFeedback';
 import './workspace.css';
 import DuplicateHints from './DuplicateHints';
 import DraftDefaults from './DraftDefaults';
@@ -34,7 +34,7 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 // repeatKeep: for a new record, offer "Speichern & weiteren" and keep these fields for the next
 // entry (a series of bookings on one account, readings of one day); every other field starts over.
 export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep, draftContext, draftAnchor, autosave = true,
-  onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase }) {
+  onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase, derive }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
@@ -61,6 +61,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const draftWaiting = draft.enabled && (draft.status === 'loading' || Boolean(draft.recovery));
   const fieldDisabled = saving || draftWaiting || draftBusy || (draft.enabled && !draft.ready);
   const modalRef = useRef(null);
+  const touchedRef = useRef(new Set());     // fields the user set by hand (derived values leave them alone)
   const formRef = useRef(null);
   const errorRef = useRef(null);
   const restoreFocusRef = useRef(false);
@@ -90,6 +91,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       setFieldErrors({});
       setSaveFailure(false);
       setConfirmDraftDiscard(false);
+      touchedRef.current = new Set();
       restoreFocusRef.current = false;
       setDirty(false);
       setConfirmDiscard(false);
@@ -155,7 +157,10 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     });
     setDirty(true);
     setConfirmDiscard(false);
-    const next = { ...values, [key]: value, ...extra };
+    touchedRef.current.add(key);
+    let next = { ...values, [key]: value, ...extra };
+    // values that follow from others (e.g. gross from net and VAT) until the user sets them by hand
+    if (derive) next = { ...next, ...derive(next, key, touchedRef.current) };
     draft.stage(next);
     setValues(next);
   };
@@ -301,6 +306,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       if (next) return;
       if (again) {
         const keep = new Set(repeatKeep);
+        touchedRef.current = new Set();
         setValues(current => Object.fromEntries(fields.map(f => [f.key,
           keep.has(f.key) ? current[f.key] : toFieldValue(f, f.default ?? '')])));
         setSavedCount(count => count + 1);
@@ -309,7 +315,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
       onClose();
     } catch (err) {
       if (isCurrentSession()) {
-        setError(err?.message || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.'));
+        setError(labelledMessage(err?.message, fields) || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.'));
         setFieldErrors(fieldValidationErrors(err, fields));
         setSaveFailure(true);
       }
