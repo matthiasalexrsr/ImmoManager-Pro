@@ -3,7 +3,7 @@
 import re
 from urllib.parse import urlsplit
 
-APPLICATION_TOOLS = frozenset({"immo_search", "immo_read", "immo_related", "immo_timeline", "immo_report", "immo_document"})
+APPLICATION_TOOLS = frozenset({"immo_search", "immo_read", "immo_related", "immo_timeline", "immo_report", "immo_document", "immo_investigate"})
 
 
 def application_mcp(request: dict) -> dict | None:

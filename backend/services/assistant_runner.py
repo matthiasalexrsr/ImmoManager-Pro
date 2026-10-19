@@ -150,6 +150,8 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             # Before changing to running, all selected bytes must still match.
             attachments = [service.attachment_request(db.owned_child(unit, Attachment, item)) for item in data["attachment_ids"]]
             analysis = local_analysis(unit.store, data["context"], actor_id, report=data.get("report"), extract_documents=True)
+            data["local_findings"] = analysis.get("findings", [])
+            data["local_checks"] = analysis.get("checks", {})
             if analysis.get("finance") is not None:
                 finance = analysis["finance"]
                 data["_report_hash"] = finance["result_hash"]
@@ -192,6 +194,7 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             data["events"] = [{"sequence": 1, "type": "status", "message": "Auftrag gestartet."}]
             db.put(unit, Run, data, row=row, state="running")
             request = dict(run_id=identifier, model=settings["model"], effort=settings["effort"], messages=messages,
+                           application_clock={"date": analysis["checks"]["as_of"], "timezone": "Europe/Berlin"},
                            data_scope=data.get("data_scope", "selected"),
                            web_research=data.get("web_research", False),
                            context=data["_bundle"], local_analysis=analysis, attachments=attachments,
@@ -319,10 +322,12 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
                 candidate = db.put(unit, Proposal, {"run_id": current.id, "payload": normalized,
                     "decision": None}, conversation_id=current.conversation_id, state="proposed")
                 value["_proposal_ids"].append(candidate.id)
+            from .assistant_findings import collected
             db.put(unit, Message, {"role": "assistant", "content": text, "run_id": current.id,
                 "provider": value.get("provider", provider), "model": value.get("model"),
                 "sources": service.source_cards(value["_bundle"]), "verification_status": value["verification_status"],
-                "financial_summary": value.get("financial_summary")},
+                "financial_summary": value.get("financial_summary"),
+                "findings": collected(value), "local_checks": value.get("local_checks")},
                    conversation_id=current.conversation_id)
             current = db.put(unit, Run, value, row=current, state="completed")
             service.release_conversation(unit, current)

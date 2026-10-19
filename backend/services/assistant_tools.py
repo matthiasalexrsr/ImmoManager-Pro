@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 from datetime import date, datetime, time, timedelta, timezone
+from types import SimpleNamespace
 from typing import Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -68,6 +69,15 @@ class Document(Strict):
     limit_chars: int = Field(default=16000, ge=100, le=32000)
 
 
+class Investigate(Strict):
+    anchor: Read | None = None
+    kinds: list[Literal["task", "invoice", "contract", "receivable", "unit", "document"]] = Field(default_factory=list, max_length=6)
+    checks: list[Literal["deadlines", "missing_data", "consistency", "invoice_arithmetic", "invoice_payments"]] = Field(default_factory=list, max_length=5)
+    as_of: date | None = None
+    cursor: str | None = Field(default=None, max_length=4000)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
 TOOLS: dict[str, tuple[type[BaseModel], str]] = {
     "immo_search": (Search, "Berechtigte Akten suchen; Typ und Suchtext eingrenzen. Jede Seite nennt has_more/next_cursor; keine Treffer beweisen keine vollständige Aktenlage."),
     "immo_read": (Read, "Eine aktuelle Fachakte mit freigegebenen Feldern, Revision und Hash lesen. Keine Kontozugänge oder IBAN."),
@@ -75,6 +85,7 @@ TOOLS: dict[str, tuple[type[BaseModel], str]] = {
     "immo_timeline": (Timeline, "Datierte Angaben verwandter Akten im Zeitraum lesen. Fehlende Datierung ist ausdrücklich ausgewiesen; keine freie Ereignisinferenz."),
     "immo_report": (Report, "Geprüfte lokale Finanzrechnung. Gesamt-/Monatswerte vollständig, Belege seitenweise. result_hash, Währung, Zeitraum und Berechnungsbasis beachten."),
     "immo_document": (Document, "Originaltext eines Dokuments oder einer verfügbaren Chatdatei vollständig per Cursor lesen. OCR/fehlende Texterkennung bleibt sichtbar, kein Inhalt wird still abgeschnitten."),
+    "immo_investigate": (Investigate, "Freigegebene Akten automatisch auf überfällige Aufgaben, fehlende Daten, Vertragsstatus sowie Rechnungs- und Zahlungswidersprüche prüfen; optional auf eine Akte begrenzen. Deterministische Befunde mit Quellen und Folgeaktion. Alle Seiten lesen; Prüfgrenzen/skipped_checks beachten. Keine Fachänderungen."),
 }
 
 
@@ -177,8 +188,8 @@ def _ids(unit, kind: str, after: str) -> list[str]:
     return sorted(identifier for identifier in collection if identifier > after)[:SCAN_LIMIT + 1]
 
 
-def _listing(unit, row, data, tool, args):
-    fingerprint = context.content_hash(args.model_dump(mode="json", exclude={"cursor", "limit"}))
+def _listing(unit, row, data, tool, args, *, kinds_override=None, fingerprint_override=None):
+    fingerprint = fingerprint_override or context.content_hash(args.model_dump(mode="json", exclude={"cursor", "limit"}))
     after = _cursor(unit, row.id, tool, fingerprint, token=args.cursor) if args.cursor else ["", ""]
     kinds = [args.kind] if isinstance(args, Search) and args.kind else sorted(context.FIELDS)
     anchor = None
@@ -186,6 +197,8 @@ def _listing(unit, row, data, tool, args):
         anchor = _permitted(unit, data, args.kind, args.id)
         anchor_properties, anchor_units, _ = _roots(unit.store, args.kind, args.id)
         kinds = sorted(set(args.target_kinds or context.FIELDS))
+    if kinds_override is not None:
+        kinds = sorted(set(kinds_override))
     candidates = [(kind, identifier) for kind in kinds if kind >= after[0]
                   for identifier in _ids(unit, kind, after[1] if kind == after[0] else "")]
     items: list[dict] = []
@@ -215,6 +228,10 @@ def _listing(unit, row, data, tool, args):
                 linked |= bool(units.intersection(anchor_units))
             elif args.kind == "contract":
                 linked |= values.get("contract_id") == args.id
+            elif args.kind == "document" and kind == "invoice":
+                linked |= any(values.get(field) == args.id for field in ("document_id", "source_document_id"))
+            elif args.kind == "invoice" and kind == "document" and anchor:
+                linked |= any(anchor["values"].get(field) == identifier for field in ("document_id", "source_document_id"))
             if not linked:
                 continue
         if isinstance(args, Timeline):
@@ -238,6 +255,77 @@ def _listing(unit, row, data, tool, args):
                          "next_cursor": _cursor(unit, row.id, tool, fingerprint, value=last) if more else None,
                          "scope": data.get("data_scope", "selected"), "complete": not more,
                          "meaning": "Nur aktuell freigegebene, passende Akten. Kein Treffer ist kein Nachweis vollständiger Datenhaltung."}}
+
+
+def _investigate(unit, row, data, args, *, persist=True):
+    from . import assistant_checks as checks
+    from . import invoice_review
+    from .maintenance_rows import Rows
+
+    # Freeze the effective day in proofs and cursors, including across midnight.
+    as_of = args.as_of or datetime.now(ZoneInfo("Europe/Berlin")).date()
+    effective = args.model_copy(update={"as_of": as_of})
+    fingerprint = context.content_hash(effective.model_dump(mode="json", exclude={"cursor", "limit"}))
+    kinds = sorted(set(args.kinds or checks.KINDS))
+    enabled = sorted(set(args.checks or checks.CHECKS))
+    listing_args = (Related(**args.anchor.model_dump(), target_kinds=kinds, cursor=args.cursor, limit=args.limit)
+                    if args.anchor else Search(cursor=args.cursor, limit=args.limit))
+    page = _listing(unit, row, data, "immo_investigate", listing_args,
+                    kinds_override=kinds, fingerprint_override=fingerprint)
+    found, calculations, skipped = [], [], []
+    rows = Rows.reading(unit.store)
+    for source in page["items"]:
+        found.extend(checks.findings_for_source(source, as_of, enabled))
+        if source["kind"] != "invoice":
+            continue
+        first_derived_finding = len(found)
+        invoice = rows.require("invoices", source["id"], "Rechnung nicht gefunden")
+        derived: dict[str, object] = {}
+        if "invoice_arithmetic" in enabled:
+            # Use the application's real per-rate breakdown; a single-rate
+            # approximation would flag perfectly valid mixed-rate invoices.
+            review = invoice_review.review_of(rows, invoice.id)
+            arithmetic = invoice_review._arithmetic(invoice, review)
+            derived["arithmetic"] = arithmetic
+            for item in arithmetic:
+                found.append(checks.finding(source, "invoice_" + item["code"], item["message"],
+                    severity=item["severity"], next_step="Beträge und Steuersätze im Originalbeleg und in der Rechnungsprüfung abgleichen."))
+        if "invoice_payments" in enabled:
+            if data.get("data_scope", "selected") != "authorized":
+                skipped.append({"check": "invoice_payments", "source": checks.evidence(source),
+                    "reason": "Die Zahlungsprüfung benötigt berechtigten Gesamtzugriff auf verknüpfte Zahlungs- und Gutschriftakten; ausgewählte Akten erweitern diese Freigabe nicht."})
+            else:
+                settlement = invoice_review.settlements(rows, [invoice], as_of)[invoice.id]
+                derived["settlement"] = settlement.as_json()
+                for item in settlement.findings:
+                    found.append(checks.finding(source, "invoice_" + item["code"], item["message"],
+                        severity=item["severity"], next_step="Zahlungszuordnungen und Freigabe in der Rechnungsprüfung abgleichen."))
+                if invoice.status == "paid" and settlement.open > 0:
+                    found.append(checks.finding(source, "invoice_paid_without_full_allocation",
+                        "Die Rechnung ist als bezahlt erfasst, aber die lokale Zahlungsprüfung weist noch einen offenen Betrag aus.",
+                        next_step="Zahlung zuordnen oder den erfassten Rechnungsstatus berichtigen."))
+                if settlement.overdue and invoice.status not in ("cancelled", "rejected"):
+                    found.append(checks.finding(source, "invoice_payment_overdue",
+                        "Die lokale Rechnungsprüfung weist am Prüftag einen überfälligen offenen Betrag aus.",
+                        next_step="Freigabe, Zahlungszuordnung und gegebenenfalls Rückfrage prüfen."))
+        if derived:
+            calculations.append({"kind": "invoice", "id": invoice.id,
+                "engine": "invoice_review", "sha256": context.content_hash(derived)})
+            for item in found[first_derived_finding:]:
+                item["calculation_sha256"] = calculations[-1]["sha256"]
+                item["as_of"] = as_of.isoformat()
+    coverage = {**page["coverage"], "scanned": len(page["items"]), "findings": len(found),
+                "as_of": as_of.isoformat(), "checks": enabled, "kinds": kinds, "skipped_checks": skipped,
+                "meaning": "Seitenweise Prüfung erfasster, aktuell freigegebener Akten; fehlende Akten oder nicht angelegte Aufgaben sind damit nicht bewiesen. Offene Statusangaben allein belegen keine Restschuld."}
+    result = {"ok": True, "items": page["items"], "sources": page["sources"], "findings": found,
+              "calculations": calculations, "coverage": coverage}
+    result["result_hash"] = context.content_hash({"sources": page["sources"], "findings": found,
+        "calculations": calculations, "coverage": {key: value for key, value in coverage.items() if key != "next_cursor"}})
+    if persist:
+        key = context.content_hash([fingerprint, args.cursor, args.limit])
+        data.setdefault("_tool_investigations", {})[key] = {"run_id": row.id,
+            "arguments": effective.model_dump(mode="json"), "hash": result["result_hash"]}
+    return result
 
 
 def _timeline(unit, row, data, args):
@@ -410,6 +498,12 @@ def validate_reports(store, data):
                                cursor=proof["cursor"], limit=proof["limit"])
         if context.content_hash(page) != proof["hash"]:
             raise HTTPException(409, "Die verwendete Chronik wurde geändert. Bitte aktuell erneut prüfen.")
+    unit = SimpleNamespace(store=store, db=getattr(store, "db", None), actor_id=data.get("_tool_actor"))
+    for proof in data.get("_tool_investigations", {}).values():
+        current = _investigate(unit, SimpleNamespace(id=proof["run_id"]), data,
+                               Investigate.model_validate(proof["arguments"]), persist=False)
+        if current["result_hash"] != proof["hash"]:
+            raise HTTPException(409, "Die verwendete Aktenprüfung wurde geändert. Bitte aktuell erneut prüfen.")
 
 
 def call(store, actor_id: str, run_id: str, lease: str, name: str, arguments: dict) -> dict:
@@ -429,7 +523,9 @@ def call(store, actor_id: str, run_id: str, lease: str, name: str, arguments: di
                 raise HTTPException(429, "Werkzeugbudget erreicht. Bitte den Auftrag eingrenzen.")
             if data.get("data_scope", "selected") == "none" and name != "immo_document":
                 raise HTTPException(404, "Fachakten sind für diesen Auftrag nicht freigegeben.")
-            if isinstance(args, Timeline):
+            if isinstance(args, Investigate):
+                result = _investigate(unit, row, data, args)
+            elif isinstance(args, Timeline):
                 result = _timeline(unit, row, data, args)
             elif isinstance(args, Search | Related):
                 result = _listing(unit, row, data, name, args)
@@ -446,6 +542,9 @@ def call(store, actor_id: str, run_id: str, lease: str, name: str, arguments: di
             activity = {"sequence": len(data.get("tool_calls", [])) + 1, "id": str(uuid4()), "tool": name,
                         "status": "completed", "summary": TOOLS[name][1].split(";")[0], "at": dbs.stamp(dbs.now()),
                         "sources": assistant.source_cards({"sources": result.get("sources", [])}), "coverage": result.get("coverage", {})}
+            if isinstance(args, Investigate):
+                activity.update(findings=result["findings"], checks=result["coverage"]["checks"],
+                                as_of=result["coverage"]["as_of"], result_hash=result["result_hash"])
             data.setdefault("tool_calls", []).append(activity)
             data["activity"] = data["tool_calls"]
             data.setdefault("_tool_results", []).append({"call_id": activity["id"], "arguments": args.model_dump(mode="json"), "result": result})

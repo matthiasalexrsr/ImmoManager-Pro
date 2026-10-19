@@ -78,6 +78,55 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
+describe('guided administration and evidence-bound investigations', () => {
+  const finding = { id: 'finding-1', code: 'unit_area_missing', severity: 'review', message: 'Für diese Einheit ist keine Fläche erfasst.', next_step: 'Originalakte prüfen.', evidence: [{ kind: 'unit', id: 'u1', title: 'Wohnung Blau', href: '/units/u1', revision: 'r1', sha256: 'b'.repeat(64) }] };
+  const completed = () => {
+    state.runs['run-1'] = { ...run('run-1', 'a', 'completed'), findings: [finding], local_checks: { as_of: '2026-10-18', scope: 'explicit_selection' } };
+    state.messages.a = [{ id: 'answer', role: 'assistant', content: 'Prüfung abgeschlossen.', run_id: 'run-1', provider: 'local', created_at: stamp, findings: [finding] }];
+  };
+  it('offers workflows throughout a chat and appends them without sending or changing data permissions', async () => {
+    state.conversations[0] = { ...conversation('a', 'codex'), data_scope: 'none' };
+    state.connections.codex.connected = true; state.connections.codex.status = 'connected';
+    mount(); await screen.findByText('Verbunden', {}, { timeout: 5000 }); body('Mein eigener Kontext');
+    fireEvent.click(screen.getByText('Verwaltungsaufträge'));
+    fireEvent.click(screen.getByRole('button', { name: /Unstimmigkeiten prüfen Fristen/ }));
+    expect(screen.getByLabelText('Ihre Nachricht').value).toMatch(/^Mein eigener Kontext\n\nUntersuche Unstimmigkeiten/);
+    expect(screen.getByLabelText('Datenzugriff')).toHaveValue('none'); expect(api.post).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveFocus();
+  });
+  it('presents local evidence as links and prepares a task in the existing workbasket without saving a domain record', async () => {
+    completed(); const base = api.post.getMockImplementation();
+    api.post.mockImplementation(async (path, payload) => path.endsWith('/prepare-task') ? { run: { ...state.runs['run-1'], revision: 2, finding_proposals: { 'finding-1': 'task-proposal' } }, proposal: { id: 'task-proposal', conversation_id: 'a', revision: 1, state: 'proposed', payload: { kind: 'task', values: { title: 'Fläche prüfen', status: 'open' }, evidence: finding.evidence } } } : base(path, payload));
+    mount(); await ready();
+    const region = screen.getByRole('region', { name: 'Belegte Prüfhinweise' });
+    expect(within(region).getByRole('link', { name: 'Wohnung Blau' })).toHaveAttribute('href', '/units/u1');
+    fireEvent.click(within(region).getByRole('button', { name: 'Klärungsaufgabe vorbereiten' }));
+    await screen.findByText('Im Arbeitskorb vorbereitet'); await screen.findByText('Fläche prüfen');
+    expect(api.post.mock.calls.filter(([path]) => path.endsWith('/prepare-task'))).toHaveLength(1);
+    expect(api.post.mock.calls.some(([path]) => path === '/tasks' || path.endsWith('/save'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Klärungsaufgabe vorbereiten' })).not.toBeInTheDocument();
+  });
+  it('reconciles an uncertain finding preparation with the identical command after reload', async () => {
+    completed(); const base = api.post.getMockImplementation(); let lost = true;
+    api.post.mockImplementation(async (path, payload) => {
+      if (!path.endsWith('/prepare-task')) return base(path, payload);
+      if (lost) { lost = false; throw new Error('Vorbereitung unbestätigt'); }
+      return { run: { ...state.runs['run-1'], revision: 2, finding_proposals: { 'finding-1': 'task-proposal' } }, proposal: { id: 'task-proposal', conversation_id: 'a', revision: 1, state: 'proposed', payload: { kind: 'task', values: { title: 'Fläche prüfen' } } } };
+    });
+    const view = mount(); await ready(); fireEvent.click(screen.getByRole('button', { name: 'Klärungsaufgabe vorbereiten' })); await screen.findByText('Vorbereitung unbestätigt');
+    const original = api.post.mock.calls.find(([path]) => path.endsWith('/prepare-task'))[1];
+    view.unmount(); mount(); await ready(); fireEvent.click(screen.getByRole('button', { name: 'Klärungsaufgabe vorbereiten' })); await screen.findByText('Im Arbeitskorb vorbereitet');
+    expect(api.post.mock.calls.filter(([path]) => path.endsWith('/prepare-task'))[1][1]).toEqual(original);
+  });
+  it('keeps old findings readable but blocks stale actions and directs existing tasks to their own record', async () => {
+    completed(); state.runs['run-1'].verification_status = 'stale';
+    mount(); await ready(); expect(screen.getByRole('button', { name: 'Klärungsaufgabe vorbereiten' })).toBeDisabled();
+    cleanup(); state.runs['run-1'].verification_status = 'current'; state.runs['run-1'].findings = [{ ...finding, evidence: [{ kind: 'task', id: 't1', title: 'Vorhandene Aufgabe', href: '/tasks?focus_id=t1' }] }];
+    mount(); await ready(); expect(screen.getByRole('link', { name: 'Vorhandene Aufgabe' })).toHaveAttribute('href', '/tasks?focus_id=t1');
+    expect(screen.queryByRole('button', { name: 'Klärungsaufgabe vorbereiten' })).not.toBeInTheDocument();
+  });
+});
+
 describe('assistant providers and explicit cloud controls', () => {
   it('starts with explicit cloud onboarding, authorized scope and a compact closed working context instead of a silent local answer', async () => {
     mount('/assistant'); await screen.findByText('Verbinden Sie Ihren Verwaltungsassistenten');

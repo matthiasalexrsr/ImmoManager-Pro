@@ -13,6 +13,8 @@ import AssistantMessageContent from './AssistantMessageContent';
 import { FinancialProof } from './AssistantReportSelection';
 import AssistantAccounts from './AssistantAccounts';
 import AssistantActivity from './AssistantActivity';
+import AssistantWorkflows from './AssistantWorkflows';
+import AssistantFindings from './AssistantFindings';
 import './assistant.css';
 
 const runLabels = { queued: 'Auftrag gespeichert · wartet auf Verarbeitung', running: 'Antwort wird erstellt', completed: 'Abgeschlossen', failed: 'Analyse fehlgeschlagen',
@@ -57,6 +59,16 @@ export default function AssistantWorkspace({ owner }) {
   const selectFile = attachment => state.changeDraft(previous => ({ ...previous, attachments: [...previous.attachments.filter(item => item.id !== attachment.id), attachment], excluded_attachment_ids: (previous.excluded_attachment_ids || []).filter(id => id !== attachment.id) }));
   const canSubmit = !locked && !sending && providerReady && (Boolean(state.draft.body.trim()) || local && Boolean(workingFiles.length || dataScope !== 'none' && state.draft.context.length));
   const setBody = body => state.changeDraft(previous => ({ ...previous, body }));
+  const addRequest = text => {
+    const next = state.draft.body.trim() ? `${state.draft.body}\n\n${text}` : text;
+    if (next.length > (state.capabilities?.max_message_length || 32000)) {
+      state.setError('Der ergänzte Auftrag ist zu lang. Bitte die vorhandene Eingabe kürzen; sie bleibt unverändert erhalten.');
+      return;
+    }
+    state.changeDraft(previous => ({ ...previous, body: next }));
+    composer.current?.focus();
+  };
+  const discuss = finding => addRequest(`Untersuche diesen Prüfhinweis genauer: ${finding.message}\nQuellen: ${(finding.evidence || []).map(source => `${source.kind}:${source.id}`).join(', ')}. Lies den aktuellen Stand und die erforderlichen Bezüge nach. Erkläre belegte Ursachen, offene Fragen und konkrete nächste Schritte. Prüfe vor neuen Aufgaben vorhandene passende Aufgaben.`);
   const choose = id => { state.navigate(id); setSidebarOpen(false); };
   useLayoutEffect(() => {
     const element = transcript.current; if (!element) return;
@@ -123,6 +135,7 @@ export default function AssistantWorkspace({ owner }) {
               <div><div className="assistant-message-meta"><strong>{message.role === 'user' ? 'Sie' : state.capabilities?.providers.find(item => item.id === message.provider)?.label || message.provider || 'Assistent · Anbieter nicht erfasst'}</strong>{message.model && <small>{message.model}</small>}<time>{formatDateTime(message.created_at)}</time></div>{message.role === 'user' ? <div className="assistant-message-body">{message.content}</div> : <AssistantMessageContent content={message.content} />}
                 {message.attachment_ids?.length > 0 && <div className="assistant-attachments">{message.attachment_ids.map(id => state.attachments.find(attachment => attachment.id === id)).filter(Boolean).map(attachment => <AssistantAttachment key={attachment.id} attachment={attachment} />)}</div>}
                 <Sources sources={message.sources} attachments={state.attachments} />
+                {message.role === 'assistant' && <AssistantFindings findings={(state.run && message.run_id === state.run.id) ? state.run.findings : message.findings} checks={message.local_checks} run={(state.run && message.run_id === state.run.id) ? state.run : undefined} disabled={locked || sending} canTask={canTask} onPrepare={(state.run && message.run_id === state.run.id) ? state.prepareFinding : undefined} onDiscuss={!local ? discuss : undefined} />}
               </div>
             </article>)}
             {displayedRun && <article className="assistant-message"><span className="assistant-avatar"><Sparkles size={16} /></span><div><div className="assistant-message-meta"><strong>{state.capabilities?.providers.find(item => item.id === state.run.provider)?.label || capability?.label || 'Assistent'}</strong><span>{sending ? 'Antwort wird ergänzt …' : runLabels[state.run.state]}</span></div><AssistantMessageContent content={response} /><Sources sources={state.run.sources} attachments={state.attachments} /></div></article>}
@@ -133,12 +146,14 @@ export default function AssistantWorkspace({ owner }) {
           </div>}
           {state.run?.verification_status === 'stale' && <p className="assistant-alert error" role="alert">Die Quellen wurden seit Beginn der Analyse geändert. Diese Antwort beschreibt den früheren Stand; bitte die aktuellen Quellen erneut prüfen. Vorschläge aus diesem Lauf können nicht übernommen werden.</p>}
           <AssistantActivity run={state.run} />
+          {state.run && !state.messages.some(message => message.role === 'assistant' && message.run_id === state.run.id) && <AssistantFindings findings={state.run.findings} checks={state.run.local_checks} run={state.run} disabled={locked || sending} canTask={canTask} onPrepare={state.prepareFinding} onDiscuss={!local ? discuss : undefined} />}
           {state.run?.financial_summary && <details className="assistant-calculation"><summary>Berechnung und Originalauswertung</summary><FinancialProof finance={state.run.financial_summary} report={state.run.report} /></details>}
           {state.pollError && <div className="assistant-alert error" role="alert">Laufstatus konnte nicht aktualisiert werden: {state.pollError}<button type="button" className="btn btn-sm btn-secondary" disabled={state.busy} onClick={state.run ? state.refreshRun : state.retryLoad}>{state.run ? 'Status erneut abrufen' : 'Ansicht erneut laden'}</button></div>}
         </section>
         {(state.proposals.length > 0 || state.proposalCursor) && <details className="assistant-workbasket" open><summary>Arbeitskorb · {state.proposals.filter(item => !['saved', 'rejected'].includes(item.state)).length} offen</summary><AssistantProposals owner={owner} attachments={state.attachments} proposals={state.proposals} perform={state.perform} disabled={locked} onChanged={proposal => { if (proposal) state.setProposals(previous => previous.map(item => item.id === proposal.id ? proposal : item)); }} />{state.proposalCursor && <button type="button" className="btn btn-secondary" disabled={state.busy || state.loading || !state.record} onClick={state.moreProposals}>Weitere Vorschläge laden</button>}</details>}
         <form className={`assistant-composer ${dragging ? 'dragging' : ''}`} aria-label="Nachricht verfassen" onSubmit={event => { event.preventDefault(); if (canSubmit) state.submit(); }}
           onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false); }} onDrop={event => { event.preventDefault(); setDragging(false); upload(event.dataTransfer.files); }}>
+          <AssistantWorkflows local={local} disabled={locked || sending} onChoose={addRequest} />
           <div className="assistant-scope-row"><label>Datenzugriff<select aria-label="Datenzugriff" value={dataScope} disabled={locked || sending} onChange={event => state.chooseScope(event.target.value)}><option value="authorized" disabled={local}>Berechtigte Verwaltungsdaten</option><option value="selected">Nur ausgewählte Akten</option><option value="none">Keine Verwaltungsdaten</option></select></label><details className="assistant-scope-help"><summary>Was bedeutet das?</summary><p>{dataScope === 'authorized' ? 'Der Assistent darf für Ihren Auftrag passende Akten in Ihrem berechtigten Bestand suchen, lesen und vorhandene Auswertungen berechnen. Verwendete Quellen und Arbeitsschritte werden angezeigt.' : dataScope === 'selected' ? 'Nur die ausdrücklich gewählten Akten stehen für diesen Auftrag bereit. Weitere Akten werden nicht automatisch freigegeben.' : 'Der Assistent erhält keine Verwaltungsakten und kann keine Daten daraus abfragen. Ihre Nachricht und die Arbeitsdateien dieses Chats bleiben verfügbar.'} Einträge werden erst nach Ihrer fachlichen Prüfung gespeichert.</p></details></div>
           {dataScope === 'authorized' && <p className="assistant-scope-notice">Für diese Unterhaltung freigegeben: benötigte Verwaltungsdaten innerhalb Ihrer Aktenrechte. Jeder Zugriff erscheint im Arbeitsprotokoll.</p>}
           {state.draft.context.length > 0 && <div className={`assistant-context-chips ${dataScope === 'none' ? 'inactive' : ''}`} aria-label="Gewählte Akten">{state.draft.context.map(card => <Link key={`${card.kind}:${card.id}`} to={contextHref(card)}>{card.title}</Link>)}</div>}

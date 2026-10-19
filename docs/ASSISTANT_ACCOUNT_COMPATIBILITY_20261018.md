@@ -68,3 +68,50 @@ Aufgabenvorschlag, dauerhafte Speicherung und wiederholsicheres Speichern.
 Authentifizierungsmaterial bleibt im verschlüsselten benutzergebundenen Tresor
 der Installation; Anmeldecodes und OAuth-URLs werden nicht in dieses Repository
 oder Prüfprotokolle aufgenommen.
+
+## Recherche, Prüfhinweise und Verwaltungsabläufe
+
+Der Assistent besitzt zusätzlich das ausschließlich lesende Werkzeug
+`immo_investigate`. Es prüft freigegebene Akten seitenweise mit festen Regeln
+auf Fristen, fehlende Angaben und Datumswidersprüche. Rechnungsarithmetik und
+Zahlungsabgleich verwenden die vorhandene Rechnungsprüfung einschließlich
+gemischter Steuersätze. Ein offener Status wird nicht als berechnete Restschuld
+ausgegeben. Der Zahlungsabgleich wird bei ausschließlich ausgewählten Akten
+ausdrücklich übersprungen, weil dafür zusätzliche Zahlungs- und Gutschriftenakten
+erforderlich wären. Die Aktenrechte des Benutzers gelten bei jedem Zugriff.
+
+Prüfhinweise enthalten Prüftag, Originalverknüpfung und Quellenstand. Der
+untersuchte Umfang, weitere Seiten und übersprungene Regeln bleiben sichtbar.
+Abgeleitete Prüfungen werden vor Ergebnisfreigabe und Übernahme erneut berechnet;
+zwischenzeitliche Änderungen an Rechnungsprüfung oder Zahlungszuordnung machen
+einen betroffenen Vorschlag ungültig. Keine Regel behauptet, eine unvollständige
+Suche beweise das Fehlen von Unterlagen oder eine vollständige fachliche Freigabe.
+
+`POST /assistant/runs/{id}/findings/{finding_id}/prepare-task` erstellt aus einem
+abgeschlossenen belegten Hinweis einen persönlichen Aufgabenvorschlag. Die
+Anwendung prüft Rechte, erwartete Revision und aktuelle Quellen; ein erneuter
+Aufruf mit gleicher oder neuer Vorgangskennung verwendet denselben Vorschlag.
+Die Aufgabe entsteht erst über den bestehenden Prüf-/Entwurfs-/Speicherablauf.
+Bei Hinweisen zu vorhandenen Aufgaben wird diese Akte geöffnet und keine weitere
+Aufgabe aus dem Hinweis erzeugt. Dieser Ablauf funktioniert auch ohne KI-Konto.
+
+Verwaltungsaufträge für Aktenüberblick, Unstimmigkeiten, Zahlungsfragen,
+Mieterwechsel, Rechnungsentwurf sowie Gespräch mit Wiedervorlage sind während
+der Unterhaltung verfügbar. Sie ergänzen den vorhandenen Nachrichtentext,
+ändern keine Datenfreigabe und senden nicht automatisch. Das Modell erhält den
+aktuellen Anwendungstag in Europe/Berlin und wird zur Suche nach passenden Akten,
+Prüfung von Originalen und vorhandenen Aufgaben sowie konkreten Rückfragen bei
+mehrdeutigen Bezügen angeleitet.
+
+Neue Aufträge wecken den vorhandenen dauerhaften Scheduler unmittelbar auf.
+Periodische Wiederherstellung und bewusst deaktivierter Scheduler bleiben
+erhalten. Ein Wiederholungsauftrag übernimmt keine alten Prüfhinweise,
+Seitenbeweise oder vorbereiteten Hinweise; die ursprüngliche Historie bleibt
+gespeichert. Dokumente und Rechnungen sind über beide tatsächlich vorhandenen
+Belegfelder in beiden Richtungen auffindbar, ohne zusätzliche Rechte zu vergeben.
+
+Die Releaseprüfung umfasst die neuen Prüf- und Aufgabenabläufe auch auf echtem
+PostgreSQL. Der Browserprüflauf enthält zusätzlich Verwaltungsvorlagen sowie
+lokalen Prüfhinweis → Arbeitskorb → Fachformular → gespeicherte Aufgabe mit
+Neuladen und mobilen Ansichten. Echte Kontoantworten werden getrennt von diesen
+synthetischen Browserprüfungen an gekennzeichneten Testakten geprüft.

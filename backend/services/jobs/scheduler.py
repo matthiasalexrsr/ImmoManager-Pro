@@ -123,6 +123,26 @@ def default_handlers() -> dict:
 
 _lock = threading.Lock()
 _jobs: JobStore | None = None
+_wakeups: dict[asyncio.Event, asyncio.AbstractEventLoop] = {}
+
+
+def request_wakeup() -> None:
+    """Prompt existing local schedulers after a durable enqueue, from any thread.
+
+    This is only a latency hint: it never starts a worker, and other processes
+    still discover committed work through their regular recovery tick.
+    """
+    if not settings.job_scheduler_enabled:
+        return
+    with _lock:
+        targets = tuple(_wakeups.items())
+    for wakeup, loop in targets:
+        try:
+            loop.call_soon_threadsafe(wakeup.set)
+        except RuntimeError:
+            # Shutdown may close a loop after we took the snapshot. The queued
+            # job remains durable and is picked up at the next normal tick.
+            pass
 
 
 def get_job_store() -> JobStore:
@@ -173,9 +193,24 @@ def tick(jobs: JobStore | None = None, runner: JobRunner | None = None,
 
 async def run_forever(interval_seconds: float, stop: threading.Event) -> None:
     runner = JobRunner(get_job_store(), default_handlers(), stop=stop)
-    while not stop.is_set():
-        try:
-            await asyncio.to_thread(tick, runner.jobs, runner)
-        except Exception:
-            logger.exception("Scheduler tick failed (retrying next interval)")
-        await asyncio.sleep(interval_seconds)
+    wakeup = asyncio.Event()
+    with _lock:
+        _wakeups[wakeup] = asyncio.get_running_loop()
+    try:
+        while not stop.is_set():
+            # Consume hints BEFORE draining: an enqueue during the tick must
+            # survive until the following wait, including after the last claim.
+            wakeup.clear()
+            try:
+                await asyncio.to_thread(tick, runner.jobs, runner)
+            except Exception:
+                logger.exception("Scheduler tick failed (retrying next interval)")
+            if stop.is_set():
+                break
+            try:
+                await asyncio.wait_for(wakeup.wait(), timeout=interval_seconds)
+            except TimeoutError:
+                pass
+    finally:
+        with _lock:
+            _wakeups.pop(wakeup, None)

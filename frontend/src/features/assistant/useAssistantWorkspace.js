@@ -265,6 +265,19 @@ export default function useAssistantWorkspace(owner) {
       if (!proposalPagesLoaded.current) setProposalCursor(proposalPageCursor(suggestions));
     }
   });
+  const prepareFinding = finding => perform(async current => {
+    if (!run || run.state !== 'completed') throw new Error('Bitte zuerst den Abschluss der Prüfung abwarten.');
+    const identityKey = `finding:${run.id}:${finding.id}`;
+    const command = readAssistantCommand(owner, identityKey) || { kind: 'finding', idempotency_key: crypto.randomUUID(), request: { expected_revision: run.revision } };
+    writeAssistantCommand(owner, identityKey, command);
+    try {
+      const result = await assistantApi.prepareFinding(run.id, finding.id, { ...command.request, idempotency_key: command.idempotency_key }); current();
+      if (result.run?.id !== run.id || result.proposal?.conversation_id !== selectedId) throw new Error('Die Vorbereitung gehört nicht zur ausgewählten Unterhaltung.');
+      clearAssistantCommand(owner, identityKey, command); setRun(result.run);
+      setProposals(previous => mergeRows(previous, [result.proposal]));
+      setNotice('Klärungsaufgabe liegt im Arbeitskorb. Dort können Sie die Angaben im Fachformular prüfen und speichern.');
+    } catch (failure) { current(); if (rejected(failure)) clearAssistantCommand(owner, identityKey, command); throw failure; }
+  });
   const connect = (action, providerOverride, loginId) => perform(async current => {
     const target = providerOverride || currentProvider;
     const value = action === 'login' ? await assistantApi.login(target) : action === 'cancel'
@@ -307,6 +320,6 @@ export default function useAssistantWorkspace(owner) {
   });
   return { capabilities, conversations, nextCursor, provider: currentProvider, model: record?.model || model, connection,
     record, messages, messageCursor, attachments, attachmentCursor, run, proposals, proposalCursor, draft, pending, editPending, loading, busy, uploading, error, pollError, notice, selectedId,
-    setModel: chooseModel, chooseProvider, chooseScope, changeDraft, navigate, startConversation, submit, upload, runCommand, refreshRun, connect, moreConversations, moreMessages,
+    setModel: chooseModel, chooseProvider, chooseScope, changeDraft, navigate, startConversation, submit, upload, runCommand, refreshRun, prepareFinding, connect, moreConversations, moreMessages,
     retryLoad: () => setAttempt(value => value + 1), reloadCapabilities, setError, setNotice, perform, refresh: () => setAttempt(value => value + 1), setProposals, completeLogin, moreAttachments, moreProposals, editConversation };
 }

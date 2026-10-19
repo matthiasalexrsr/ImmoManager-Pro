@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
@@ -204,16 +206,15 @@ def _document_analysis(store, source: dict, actor_id: str) -> dict:
 def local_analysis(store, selection: ContextSelection | dict, actor_id: str, *,
                    report: ReportDefinition | dict | None = None, extract_documents: bool = False) -> dict:
     bundle = build_context(store, selection, actor_id)
+    from .assistant_checks import findings_for_source
+    from .assistant_findings import normalize
+    as_of = datetime.now(ZoneInfo("Europe/Berlin")).date()
     findings: list[dict] = []
     extracted = []
     for source in bundle["sources"]:
-        values = source["values"]
-        evidence = {key: source[key] for key in ("kind", "id", "revision", "sha256", "href")}
+        findings.extend(findings_for_source(source, as_of))
+        evidence = {key: source[key] for key in ("kind", "id", "revision", "sha256", "title", "href")}
         if source["kind"] == "document":
-            if not any(values.get(key) for key in ("property_id", "unit_id", "contract_id", "tenant_id")):
-                findings.append({"code": "document_unassigned", "severity": "review",
-                                 "message": "Das Dokument hat keinen Immobilien-, Einheiten-, Vertrags- oder Parteienbezug.",
-                                 "evidence": [evidence]})
             if extract_documents:
                 try:
                     extracted.append(_document_analysis(store, source, actor_id))
@@ -221,9 +222,6 @@ def local_analysis(store, selection: ContextSelection | dict, actor_id: str, *,
                     findings.append({"code": "document_text_unavailable", "severity": "review",
                                      "message": "Aus dieser Datei konnte lokal kein Text extrahiert werden.",
                                      "evidence": [evidence]})
-        if source["kind"] == "unit" and values.get("area_sqm") is None:
-            findings.append({"code": "unit_area_missing", "severity": "review",
-                             "message": "Für diese Einheit ist keine Fläche erfasst.", "evidence": [evidence]})
     calculated = None
     if report is not None:
         definition = ReportDefinition.model_validate(report)
@@ -241,6 +239,10 @@ def local_analysis(store, selection: ContextSelection | dict, actor_id: str, *,
     # Fail closed if rights, metadata or document bytes changed while computing.
     revalidate_context(store, bundle, actor_id)
     return {"format": "immomanager-assistant-local-analysis/1", "mode": "local", "context": bundle,
-            "findings": findings, "documents": extracted, "finance": calculated,
+            "findings": normalize(findings), "documents": extracted, "finance": calculated,
+            "checks": {"as_of": as_of.isoformat(), "timezone": "Europe/Berlin", "scanned": len(bundle["sources"]),
+                       "scope": "explicit_selection", "related_records_checked": False,
+                       "rules": ["deadlines", "missing_data", "consistency"],
+                       "meaning": "Geprüft wurden ausschließlich die gewählten Akten. Zahlungsabgleich und verbundene Akten erfordern eine eigene Prüfung."},
             "financial_engine": "finance_reports.compute" if calculated is not None else None,
             "model_used": False, "domain_writes": False}

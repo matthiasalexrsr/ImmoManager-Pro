@@ -89,15 +89,23 @@ def list_records(store, actor_id, model=Conversation, *, conversation_id=None, c
         if model is Message:
             result["items"].reverse()
             result["conversation"] = db.conversation_public(unit, conversation)
+        elif model is Run:
+            result["items"] = [run_summary(item) for item in result["items"]]
         return result
 
 
-def run_public(unit, row):
-    data = db.public(row)
+def run_summary(data):
+    from .assistant_findings import collected
+    data["findings"] = collected(data)
     from .assistant_tools import MAX_CALLS
     used = min(len(data.get("tool_calls", [])), MAX_CALLS)
     data["tool_budget"] = {"used": used, "limit": MAX_CALLS, "exhausted": used >= MAX_CALLS,
                            "continuation": "followup" if used >= MAX_CALLS else None}
+    return data
+
+
+def run_public(unit, row):
+    data = run_summary(db.public(row))
     data["sources"] = source_cards(db.payload(row)["_bundle"])
     if row.state in ("blocked", "unknown") and not data.get("error"):
         data["error"] = {"code": row.state, "message": "Quellen oder Berechtigungen wurden geändert." if row.state == "blocked"
@@ -202,10 +210,11 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
 
 def wake(identifier, actor_id):
     # The authoritative queued row survives a failed wakeup. Recovery will enqueue it again.
-    from .jobs.scheduler import get_job_store
+    from .jobs.scheduler import get_job_store, request_wakeup
     try:
         jobs = get_job_store()
         jobs.enqueue("assistant.run", "assistant:" + identifier, {"run_id": identifier, "actor_id": actor_id}, max_attempts=1)
+        request_wakeup()
     except Exception:
         pass
 
@@ -255,7 +264,8 @@ def retry(store, actor_id, identifier, command):
             verified_attachment(db.owned_child(unit, Attachment, attachment_id))
         data = {**old_data, "response": "", "events": [], "error": None, "retry_of": old.id, "_proposal_ids": []}
         data.update(provider=conversation_data["provider"], model=conversation_data["model"], effort=conversation_data["effort"], activity=[], tool_calls=[])
-        for key in ("_tool_reports", "_tool_results"):
+        for key in ("_tool_reports", "_tool_results", "_tool_timelines", "_tool_investigations", "_tool_actor",
+                    "local_findings", "local_checks", "finding_proposals"):
             data.pop(key, None)
         data["verification_status"] = "pending"
         for key in ("usage", "provider_session_id", "provider_turn_id", "_lease", "_submitted", "financial_summary", "_report_hash"):

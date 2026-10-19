@@ -16,6 +16,7 @@ export const assistantApi = {
   runs: (value, cursor, options) => api.get(`${root}/conversations/${id(value)}/runs${page(cursor)}`, options),
   submit: (value, body) => api.post(`${root}/conversations/${id(value)}/runs`, body),
   run: (value, options) => api.get(`${root}/runs/${id(value)}`, options),
+  prepareFinding: (value, finding, body) => api.post(`${root}/runs/${id(value)}/findings/${id(finding)}/prepare-task`, body),
   cancel: (value, body) => api.post(`${root}/runs/${id(value)}/cancel`, body),
   retry: (value, body) => api.post(`${root}/runs/${id(value)}/retry`, body),
   connection: (provider, options) => api.get(`${root}/connections/${id(provider)}`, options),

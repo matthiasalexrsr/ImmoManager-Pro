@@ -157,6 +157,12 @@ def retry_run(identifier: str, payload: RevisionCommand, actor: Actor):
     return service.retry(store, actor.id, identifier, payload)
 
 
+@router.post("/runs/{identifier}/findings/{finding_id}/prepare-task")
+def prepare_finding_task(identifier: str, finding_id: str, payload: RevisionCommand, actor: Actor):
+    from ..services.assistant_findings import prepare_task
+    return prepare_task(store, actor.id, identifier, finding_id, payload)
+
+
 @router.get("/conversations/{identifier}/attachments")
 def attachments(identifier: str, actor: Actor, cursor: Cursor = None, limit: Limit = 50):
     return service.list_records(store, actor.id, Attachment, conversation_id=identifier, cursor=cursor, limit=limit)
