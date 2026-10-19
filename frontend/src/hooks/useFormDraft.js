@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { workspace, FORM_KINDS, formContext } from '../utils/workspaceClient';
+import useWorkspaceLocation from './useWorkspaceLocation';
 
 const SECRET = /password|passwd|passphrase|secret|token|credential|authorization|totp|otp|recovery.?code|api.?key|private.?key/i;
 const containsSecret = value => Array.isArray(value) ? value.some(containsSecret)
@@ -19,7 +20,8 @@ const formKey = signature => { let hash = 2166136261; for (const char of signatu
 // The browser buffer is never offered until a server request has rechecked access.
 export default function useFormDraft({ fields, initial, enabled = true, context: explicitContext, anchor, source: explicitSource }) {
   const auth = useAuth();
-  const context = explicitContext || formContext(window.location.pathname);
+  const location = useWorkspaceLocation();
+  const context = explicitContext || formContext(location.pathname);
   const owner = auth?.user?.id;
   const fieldSignature = safeFields(fields).map(field => field.key).sort().join('|');
   const supported = Boolean(enabled && owner && context && fieldSignature && !fields.some(field => field.type === 'password' || SECRET.test(field.key)));

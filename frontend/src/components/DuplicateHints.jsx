@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { formContext } from '../utils/workspaceClient';
+import useWorkspaceLocation from '../hooks/useWorkspaceLocation';
 
 const REASONS = { email: 'gleiche E-Mail-Adresse', phone: 'gleiche Telefonnummer', name_address: 'gleicher Name und Anschrift', same_number: 'gleiche Rechnungsnummer', similar: 'ähnliche Rechnungsdaten', same_content: 'gleicher Dateiinhalt' };
 export default function DuplicateHints({ values, initial, context: explicitContext }) {
   const owner = useAuth()?.user?.id;
-  const context = explicitContext || formContext(window.location.pathname);
+  const location = useWorkspaceLocation();
+  const context = explicitContext || formContext(location.pathname);
   const kind = context === 'contacts' ? 'contact' : context === 'invoices' ? 'invoice' : context === 'documents' && values.file_url ? 'file' : null;
   const candidate = kind === 'contact' ? Object.fromEntries(['first_name', 'last_name', 'company_name', 'email', 'phone', 'mobile', 'street', 'zip_code'].map(key => [key, values[key] || '']))
     : kind === 'invoice' ? { supplier: values.supplier, invoice_date: values.invoice_date, invoice_number: values.invoice_number, gross_amount: values.gross_amount }

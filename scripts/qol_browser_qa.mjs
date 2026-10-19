@@ -368,6 +368,60 @@ try {
     assert.equal(savedTasks.filter(task => task.title === title).length, 1);
     assert.ok(!(await call('GET', '/workspace/drafts?context=tasks')).items.some(d => d.values?.title === title));
   });
+  await step('Actual browser Back: dirty task keeps its values, explicit discard removes its draft', async () => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(base.origin + '/documents');
+    await expect(page.getByRole('table', { name: 'Dokumente', exact: true })).toBeVisible();
+    // A real SPA link creates the history entry whose blocked POP briefly changes
+    // window.location before React Router restores the current task route.
+    await page.locator('a[href="/tasks"]').first().click();
+    await expect(page).toHaveURL(base.origin + '/tasks');
+    await expect(page.getByRole('table', { name: 'Aufgaben', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Neu', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Neu', exact: true }).click();
+    let form = page.getByRole('dialog', { name: 'Aufgabe erstellen', exact: true });
+    const title = 'QA Browser-Zurück ' + suffix;
+    const description = 'Eingaben beim Browser-Zurück unverändert behalten.';
+    await expect(form.getByLabel('Titel', { exact: false })).toBeEnabled();
+    await form.getByLabel('Titel', { exact: false }).fill(title);
+    await form.getByLabel('Beschreibung', { exact: true }).fill(description);
+    await expect(form.getByText('Entwurf automatisch gesichert', { exact: true })).toBeVisible();
+    await expect.poll(async () => (await call('GET', '/workspace/drafts?context=tasks')).items.some(d => d.values?.title === title)).toBe(true);
+    await page.screenshot({ path: path.join(output, 'browser-back-dirty-task-1440.png') });
+
+    await page.goBack({ waitUntil: 'commit' });
+    let question = form.getByRole('alertdialog');
+    await expect(question).toBeVisible();
+    await expect(page).toHaveURL(base.origin + '/tasks');
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
+    await expect(form.getByLabel('Beschreibung', { exact: true })).toHaveValue(description);
+    await question.getByRole('button', { name: 'Weiter bearbeiten', exact: true }).click();
+    await expect(question).toHaveCount(0);
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
+    await expect(form.getByLabel('Beschreibung', { exact: true })).toHaveValue(description);
+
+    await page.goBack({ waitUntil: 'commit' });
+    question = form.getByRole('alertdialog');
+    await expect(question).toBeVisible();
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue(title);
+    await question.getByRole('button', { name: 'Verwerfen', exact: true }).click();
+    await expect(page).toHaveURL(base.origin + '/documents');
+    await expect(form).toHaveCount(0);
+    await expect(page.getByRole('table', { name: 'Dokumente', exact: true })).toBeVisible();
+    await expect.poll(async () => (await call('GET', '/workspace/drafts?context=tasks')).items.some(d => d.values?.title === title)).toBe(false);
+    assert.ok(!(await call('GET', '/tasks?limit=100')).some(task => task.title === title), 'Discard must never create the task');
+
+    await page.locator('a[href="/tasks"]').first().click();
+    await expect(page.getByRole('table', { name: 'Aufgaben', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Neu', exact: true }).click();
+    form = page.getByRole('dialog', { name: 'Aufgabe erstellen', exact: true });
+    await expect(form.getByLabel('Titel', { exact: false })).toBeEnabled();
+    await expect(form.getByLabel('Titel', { exact: false })).toHaveValue('');
+    await expect(form.getByRole('button', { name: 'Entwurf wiederaufnehmen', exact: true })).toHaveCount(0);
+    await page.screenshot({ path: path.join(output, 'browser-back-discarded-task-1440.png') });
+    await form.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+    await expect(form).toHaveCount(0);
+  });
   await step('Actual notification inbox: bulk archive requires confirmation and preserves source tasks', async () => {
     const notice = await call('POST', '/notifications', { notification_type: 'task_due', title: 'QA Sammelhinweis ' + suffix,
       content: 'Nur persönlicher Empfangsbeleg', entity_type: 'task', entity_id: task2.id });

@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { api } from '../api';
 import { areaForRoute, mayWrite } from '../utils/permissions';
 import { setWorkspaceOwner, clearWorkspaceBrowserData } from '../utils/workspaceIdentity';
+import useWorkspaceLocation from '../hooks/useWorkspaceLocation';
 
 const AuthContext = createContext(null);
 
@@ -13,9 +14,9 @@ export function useAuth() {
 /** Whether the signed-in user may change what the current page lists (hides New/Edit/Delete). */
 export function useCanWrite(path) {
   const auth = useContext(AuthContext);
+  const location = useWorkspaceLocation();
   if (!auth?.user) return true;          // not loaded yet (and in tests): the server decides
-  // pages remount on navigation, so the current address is enough (no router needed in tests)
-  return mayWrite(auth.write, path || areaForRoute(window.location.pathname));
+  return mayWrite(auth.write, path || areaForRoute(location.pathname));
 }
 
 export function AuthProvider({ children }) {

@@ -8,6 +8,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { formContext } from '../utils/workspaceClient';
 import useFormDraft from '../hooks/useFormDraft';
+import useWorkspaceLocation from '../hooks/useWorkspaceLocation';
 import { fieldValidationErrors, labelledMessage } from '../utils/formValidationFeedback';
 import './workspace.css';
 import DuplicateHints from './DuplicateHints';
@@ -38,6 +39,8 @@ const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spans
 export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep, draftContext, draftAnchor, autosave = true,
   onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase, derive }) {
   const { t, locale } = useTranslation();
+  const location = useWorkspaceLocation();
+  const context = draftContext || formContext(location.pathname);
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   // Inline prefill objects are recreated by several callers; that is not a new form.
   const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
@@ -53,11 +56,11 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const repeatable = Array.isArray(repeatKeep) && initial?.id == null;
   const [savedCount, setSavedCount] = useState(0);
-  const draft = useFormDraft({ fields, initial, enabled: autosave, context: draftContext, anchor: draftAnchor });
+  const draft = useFormDraft({ fields, initial, enabled: autosave, context, anchor: draftAnchor });
   const sessionKey = `${draft.sessionKey}:${initialKey}`;
   // Loading an extra field changes the draft schema, not the record being edited.
   const owner = useAuth()?.user?.id;
-  const formIdentity = `${owner || ''}:${draftContext || formContext(window.location.pathname)}:${initialKey}:${draftAnchor?.kind || ''}:${draftAnchor?.id || ''}`;
+  const formIdentity = `${owner || ''}:${context}:${initialKey}:${draftAnchor?.kind || ''}:${draftAnchor?.id || ''}`;
   const [recoverySource, setRecoverySource] = useState(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const draftWaiting = draft.enabled && (draft.status === 'loading' || Boolean(draft.recovery));
@@ -394,8 +397,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 </button>
               </>}
             </div>}
-            {initial?.id == null && ['contracts', 'bookings'].includes(draftContext || formContext(window.location.pathname)) && <DraftDefaults
-              context={draftContext || formContext(window.location.pathname)} propertyId={values.property_id} disabled={fieldDisabled}
+            {initial?.id == null && ['contracts', 'bookings'].includes(context) && <DraftDefaults
+              context={context} propertyId={values.property_id} disabled={fieldDisabled}
               onApply={defaults => { const next = { ...values }; for (const [key, value] of Object.entries(defaults)) if (fields.some(field => field.key === key) && !next[key]) next[key] = value; setValues(next); setDirty(true); draft.stage(next); }} />}
             <DuplicateHints values={values} initial={initial} context={draftContext} />
             {draft.enabled && <div className="draft-status" role="status">

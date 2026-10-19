@@ -213,7 +213,7 @@
 .assistant-account-dialog summary { cursor: pointer; }
 .assistant-table-scroll table { min-width: 350px; }
 .assistant-page select, .assistant-page input:not([type="checkbox"]):not([type="file"]) { border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface, white); color: var(--color-text); min-height: var(--control-height); padding: 7px 12px; font: inherit; font-size: var(--text-base); font-weight: 400; }
-.assistant-page .assistant-search input { padding-left: 2rem; }
+.assistant-page .assistant-search input:not([type="checkbox"]):not([type="file"]) { padding-left: 2rem; }
 .assistant-provider select { font-size: var(--text-xs); }
 .assistant-context-search select { min-width: 0; max-width: 34%; font-size: var(--text-2xs); }
 .assistant-run details { font-size: var(--text-2xs); }

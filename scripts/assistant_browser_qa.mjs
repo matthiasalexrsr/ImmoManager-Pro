@@ -49,6 +49,13 @@ try {
   let conversationId;
   await step('New local chat, genuine attachment upload, image preview and keyboard close', async () => {
     await page.goto(base.origin + '/assistant'); await expect(page.getByText('Verbinden Sie Ihren Verwaltungsassistenten', { exact: true })).toBeVisible();
+    const searchGeometry = await page.locator('.assistant-search').evaluate(element => {
+      const input = element.querySelector('input'); const icon = element.querySelector('svg');
+      const bounds = input.getBoundingClientRect(); const style = getComputedStyle(input);
+      return { iconRight: icon.getBoundingClientRect().right,
+        textStart: bounds.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) };
+    });
+    assert.ok(searchGeometry.textStart >= searchGeometry.iconRight + 4, 'Chat search icon overlaps input text: ' + JSON.stringify(searchGeometry));
     await expect(page.getByLabel('Datenzugriff', { exact: true })).toHaveValue('authorized');
     await page.screenshot({ path: path.join(output, 'assistant-onboarding-1440.png') });
     await page.getByLabel('Assistent auswählen', { exact: true }).selectOption('local'); await expect(page.getByText('Lokal verfügbar', { exact: true })).toBeVisible();
