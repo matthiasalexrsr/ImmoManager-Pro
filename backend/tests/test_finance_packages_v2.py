@@ -409,6 +409,24 @@ def test_performance_warm_rent_plus_latest_final_utility_difference(estate):
     assert finance_reports.compute(store, definition)["totals"]["result"] == "1420.00"  # correction replaces +60 with -20
 
 
+def test_performance_skips_a_tenancy_that_ended_before_the_period(estate):
+    """Every finished tenancy made the period result fail with a server error (its end before the period start)."""
+    from backend.models import ContractRentPeriodCreate
+    _, house, unit, _, contract, _ = estate
+    store.create_contract_rent_period(ContractRentPeriodCreate(contract_id=contract.id, valid_from=date(2026, 1, 1),
+        cold_rent=100, service_charge_advance=20))
+    earlier = store.create_tenant(TenantCreate(full_name="Vormieter"))
+    ended = store.create_contract(ContractCreate(contract_number="V-Vormieter", property_id=house.id, unit_id=unit.id,
+        tenant_id=earlier.id, start_date=date(2024, 1, 1), end_date=date(2025, 6, 30), status="terminated"))
+    store.create_contract_rent_period(ContractRentPeriodCreate(contract_id=ended.id, valid_from=date(2024, 1, 1), cold_rent=90))
+    result = finance_reports.compute(store, ReportDefinition(kind="performance-period-v2", as_of=date(2026, 12, 31)))
+    assert result["totals"]["result"] == "1440.00"  # 12 * (100 + 20), nothing of the earlier tenancy
+    spring = finance_reports.compute(store, ReportDefinition(kind="performance-period-v2", as_of=date(2026, 12, 31),
+                                                             date_from=date(2026, 3, 1), date_to=date(2026, 4, 30)))
+    rent = [s for s in spring["sources"] if s["contribution"] == "rent_due"]
+    assert sum(Decimal(s["amount"]) for s in rent) == Decimal(spring["totals"]["rent_due"]) == Decimal("240.00")
+
+
 def test_allocated_sources_refuse_amount_change_and_deletion_and_readonly_can_read_report(estate):
     import json
     r, b = claim(estate), book(estate, 40)

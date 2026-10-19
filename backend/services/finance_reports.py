@@ -160,6 +160,9 @@ def performance(store, d):
     for contract in contracts.values():
         if contract.status in NON_BILLABLE_STATUSES or not dims.contract_matches(contract):
             continue
+        # as in rent_due_by_month: a tenancy that ended before the period owes nothing in it
+        if contract.start_date > last or (contract.end_date and contract.end_date < max(first, contract.start_date)):
+            continue
         for line in LeaseEngine.build_monthly_receivables(contract_start=max(first, contract.start_date),
                 contract_end=contract.end_date, rent_steps=rent_steps(store, contract), until_including=last):
             if month_key(line.period_start) in values:
