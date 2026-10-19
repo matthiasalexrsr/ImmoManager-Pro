@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 
 const authState = vi.hoisted(() => ({ user: null, write: null }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => authState }));
@@ -225,5 +226,206 @@ describe('deposit file record navigation', () => {
       .toHaveAttribute('href', '/contracts?contract_id=c-1');
     expect(within(dialog).getByText('Manuell')).toBeInTheDocument();
     expect(within(dialog).queryByRole('link', { name: 'Manuell' })).not.toBeInTheDocument();
+  });
+});
+
+function GuardRoute() {
+  const where = useLocation();
+  return <span data-testid="guard-route">{where.pathname + where.search}</span>;
+}
+function GuardHarness({ file = fileFixture(), serviceOverride = null }) {
+  const [visible, setVisible] = useState(true);
+  const sourceService = useState(() => serviceOverride || service(file))[0];
+  return <MemoryRouter initialEntries={['/deposits?deposit_id=d-1&source=contract']}>
+    <GuardRoute />
+    <Routes>
+      <Route path="/deposits" element={visible
+        ? <DepositFile depositId="d-1" service={sourceService} onClose={() => setVisible(false)} />
+        : <p>Deposit file closed</p>} />
+      <Route path="/contracts" element={<h1>Contract navigation reached</h1>} />
+      <Route path="/bookings" element={<h1>Booking navigation reached</h1>} />
+      <Route path="/tenants/:id/account" element={<h1>Tenant navigation reached</h1>} />
+    </Routes>
+  </MemoryRouter>;
+}
+const linkedContract = () => screen.getByRole('link', { name: 'Mietvertrag öffnen' });
+
+describe('guard unsaved deposit file navigation', () => {
+  beforeEach(() => { authState.user = { id: 'u-1', role: 'buchhaltung' }; authState.write = null; });
+
+  it('keeps an edited agreement on first link click, Escape and cancel; follows only after explicit confirmation', async () => {
+    const testService = service();
+    render(<GuardHarness serviceOverride={testService} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    const form = within(dialog).getByRole('form', { name: 'Vereinbarung ändern' });
+    const notes = within(form).getByRole('textbox', { name: 'Notizen' });
+    fireEvent.change(notes, { target: { value: 'Noch zu prüfen' } });
+    fireEvent.click(linkedContract());
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+    const confirmation = within(dialog).getByRole('group', { name: 'Ungespeicherte Kautionsänderungen' });
+    expect(confirmation).toHaveTextContent('Ungespeicherte Änderungen gehen beim Verlassen');
+    expect(within(confirmation).getByRole('button', { name: 'Weiter bearbeiten' })).toHaveFocus();
+    expect(testService.updateAgreement).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(within(dialog).queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+    expect(notes).toHaveValue('Noch zu prüfen');
+    expect(linkedContract()).toHaveFocus();
+    fireEvent.click(linkedContract());
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter bearbeiten' }));
+    expect(notes).toHaveValue('Noch zu prüfen');
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+
+    fireEvent.click(linkedContract());
+    const go = within(dialog).getByRole('link', { name: 'Ohne Speichern verlassen' });
+    expect(go).toHaveAttribute('href', '/contracts?contract_id=c-1');
+    fireEvent.click(go);
+    expect(await screen.findByRole('heading', { name: 'Contract navigation reached' })).toBeInTheDocument();
+    expect(testService.updateAgreement).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: /Kautionsakte/ })).not.toBeInTheDocument();
+  });
+
+  it('confirms a dirty close but closes a clean file immediately', async () => {
+    const testService = service();
+    render(<GuardHarness serviceOverride={testService} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Notizen' }), { target: { value: 'Lokale Eingabe' } });
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Schließen' })[0]);
+    expect(within(dialog).getByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).toBeInTheDocument();
+    expect(screen.queryByText('Deposit file closed')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ohne Speichern verlassen' }));
+    expect(screen.getByText('Deposit file closed')).toBeInTheDocument();
+    expect(testService.updateAgreement).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unmodified file directly navigable without an unnecessary prompt', async () => {
+    render(<GuardHarness />);
+    await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(linkedContract());
+    expect(screen.getByRole('heading', { name: 'Contract navigation reached' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+  });
+});
+
+describe('unsaved sub-editors and deposit navigation', () => {
+  beforeEach(() => { authState.user = { id: 'u-1', role: 'buchhaltung' }; authState.write = null; });
+
+  it.each(['interest', 'security', 'payments', 'settlement'])(
+    'keeps unsaved %s values when a linked record is opened until explicitly confirmed', async part => {
+      const basic = fileFixture();
+      const file = part === 'security'
+        ? fileFixture({ money_form: false, deposit: { ...basic.deposit, form: 'guarantee' } })
+        : part === 'settlement' ? fileFixture({ settlements: [draftSettlement()] }) : basic;
+      render(<GuardHarness file={file} />);
+      const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+      if (part === 'interest') {
+        const region = within(dialog).getByRole('region', { name: 'Zinsen' });
+        fireEvent.click(within(region).getByRole('button', { name: 'Zinssatz hinzufügen' }));
+        expect(within(region).getByRole('textbox', { name: 'Zinssatz % p. a.' })).toBeInTheDocument();
+      } else if (part === 'security') {
+        fireEvent.change(within(dialog).getByRole('textbox', { name: 'Vermerk zur Freigabe' }),
+          { target: { value: 'Bestätigung fehlt' } });
+      } else if (part === 'payments') {
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Zahlung zuordnen' }));
+        const list = await within(dialog).findByRole('list', { name: 'Buchungen des Mieters' });
+        fireEvent.change(within(list).getByRole('spinbutton', { name: 'Anteil (leer = frei)' }),
+          { target: { value: '250' } });
+      } else {
+        const region = within(dialog).getByRole('region', { name: 'Kautionsabrechnung' });
+        fireEvent.change(within(region).getByRole('textbox', { name: 'Notizen' }),
+          { target: { value: 'Abrechnung prüfen' } });
+      }
+      const destination = part === 'security' ? linkedContract()
+        : within(dialog).getByRole('link', { name: 'Kaution' });
+      fireEvent.click(destination);
+      expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+      const confirmation = within(dialog).getByRole('group', { name: 'Ungespeicherte Kautionsänderungen' });
+      expect(within(confirmation).getByRole('link', { name: 'Ohne Speichern verlassen' }))
+        .toHaveAttribute('href', part === 'security' ? '/contracts?contract_id=c-1' : '/bookings?booking_id=b-1');
+      fireEvent.click(within(confirmation).getByRole('button', { name: 'Weiter bearbeiten' }));
+      expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+      if (part === 'security') expect(within(dialog).getByRole('textbox', { name: 'Vermerk zur Freigabe' }))
+        .toHaveValue('Bestätigung fehlt');
+      if (part === 'settlement') expect(within(dialog).getByRole('textbox', { name: 'Notizen' }))
+        .toHaveValue('Abrechnung prüfen');
+      if (part === 'payments') expect(within(dialog).getByRole('spinbutton', { name: 'Anteil (leer = frei)' }))
+        .toHaveValue(250);
+      fireEvent.click(destination);
+      fireEvent.click(within(dialog).getByRole('link', { name: 'Ohne Speichern verlassen' }));
+      expect(await screen.findByRole('heading', { name: part === 'security'
+        ? 'Contract navigation reached' : 'Booking navigation reached' })).toBeInTheDocument();
+    },
+  );
+
+  it('blocks navigation while an agreement save is running and does not warn after successful save', async () => {
+    const initial = fileFixture();
+    let finish;
+    const save = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+    const testService = service(initial);
+    testService.updateAgreement = save;
+    render(<GuardHarness serviceOverride={testService} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    const form = within(dialog).getByRole('form', { name: 'Vereinbarung ändern' });
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Notizen' }),
+      { target: { value: 'Gespeicherter Vermerk' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+    expect(save).toHaveBeenCalledTimes(1);
+    fireEvent.click(linkedContract());
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Kautionsvorgang läuft');
+    expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+    await act(async () => {
+      finish(fileFixture({ deposit: { ...initial.deposit, revision: 'rev-2', notes: 'Gespeicherter Vermerk' } }));
+    });
+    await waitFor(() => expect(within(dialog).queryByRole('form', { name: 'Vereinbarung ändern' }))
+      .not.toBeInTheDocument());
+    fireEvent.click(linkedContract());
+    expect(screen.getByRole('heading', { name: 'Contract navigation reached' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+  });
+});
+
+describe('failed and uncertain deposit operations do not bypass the leave guard', () => {
+  beforeEach(() => { authState.user = { id: 'u-1', role: 'buchhaltung' }; authState.write = null; });
+
+  it('preserves an edited agreement after a failed save and still requires deliberate navigation', async () => {
+    const testService = service();
+    testService.updateAgreement.mockRejectedValueOnce(new Error('Sicherung ist offline'));
+    render(<GuardHarness serviceOverride={testService} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vereinbarung ändern' }));
+    const form = within(dialog).getByRole('form', { name: 'Vereinbarung ändern' });
+    const notes = within(form).getByRole('textbox', { name: 'Notizen' });
+    fireEvent.change(notes, { target: { value: 'Wichtiger noch ungesicherter Vermerk' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Sicherung ist offline');
+    fireEvent.click(linkedContract());
+    expect(within(dialog).getByRole('group', { name: 'Ungespeicherte Kautionsänderungen' }))
+      .toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter bearbeiten' }));
+    expect(notes).toHaveValue('Wichtiger noch ungesicherter Vermerk');
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+    expect(testService.updateAgreement).toHaveBeenCalledOnce();
+  });
+
+  it('blocks leaving when a settlement finalization outcome is uncertain', async () => {
+    const testService = service(fileFixture({ settlements: [draftSettlement()] }));
+    testService.finalize.mockRejectedValueOnce(Object.assign(new Error('Antwort verloren'), { isNetwork: true }));
+    render(<GuardHarness serviceOverride={testService} />);
+    const dialog = await screen.findByRole('dialog', { name: /Kautionsakte/ });
+    const section = await within(dialog).findByRole('region', { name: 'Kautionsabrechnung' });
+    fireEvent.click(within(section).getByRole('button', { name: 'Prüfen' }));
+    await waitFor(() => expect(testService.preview).toHaveBeenCalledOnce());
+    fireEvent.click(within(section).getByRole('checkbox'));
+    fireEvent.click(within(section).getByRole('button', { name: 'Abschließen' }));
+    expect(await within(section).findByText(/Die Antwort ging verloren/)).toBeInTheDocument();
+    fireEvent.click(linkedContract());
+    expect(await within(dialog).findByText(/Ein Kautionsvorgang läuft noch/)).toHaveAttribute('role', 'alert');
+    expect(screen.queryByRole('group', { name: 'Ungespeicherte Kautionsänderungen' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('guard-route')).toHaveTextContent('/deposits?deposit_id=d-1');
+    expect(testService.finalize).toHaveBeenCalledOnce();
   });
 });

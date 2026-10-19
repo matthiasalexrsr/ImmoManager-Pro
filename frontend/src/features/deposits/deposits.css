@@ -188,6 +188,24 @@
 .deposit__notice--warning { border-color: var(--color-warning, #b45309); }
 .deposit__notice--success { border-color: var(--color-success, #15803d); }
 
+.deposit__leave-confirmation {
+  min-width: 0;
+  padding: .9rem 1rem;
+  border: 2px solid var(--color-warning, #b45309);
+  border-radius: .8rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, var(--color-warning, #b45309) 6%);
+}
+.deposit__leave-confirmation p { margin: 0 0 .75rem; overflow-wrap: anywhere; }
+.deposit__leave-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.deposit__leave-actions :is(button, a) { min-height: 44px; }
+.deposit__leave-actions :is(button, a):focus-visible {
+  outline: 2px solid var(--color-primary, #326cbd);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .deposit__leave-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+}
+
 .deposit__table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; }
 .deposit__table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .deposit__table :is(th, td) { padding: .45rem .5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }

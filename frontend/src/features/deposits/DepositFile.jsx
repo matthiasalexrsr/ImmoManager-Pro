@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useInRouterContext } from 'react-router-dom';
 import RelatedPageLinks from '../../components/RelatedPageLinks';
@@ -15,12 +15,17 @@ import { depositText } from './depositText';
 import SettlementPanel from './SettlementPanel';
 import './deposits.css';
 
-function Payments({ say, file, service, canEdit, onFile, onError, canNavigate }) {
+function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, onDirtyChange, onBusyChange }) {
   const id = useId();
   const [candidates, setCandidates] = useState(null);
   const [amounts, setAmounts] = useState({});
   const [busy, setBusy] = useState(false);
   const depositId = file.deposit.id;
+  const hasTypedShare = Object.values(amounts).some(value => String(value).trim() !== '');
+  useEffect(() => { onDirtyChange?.('payments', hasTypedShare); }, [hasTypedShare, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.('payments', false), [onDirtyChange]);
+  useEffect(() => { onBusyChange?.('payments', busy); }, [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange?.('payments', false), [onBusyChange]);
 
   const loadCandidates = async () => {
     setBusy(true);
@@ -39,6 +44,7 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate })
     try {
       onFile(await work());
       setCandidates(null);
+      setAmounts({});
     } catch (failure) {
       onError(failure?.message || say('loadFailed'));
     } finally {
@@ -87,12 +93,16 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate })
   </section>;
 }
 
-function Interest({ say, file, service, canEdit, onFile, onError }) {
+function Interest({ say, file, service, canEdit, onFile, onError, onDirtyChange, onBusyChange }) {
   const id = useId();
   const [rates, setRates] = useState(() => file.interest_rates.map(rate => ({ ...rate })));
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const editable = canEdit && !file.settled;
+  useEffect(() => { onDirtyChange?.('interest', dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.('interest', false), [onDirtyChange]);
+  useEffect(() => { onBusyChange?.('interest', busy); }, [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange?.('interest', false), [onBusyChange]);
   const change = next => { setRates(next); setDirty(true); };
   const save = async () => {
     setBusy(true);
@@ -136,7 +146,7 @@ function Interest({ say, file, service, canEdit, onFile, onError }) {
   </section>;
 }
 
-function Security({ say, file, service, canEdit, onFile, onError }) {
+function Security({ say, file, service, canEdit, onFile, onError, onDirtyChange, onBusyChange }) {
   const id = useId();
   const deposit = file.deposit;
   const [values, setValues] = useState({
@@ -144,6 +154,12 @@ function Security({ say, file, service, canEdit, onFile, onError }) {
     released_on: deposit.released_on || '', release_document_id: deposit.release_document_id || '',
     release_note: deposit.release_note || '' });
   const [busy, setBusy] = useState(false);
+  const initialSnapshot = useRef(JSON.stringify(values));
+  const isDirty = JSON.stringify(values) !== initialSnapshot.current;
+  useEffect(() => { onDirtyChange?.('security', isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.('security', false), [onDirtyChange]);
+  useEffect(() => { onBusyChange?.('security', busy); }, [busy, onBusyChange]);
+  useEffect(() => () => onBusyChange?.('security', false), [onBusyChange]);
   const editable = canEdit && !deposit.released_on;
   const set = (name, value) => setValues(current => ({ ...current, [name]: value }));
   const save = async () => {
@@ -188,7 +204,58 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  useModalDialog(dialogRef, onClose, true);
+  const [dirtyParts, setDirtyParts] = useState({});
+  const [busyParts, setBusyParts] = useState({});
+  const [leaveRequest, setLeaveRequest] = useState(null);
+  const [leaveBlocked, setLeaveBlocked] = useState(false);
+  const keepEditingRef = useRef(null);
+  const leaveSourceRef = useRef(null);
+  const setPartDirty = useCallback((key, active) => setDirtyParts(previous => {
+    if (Boolean(previous[key]) === Boolean(active)) return previous;
+    const next = { ...previous };
+    if (active) next[key] = true; else delete next[key];
+    return next;
+  }), []);
+  const setPartBusy = useCallback((key, active) => setBusyParts(previous => {
+    if (Boolean(previous[key]) === Boolean(active)) return previous;
+    const next = { ...previous };
+    if (active) next[key] = true; else delete next[key];
+    return next;
+  }), []);
+  const hasUnsaved = Object.keys(dirtyParts).length > 0;
+  const hasPendingAction = busy || Object.keys(busyParts).length > 0;
+  const returnToEditing = () => {
+    setLeaveRequest(null);
+    if (leaveSourceRef.current?.isConnected) leaveSourceRef.current.focus();
+  };
+  const requestClose = () => {
+    if (leaveRequest) { returnToEditing(); return; }
+    if (hasPendingAction) { setLeaveBlocked(true); return; }
+    if (hasUnsaved) {
+      leaveSourceRef.current = document.activeElement;
+      setLeaveRequest({ kind: 'close' });
+      return;
+    }
+    onClose?.();
+  };
+  // Capture only ordinary same-tab internal link activation. Modified clicks
+  // open a separate tab and leave the edited file safely in place.
+  const guardLink = event => {
+    const anchor = event.target.closest?.('a[href]');
+    if (!anchor || anchor.dataset.depositLeaveConfirmed === 'true' || event.button !== 0
+      || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+      || anchor.target === '_blank' || (!hasUnsaved && !hasPendingAction)) return;
+    const href = anchor.getAttribute('href');
+    if (!href?.startsWith('/') || href.startsWith('//')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (hasPendingAction) { setLeaveBlocked(true); return; }
+    leaveSourceRef.current = anchor;
+    setLeaveRequest({ kind: 'navigate', to: href });
+  };
+  useLayoutEffect(() => { if (leaveRequest) keepEditingRef.current?.focus(); }, [leaveRequest]);
+  useEffect(() => { if (!hasPendingAction) setLeaveBlocked(false); }, [hasPendingAction]);
+  useModalDialog(dialogRef, requestClose, true);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -232,17 +299,35 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
   const hasRelease = file?.settlements.some(s => s.kind === 'retention_release');
 
   return createPortal(<div className="deposit__overlay" role="presentation"
-    onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="deposit" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+    onMouseDown={event => { if (event.target === event.currentTarget) requestClose(); }}>
+    <section className="deposit" ref={dialogRef} role="dialog" aria-modal="true"
+      aria-labelledby={titleId} tabIndex={-1} onClickCapture={guardLink}>
       <header className="deposit__header">
         <div>
           <p className="deposit__eyebrow">{say('eyebrow')}</p>
           <h2 id={titleId}>{source ? `${say('fileTitle')} · ${source.contract.contract_number}` : say('fileTitle')}</h2>
           {source && <p>{source.tenant.full_name} · {source.property.name} · {source.unit.label}</p>}
         </div>
-        <button type="button" className="deposit__icon-button" aria-label={say('close')} onClick={onClose}><X size={20} aria-hidden="true" /></button>
+        <button type="button" className="deposit__icon-button" aria-label={say('close')} onClick={requestClose}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className="deposit__body">
+        {leaveBlocked && <p className="deposit__notice deposit__notice--warning" role="alert">
+          {say('leaveBusy')}
+        </p>}
+        {leaveRequest && <div className="deposit__leave-confirmation" role="group" aria-label={say('leaveTitle')}>
+          <p role="alert">{say('leaveWarning')}</p>
+          <div className="deposit__leave-actions">
+            <button ref={keepEditingRef} type="button" className="btn btn-secondary"
+              onClick={returnToEditing}>{say('keepEditing')}</button>
+            {leaveRequest.kind === 'close'
+              ? <button type="button" className="btn btn-danger" onClick={() => onClose?.()}>
+                {say('leaveWithoutSaving')}</button>
+              : <Link data-deposit-leave-confirmed="true" className="btn btn-danger"
+                to={leaveRequest.to} onClick={event => {
+                  if (hasPendingAction) { event.preventDefault(); setLeaveBlocked(true); }
+                }}>{say('leaveWithoutSaving')}</Link>}
+          </div>
+        </div>}
         {error && <div className="deposit__notice deposit__notice--error" role="alert"><AlertTriangle size={18} aria-hidden="true" />
           <span>{error}</span>{!file && <button type="button" className="btn btn-secondary btn-sm"
             onClick={() => setAttempt(value => value + 1)}>{say('retry')}</button>}</div>}
@@ -272,7 +357,8 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
               {canEdit && !file.settled && !editing && !deposit.released_on && <button type="button" className="btn btn-secondary btn-sm"
                 onClick={() => setEditing(true)}>{say('editAgreement')}</button>}</div>
             {editing ? <AgreementForm say={say} contractId={deposit.contract_id} cap={file.cap} accounts={file.accounts} busy={busy}
-              initial={{ ...deposit, instalments: file.instalments }} onSubmit={payload => void saveAgreement(payload)}
+              initial={{ ...deposit, instalments: file.instalments }} onDirtyChange={setPartDirty}
+              onSubmit={payload => void saveAgreement(payload)}
               onCancel={() => setEditing(false)} />
               : <dl className="deposit__facts">
                 <div><dt>{say('form')}</dt><dd>{say(`form_${deposit.form}`)}</dd></div>
@@ -298,11 +384,14 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
 
           {file.money_form ? <>
             <Payments say={say} file={file} service={service} canEdit={canEdit} canNavigate={canNavigate}
+              onDirtyChange={setPartDirty} onBusyChange={setPartBusy}
               onFile={apply} onError={setError} />
-            <Interest key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
+            <Interest key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit}
+              onDirtyChange={setPartDirty} onBusyChange={setPartBusy} onFile={apply} onError={setError} />
             <section className="deposit__section-group" aria-label={say('settlements')}>
               {file.settlements.map(settlement => <SettlementPanel key={settlement.id} say={say} file={file} settlement={settlement}
-                service={service} canEdit={canEdit} onFile={apply} onError={setError} onNotice={setNotice} />)}
+                service={service} canEdit={canEdit} onFile={apply} onError={setError} onNotice={setNotice}
+                onDirtyChange={setPartDirty} onBusyChange={setPartBusy} />)}
               {canEdit && <div className="deposit__actions">
                 {!hasFinal && <button type="button" className="btn btn-primary" disabled={busy || file.received <= 0}
                   onClick={() => void start('final')}>{say('startFinal')}</button>}
@@ -310,11 +399,12 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
                   onClick={() => void start('retention_release')}>{say('startRelease')}</button>}
               </div>}
             </section>
-          </> : <Security key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />}
+          </> : <Security key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit}
+            onDirtyChange={setPartDirty} onBusyChange={setPartBusy} onFile={apply} onError={setError} />}
         </>}
       </div>
       <footer className="deposit__footer">
-        <button type="button" className="btn btn-secondary" onClick={onClose}>{say('close')}</button>
+        <button type="button" className="btn btn-secondary" onClick={requestClose}>{say('close')}</button>
       </footer>
     </section>
   </div>, document.body);

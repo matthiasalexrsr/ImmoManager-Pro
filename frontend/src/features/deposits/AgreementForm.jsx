@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { formatMoney } from '../../utils/format';
 
 const MONEY_FORMS = ['cash', 'transfer', 'deposit_account'];
@@ -15,7 +15,7 @@ function split(amount, count) {
 
 /** The agreement of a deposit: amount (cap of three net cold rents), form, instalments, account. */
 export default function AgreementForm({ say, contractId, initial = null, cap = null, accounts = [], suggested = null,
-  busy = false, onSubmit, onCancel }) {
+  busy = false, onSubmit, onCancel, onDirtyChange }) {
   const id = useId();
   const [values, setValues] = useState(() => ({
     amount: initial ? String(initial.amount) : (suggested ? String(suggested) : ''),
@@ -29,6 +29,10 @@ export default function AgreementForm({ say, contractId, initial = null, cap = n
     account_holder: initial?.account_holder || '',
     notes: initial?.notes || '',
   }));
+  const [initialSnapshot] = useState(() => JSON.stringify(values));
+  const isDirty = JSON.stringify(values) !== initialSnapshot;
+  useEffect(() => { onDirtyChange?.('agreement', isDirty); }, [isDirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.('agreement', false), [onDirtyChange]);
   const set = (name, value) => setValues(current => ({ ...current, [name]: value }));
   const moneyForm = MONEY_FORMS.includes(values.form);
   const amounts = values.custom && values.custom.length === values.count ? values.custom : split(values.amount, values.count);

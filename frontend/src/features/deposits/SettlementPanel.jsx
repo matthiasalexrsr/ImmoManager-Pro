@@ -26,7 +26,8 @@ function Outcome({ say, outcome }) {
 }
 
 /** One settlement: a draft with claims, offsets and retention, its check and finalization; or the finalized result. */
-export default function SettlementPanel({ say, file, settlement, service, canEdit, onFile, onError, onNotice }) {
+export default function SettlementPanel({ say, file, settlement, service, canEdit, onFile, onError, onNotice,
+  onDirtyChange, onBusyChange }) {
   const id = useId();
   const depositId = file.deposit.id;
   const finalized = settlement.finalized;
@@ -52,6 +53,13 @@ export default function SettlementPanel({ say, file, settlement, service, canEdi
     setDirty(false);
   }
 
+  const part = `settlement:${settlement.id}`;
+  const unsaved = !finalized && (dirty || account !== (file.deposit.account_id || ''));
+  const actionPending = Boolean(busy || unknown);
+  useEffect(() => { onDirtyChange?.(part, unsaved); }, [part, unsaved, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(part, false), [part, onDirtyChange]);
+  useEffect(() => { onBusyChange?.(part, actionPending); }, [part, actionPending, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(part, false), [part, onBusyChange]);
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf); }, [pdf]);
 
@@ -227,7 +235,7 @@ export default function SettlementPanel({ say, file, settlement, service, canEdi
     {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={() => add({})}>{say('addItem')}</button>}
     <label className="deposit__wide" htmlFor={`${id}-notes`}>{say('notes')}
       <textarea id={`${id}-notes`} rows={2} value={notes} disabled={!canEdit}
-        onChange={event => { setNotes(event.target.value); setDirty(true); }} /></label>
+        onChange={event => { setNotes(event.target.value); setDirty(true); setPreview(null); }} /></label>
 
     <Outcome say={say} outcome={preview?.outcome || settlement.outcome} />
     {(preview?.problems || settlement.problems || []).length > 0 && <ul className="deposit__problems" aria-label={say('problems')}>
