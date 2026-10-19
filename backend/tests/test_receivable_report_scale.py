@@ -92,8 +92,19 @@ def test_cash_reservation_validates_all_sources_with_bounded_sql_round_trips(tmp
             with scope_context(AccessScope('restricted-reader', 'readonly', False, ())):
                 with pytest.raises(NotFoundError):
                     cash_reserved(store, {rows[0]['id']})
-            with scope_context(AccessScope('restricted-reader', 'readonly', False, (portfolio.id,))):
-                assert cash_reserved(store, {rows[0]['id']}) == {}
+            sources = []
+            def remember_sources(_conn, _cursor, statement, _parameters, _context, _many):
+                if 'bookings.reverses_booking_id' in statement:
+                    sources.append(statement)
+            event.listen(engine, 'before_cursor_execute', remember_sources)
+            try:
+                with scope_context(AccessScope('restricted-reader', 'readonly', False, (portfolio.id,))):
+                    assert cash_reserved(store, {row['id'] for row in rows}) == {}
+            finally:
+                event.remove(engine, 'before_cursor_execute', remember_sources)
+            # The portfolio boundary is applied once. Bounding the selects inside it again made each
+            # statement about 13 times as long and a restricted account's review list take seconds.
+            assert len(sources) == 3 and max(len(statement) for statement in sources) < 10000
     finally:
         engine.dispose()
 

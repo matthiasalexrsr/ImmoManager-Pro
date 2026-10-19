@@ -96,17 +96,19 @@ def cash_reserved(store, booking_ids=None):
 
         from ..db.orm_models import BookingORM
         from ..storage import NotFoundError
-        from .portfolio_scope import scoped_clause
+        from .portfolio_scope import BOUNDED, scoped_clause
 
         # Validate every requested source under the current portfolio boundary,
         # without a separate SQL round trip for each cash row in a report.
         parents: dict[str, str | None] = {}
         keys = sorted(wanted)
+        # Built once and marked as bounded: the session would otherwise bound every select inside
+        # this boundary again (several seconds for a restricted account's review list).
+        boundary = scoped_clause(BookingORM)
         for start in range(0, len(keys), 500):
             query = select(BookingORM.id, BookingORM.reverses_booking_id).where(BookingORM.id.in_(keys[start:start + 500]))
-            boundary = scoped_clause(BookingORM)
             if boundary is not None:
-                query = query.where(boundary)
+                query = query.where(boundary).execution_options(**{BOUNDED: True})
             parents.update(dict(store.db.execute(query).all()))
         if wanted - parents.keys():
             raise NotFoundError('Buchung nicht gefunden')
