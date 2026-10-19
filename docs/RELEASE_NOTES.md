@@ -11,6 +11,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 ### Einrichten und Übernehmen
 - **Erste Schritte** auf der Startseite führen der Reihe nach durch Portfolio, Immobilie, Einheiten, Bankkonto und Mietverträge.
 - **Laufende Mietverhältnisse übernehmen:** Für jeden Vertrag lassen sich „Mietkonto hier geführt ab“ und der Saldo zu diesem Tag (Rückstand oder Guthaben) angeben. Ältere Monate gelten dann nicht als offen.
+- **Kautionen übernehmen:** Wurde eine Kaution gezahlt, bevor die Buchungen im Programm beginnen, erfasst man in der Kautionsakte Übernahmetag, eingegangenen Betrag und bis dahin gutgeschriebene Zinsen. Kautionen aus früheren Versionen übernimmt die Kautionsliste nach Rückfrage in einem Schritt.
 - Formulare enden nicht mehr in einer Sackgasse. Fehlt eine Voraussetzung, nennt das Formular sie und verlinkt dorthin, wo man sie anlegt. Gibt es nur eine Auswahl, ist sie schon gewählt.
 
 ### Alles an einem Ort

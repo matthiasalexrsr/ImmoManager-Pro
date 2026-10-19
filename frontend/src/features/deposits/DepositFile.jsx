@@ -81,6 +81,75 @@ function Payments({ say, file, service, canEdit, onFile, onError }) {
   </section>;
 }
 
+/** A deposit paid before the app's bookings: what was received and credited until the takeover day. */
+function Takeover({ say, file, service, canEdit, onFile, onError }) {
+  const id = useId();
+  const deposit = file.deposit;
+  const taken = Boolean(deposit.carried_on);
+  const editable = canEdit && !file.settled;
+  const initial = () => (taken
+    ? { carried_on: deposit.carried_on, carried_amount: String(deposit.carried_amount ?? ''),
+      carried_interest: deposit.carried_interest ? String(deposit.carried_interest) : '', carried_note: deposit.carried_note || '' }
+    : { carried_on: file.legacy_candidate ? deposit.held_date || '' : '',
+      carried_amount: file.legacy_candidate ? String(deposit.amount ?? '') : '', carried_interest: '', carried_note: '' });
+  const [values, setValues] = useState(initial);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!taken && !editable) return null;
+  const set = (name, value) => setValues(current => ({ ...current, [name]: value }));
+  const save = async payload => {
+    setBusy(true);
+    onError(null);
+    try {
+      onFile(await service.setTakeover(deposit.id, { base_revision: deposit.revision, ...payload }));
+      setEditing(false);
+    } catch (failure) {
+      onError(failure?.message || say('loadFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const submit = event => {
+    event.preventDefault();
+    void save({ carried_on: values.carried_on || null,
+      carried_amount: values.carried_amount === '' ? null : Number(values.carried_amount),
+      carried_interest: values.carried_interest === '' ? null : Number(values.carried_interest),
+      carried_note: values.carried_note.trim() || null });
+  };
+  return <section className="deposit__section" aria-label={say('takeover')}>
+    <div className="deposit__section-head"><h3>{say('takeover')}</h3>
+      {editable && !editing && <button type="button" className="btn btn-secondary btn-sm"
+        onClick={() => { setValues(initial()); setEditing(true); }}>{say(taken ? 'editTakeover' : 'recordTakeover')}</button>}</div>
+    {!editing && (taken ? <dl className="deposit__facts">
+      <div><dt>{say('carriedOn')}</dt><dd>{say('takeoverSummary', { date: formatDate(deposit.carried_on), amount: formatMoney(deposit.carried_amount) })}</dd></div>
+      {Number(deposit.carried_interest) > 0 && <div><dt>{say('carriedInterest')}</dt><dd>{formatMoney(deposit.carried_interest)}</dd></div>}
+      {deposit.carried_note && <div><dt>{say('carriedNote')}</dt><dd>{deposit.carried_note}</dd></div>}
+    </dl> : <p className="deposit__muted">{say('takeoverHint')}</p>)}
+    {editing && <form className="deposit__form" onSubmit={submit}>
+      {!taken && file.legacy_candidate && <p className="deposit__muted">{say('takeoverLegacy', { date: formatDate(deposit.held_date) })}</p>}
+      <div className="deposit__grid">
+        <label htmlFor={`${id}-on`}>{say('carriedOn')}
+          <input id={`${id}-on`} type="date" required value={values.carried_on} onChange={event => set('carried_on', event.target.value)} /></label>
+        <label htmlFor={`${id}-amount`}>{say('carriedAmount')}
+          <input id={`${id}-amount`} type="number" step="0.01" min="0.01" required inputMode="decimal" value={values.carried_amount}
+            onChange={event => set('carried_amount', event.target.value)} /></label>
+        <label htmlFor={`${id}-interest`}>{say('carriedInterest')}
+          <input id={`${id}-interest`} type="number" step="0.01" min="0" inputMode="decimal" value={values.carried_interest}
+            onChange={event => set('carried_interest', event.target.value)} /></label>
+        <label className="deposit__wide" htmlFor={`${id}-note`}>{say('carriedNote')}
+          <input id={`${id}-note`} type="text" maxLength={2000} value={values.carried_note} onChange={event => set('carried_note', event.target.value)} /></label>
+      </div>
+      <p className="deposit__muted">{say('takeoverHint')}</p>
+      <div className="deposit__actions">
+        {taken && <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+          onClick={() => void save({ carried_on: null, carried_amount: null, carried_interest: null, carried_note: null })}>{say('removeTakeover')}</button>}
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setEditing(false)}>{say('cancel')}</button>
+        <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{say('saveTakeover')}</button>
+      </div>
+    </form>}
+  </section>;
+}
+
 function Interest({ say, file, service, canEdit, onFile, onError }) {
   const id = useId();
   const [rates, setRates] = useState(() => file.interest_rates.map(rate => ({ ...rate })));
@@ -103,7 +172,8 @@ function Interest({ say, file, service, canEdit, onFile, onError }) {
   };
   return <section className="deposit__section" aria-label={say('interest')}>
     <h3>{say('interest')}</h3>
-    <p>{say('interestUntil', { date: formatDate(file.interest.until), amount: formatMoney(file.interest.total) })}</p>
+    <p>{say('interestUntil', { date: formatDate(file.interest.until), amount: formatMoney(file.interest.total) })}
+      {file.interest.carried != null && <small className="deposit__muted"> ({say('carriedInterestPart', { amount: formatMoney(file.interest.carried) })})</small>}</p>
     {rates.length === 0 && <p className="deposit__muted">{say('noRates')}</p>}
     {rates.map((rate, index) => <div className="deposit__rate" key={rate.id || index}>
       <label htmlFor={`${id}-from-${index}`}>{say('validFrom')}
@@ -284,6 +354,7 @@ export default function DepositFile({ depositId, onClose, onChanged, service = d
           </section>}
 
           {file.money_form ? <>
+            <Takeover key={`takeover-${deposit.revision}`} say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
             <Payments say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
             <Interest key={deposit.revision} say={say} file={file} service={service} canEdit={canEdit} onFile={apply} onError={setError} />
             <section className="deposit__section-group" aria-label={say('settlements')}>

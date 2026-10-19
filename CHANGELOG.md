@@ -11,6 +11,21 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-19 deposit takeover and interface round
+
+- **Deposits paid before the app can be taken over.** A deposit received before the app's bookings begin had no booking to link, so its file showed "0,00 € eingegangen", its instalments stayed overdue and it could not be settled. The deposit file now has a section "Übernahme aus dem Vorsystem": the takeover day, the deposit received until then, the interest credited until then and a note on the evidence.
+  - **Where it counts:** the amount is received on the takeover day for the received and outstanding figures, the stage, the instalments, the interest (from that day on, on amount plus carried interest) and the settlement. The settlement PDF lists it as a receipt and splits the interest into "bis zur Übernahme" and "seit der Übernahme".
+  - **Bookings before that day** are part of it: they are not offered or linked.
+  - **Locked once settled** (also by the database).
+- **Plain deposit records of earlier versions** (status "gehalten" with a receipt date) are offered on the deposits page as "Kautionen aus dem bisherigen Datensatz" and taken over in one step after a confirmation, each on its receipt date. Records returned with an earlier version read "Abgerechnet" instead of "Vereinbart". Migration `a7d3c5e9f2b1` adds the fields and refuses a downgrade while a deposit uses them.
+- **Interface:** one type scale, spacing tokens and control heights; native fields, selects and `<details>` follow the app's look; shared tab bars, page headers and filter rows on the finance and work pages; larger tap targets on touch screens.
+- **Fixes:**
+  - the first visit of a list and every unmarked favourite logged a failed request;
+  - TEHA, document intake and duplicate check named themselves "Dashboard";
+  - "Bearbeiten" in meters opened the readings out of view;
+  - some in-app links reloaded the whole app;
+  - the success notice had no style outside maintenance projects.
+
 ## Unreleased — 2026-10-14 first day and running tenancies
 
 Found by using a fresh production installation from the first account to the first rent payment.
