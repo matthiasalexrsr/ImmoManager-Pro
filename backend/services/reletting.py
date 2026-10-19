@@ -206,6 +206,12 @@ def _unit_and_property(unit: archive.Unit, unit_id: str):
     return apartment, building
 
 
+def _current_listing(unit: archive.Unit, unit_id: str) -> Listing | None:
+    """The unit's newest listing that is not closed (made on the listings page or from a project)."""
+    return max((item for item in unit.store.list_listings() if item.unit_id == unit_id and item.status != "closed"),
+               key=lambda item: item.created_at, default=None)
+
+
 # ─── Figures and the comparison ──────────────────────────────────────────────
 
 def _money(value: Any) -> Decimal:
@@ -516,6 +522,10 @@ def _detail(unit: archive.Unit, project: RelettingProject) -> dict:
             listing = unit.store.get_listing(project.listing_id).model_dump(mode="json")
         except (NotFoundError, KeyError):
             listing = None
+    elif project.status == "open":
+        # a listing made on the listings page meanwhile is the one "Inserat aktualisieren" takes over
+        found = _current_listing(unit, project.unit_id)
+        listing = found.model_dump(mode="json") if found else None
     tenant = None
     if project.tenant_id:
         try:
@@ -589,13 +599,11 @@ def start(store, payload: RelettingStart, actor_id: str) -> dict:
             "created_at": stamp, "updated_at": stamp, **carried})
         # the unit's current listing and the inquiries already recorded for it (on the Interessenten
         # page or from the listing) belong to the project; decided ones stay with the earlier letting
-        listings = [item for item in unit.store.list_listings() if item.unit_id == apartment.id]
-        current = max((item for item in listings if item.status != "closed"), key=lambda item: item.created_at,
-                      default=None)
+        current = _current_listing(unit, apartment.id)
         if current is not None:
             project = project.model_copy(update={"listing_id": current.id})
         _put(unit, "reletting_projects", project)
-        own = {item.id for item in listings}
+        own = {item.id for item in unit.store.list_listings() if item.unit_id == apartment.id}
         adopted = 0
         for lead in unit.store.list_leads():
             if (lead.project_id is None and lead.status not in DECIDED
@@ -1003,6 +1011,8 @@ def link_listing(store, project_id: str, actor_id: str) -> dict:
                 current = unit.store.get_listing(project.listing_id)
             except (NotFoundError, KeyError):
                 current = None
+        if current is None:
+            current = _current_listing(unit, project.unit_id)    # one made on the listings page meanwhile
         if current is None:
             listing = Listing(id=new_id(), unit_id=project.unit_id, status="draft", created_at=stamp,
                               updated_at=stamp, **values)

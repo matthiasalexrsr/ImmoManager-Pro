@@ -262,6 +262,20 @@ def test_inquiries_recorded_elsewhere_belong_to_the_units_project(client):
                                                                           "Hans Nein"}
 
 
+def test_a_listing_made_on_the_listings_page_is_the_projects_listing(client):
+    estate = _estate()
+    detail = _project(client, estate)
+    project_id = detail["project"]["id"]
+    assert detail["project"]["listing_id"] is None and detail["listing"] is None
+    made = client.post(f"{API}/listings", json={"unit_id": estate["unit"].id, "title": "Selbst angelegt"}).json()
+    assert client.get(f"{BASE}/{project_id}").json()["listing"]["id"] == made["id"]
+    linked = client.post(f"{BASE}/{project_id}/listing")
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["project"]["listing_id"] == made["id"]               # no second listing
+    assert [item.id for item in store.list_listings() if item.unit_id == estate["unit"].id] == [made["id"]]
+    assert store.get_listing(made["id"]).title == OFFER["headline"]
+
+
 def test_rejected_applicants_are_deleted_with_their_documents_and_traces(client):
     estate = _estate()
     project_id = _project(client, estate)["project"]["id"]
