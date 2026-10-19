@@ -19,6 +19,15 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
   - **Locked once settled** (also by the database).
 - **Plain deposit records of earlier versions** (status "gehalten" with a receipt date) are offered on the deposits page as "Kautionen aus dem bisherigen Datensatz" and taken over in one step after a confirmation, each on its receipt date. Records returned with an earlier version read "Abgerechnet" instead of "Vereinbart". Migration `a7d3c5e9f2b1` adds the fields and refuses a downgrade while a deposit uses them.
 - **Interface:** one type scale, spacing tokens and control heights; native fields, selects and `<details>` follow the app's look; shared tab bars, page headers and filter rows on the finance and work pages; larger tap targets on touch screens.
+- **Every form saves as it is filled in** (checked by saving each "Neu" form with only its required fields, then editing and deleting the record, in Chromium):
+  - **Budgets, tax rates:** an empty optional field ("Tatsächlicher Betrag", "Standard") was refused; it now means 0 or "Nein".
+  - **Escalation rules:** they could not be created at all; the model asked for two fields the form never shows.
+  - **Service contracts:** the drafts of the create form and of the forms on the contract's page were refused, so nothing was kept while typing.
+  - **Rent charges:** the month is a month field and must be JJJJ-MM; any text had been stored.
+  - **Contacts:** a contact needs a name or a company.
+  - **Invoices:** VAT and gross follow net and rate until one of them is typed by hand.
+  - **Messages:** server messages use the form's labels instead of field keys and German money, and the expected gross is rounded to the cent.
+- **Confirmations name their action:** "Wirklich löschen?" with a red "Löschen" only for deletions. Otherwise "Bitte bestätigen" with "Als bezahlt markieren", "Stornieren", "Archivieren", "Deaktivieren", "Kündigung zurücknehmen", "Zuordnung lösen" or "Update anwenden".
 - **Fixes:**
   - the first visit of a list and every unmarked favourite logged a failed request;
   - TEHA, document intake and duplicate check named themselves "Dashboard";
