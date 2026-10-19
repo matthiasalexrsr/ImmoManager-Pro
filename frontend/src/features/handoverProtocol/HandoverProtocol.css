@@ -66,7 +66,7 @@
 
 .handover__eyebrow {
   color: var(--color-primary);
-  font-size: .76rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -121,7 +121,7 @@
 .handover__meter-name small,
 .handover__list small {
   color: var(--color-text-muted);
-  font-size: .82rem;
+  font-size: var(--text-xs);
 }
 
 .handover__summary strong,
@@ -253,7 +253,7 @@
 }
 
 .handover__photo figcaption {
-  font-size: .75rem;
+  font-size: var(--text-2xs);
   overflow-wrap: anywhere;
 }
 

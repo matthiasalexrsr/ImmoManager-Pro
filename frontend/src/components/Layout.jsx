@@ -14,7 +14,7 @@ import {
   SettingsIcon, MenuIcon, CloseIcon, HelpIcon,
 } from './Icons';
 import { Keyboard, Star } from 'lucide-react';
-import { NAV_SECTIONS } from './navigation';
+import { NAV_SECTIONS, SUB_PAGES } from './navigation';
 import ShortcutHelp from './ShortcutHelp';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavFavorites } from '../utils/navFavorites';
@@ -36,6 +36,8 @@ function findActiveNavItem(pathname) {
     ? pathname === '/'
     : pathname === item.to || pathname.startsWith(`${item.to}/`));
 }
+
+const findSubPage = pathname => SUB_PAGES.find(page => pathname === page.to || pathname.startsWith(`${page.to}/`));
 
 /** "Testversion" in the top bar when the server runs the test package (fictitious data). */
 function TestVersionBadge() {
@@ -106,9 +108,13 @@ function LayoutFrame() {
   const collapsed = prefs.sidebar_collapsed && !mobile;
   const tr = (key, fallback) => { const result = t(key); return !result || result === key ? fallback : result; };
   const activeItem = findActiveNavItem(location.pathname);
-  const activeSection = NAV_SECTIONS.find(section => section.items.includes(activeItem));
-  const activeGroup = GROUPS.find(section => section.items.some(item => item.to === activeItem?.to))?.labelKey;
-  const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback) : tr('navigation.main.dashboard', 'Dashboard');
+  const subPage = activeItem ? null : findSubPage(location.pathname);
+  // A sub-page belongs to the section (and open group) of the entry it is opened from.
+  const sectionItem = activeItem || ALL_ITEMS.find(item => item.to === subPage?.parent);
+  const activeSection = NAV_SECTIONS.find(section => section.items.includes(sectionItem));
+  const activeGroup = GROUPS.find(section => section.items.some(item => item.to === sectionItem?.to))?.labelKey;
+  const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback)
+    : subPage ? tr(subPage.labelKey, subPage.fallback) : tr('pages.notFound.title', 'Seite nicht gefunden');
 
   // /bookings?neu=1 (a quick action of the search): drop the marker so a reload or a later
   // filter change does not open the form again, then ask the page's list for its New form.

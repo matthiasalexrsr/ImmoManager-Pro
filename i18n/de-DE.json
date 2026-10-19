@@ -76,6 +76,11 @@
       "unit": "Neue Einheit",
       "lead": "Neuer Interessent",
       "contract": "Neuer Mietvertrag"
+    },
+    "sub": {
+      "documentQueue": "Dokumenteneingang",
+      "duplicateCheck": "Dubletten prüfen",
+      "teha": "TEHA Kundenportal"
     }
   },
   "topBar": {
@@ -693,7 +698,8 @@
         "date": "Datum",
         "paymentText": "Buchungstext",
         "receiptUrl": "Beleg-URL"
-      }
+      },
+      "account": "Konto"
     },
     "categories": {
       "rentIncome": "Mieteinnahmen",
@@ -1095,6 +1101,16 @@
       "title": "Archivieren?",
       "body": "Sie können archivierte Einträge später wiederherstellen.",
       "archive": "Archivieren"
+    },
+    "confirm": {
+      "title": "Bitte bestätigen",
+      "archive": "Archivieren",
+      "markPaid": "Als bezahlt markieren",
+      "reverse": "Stornieren",
+      "apply": "Update anwenden",
+      "deactivate": "Deaktivieren",
+      "withdraw": "Kündigung zurücknehmen",
+      "unlink": "Zuordnung lösen"
     }
   },
   "toasts": {

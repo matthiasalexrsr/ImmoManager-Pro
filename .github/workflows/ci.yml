@@ -162,7 +162,7 @@ jobs:
       - name: Verify private assistant ownership and draft handoff on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py backend/tests/test_assistant_tools.py backend/tests/test_assistant_handoff.py backend/tests/test_assistant_findings.py backend/tests/test_assistant_investigation.py
       - name: Verify scoped history traversal on PostgreSQL
-        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label history-release backend/tests/test_history_postgres.py
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label history-release backend/tests/test_history_native.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@v4

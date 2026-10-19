@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
+import { deriveAmounts } from '../utils/invoiceAmounts';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
@@ -188,7 +189,7 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.supplier}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/invoices/${row.id}`);
     refreshData();
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
@@ -273,7 +274,8 @@ export default function Invoices() {
           write: true,
           icon: <CheckCircleIcon size={15} />,
           onClick: async () => {
-            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`)) markPaid(row);
+            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`,
+              { action: 'markPaid' })) markPaid(row);
           },
         }] : [])]}
       />
@@ -285,6 +287,7 @@ export default function Invoices() {
           fields={assistantHandoff.identifier ? fields.filter(field => !['invoice_number', 'payment_reference', 'category', 'notes'].includes(field.key))
             .map(field => field.key === 'status' ? { ...field, options: [{ value: 'open', label: 'Offen' }] } : field) : fields}
           initial={modal === 'create' ? prefill : modal}
+          derive={deriveAmounts}
           onSave={handleSave}
           onClose={() => { setModal(null); setPrefill(null);
             if (assistantSaved.current) { assistantSaved.current = false; navigate(assistantHandoff.returnHref); }

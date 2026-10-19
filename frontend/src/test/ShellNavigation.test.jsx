@@ -141,3 +141,15 @@ it('zeigt die Arbeitszentrale in der Navigation und öffnet ihre Gruppe bei Dire
   expect(workCenter).toHaveAttribute('aria-current', 'page');
   expect(within(navigation).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-expanded', 'true');
 });
+
+it('names sub-pages without a sidebar entry in the section they are opened from', () => {
+  show('/teha');
+  expect(document.querySelector('.top-bar-page-title')).toHaveTextContent('Konfiguration/TEHA Kundenportal');
+  expect(document.title).toBe('TEHA Kundenportal · ImmoManager Pro');
+  cleanup();
+  show('/duplicate-check');
+  expect(document.querySelector('.top-bar-page-title')).toHaveTextContent('Overview/Dubletten prüfen');
+  cleanup();
+  show('/gibt-es-nicht');
+  expect(document.title).toBe('Seite nicht gefunden · ImmoManager Pro');
+});

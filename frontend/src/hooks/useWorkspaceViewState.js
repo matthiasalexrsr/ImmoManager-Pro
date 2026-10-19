@@ -25,10 +25,11 @@ export default function useWorkspaceViewState(context, state, apply) {
     initial.current = JSON.stringify(latest.current);
     if (!owner || !context) return;
     let live = true;
-    workspace.get('view-state', context).then(saved => {
+    // null: nothing saved for this list yet (a 404 from an older server means the same).
+    workspace.get('view-state', context, undefined, { missing_ok: true }).then(saved => {
       if (!live || generation !== epoch.current || currentIdentity.current !== identity) return;
-      row.current = saved; ready.current = true;
-      if (initial.current === JSON.stringify(latest.current)) applyRef.current(saved.state);
+      row.current = saved || null; ready.current = true;
+      if (saved && initial.current === JSON.stringify(latest.current)) applyRef.current(saved.state);
       setLoaded(value => value + 1);
     }).catch(failure => {
       if (live && generation === epoch.current && currentIdentity.current === identity && failure.statusCode === 404) {

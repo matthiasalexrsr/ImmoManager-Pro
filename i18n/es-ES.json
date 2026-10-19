@@ -75,6 +75,11 @@
       "unit": "Nueva unidad",
       "lead": "Nuevo interesado",
       "contract": "Nuevo contrato de alquiler"
+    },
+    "sub": {
+      "documentQueue": "Entrada de documentos",
+      "duplicateCheck": "Comprobar duplicados",
+      "teha": "Portal de clientes TEHA"
     }
   },
   "topBar": {
@@ -692,7 +697,8 @@
         "date": "Fecha",
         "paymentText": "Concepto",
         "receiptUrl": "URL del justificante"
-      }
+      },
+      "account": "Cuenta"
     },
     "categories": {
       "rentIncome": "Ingresos por alquiler",
@@ -1094,6 +1100,16 @@
       "title": "¿Archivar?",
       "body": "Puede restaurar las entradas archivadas más adelante.",
       "archive": "Archivar"
+    },
+    "confirm": {
+      "title": "Confirme, por favor",
+      "archive": "Archivar",
+      "markPaid": "Marcar como pagada",
+      "reverse": "Anular",
+      "apply": "Aplicar actualización",
+      "deactivate": "Desactivar",
+      "withdraw": "Retirar la rescisión",
+      "unlink": "Desvincular"
     }
   },
   "toasts": {

@@ -196,7 +196,7 @@ export default function FinanceTab({ contract, canWrite, today }) {
                       <td>{bill.transfers.length ? bill.transfers.map(tr => `${tr.billing_period_label}: ${formatMoney(tr.amount)}`).join('; ') : '—'}</td>
                       <td>{canWrite && <button type="button" className="btn btn-sm btn-danger"
                         aria-label={`${t('serviceContracts.remove')}: ${formatDate(bill.invoice.invoice_date)}`}
-                        onClick={async () => { if (!confirm || await confirm(t('serviceContracts.confirmUnlinkBill'))) run(() => api.del(`${base}/invoices/${encodeURIComponent(bill.id)}`)); }}>
+                        onClick={async () => { if (!confirm || await confirm(t('serviceContracts.confirmUnlinkBill'), { action: 'unlink' })) run(() => api.del(`${base}/invoices/${encodeURIComponent(bill.id)}`)); }}>
                         {t('serviceContracts.remove')}</button>}</td>
                     </tr>
                   ))}

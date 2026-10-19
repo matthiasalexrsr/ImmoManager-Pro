@@ -41,7 +41,7 @@ def test_contact_names_and_company_are_findable_with_readable_result(search_stor
     matches = [hit for hit in result["results"] if hit["id"] == person.id]
     assert matches == [{"entity_type": "contact", "id": person.id,
                         "display": "Johanna Winkelmann", "detail": "Nordlicht Haustechnik",
-                        "url": "/contacts"}]
+                        "url": f"/contacts?focus_id={person.id}"}]
 
 
 @pytest.mark.parametrize("payload,query,label", [

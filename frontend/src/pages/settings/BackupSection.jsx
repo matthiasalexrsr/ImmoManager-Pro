@@ -88,7 +88,7 @@ export default function BackupSection() {
           <div className="settings-row">
             <label>{tr('settings.dataBackup.dbDetails', 'DB-Details')}</label>
             <div className="settings-control">
-              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                 {dbInfo.error || JSON.stringify(dbInfo, null, 2).slice(0, 200)}
               </span>
             </div>
@@ -100,7 +100,7 @@ export default function BackupSection() {
             <button className="btn btn-sm btn-primary" onClick={handleBackup}>
               {tr('settings.dataBackup.createBackup', 'Backup erstellen')}
             </button>
-            {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>{backupStatus}</span>}
+            {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: 'var(--text-xs)' }}>{backupStatus}</span>}
           </div>
         </div>
         <div className="settings-row">

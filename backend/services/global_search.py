@@ -14,6 +14,7 @@ import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from sqlalchemy import LargeBinary, case, cast, func, literal, select
 
@@ -48,45 +49,46 @@ class SearchType:
     url: Callable[[Any], str]
 
 
-def _fixed(url: str) -> Callable[[Any], str]:
-    return lambda _item: url
+def _focused(path: str, parameter: str = "focus_id") -> Callable[[Any], str]:
+    """The list opened on the found record (lists show only it until "Alle Vorgänge anzeigen")."""
+    return lambda item: f"{path}?{parameter}={quote(str(item.id), safe='')}"
 
 
 # Order is the display order of the overview. Every field is a column of the table
 # and a field of the memory model (checked in test_global_search).
 SEARCH_TYPES: tuple[SearchType, ...] = (
     SearchType("property", "properties", "list_properties", ("name", "address_line", "postal_code", "city"),
-               lambda p: p.name, lambda p: p.city or "", lambda p: f"/properties/{p.id}"),
+               lambda p: p.name, lambda p: p.city or "", lambda p: f"/properties/{quote(str(p.id), safe='')}"),
     SearchType("tenant", "tenants", "list_tenants", ("full_name", "email"),
-               lambda t: t.full_name, lambda t: t.email or "", _fixed("/tenants")),
+               lambda t: t.full_name, lambda t: t.email or "", _focused("/tenants")),
     SearchType("unit", "units", "list_units", ("label",),
-               lambda u: u.label, lambda u: u.unit_type, lambda u: f"/units/{u.id}"),
+               lambda u: u.label, lambda u: u.unit_type, lambda u: f"/units/{quote(str(u.id), safe='')}"),
     SearchType("contract", "contracts", "list_contracts", ("contract_number",),
-               lambda c: c.contract_number, lambda c: c.status, _fixed("/contracts")),
+               lambda c: c.contract_number, lambda c: c.status, _focused("/contracts")),
     SearchType("task", "tasks", "list_tasks", ("title", "description"),
-               lambda t: t.title, lambda t: t.status, _fixed("/tasks")),
+               lambda t: t.title, lambda t: t.status, _focused("/tasks")),
     SearchType("invoice", "invoices", "list_invoices", ("supplier", "payment_terms"),
-               lambda i: i.supplier, lambda i: str(float(i.gross_amount)), _fixed("/invoices")),
+               lambda i: i.supplier, lambda i: str(float(i.gross_amount)), _focused("/invoices")),
     SearchType("account", "accounts", "list_accounts", ("name", "bank_name", "iban"),
-               lambda a: a.name, lambda a: a.account_type or "", _fixed("/accounts")),
+               lambda a: a.name, lambda a: a.account_type or "", _focused("/accounts")),
     SearchType("booking", "bookings", "list_bookings", ("payment_text",),
-               lambda b: b.payment_text or _short(b), lambda b: str(float(b.amount)), _fixed("/bookings")),
+               lambda b: b.payment_text or _short(b), lambda b: str(float(b.amount)), _focused("/bookings", "booking_id")),
     SearchType("maintenance", "maintenance_cases", "list_maintenance_cases", ("title", "description"),
-               lambda m: m.title, lambda m: m.status, _fixed("/maintenance")),
+               lambda m: m.title, lambda m: m.status, lambda m: f"/maintenance/{quote(str(m.id), safe='')}"),
     SearchType("document", "documents", "list_documents", ("title", "description"),
-               lambda d: d.title, lambda d: d.document_type or "", _fixed("/documents")),
+               lambda d: d.title, lambda d: d.document_type or "", _focused("/documents")),
     SearchType("contact", "contacts", "list_contacts", ("first_name", "last_name", "company_name", "email"),
-               _contact_display, lambda c: c.company_name or "", _fixed("/contacts")),
+               _contact_display, lambda c: c.company_name or "", _focused("/contacts")),
     SearchType("deposit", "deposits", "list_deposits", ("notes",),
-               lambda d: f"Kaution {_short(d)}", lambda d: d.status or "", _fixed("/deposits")),
+               lambda d: f"Kaution {_short(d)}", lambda d: d.status or "", _focused("/deposits", "deposit_id")),
     SearchType("category", "categories", "list_categories", ("name",),
-               lambda c: c.name, lambda c: c.category_type or "", _fixed("/categories")),
+               lambda c: c.name, lambda c: c.category_type or "", _focused("/categories")),
     SearchType("lead", "leads", "list_leads", ("full_name", "email"),
-               lambda x: x.full_name or _short(x), lambda x: x.status or "", _fixed("/leads")),
+               lambda x: x.full_name or _short(x), lambda x: x.status or "", _focused("/leads")),
     SearchType("listing", "listings", "list_listings", ("title", "description"),
-               lambda x: x.title or _short(x), lambda x: x.status or "", _fixed("/listings")),
+               lambda x: x.title or _short(x), lambda x: x.status or "", _focused("/listings")),
     SearchType("insurance", "insurances", "list_insurances", ("provider", "policy_number", "insurance_type"),
-               lambda x: x.provider or _short(x), lambda x: x.insurance_type or "", _fixed("/insurances")),
+               lambda x: x.provider or _short(x), lambda x: x.insurance_type or "", _focused("/insurances")),
 )
 TYPES_BY_NAME = {spec.entity_type: spec for spec in SEARCH_TYPES}
 

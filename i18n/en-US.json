@@ -75,6 +75,11 @@
       "unit": "New unit",
       "lead": "New lead",
       "contract": "New rental contract"
+    },
+    "sub": {
+      "documentQueue": "Document intake",
+      "duplicateCheck": "Check duplicates",
+      "teha": "TEHA customer portal"
     }
   },
   "topBar": {
@@ -692,7 +697,8 @@
         "date": "Date",
         "paymentText": "Booking text",
         "receiptUrl": "Receipt URL"
-      }
+      },
+      "account": "Account"
     },
     "categories": {
       "rentIncome": "Rent Income",
@@ -1094,6 +1100,16 @@
       "title": "Archive?",
       "body": "You can restore archived entries later.",
       "archive": "Archive"
+    },
+    "confirm": {
+      "title": "Please confirm",
+      "archive": "Archive",
+      "markPaid": "Mark as paid",
+      "reverse": "Reverse",
+      "apply": "Apply update",
+      "deactivate": "Deactivate",
+      "withdraw": "Withdraw notice",
+      "unlink": "Unlink"
     }
   },
   "toasts": {

@@ -1,20 +1,20 @@
 /* "Erste Schritte" on the dashboard of a new installation */
 .setup-checklist { padding: 20px 24px; margin-bottom: 24px; border-color: var(--color-primary); }
 .setup-checklist-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.setup-checklist-head h2 { margin: 2px 0 0; font-size: 1.15rem; }
-.setup-checklist-eyebrow { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--color-primary); }
+.setup-checklist-head h2 { margin: 2px 0 0; font-size: var(--text-xl); }
+.setup-checklist-eyebrow { margin: 0; font-size: var(--text-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--color-primary); }
 .setup-checklist-steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
 .setup-checklist-steps li { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 12px;
   padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px; }
 .setup-checklist-steps li.is-next { border-color: var(--color-primary); background: var(--color-primary-light); }
 .setup-checklist-steps li.is-done { opacity: .75; }
 .setup-checklist-mark { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 13px; border: 1px solid var(--color-border); background: var(--color-surface); }
+  font-weight: 700; font-size: var(--text-sm); border: 1px solid var(--color-border); background: var(--color-surface); }
 .setup-checklist-steps li.is-done .setup-checklist-mark { background: var(--color-success); border-color: var(--color-success); color: #fff; }
 .setup-checklist-text { display: flex; flex-direction: column; min-width: 0; }
 .setup-checklist-text small { color: var(--color-text-secondary); }
-.setup-checklist-state { font-size: 13px; color: var(--color-success); font-weight: 600; }
-.setup-checklist-note { margin: 14px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+.setup-checklist-state { font-size: var(--text-sm); color: var(--color-success); font-weight: 600; }
+.setup-checklist-note { margin: 14px 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
 @media (max-width: 640px) {
   .setup-checklist { padding: 16px; }
   .setup-checklist-steps li { grid-template-columns: 28px 1fr; }

@@ -7,6 +7,7 @@ test_dunning_postgres.py). Pure rules: test_dunning_process.py.
 """
 
 import hashlib
+import re
 from datetime import date, datetime
 
 import pytest
@@ -510,6 +511,9 @@ def test_the_escalation_job_proposes_each_due_stage_once_and_never_sends(client,
     _escalate(jobs, "2026-07-11")
     assert _proposals() == ["Mahnvorschlag: Zahlungserinnerung – Vertrag V-1",
                             "Mahnvorschlag: Zahlungserinnerung – Vertrag V-2"]
+    # the amounts read as German money
+    content = next(n.content for n in store.list_notifications() if n.title.endswith("Vertrag V-1"))
+    assert re.search(r"über \d{1,3}(\.\d{3})*,\d{2} € \(Hauptforderung \d{1,3}(\.\d{3})*,\d{2} €\)", content), content
     assert client.get(f"{API}/overview", headers=owner).json()["counts"]["drafts"] == 0     # nothing created
 
     _letter(client, owner, lease["contract"].id, "2026-07-12")

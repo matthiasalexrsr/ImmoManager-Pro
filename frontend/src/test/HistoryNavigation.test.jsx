@@ -98,12 +98,12 @@ describe('complete, navigable history pages', () => {
     const link = await screen.findByRole('link', { name: identifier });
     expect(link).toHaveAttribute('href', `/contracts?contract_id=${encodeURIComponent(identifier)}`);
     const cells = within(link.closest('tr')).getAllByRole('cell');
-    const oldValue = within(cells[5]).getByText(fullOld);
-    const newValue = within(cells[6]).getByText(fullNew);
+    const oldValue = within(cells[3]).getByText(fullOld);
+    const newValue = within(cells[4]).getByText(fullNew);
     expect(oldValue).not.toBeVisible();
     expect(newValue).not.toBeVisible();
-    fireEvent.click(within(cells[5]).getByText(/Vollständiger Wert/));
-    fireEvent.click(within(cells[6]).getByText(/Vollständiger Wert/));
+    fireEvent.click(within(cells[3]).getByText(/Vollständiger Wert/));
+    fireEvent.click(within(cells[4]).getByText(/Vollständiger Wert/));
     expect(oldValue).toBeVisible();
     expect(newValue).toBeVisible();
     expect(screen.getByText('full-legacy-record-identifier')).toBeInTheDocument();

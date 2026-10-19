@@ -17,6 +17,60 @@ const STAGES = ['agreed', 'partially_received', 'received', 'settlement_draft', 
   'provided', 'released'];
 const PAGE = 50;
 
+/** Plain records of earlier versions (held since a receipt date): take them over as received, after a confirmation. */
+function LegacyTakeover({ say, service, refresh, onDone }) {
+  const [data, setData] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const request = service.legacyCandidates?.({ signal: controller.signal });
+    request?.then(value => { if (!controller.signal.aborted) setData(value); })
+      .catch(() => { if (!controller.signal.aborted) setData(null); });
+    return () => controller.abort();
+  }, [refresh, service]);
+
+  const takeOver = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await service.takeOverLegacy(data.items.map(item => item.id));
+      setDone(say('legacyDone', { count: result.taken_over }));
+      setConfirming(false);
+      onDone();
+    } catch (failure) {
+      setError(failure?.message || say('loadFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) return <div className="alert alert-success" role="status">{done}</div>;
+  if (!data?.count) return null;
+  return <section className="deposits-page__legacy" aria-label={say('legacyTitle')}>
+    <h2>{say('legacyTitle')}</h2>
+    <p>{say('legacyText', { count: data.count, amount: formatMoney(data.amount) })}</p>
+    <details>
+      <summary>{say('legacyShow')}</summary>
+      <ul>{data.items.map(item => <li key={item.id}>{item.contract_number} · {item.tenant_name || '—'} · {formatMoney(item.amount)}
+        {' · '}{say('heldSince', { date: formatDate(item.held_date) })}</li>)}</ul>
+    </details>
+    {error && <p className="deposits-page__legacy-error" role="alert">{error}</p>}
+    {confirming ? <div className="deposits-page__legacy-confirm" role="group" aria-label={say('legacyAction')}>
+      <p>{say('legacyConfirm', { count: data.count })}</p>
+      <div className="deposits-page__legacy-actions">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setConfirming(false)}>{say('cancel')}</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void takeOver()}>{say('legacyYes')}</button>
+      </div>
+    </div> : <div className="deposits-page__legacy-actions">
+      <button type="button" className="btn btn-primary btn-sm" onClick={() => setConfirming(true)}>{say('legacyAction')}</button>
+    </div>}
+  </section>;
+}
+
 /** Every deposit file the account may see, with what was received and where it stands; all counted, paged. */
 export default function Deposits({ service = depositService }) {
   const [params, setParams] = useSearchParams();
@@ -71,6 +125,7 @@ export default function Deposits({ service = depositService }) {
     <div className="page-header"><h1>{say('pageTitle')}</h1></div>
     {error && <div className="alert alert-error" role="alert">{error}{' '}
       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAttempt(v => v + 1)}>{say('retry')}</button></div>}
+    {canEdit && <LegacyTakeover say={say} service={service} refresh={attempt} onDone={changed} />}
     <div className="deposits-page__filters">
       <label htmlFor={`${id}-q`}>{say('search')}
         <input id={`${id}-q`} type="search" value={query} onChange={event => { setQuery(event.target.value); setSkip(0); }} /></label>

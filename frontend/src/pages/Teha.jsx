@@ -244,7 +244,7 @@ export default function Teha() {
     {row.predecessor_id && <span>Neue Fassung zu Übernahme {row.predecessor_id}</span>}
     <div className="teha-actions">{row.document_id && <><button onClick={() => download(row)}>Original herunterladen</button><Link to={`/documents?focus_id=${row.document_id}`}>Dokumentenakte</Link></>}
       {row.task_id && <Link to={`/tasks?focus_id=${row.task_id}`}>Aufgabe</Link>}{row.project_id && <Link to={`/maintenance/${row.project_id}`}>Projekt</Link>}</div></li>;
-  return <main className="page teha-workspace"><h1>TEHA Kundenportal</h1>
+  return <div className="page teha-workspace"><h1>TEHA Kundenportal</h1>
     <p>Empfangen, exakt zuordnen und nach Prüfung übernehmen. Die Vorschau verändert keine Abrechnung und sendet keine Daten an TEHA.</p>
     <p><Link to="/integration-connections">Verbindungen verwalten</Link> · <Link to="/documents">Dokumente</Link></p>
     {error && <div role="alert" className="alert alert-danger">{error}</div>}
@@ -313,5 +313,5 @@ export default function Teha() {
           <button disabled>Kosten-/Nutzerdaten übertragen</button> <button disabled>Wartungsauftrag senden</button></section>
       </>}
     </fieldset>
-  </main>;
+  </div>;
 }

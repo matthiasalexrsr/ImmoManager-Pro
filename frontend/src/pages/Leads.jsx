@@ -21,7 +21,7 @@ const COLUMNS = [
       return (
         <span style={{
           display: 'inline-block', width: 24, height: 24, lineHeight: '24px',
-          borderRadius: '50%', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700,
+          borderRadius: '50%', textAlign: 'center', fontSize: 'var(--text-2xs)', fontWeight: 700,
           background: PRIORITY_COLORS[p] || 'var(--text-secondary)', color: '#fff',
         }}>
           {p}
@@ -148,7 +148,7 @@ export default function Leads() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.full_name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/leads/${row.id}`);
@@ -194,7 +194,7 @@ export default function Leads() {
             key={opt.value}
             className={`btn btn-sm ${(focused ? 'none' : groupBy) === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
-            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+            style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
           >
             {opt.label}
           </button>
@@ -205,7 +205,7 @@ export default function Leads() {
       {grouped.map((group, gi) => (
         <div key={gi} style={{ marginBottom: group.label ? '2rem' : 0 }}>
           {group.label && (
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
               {group.label} ({group.leads.length})
             </h3>
           )}

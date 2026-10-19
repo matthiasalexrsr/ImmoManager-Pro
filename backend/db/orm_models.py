@@ -607,6 +607,12 @@ class DepositORM(Base):
     released_on: Mapped[date | None] = mapped_column(Date)
     release_document_id: Mapped[str | None] = mapped_column(String(36))
     release_note: Mapped[str | None] = mapped_column(Text)
+    # Takeover (migration a7d3c5e9f2b1): a deposit paid before this app's bookings begin. On `carried_on`
+    # the app takes over `carried_amount` received and `carried_interest` credited until then.
+    carried_on: Mapped[date | None] = mapped_column(Date)
+    carried_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    carried_interest: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    carried_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

@@ -168,7 +168,7 @@ export default function RentOverview() {
     {error && <div className="alert alert-error" role="alert">{error} <button type="button" onClick={refresh}>Erneut laden</button></div>}
     {loading && <p role="status">Mieten und Zahlungseingänge werden geladen…</p>}
     {ledger && <>
-      <p><strong>{formatMonth(ledger.month)}</strong> · Zahlungsstand {formatDate(ledger.as_of)}</p>
+      <p className="rent-overview-period"><strong>{formatMonth(ledger.month)}</strong> · Zahlungsstand {formatDate(ledger.as_of)}</p>
       <div className={`stats-grid${amountKeys.some(key => formatMoney(ledger.totals[key]).length > 16) ? ' rent-summary-long-values' : ''}`}>
         {[['expected', 'Vereinbarte Miete'], ['paid', 'Aus Zahlungen gedeckt'], ['outstanding', 'Offen im Mietmonat'], ['contract_credit', 'Guthaben der angezeigten Verträge']]
           .map(([key, label]) => <div className="stat-card" key={key}><div className="stat-label">{label}</div>

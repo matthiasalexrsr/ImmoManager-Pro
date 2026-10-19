@@ -31,7 +31,8 @@ target_metadata = Base.metadata
 # schema-sync migration, which then adds whatever their version lacks.
 ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 ORM_ADOPTION_HEAD = "f016a1b2c001"
-ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001", "f020a1b2c001"})
+ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001",
+                                   "f020a1b2c001", "a7d3c5e9f2b1", "f021a1b2c001"})
 
 
 def _current_addition_names():
@@ -96,6 +97,10 @@ def _current_additions_are_present(connection) -> bool:
         if (action == 'add_column' and difference[2] == 'billing_objections'
                 and difference[3].name in {'decision_revision', 'decision_reason', 'decision_actor_id',
                     'decision_key', 'decided_at', 'decision_source_sha256', 'source_period_status'}):
+            continue
+        # Likewise the deposit takeover columns of a7d3c5e9f2b1 (guarded, additive).
+        if (action == 'add_column' and difference[2] == 'deposits'
+                and difference[3].name in {'carried_on', 'carried_amount', 'carried_interest', 'carried_note'}):
             continue
         if action == 'add_table' and item.name not in additions:
             continue

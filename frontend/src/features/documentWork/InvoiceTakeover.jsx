@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { sourceCommand } from './documentWorkApi';
+import AppLink from '../../components/AppLink';
 
 const FIELDS = [
   ['supplier', 'Lieferant', 'text'], ['invoice_number', 'Rechnungsnummer', 'text'],
@@ -44,7 +45,7 @@ export default function InvoiceTakeover({ source, proposal, perform, disabled, b
     <p>Erkannte Angaben sind Vorschläge. Prüfen Sie jede Angabe am Original. Die Übernahme eröffnet die vorhandene Rechnungsprüfung; eine Freigabe oder Buchung erfolgt erst in deren eigenen Schritten.</p>
     {proposal.observation_state === 'stale' && <p role="alert">Die gespeicherte Erkennung stammt aus einer anderen Dateifassung. Erfassen Sie die aktuellen Werte am Original neu.</p>}
     <details><summary>Erkennung und Quellenfelder anzeigen</summary><pre>{JSON.stringify(proposal.observed, null, 2)}</pre></details>
-    {result ? <p role="status">Rechnung übernommen. <a href={`/invoice-review/${result.invoice_id}`}>Rechnungsprüfung öffnen</a></p>
+    {result ? <p role="status">Rechnung übernommen. <AppLink to={`/invoice-review/${result.invoice_id}`}>Rechnungsprüfung öffnen</AppLink></p>
       : <form onSubmit={submit}>
         <div className="document-invoice-grid">{FIELDS.map(([name, label, type]) => <div key={name}>
           <label>{label}<input required type={type} value={values[name]} onChange={event => setValues(previous => ({ ...previous, [name]: event.target.value }))} /></label>

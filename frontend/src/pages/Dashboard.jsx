@@ -316,8 +316,8 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={cashflowData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
+                    <XAxis dataKey="name" tick={{ fontSize: 'var(--text-xs)' }} />
+                    <YAxis tick={{ fontSize: 'var(--text-2xs)' }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {cashflowData.map((entry, i) => (
@@ -334,8 +334,8 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={agingData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
+                    <XAxis dataKey="name" tick={{ fontSize: 'var(--text-2xs)' }} />
+                    <YAxis tick={{ fontSize: 'var(--text-2xs)' }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="value" fill="#d97706" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -351,8 +351,8 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={forecastData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
+                    <XAxis dataKey="name" tick={{ fontSize: 'var(--text-2xs)' }} />
+                    <YAxis tick={{ fontSize: 'var(--text-2xs)' }} tickFormatter={v => formatMoneyCompact(v)} width={72} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Legend />
                     <Line type="monotone" dataKey={forecastBalanceLabel} stroke="#2563eb" strokeWidth={2} dot={false} />
@@ -368,8 +368,8 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={maintData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => formatMoneyCompact(v)} />
-                    <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
+                    <XAxis type="number" tick={{ fontSize: 'var(--text-2xs)' }} tickFormatter={v => formatMoneyCompact(v)} />
+                    <YAxis type="category" dataKey="category" tick={{ fontSize: 'var(--text-2xs)' }} width={100} />
                     <Tooltip formatter={v => fmt(v)} />
                     <Bar dataKey="estimatedCost" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                   </BarChart>
@@ -388,7 +388,7 @@ export default function Dashboard() {
                       ))}
                     </Pie>
                     <Tooltip formatter={v => fmt(v)} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 'var(--text-2xs)' }} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}

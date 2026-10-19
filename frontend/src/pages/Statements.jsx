@@ -902,10 +902,10 @@ export default function Statements() {
           </button>
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
-            <Link to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
             <span className="text-muted">
               {propMap[selectedPeriod.property_id]?.name || '—'} · {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
             </span>
+            <Link className="detail-title-link" to={`/teha?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>TEHA Kundenportal für diese Periode</Link>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <StatusBadge status={selectedPeriod.status} />
@@ -1095,7 +1095,7 @@ export default function Statements() {
                 )}
                 <div>
                   <strong>{t('pages.statements.metrics')}</strong>
-                  <div className="text-muted" style={{ fontSize: '0.9rem' }}>
+                  <div className="text-muted" style={{ fontSize: 'var(--text-base)' }}>
                     {t('pages.statements.metricsContracts')}: {preflight.metrics?.contracts_in_period ?? 0} · {t('pages.statements.metricsCostItems')}: {preflight.metrics?.cost_items ?? 0} ·
                     {t('pages.statements.metricsMissingKeys')}: {preflight.metrics?.allocation_keys_missing ?? 0} · {t('pages.statements.metricsMissingArea')}: {preflight.metrics?.area_missing_units ?? 0}
                   </div>
@@ -1170,7 +1170,7 @@ export default function Statements() {
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header"><strong>{t('pages.statements.revisionHistory')}</strong></div>
             <div className="card-body billing-table-scroll" role="region" aria-label="Abrechnungsfassungen" tabIndex={0}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-base)' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color, #ddd)' }}>
                     <th style={{ textAlign: 'left', padding: '4px 8px' }}>{t('pages.statements.colLabel')}</th>
@@ -1247,7 +1247,7 @@ export default function Statements() {
                 {ocrDraft.ocr_fields && (
                   <div>
                     <strong>Erkannte Felder</strong>
-                    <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                    <table style={{ width: '100%', fontSize: 'var(--text-base)', borderCollapse: 'collapse' }}>
                       <tbody>
                         {ocrDraft.ocr_fields.supplier && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Lieferant</td>
@@ -1281,7 +1281,7 @@ export default function Statements() {
                 {ocrDraft.ocr_text_preview && (
                   <div>
                     <strong>Textvorschau</strong>
-                    <pre style={{ fontSize: '0.8rem', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                    <pre style={{ fontSize: 'var(--text-xs)', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
                       {ocrDraft.ocr_text_preview}
                     </pre>
                   </div>
@@ -1354,21 +1354,15 @@ export default function Statements() {
   return (
     <div className="page billing-workspace">
       {toast.Toast}
-      <div className="filter-chips"><label>Quelle <select value={sourceFilter} onChange={event => setParams(current => {
+      <div className="toolbar"><label className="inline-field">Quelle <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
         if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;
-      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label></div>
+      })}><option value="all">Abrechnungszeiträume</option><option value="statements">Alle Einzelabrechnungen</option><option value="preflight_blockers">Zeiträume mit Preflight-Fehlern</option></select></label>
+        {selectedPeriod && <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>Vorjahr kopieren</button>}</div>
       {loadError && <p role="alert">{loadError} <button type="button" onClick={loadData}>Erneut laden</button></p>}
       {sourceFilter === 'preflight_blockers' && <><p className="text-muted">Noch nicht abgeschlossene Zeiträume ohne abrechenbare Verträge, ohne Kosten oder mit einer unpassenden Schlüsselzuordnung.</p>
         {sourceRows.loading && <p role="status">Preflight-Quellen werden geladen…</p>}
         {sourceRows.error && <p role="alert">{sourceRows.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Preflight-Quelle erneut laden</button></p>}</>}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        {selectedPeriod && (
-          <button className="btn btn-sm btn-secondary" onClick={() => setModal('copy')}>
-            Vorjahr kopieren
-          </button>
-        )}
-      </div>
       <DataTable
         title={sourceFilter === 'statements' ? 'Einzelabrechnungen · Quellzeilen' : 'Nebenkostenabrechnungen'}
         columns={sourceFilter === 'statements' ? STMT_COLUMNS : COLUMNS}

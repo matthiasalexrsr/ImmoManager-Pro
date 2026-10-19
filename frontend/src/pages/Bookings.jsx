@@ -248,7 +248,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
-    { key: 'account_name', hidden: true, label: t('finance.accounts.form.name') || 'Konto', filterType: 'text',
+    { key: 'account_name', hidden: true, label: t('finance.bookings.account') || 'Konto', filterType: 'text',
       render: (v, row) => (row.account_id ? <Link to={`/bookings?konto=${encodeURIComponent(row.account_id)}`} className="entity-link"
         onClick={e => e.stopPropagation()}>{v}</Link> : v) },
     { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
@@ -281,7 +281,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   ];
 
   const fields = [
-    { key: 'account_id', label: t('finance.accounts.form.name') || 'Konto', required: true, type: 'select',
+    { key: 'account_id', label: t('finance.bookings.account') || 'Konto', required: true, type: 'select',
       options: accounts.map(a => ({ value: a.id, label: a.name })) },
     { key: 'category_id', label: t('finance.bookings.form.category') || 'Kategorie', type: 'select',
       options: [{ value: '', label: noneOpt }, ...categories.map(c => ({ value: c.id, label: c.name }))] },
@@ -356,7 +356,8 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const reverseBooking = async (row) => {
     if (!canWrite || reversing) return;
     if (!await confirm(`„${row.payment_text || formatDate(row.booking_date)}“ stornieren? Es wird eine Gegenbuchung über den `
-      + 'noch nicht stornierten Betrag angelegt; beide zusammen zählen in allen Auswertungen null.')) return;
+      + 'noch nicht stornierten Betrag angelegt; beide zusammen zählen in allen Auswertungen null.',
+    { action: 'reverse' })) return;
     setReversing(true);
     try {
       await api.post(`/bookings/${encodeURIComponent(row.id)}/reverse`, {});
@@ -373,7 +374,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const handleDelete = async (row) => {
     if (!canWrite) return;
-    if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.payment_text || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/bookings/${encodeURIComponent(row.id)}`);
       if (store) store.invalidateRelated('bookings', 'accounts', 'categories');

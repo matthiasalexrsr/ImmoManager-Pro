@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any, Callable, Optional
 
+from ..domain.money import money
 from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
 from .record_revisions import ExpectedRevision, collection_table
@@ -229,14 +231,19 @@ def invoice(data: Record, store: Any) -> None:
     net, gross, vat = data.get("net_amount"), data.get("gross_amount"), data.get("vat_amount")
     if isinstance(net, (int, float)) and isinstance(gross, (int, float)):
         if isinstance(vat, (int, float)) and vat:
-            expected = float(net + vat)
+            expected = float(money(net) + money(vat))
         elif isinstance(rate, (int, float)):
-            expected = net * (1 + rate / 100)
+            # VAT rounded half up to the cent, as the invoice states it
+            expected = float(money(net) + money(money(net) * Decimal(repr(rate)) / 100))
         else:
             return
         if abs(expected - gross) > 0.05:
-            raise ValidationError(f"Brutto {gross:.2f} € passt nicht zu Netto {net:.2f} € und MwSt "
-                                  f"(erwartet {expected:.2f} €)")
+            raise ValidationError(f"Brutto {_eur(gross)} passt nicht zu Netto {_eur(net)} und MwSt "
+                                  f"(erwartet {_eur(expected)})")
+
+
+def _eur(value: float) -> str:
+    return f"{value:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def maintenance(data: dict, store: Any) -> None:
@@ -290,6 +297,26 @@ def rent_period(data: dict, store: Any) -> None:
         raise ValidationError("Ein Mietstand gilt ab dem 1. eines Monats")
 
 
+MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+def rent_charge(data: dict, store: Any) -> None:
+    if _touched(data, "month") and not (isinstance(data["month"], str) and MONTH.match(data["month"])):
+        raise ValidationError("Der Monat bitte als JJJJ-MM angeben, z. B. 2026-06")
+    _not_negative(data, {"cold_rent": "Die Kaltmiete", "service_charge": "Die Betriebskosten",
+                         "heating_charge": "Die Heizkosten", "other_charges": "Die sonstigen Kosten",
+                         "amount_paid": "Der bezahlte Betrag"})
+
+
+def contact(data: dict, store: Any) -> None:
+    """A contact is found by a person's or a company's name; one of them is needed."""
+    if not any(isinstance(data.get(key), str) and data[key].strip()
+               for key in ("first_name", "last_name", "company_name")):
+        raise ValidationError("Bitte einen Namen oder eine Firma angeben")
+    for key, label in (("first_name", "Der Vorname"), ("last_name", "Der Nachname"), ("company_name", "Die Firma")):
+        _text(data, key, label)
+
+
 # path pattern (relative to /api/v1) -> (rule, getter of the stored record for changes)
 RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/units(?:/(?P<id>[^/]+))?$"), unit, "get_unit"),
@@ -305,6 +332,8 @@ RULES: list[tuple[re.Pattern, Callable, Optional[str]]] = [
     (re.compile(r"^/meters/(?P<meter>[^/]+)/readings$"), meter_reading, None),
     (re.compile(r"^/accounts(?:/(?P<id>[^/]+))?$"), account, "get_account"),
     (re.compile(r"^/contracts/[^/]+/rent-periods$"), rent_period, None),
+    (re.compile(r"^/rent-charges(?:/(?P<id>[^/]+))?$"), rent_charge, "get_rent_charge"),
+    (re.compile(r"^/contacts(?:/(?P<id>[^/]+))?$"), contact, "get_contact"),
 ]
 
 

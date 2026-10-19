@@ -99,6 +99,13 @@ describe('deposit API', () => {
     await expect(depositService.finalize('d-1', 's-1', { idempotencyKey: 'x', reviewHash: 'bad' })).rejects.toThrow();
     apiMock.post.mockResolvedValue({ broken: true });
     await expect(depositService.addPayment('d-1', 'b-1')).rejects.toThrow('invalid_deposit_file');
+    apiMock.put.mockResolvedValue(fileFixture());
+    await depositService.setTakeover('d-1', { base_revision: 'rev-1', carried_on: '2024-01-01', carried_amount: 1500 });
+    expect(apiMock.put).toHaveBeenCalledWith('/deposits/d-1/takeover',
+      { base_revision: 'rev-1', carried_on: '2024-01-01', carried_amount: 1500 }, expect.anything());
+    apiMock.post.mockResolvedValue({ taken_over: 2 });
+    await depositService.takeOverLegacy(['d-1', 'd-2']);
+    expect(apiMock.post).toHaveBeenLastCalledWith('/deposits/legacy-takeover', { deposit_ids: ['d-1', 'd-2'] }, expect.anything());
   });
 });
 
@@ -170,6 +177,33 @@ describe('DepositFile', () => {
     expect(await screen.findByText('Abgeschlossen. Das Original ist archiviert.')).toBeInTheDocument();
   });
 
+  it('takes over a deposit paid before the app, prefilled from the earlier record', async () => {
+    const legacy = fileFixture({ deposit: { ...fileFixture().deposit, held_date: '2024-01-01' }, legacy_candidate: true,
+      stage: 'agreed', received: 0, outstanding: 1500, payments: [] });
+    const taken = fileFixture({ deposit: { ...fileFixture().deposit, revision: 'rev-2', carried_on: '2024-01-01', carried_amount: 1500,
+      carried_interest: 15, carried_note: 'Kontoauszug 31.12.2024' }, payments: [],
+      interest: { until: '2026-10-11', total: 40.2, carried: 15, years: [], balance: 1540.2 } });
+    const api = { ...service(legacy), setTakeover: vi.fn(async () => taken) };
+    render(<DepositFile depositId="d-1" service={api} onClose={vi.fn()} />);
+    const section = await screen.findByRole('region', { name: 'Übernahme aus dem Vorsystem' });
+    fireEvent.click(within(section).getByRole('button', { name: 'Übernahme erfassen' }));
+    expect(within(section).getByText(/als gehalten seit 01.01.2024 erfasst/)).toBeInTheDocument();
+    expect(within(section).getByLabelText('Übernahmetag')).toHaveValue('2024-01-01');
+    expect(within(section).getByLabelText('Bis dahin eingegangen')).toHaveValue(1500);
+    fireEvent.change(within(section).getByLabelText('Bis dahin gutgeschriebene Zinsen'), { target: { value: '15' } });
+    fireEvent.change(within(section).getByLabelText('Nachweis / Vermerk (z. B. Kontoauszug)'), { target: { value: ' Kontoauszug 31.12.2024 ' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'Übernahme speichern' }));
+    await waitFor(() => expect(api.setTakeover).toHaveBeenCalledWith('d-1', { base_revision: 'rev-1', carried_on: '2024-01-01',
+      carried_amount: 1500, carried_interest: 15, carried_note: 'Kontoauszug 31.12.2024' }));
+    const after = await screen.findByRole('region', { name: 'Übernahme aus dem Vorsystem' });
+    expect(within(after).getByText(/Übernommen zum 01.01.2024: 1\.500,00\s€ eingegangen/)).toBeInTheDocument();
+    expect(screen.getByText(/davon bis zur Übernahme gutgeschrieben: 15,00\s€/)).toBeInTheDocument();
+    fireEvent.click(within(after).getByRole('button', { name: 'Übernahme ändern' }));
+    fireEvent.click(within(after).getByRole('button', { name: 'Übernahme entfernen' }));
+    await waitFor(() => expect(api.setTakeover).toHaveBeenLastCalledWith('d-1', { base_revision: 'rev-2', carried_on: null,
+      carried_amount: null, carried_interest: null, carried_note: null }));
+  });
+
   it('is read-only for a role without the deposit area', async () => {
     authState.write = ['/maintenance'];
     render(<DepositFile depositId="d-1" service={service(fileFixture({ settlements: [draftSettlement()] }))} onClose={vi.fn()} />);
@@ -177,6 +211,7 @@ describe('DepositFile', () => {
     expect(screen.queryByRole('button', { name: 'Vereinbarung ändern' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Zahlung zuordnen' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Prüfen' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Übernahme aus dem Vorsystem' })).toBeNull();
   });
 });
 

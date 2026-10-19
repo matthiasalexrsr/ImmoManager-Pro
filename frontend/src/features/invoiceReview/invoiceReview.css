@@ -3,20 +3,19 @@
 .ir-header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; }
 .ir-header h1 { overflow-wrap: anywhere; }
 .ir-back { margin-bottom: 0.5rem; }
-.ir-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border-color, #e5e7eb); margin: 0.75rem 0; }
-.ir-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 0.5rem 0.75rem; cursor: pointer;
-  color: inherit; font: inherit; }
-.ir-tab.active { border-bottom-color: var(--primary, #2563eb); font-weight: 600; }
 .ir-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0.5rem 0.75rem;
   align-items: end; margin-bottom: 0.75rem; }
-.ir-check { display: flex; gap: 0.5rem; align-items: center; min-height: 2.25rem; overflow-wrap: anywhere; }
+.ir-filters > .form-group { margin: 0; }
+.ir-check { display: flex; gap: 0.5rem; align-items: center; min-height: var(--control-height); overflow-wrap: anywhere; }
 .ir-check input { flex: none; }
+.ir-count { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
 .ir-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
-.ir-row { border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: var(--card-bg, #fff); }
-.ir-row-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem 0.75rem; padding: 0.625rem 0.75rem;
+.ir-row { border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); overflow: hidden; }
+.ir-row-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-3); padding: var(--space-3) var(--space-4);
   color: inherit; text-decoration: none; }
 .ir-row-link:hover, .ir-row-link:focus-visible { background: var(--hover-bg, rgba(37, 99, 235, 0.06)); }
-.ir-row-main { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.ir-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.ir-row-main .text-muted { font-size: var(--text-sm); }
 .ir-row-amount { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
 .ir-row-state { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
 .ir-paging { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }

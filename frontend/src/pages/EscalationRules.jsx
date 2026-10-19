@@ -82,7 +82,7 @@ export default function EscalationRules() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/escalation/rules/${row.id}`);

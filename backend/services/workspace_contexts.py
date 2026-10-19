@@ -160,6 +160,20 @@ def context_area(context: str) -> str:
             "dunning-action": "/dunning"}.get(key, "/" + key)
 
 
+def _service_contract_form_fields() -> set[str]:
+    """A service contract is created with its first location and tariff ("tariff_" fields); its page adds forms
+    for locations, tariffs, the cancellation, bills, payments and documents on the same route."""
+    sc = models_service_contracts
+    tariff = set(sc.TariffInput.model_fields) | {"price_label", "price_unit", "price"}
+    return (set(sc.LocationInput.model_fields) | tariff | {f"tariff_{key}" for key in tariff}
+            | set(sc.CancellationRequest.model_fields) | set(sc.InvoiceLinkRequest.model_fields)
+            | set(sc.PaymentLinkRequest.model_fields) | set(models.InvoiceCreate.model_fields)
+            | {"document_id", "allocation_key_id", "billing_period_id", "extraordinary"})
+
+
+SERVICE_CONTRACT_FORM_FIELDS = _service_contract_form_fields()
+
+
 def field_keys(context: str) -> set[str]:
     _, name = CONTEXTS[context_key(context)]
     if name == "WorkCenterView":
@@ -172,6 +186,8 @@ def field_keys(context: str) -> set[str]:
                 "follow_up_title", "follow_up_due", "follow_up_assignee", "follow_up_priority", "follow_up"}
     module = models_service_contracts if name == "ServiceContractCreate" else models
     keys = set(getattr(module, name).model_fields)
+    if name == "ServiceContractCreate":
+        keys |= SERVICE_CONTRACT_FORM_FIELDS
     if context_key(context) == "meters":
         keys |= set(models.MeterReadingCreate.model_fields) | set(models.StandaloneMeterReadingCreate.model_fields)
     # Forms may carry the optimistic token without making it editable domain data.

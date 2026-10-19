@@ -21,6 +21,7 @@ import { usePartyText } from './text';
 import EntityActions from '../workCenter/EntityActions';
 import EntityTimeline from '../workCenter/EntityTimeline';
 import './partyWorkspace.css';
+import AppLink from '../../components/AppLink';
 
 const PartyWorkspaceContext = createContext(null);
 
@@ -32,7 +33,7 @@ export function PartyLink({ tenantId, children, className = '', ...props }) {
   const workspace = usePartyWorkspace();
   if (!tenantId) return <span className={className}>{children || '—'}</span>;
   // This fallback keeps account access usable in isolated pages and tests.
-  if (!workspace) return <a className={className} href={`/tenants/${encodeURIComponent(tenantId)}/account`} {...props}>{children}</a>;
+  if (!workspace) return <AppLink className={className} to={`/tenants/${encodeURIComponent(tenantId)}/account`} {...props}>{children}</AppLink>;
   return <button type="button" className={`party-link ${className}`} aria-haspopup="dialog" {...props} onClick={event => { event.stopPropagation(); props.onClick?.(event); if (!event.defaultPrevented) workspace.openParty(tenantId); }}>{children}</button>;
 }
 

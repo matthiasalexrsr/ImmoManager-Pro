@@ -38,10 +38,10 @@ export default function InvoiceReview() {
       </div>
       {propertyChoices.error && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyChoices.error}{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={propertyChoices.reload}>Auswahl erneut laden</button></p>}
-      <div className="ir-tabs" role="tablist" aria-label={tx.title}>
+      <div className="detail-tabs" role="tablist" aria-label={tx.title}>
         {['inbox', 'proposals'].map(key => (
           <button key={key} type="button" role="tab" aria-selected={tab === key}
-            className={`ir-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
+            className={`detail-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
         ))}
       </div>
       {tab === 'inbox' ? <Inbox properties={properties} choicesReady={propertyChoices.ready} revision={revision} /> : <Proposals revision={revision} />}
@@ -105,7 +105,7 @@ function Inbox({ properties, choicesReady, revision }) {
       {!error && !page && <p className="text-muted" role="status">{tx.loading}</p>}
       {page && (page.items.length === 0 ? <Empty>{tx.noResults}</Empty> : (
         <>
-          <p className="text-muted" role="status">{fill(tx.page, { from: skip + 1, to: skip + page.items.length,
+          <p className="text-muted ir-count" role="status">{fill(tx.page, { from: skip + 1, to: skip + page.items.length,
             total: page.total })}</p>
           <ul className="ir-list">
             {page.items.map(row => <InboxRow key={row.invoice_id} row={row} />)}

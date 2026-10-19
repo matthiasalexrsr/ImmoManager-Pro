@@ -20,6 +20,7 @@ const DE = {
   bank: 'Bank', cashbox: 'Kasse', savings: 'Sparkonto',
   good: 'Gut', fair: 'Befriedigend', poor: 'Mangelhaft',
   tenant: 'Mieter', owner: 'Eigentümer', manager: 'Verwalter', supplier: 'Dienstleister',
+  published: 'Veröffentlicht',
 };
 
 const CODE = /^[a-z][a-z_]*$/;

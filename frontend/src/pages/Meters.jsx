@@ -133,6 +133,15 @@ export default function Meters() {
 
   useEffect(() => () => readingsRequest.current?.abort(), []);
 
+  // The readings panel sits below the (long) list: bring it into view when a meter is chosen,
+  // otherwise "Bearbeiten" seems to do nothing.
+  const readingsPanel = useRef(null);
+  useEffect(() => {
+    if (!selectedMeter?.id || !readingsPanel.current) return;
+    readingsPanel.current.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    readingsPanel.current.querySelector('h3')?.focus({ preventScroll: true });
+  }, [selectedMeter?.id]);
+
   const noticeMeter = focusedMeter;
   useEffect(() => {
     if (noticeMeter && !loading && selectedMeter?.id !== noticeMeter) {
@@ -192,7 +201,7 @@ export default function Meters() {
   };
 
   const handleDeleteMeter = async (row) => {
-    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/meters/${row.id}`);
     if (selectedMeter?.id === row.id) {
       setSelectedMeter(null);
@@ -260,7 +269,7 @@ export default function Meters() {
             key={opt.value}
             className={`btn btn-sm ${(focusedMeter ? 'none' : groupBy) === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
-            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+            style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
           >
             {opt.label}
           </button>
@@ -271,7 +280,7 @@ export default function Meters() {
       {grouped.map((group, gi) => (
         <div key={gi} style={{ marginBottom: group.label ? '2rem' : 0 }}>
           {group.label && (
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
               {group.label} ({group.meters.length})
             </h3>
           )}
@@ -292,14 +301,14 @@ export default function Meters() {
 
       {/* Selected meter readings */}
       {selectedMeter && (
-        <div style={{ marginTop: '1.5rem' }}>
+        <div ref={readingsPanel} style={{ marginTop: '1.5rem', scrollMarginTop: '6rem' }}>
           <div className="panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h3 style={{ margin: 0 }}>
+                <h3 style={{ margin: 0 }} tabIndex={-1}>
                   Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
                 </h3>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                   {selectedMeter.property_name !== '—' && <span>{selectedMeter.property_name} &rarr; </span>}
                   {selectedMeter.unit_label}
                   {selectedMeter.supplier && <span> | Versorger: {selectedMeter.supplier}</span>}

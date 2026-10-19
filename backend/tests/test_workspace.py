@@ -257,6 +257,20 @@ def test_named_views_and_same_area_table_state_keep_distinct_identities(estate):
         assert len(listed) == 1 and listed[0]["config"]["search"] == search
 
 
+def test_first_visit_view_state_is_null_with_missing_ok_and_404_without(estate):
+    _, owner = client("first-visit")
+    path = f"{API}/view-state/tasks%23first-visit"
+    assert owner.get(path).status_code == 404
+    first = owner.get(path, params={"missing_ok": "true"})
+    assert first.status_code == 200 and first.json() is None
+    assert owner.put(path, json=command(state={"search": "Erstbesuch"})).status_code == 200
+    assert owner.get(path, params={"missing_ok": "true"}).json()["state"]["search"] == "Erstbesuch"
+    favorite = f"{API}/favorites/property/{estate[2].id}"
+    assert owner.get(favorite).status_code == 404
+    unmarked = owner.get(favorite, params={"missing_ok": "true"})
+    assert unmarked.status_code == 200 and unmarked.json() is None
+
+
 def test_cursor_lists_continue_through_every_record_without_total_cap(estate):
     _, owner = client("pages")
     for index in range(7):

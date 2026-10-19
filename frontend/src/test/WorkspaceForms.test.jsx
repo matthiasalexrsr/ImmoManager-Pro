@@ -332,6 +332,19 @@ describe('named views', () => {
   });
 });
 
+it('treats a null view state as a first visit without applying or failing', async () => {
+  vi.useFakeTimers();
+  workspace.get.mockResolvedValue(null);
+  workspace.put.mockResolvedValue({ id: 'tasks#first', revision: 1, state: { scroll_top: 5 } });
+  const apply = vi.fn();
+  renderHook(() => useWorkspaceViewState('tasks#first', { scroll_top: 5 }, apply));
+  await act(async () => {});
+  expect(workspace.get).toHaveBeenCalledWith('view-state', 'tasks#first', undefined, { missing_ok: true });
+  expect(apply).not.toHaveBeenCalled();
+  await act(async () => { vi.advanceTimersByTime(900); });
+  expect(workspace.put.mock.calls.at(-1)).toMatchObject(['view-state', 'tasks#first', { base_revision: 0, state: { scroll_top: 5 } }]);
+});
+
 it('ignores a late table-state response from a different context', async () => {
   vi.useFakeTimers();
   workspace.get.mockRejectedValue({ statusCode: 404 });
@@ -383,7 +396,7 @@ describe('named-view destructive-action safety', () => {
     expect(screen.getByRole('option', { name: view.name })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ansicht löschen' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(workspace.remove).toHaveBeenCalledTimes(1));
     expect(workspace.remove).toHaveBeenCalledWith('views', view.id, {
       base_revision: 7, idempotency_key: expect.any(String),
@@ -405,7 +418,7 @@ describe('named-view destructive-action safety', () => {
       <NamedViews context="tasks#new" config={{ search: 'Anders' }} onApply={vi.fn()} />
     </ConfirmProvider>);
     await screen.findByRole('option', { name: view.name });
-    fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(workspace.remove).not.toHaveBeenCalled();
   });

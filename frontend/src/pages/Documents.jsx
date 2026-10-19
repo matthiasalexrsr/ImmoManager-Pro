@@ -346,7 +346,7 @@ function DocumentsWorkspace() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/documents/${encodeURIComponent(row.id)}`);
       refreshData();
@@ -356,9 +356,16 @@ function DocumentsWorkspace() {
 
   return (
     <div className="page documents-page">
-      <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
-      <a className="btn btn-secondary" href="/teha">TEHA-Empfang und Originalhistorie</a>
-      <div className="toolbar" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="page-header">
+        <h1>{t('pages.documents.title') || 'Dokumente'}</h1>
+        <div className="page-header-actions">
+          {/* contracts, invoices, receipts for the document management system: package or hand-over */}
+          <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
+          <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
+          <Link className="btn btn-secondary" to="/teha">TEHA-Empfang und Originalhistorie</Link>
+        </div>
+      </div>
+      <div className="toolbar">
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>
         <select id="document-party" value={tenantId} disabled={uploading} onChange={event => {
@@ -370,9 +377,6 @@ function DocumentsWorkspace() {
         </select>
         </div>
         {tenantId && party && <button className="btn btn-secondary" onClick={() => party.openParty(tenantId)}>Parteienkarte öffnen</button>}
-        {/* contracts, invoices, receipts for the document management system: package or hand-over */}
-        <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
-        <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
       </div>
       {aktenwerkOpen && <AktenwerkDialog ready={aktenwerkReady} onClose={() => setAktenwerkOpen(false)} />}
       {tenantId && <p className="text-muted">Dokumente von {overview?.tenant.full_name || 'dieser Partei'} und ihren Mietverträgen. Neue Uploads werden dieser Partei zugeordnet.</p>}
@@ -444,7 +448,7 @@ function DocumentsWorkspace() {
           />
           <PlusIcon size={24} />
           <span>{uploading ? (t('pages.documents.upload.uploading') || 'Wird hochgeladen...') : (t('pages.documents.upload.dropHint') || 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)')}</span>
-          <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+          <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
             {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs'}
           </span>
           {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
@@ -456,7 +460,7 @@ function DocumentsWorkspace() {
       {uploadQueue.length > 0 && (
         <div role="status" style={{ marginBottom: '0.5rem' }}>
           {uploadQueue.map((q, i) => (
-            <div key={i} className="text-muted" style={{ fontSize: '0.85rem' }}>
+            <div key={i} className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
               {q.status === 'uploading' ? '⏳' : q.status === 'done' ? '✓' : q.status === 'failed' ? '✗' : '○'} {q.name}
               {q.status === 'done' && ' — Gespeichert'}
               {q.error && <span className="text-red"> — {q.error}. Vor erneutem Import prüfen, ob die Datei bereits gespeichert wurde.</span>}

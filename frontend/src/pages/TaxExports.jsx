@@ -233,8 +233,8 @@ export default function TaxExports() {
   function pager(offset, setOffset, total, label) { return <nav aria-label={label}><button disabled={busy || offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Zurück</button>
     <span>{total ? offset + 1 : 0}–{Math.min(offset + 20, total)} von {total}</span><button disabled={busy || offset + 20 >= total} onClick={() => setOffset(offset + 20)}>Weiter</button></nav>; }
 
-  return <main className="tax-exports"><h1>Steueraufbereitung und DATEV</h1>
-    <p>Geprüfte Zuordnungen, vollständige Buchungsquellen und unveränderliche Exporthistorie. Die Buchhaltung bleibt die Geldquelle.</p>
+  return <div className="page tax-exports"><h1>Steueraufbereitung und DATEV</h1>
+    <p className="page-subtitle">Geprüfte Zuordnungen, vollständige Buchungsquellen und unveränderliche Exporthistorie. Die Buchhaltung bleibt die Geldquelle.</p>
     <div className="tax-grid"><label>Verfahren<select value={mode} disabled={busy} onChange={e => { resetContext(); setMode(e.target.value); }}>
       <option value="annual-tax">Jahressteuerbasis (neutral)</option><option value="datev">DATEV EXTF ohne Umsatzsteuerautomatik</option></select></label>
     <label>Portfolio<select value={portfolio} disabled={busy} onChange={e => { resetContext(); setPortfolio(e.target.value); }}><option value="">Bitte wählen</option>
@@ -319,7 +319,7 @@ export default function TaxExports() {
       </>}
       {overrides.map((override, index) => <fieldset key={override.booking_id} disabled={busy || !canWrite}><legend>Aufteilung {override.booking_id}</legend>
         <label>Begründung<input required value={override.reason} onChange={e => { setOverrides(old => old.map((o, i) => i === index ? { ...o, reason: e.target.value } : o)); setPreview(null); }} /></label>
-        <div className="tax-grid">{[['correction_of_booking_id', 'Korrektur zu Buchungs-ID (optional)'], ['transfer_counter_booking_id', 'Gegenbuchung bei internem ?bertrag']].map(([name, label]) => <label key={name}>{label}<input value={override[name] || ''} onChange={e => { setOverrides(old => old.map((o, i) => i === index ? { ...o, [name]: e.target.value || null } : o)); setPreview(null); }} /></label>)}</div>
+        <div className="tax-grid">{[['correction_of_booking_id', 'Korrektur zu Buchungs-ID (optional)'], ['transfer_counter_booking_id', 'Gegenbuchung bei internem Übertrag']].map(([name, label]) => <label key={name}>{label}<input value={override[name] || ''} onChange={e => { setOverrides(old => old.map((o, i) => i === index ? { ...o, [name]: e.target.value || null } : o)); setPreview(null); }} /></label>)}</div>
         {override.parts.map((part, partIndex) => <div className="tax-grid" key={partIndex}>{[['property_id', 'Objekt'], ['treatment', 'Behandlung'], ['amount_cents', 'Teilbetrag in Cent mit Vorzeichen'], ['form_line', 'Formularzeile'], ['reason', 'Fachliche Begründung'], ['exclusion_kind', 'Ausschlussart']].map(([name, label]) => {
           const update = value => { setOverrides(old => old.map((o, i) => i === index ? { ...o, parts: o.parts.map((p, j) => j === partIndex ? { ...p, [name]: value || null,
             ...(name === 'treatment' ? value === 'excluded' ? { form_line: null } : { exclusion_kind: null } : {}) } : p) } : o)); setPreview(null); };
@@ -337,5 +337,5 @@ export default function TaxExports() {
         {savedPreparation && <article><h3>Gesicherter Beleg {savedPreparation.id}</h3>{preparationView(savedPreparation.report)}<button disabled={busy} onClick={() => setSavedPreparation(null)}>Belegvorschau schließen</button></article>}
         {pager(historyOffset, setHistoryOffset, history.total, 'Historienseiten')}</section>
     </>}
-  </main>;
+  </div>;
 }

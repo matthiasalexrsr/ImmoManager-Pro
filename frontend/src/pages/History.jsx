@@ -5,6 +5,8 @@ import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import { formatDateTime } from '../utils/format';
 import { entityHref } from '../utils/entityLinks';
+import { changeValue, fieldLabel, kindLabel } from '../utils/changeDisplay';
+import { safeInternalHref } from '../utils/internalLinks';
 
 const PAGE_SIZE = 100;
 const ENTITY_KINDS = { maintenance_case: 'maintenance', service_contract: 'serviceContract' };
@@ -21,10 +23,15 @@ function fullValue(value) {
   </div>;
 }
 
-function recordLink(identifier, row) {
-  if (!identifier) return '—';
-  const href = entityHref(ENTITY_KINDS[row.entity_type] || row.entity_type, identifier);
-  return href ? <Link to={href} title={`Datensatz ${identifier} öffnen`}>{identifier}</Link> : identifier;
+function shown(entry, t) {
+  const hasMetadata = Object.prototype.hasOwnProperty.call(entry, 'entity_title');
+  return { ...entry, kind: kindLabel(entry.entity_type),
+    record: entry.entity_title || `${entry.entity_id || 'Unbekannter Datensatz'}${hasMetadata ? ' (nicht verfügbar)' : ''}`,
+    record_href: safeInternalHref(entry.entity_href) || (!hasMetadata ? entityHref(ENTITY_KINDS[entry.entity_type] || entry.entity_type, entry.entity_id) : null),
+    field: fieldLabel(entry.field_name), before: changeValue(entry.field_name, entry.old_value, t),
+    after: changeValue(entry.field_name, entry.new_value, t),
+    author: entry.changed_by_name || (entry.changed_by ? 'Unbekanntes Konto' : 'System'),
+  };
 }
 
 export default function History() {
@@ -76,14 +83,17 @@ export default function History() {
   };
 
   const COLUMNS = [
-    { key: 'changed_at', label: 'Geändert am', type: 'date',
+    { key: 'changed_at', label: 'Zeitpunkt', type: 'date',
       render: v => formatDateTime(v) },
-    { key: 'entity_type', label: 'Entität' },
-    { key: 'entity_id', label: 'Datensatz-ID', render: recordLink },
-    { key: 'changed_by', label: 'Geändert von' },
-    { key: 'field_name', label: 'Feld' },
-    { key: 'old_value', label: 'Alt', render: fullValue },
-    { key: 'new_value', label: 'Neu', render: fullValue },
+    { key: 'record', label: 'Datensatz', render: (value, row) => <span className="cell-stack">
+      <span>{row.record_href ? <Link to={row.record_href} className="entity-link" title={`Datensatz ${row.entity_id} öffnen`}>{value}</Link> : value}</span>
+      <span className="td-sub">{row.kind}</span>
+    </span> },
+    { key: 'field', label: 'Feld' },
+    { key: 'before', label: 'Vorher', render: fullValue },
+    { key: 'after', label: 'Nachher', render: fullValue },
+    { key: 'author', label: 'Geändert von' },
+    { key: 'kind', label: 'Art', hidden: true },
     { key: 'reason', label: 'Grund', render: fullValue },
   ];
 
@@ -110,7 +120,7 @@ export default function History() {
       <DataTable serverPaged inheritRouteFocus={false} exportLabel="CSV – aktuelle Seite"
         title={t('navigation.secondary.history')}
         columns={COLUMNS}
-        data={current.items}
+        data={current.items.map(entry => shown(entry, t))}
       />
       </>}
     </div>

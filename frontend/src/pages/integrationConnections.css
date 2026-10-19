@@ -9,7 +9,7 @@
 .connection-detail { border: 1px solid var(--color-border); border-radius: .75rem; padding: 1.25rem; }
 .connection-action-form, .connection-run-detail { border-top: 1px solid var(--color-border); margin-top: 1.25rem; padding-block: 1rem; }
 .connection-field { display: grid; gap: .4rem; margin-block: .8rem; width: 100%; min-width: 0; }
-.connection-field input, .connection-field select, .connection-field textarea { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--color-border); border-radius: .35rem; color: var(--color-text); background: var(--color-bg-input, var(--color-surface)); font: inherit; }
+.connection-field input, .connection-field select, .connection-field textarea { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--color-border); border-radius: .35rem; color: var(--color-text); background: var(--color-bg-input, var(--color-surface)); font: inherit; font-size: var(--text-base); font-weight: 400; }
 .connection-field textarea { min-height: 110px; resize: vertical; }
 .connection-field small { color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .connection-check { display: flex; align-items: start; gap: .6rem; margin-block: 1rem; }
@@ -26,7 +26,7 @@
   .connection-layout { grid-template-columns: minmax(0, 1fr); }
   .connection-detail { padding: .85rem; }
   .connection-dialog { padding: 1rem; }
-  .connection-field input, .connection-field select, .connection-field textarea { font-size: 16px; }
+  .connection-field input, .connection-field select, .connection-field textarea { font-size: var(--text-lg); }
   .connection-facts { grid-template-columns: minmax(0, 1fr); }
   .connection-facts dd { margin-bottom: .5rem; }
   .connection-workspace .page-title { font-size: clamp(1.5rem, 7vw, 2rem); }

@@ -162,7 +162,7 @@ export default function Units() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.label}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/units/${row.id}`);
     } catch (err) {

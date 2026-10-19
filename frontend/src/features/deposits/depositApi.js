@@ -68,6 +68,20 @@ export const depositService = {
     return fileOrFail(await api.put(`${base(id)}/interest-rates`, { base_revision: revision, rates }, { signal }));
   },
 
+  /** What was received and credited before the app's bookings began; all values empty removes it. */
+  async setTakeover(id, payload, { signal } = {}) {
+    return fileOrFail(await api.put(`${base(id)}/takeover`, payload, { signal }));
+  },
+
+  /** Plain records of earlier versions that can be taken over as received on their receipt date. */
+  legacyCandidates({ signal } = {}) {
+    return api.get('/deposits/legacy-takeover', { signal });
+  },
+
+  takeOverLegacy(depositIds, { signal } = {}) {
+    return api.post('/deposits/legacy-takeover', { deposit_ids: depositIds }, { signal });
+  },
+
   async setSecurity(id, payload, { signal } = {}) {
     return fileOrFail(await api.put(`${base(id)}/security`, payload, { signal }));
   },

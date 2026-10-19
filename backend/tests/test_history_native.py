@@ -35,7 +35,7 @@ def test_owned_native_postgres_history_keyset_pages_respect_current_scope():
     assert _owned_native_target(), "Native target changed after collection; no fixture writes are permitted"
     from backend import dependencies
     from backend.db.orm_models import ChangeHistoryORM
-    from backend.models import ChangeHistoryEntry, PortfolioCreate, PropertyCreate
+    from backend.models import ChangeHistoryEntry, PortfolioCreate, PropertyCreate, UserRead
     from backend.repositories import SQLAlchemyStore
     from backend.routers import history
     from backend.services.portfolio_scope import AccessScope, current_scope, scope_context
@@ -70,13 +70,14 @@ def test_owned_native_postgres_history_keyset_pages_respect_current_scope():
     registry.commit()
 
     statements = []
+    actor = UserRead(id=f"history-{unique}", username=f"history-{unique}", email="history@example.test", full_name="Native History", role="readonly")
 
     def capture(conn, cursor, statement, parameters, context, executemany):
         if "FROM change_history" in statement:
             statements.append((statement, parameters))
 
     def page(cursor=None, *, entity_id=None):
-        return history.history_page(cursor=cursor, limit=47, entity_type="property", entity_id=entity_id)
+        return history.history_page(actor=actor, cursor=cursor, limit=47, entity_type="property", entity_id=entity_id)
 
     sa.event.listen(engine, "before_cursor_execute", capture)
     try:

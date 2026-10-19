@@ -112,7 +112,7 @@ export default function RentAdjustments() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/rent-adjustments/${row.id}`);

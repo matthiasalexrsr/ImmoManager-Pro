@@ -19,11 +19,13 @@ from ..models import Deposit, DepositCreate, DepositPatch, UserRead
 from ..models_deposits import (
     AgreementRequest,
     FinalizeRequest,
+    LegacyTakeoverRequest,
     RatesRequest,
     ReceiptRequest,
     SecurityRequest,
     SettlementContent,
     SettlementCreate,
+    TakeoverRequest,
 )
 from ..services import deposits as service
 from ..storage import NotFoundError, ValidationError
@@ -63,6 +65,18 @@ def deposit_source(actor: Actor, contract_id: str = Query(..., min_length=1)):
     return _call(service.source, store, contract_id, actor.id)
 
 
+@router.get("/legacy-takeover")
+def legacy_takeover_candidates(actor: Actor):
+    """Plain records of earlier versions (held since a receipt date) that can be taken over as received."""
+    return _call(service.legacy_candidates, store, actor.id)
+
+
+@router.post("/legacy-takeover")
+def legacy_takeover(payload: LegacyTakeoverRequest, actor: Actor):
+    """Take over the named plain records as received on their receipt date (all or none)."""
+    return _call(service.take_over_legacy, store, payload, actor.id)
+
+
 @router.post("/agreements", status_code=status.HTTP_201_CREATED)
 def create_agreement(payload: AgreementRequest, actor: Actor):
     return _call(service.create, store, payload, actor.id)
@@ -76,6 +90,12 @@ def deposit_file(deposit_id: str, actor: Actor):
 @router.put("/{deposit_id}/agreement")
 def update_agreement(deposit_id: str, payload: AgreementRequest, actor: Actor):
     return _call(service.update_agreement, store, deposit_id, payload, actor.id)
+
+
+@router.put("/{deposit_id}/takeover")
+def set_takeover(deposit_id: str, payload: TakeoverRequest, actor: Actor):
+    """A deposit paid before the app's bookings: received and credited until the takeover day."""
+    return _call(service.set_takeover, store, deposit_id, payload, actor.id)
 
 
 @router.get("/{deposit_id}/payment-candidates")

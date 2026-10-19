@@ -13,13 +13,14 @@ from sqlalchemy.orm import Session
 
 from backend import db as _db  # noqa: F401 (register all portfolio graph tables)
 from backend.db.orm_models import Base, ChangeHistoryORM
-from backend.models import ChangeHistoryEntry, PortfolioCreate, PropertyCreate
+from backend.models import ChangeHistoryEntry, PortfolioCreate, PropertyCreate, UserRead
 from backend.repositories import SQLAlchemyStore
 from backend.routers import history
 from backend.services.portfolio_scope import AccessScope, scope_context
 from backend.storage import InMemoryStore
 
 migration = import_module("backend.db.migrations.versions.f020a1b2c001_history_cursor_index")
+ACTOR = UserRead(id="history-test", username="history-test", email="history@example.test", full_name="History Test", role="readonly")
 
 
 @pytest.fixture(params=["memory", "sql"])
@@ -51,7 +52,7 @@ def put(source, rows):
 
 
 def page(*, cursor=None, limit=47, entity_type=None, entity_id=None):
-    return history.history_page(cursor=cursor, limit=limit, entity_type=entity_type, entity_id=entity_id)
+    return history.history_page(actor=ACTOR, cursor=cursor, limit=limit, entity_type=entity_type, entity_id=entity_id)
 
 
 def test_all_pages_reach_twenty_year_old_rows_beyond_the_previous_500_limit(source):
@@ -128,7 +129,7 @@ def test_sql_pages_are_bounded_queries_without_materializing_the_history_store(s
         page(limit=2, cursor=first.next_cursor)
     finally:
         sa.event.remove(source.db.get_bind(), "before_cursor_execute", capture)
-    selects = [(sql, params) for sql, params in statements if "SELECT" in sql.upper()]
+    selects = [(sql, params) for sql, params in statements if "SELECT" in sql.upper() and "FROM change_history" in sql]
     assert len(selects) == 2
     assert all("LIMIT" in sql.upper() and params[-2:] == (3, 0) for sql, params in selects)
     assert "(change_history.changed_at, change_history.id) <" in selects[1][0]
@@ -137,6 +138,7 @@ def test_sql_pages_are_bounded_queries_without_materializing_the_history_store(s
 def test_http_page_validation_and_legacy_api_shape(source):
     app = FastAPI()
     app.include_router(history.router)
+    app.dependency_overrides[history.require_auth] = lambda: ACTOR
     with TestClient(app) as client:
         assert client.get("/history/page?limit=251").status_code == 422
         assert client.get("/history/page?cursor=not-a-cursor").status_code == 422

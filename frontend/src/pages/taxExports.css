@@ -1,18 +1,40 @@
-.tax-exports { max-width: 1100px; margin: auto; padding: 1rem; overflow-wrap: anywhere; }
-.tax-exports section { border: 1px solid var(--border-color, #bbb); border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
-.tax-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .8rem; }
-.tax-exports label { display: flex; flex-direction: column; gap: .3rem; margin: .5rem 0; }
-.tax-exports input, .tax-exports select, .tax-exports textarea { width: 100%; min-width: 0; padding: .45rem; box-sizing: border-box; color: inherit; background: var(--bg-primary, transparent); border: 1px solid #999; border-radius: .25rem; }
-.tax-exports button { margin: .4rem .4rem .4rem 0; padding: .5rem; }
-.tax-exports fieldset { border: 0; padding: 0; min-width: 0; }
-.tax-exports .tax-check { flex-direction: row; align-items: start; }
-.tax-check input { width: auto; }
-.tax-rule { margin: 1rem 0; padding: .7rem; border: 1px solid #aaa; }
-.tax-exports aside { padding: .8rem; border-left: 4px solid #ac7a00; }
-.tax-exports nav { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-.tax-exports dl > div { display: flex; justify-content: space-between; gap: .7rem; }
-.tax-exports [role=alert] { border: 1px solid #b33; padding: .8rem; }
-.tax-exports :focus-visible { outline: 3px solid #4677c4; outline-offset: 2px; }
-.tax-preparation { border: 1px solid var(--border-color, #bbb); border-radius: .4rem; margin: 1rem 0; padding: .8rem; min-width: 0; }
-.tax-preparation details { padding: .4rem 0; }
-.tax-preparation summary { cursor: pointer; }
+/* Steueraufbereitung: page sections as panels, fields and buttons from the app's base styles. */
+.tax-exports { min-width: 0; overflow-wrap: anywhere; }
+.tax-exports > h1 { margin-bottom: var(--space-1); }
+.tax-exports section {
+  margin: var(--space-5) 0;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+}
+.tax-exports section > h2:first-child { margin: 0 0 var(--space-4); }
+.tax-exports h3 { margin: var(--space-4) 0 var(--space-3); }
+.tax-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 0 var(--space-4); align-items: end; }
+.tax-exports label { display: flex; flex-direction: column; gap: var(--space-1); margin: 0 0 var(--space-3); }
+.tax-exports :is(input, select, textarea):not([type="checkbox"], [type="radio"]) { width: 100%; min-width: 0; }
+.tax-exports button { margin: 0 var(--space-2) var(--space-2) 0; }
+.tax-exports fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.tax-exports legend { padding: 0; margin-bottom: var(--space-2); }
+.tax-exports .tax-check { flex-direction: row; align-items: flex-start; gap: var(--space-2); font-weight: 400; }
+.tax-check input { flex: none; margin-top: 2px; }
+.tax-rule { margin: var(--space-3) 0; padding: var(--space-4); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.tax-rule > h4 { margin: 0 0 var(--space-3); }
+.tax-exports aside {
+  margin: var(--space-2) 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-warning-light);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+}
+.tax-exports aside > button { display: flex; margin: var(--space-3) 0 0; }
+.tax-exports aside details { margin-top: var(--space-3); }
+.tax-exports nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-3) 0; }
+.tax-exports nav button { margin: 0; }
+.tax-exports dl > div { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border-light); }
+.tax-exports [role=alert] { padding: var(--space-3) var(--space-4); color: var(--color-danger); background: var(--color-danger-light); border: 1px solid var(--color-danger); border-radius: var(--radius-sm); }
+.tax-exports :focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
+.tax-preparation { margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); min-width: 0; }
+.tax-preparation details { padding: var(--space-2) 0; }

@@ -15,10 +15,11 @@ export function ConfirmProvider({ children }) {
   const sequence = useRef(0);
   const mounted = useRef(true);
 
-  const confirm = useCallback((message) => {
+  // options: { action, title, confirmLabel, danger } — without them a deletion reads as one, anything else neutrally
+  const confirm = useCallback((message, options = {}) => {
     return new Promise((resolve) => {
       if (!mounted.current) { resolve(false); return; }
-      const entry = { message, resolve, id: ++sequence.current };
+      const entry = { message, options, resolve, id: ++sequence.current };
       queue.current.push(entry);
       if (queue.current.length === 1) setState(entry);
     });
@@ -49,6 +50,7 @@ export function ConfirmProvider({ children }) {
         <ConfirmDialog
           key={state.id}
           message={state.message}
+          options={state.options}
           onConfirm={() => settle(state.id, true)}
           onCancel={() => settle(state.id, false)}
         />
@@ -57,7 +59,12 @@ export function ConfirmProvider({ children }) {
   );
 }
 
-function ConfirmDialog({ message, onConfirm, onCancel }) {
+const DELETION = /\blösch|\bentfernen\?|\bdelete\b|\bremove\b|\beliminar/i;
+// the button names the action (modals.confirm.<action>)
+const ACTIONS = { archive: 'Archivieren', markPaid: 'Als bezahlt markieren', reverse: 'Stornieren', apply: 'Update anwenden',
+  deactivate: 'Deaktivieren', withdraw: 'Kündigung zurücknehmen', unlink: 'Zuordnung lösen' };
+
+function ConfirmDialog({ message, options = {}, onConfirm, onCancel }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => {
     const text = t(key);
@@ -66,12 +73,19 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
   const ref = useRef(null);
   const id = useId();
   useModalDialog(ref, onCancel);
+  const deletion = options.action === 'delete' || (!options.action && DELETION.test(String(message ?? '')));
+  const danger = options.danger ?? deletion;
+  const title = options.title ?? (deletion ? tr('modals.confirmDelete.title', 'Wirklich löschen?')
+    : tr('modals.confirm.title', 'Bitte bestätigen'));
+  const confirmLabel = options.confirmLabel
+    ?? (ACTIONS[options.action] ? tr(`modals.confirm.${options.action}`, ACTIONS[options.action]) : null)
+    ?? (deletion ? tr('modals.confirmDelete.delete', 'Löschen') : tr('modals.confirmDelete.confirm', 'Bestätigen'));
 
   return (
     <div className="modal-overlay" style={{ zIndex: 280 }} onClick={onCancel}>
       <div className="modal confirm-dialog" role="dialog" aria-modal="true" aria-labelledby={id} aria-describedby={`${id}-message`} tabIndex={-1} ref={ref} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 id={id}>{tr('modals.confirmDelete.title', 'Bestätigung')}</h2>
+          <h2 id={id}>{title}</h2>
         </div>
         <div className="modal-body">
           <p id={`${id}-message`}>{message}</p>
@@ -80,8 +94,8 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
           <button type="button" className="btn btn-secondary" onClick={onCancel}>
             {tr('modals.confirmDelete.cancel', 'Abbrechen')}
           </button>
-          <button type="button" className="btn btn-danger" onClick={onConfirm}>
-            {tr('modals.confirmDelete.confirm', 'Bestätigen')}
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>
+            {confirmLabel}
           </button>
         </div>
       </div>

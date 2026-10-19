@@ -4,7 +4,7 @@
 }
 .property-dossier .detail-header { align-items: center; }
 .property-dossier .dossier-actions { flex-basis: 100%; }
-.dossier-eyebrow { margin: 0 0 .4rem; color: var(--color-primary); font-size: .7rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.dossier-eyebrow { margin: 0 0 .4rem; color: var(--color-primary); font-size: var(--text-2xs); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .dossier-media { margin-bottom: 1rem; }
 .dossier-media summary { cursor: pointer; min-height: 44px; }
 .dossier-media .photo-drop-zone { min-height: 100px; border: 1px dashed var(--color-border); border-radius: .65rem; }
@@ -81,7 +81,7 @@
 }
 
 .dossier-rent-note {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   margin: 0.75rem 0 1rem;
 }
 

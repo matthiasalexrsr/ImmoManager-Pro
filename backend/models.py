@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -1045,6 +1045,11 @@ class Deposit(DepositCreate):
     released_on: Optional[date] = None
     release_document_id: Optional[str] = None
     release_note: Optional[str] = None
+    # takeover of a deposit paid before the app's bookings: set through the takeover endpoint only
+    carried_on: Optional[date] = None
+    carried_amount: Optional[float] = None
+    carried_interest: Optional[float] = None
+    carried_note: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1244,6 +1249,11 @@ class TaxRateCreate(BaseModel):
     is_default: bool = False
     valid_from: Optional[date] = None
     valid_until: Optional[date] = None
+
+    @field_validator("is_default", mode="before")
+    @classmethod
+    def not_default_unless_chosen(cls, value: Any) -> Any:
+        return False if value is None else value
 
 
 class TaxRate(TaxRateCreate):
@@ -1556,6 +1566,12 @@ class BudgetCreate(BaseModel):
     actual_amount: float = 0.0
     notes: Optional[str] = None
 
+    @field_validator("actual_amount", mode="before")
+    @classmethod
+    def no_actual_amount_yet(cls, value: Any) -> Any:
+        # a new budget has spent nothing yet; the form sends an empty field as null
+        return 0.0 if value is None else value
+
 
 class Budget(BudgetCreate):
     id: str = Field(..., min_length=1)
@@ -1590,9 +1606,10 @@ class BudgetPatch(BaseModel):
 class EscalationRuleCreate(BaseModel):
     name: str
     entity_type: str  # task, maintenance, receivable
-    condition_field: str  # due_date, appointment_at, etc.
+    # what the escalation run reads: the due date, and it notifies (routers/escalation.py); the form asks for neither
+    condition_field: str = "due_date"
     days_overdue: int  # trigger after N days overdue
-    action: str  # notify, reassign, escalate_priority
+    action: str = "notify"
     target_role: Optional[str] = None  # role to notify / reassign to
     notification_severity: str = "warning"
     is_active: bool = True

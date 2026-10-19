@@ -93,7 +93,7 @@ export default function AllocationKeys() {
 
   const handleDelete = async (row) => {
     const name = row.name || row.id;
-    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/billing/allocation-keys/${row.id}`);

@@ -34,18 +34,18 @@ def _rebuild_search_index() -> None:
 
     for t in store.list_tenants():
         text = " ".join(filter(None, [t.full_name, getattr(t, "email", None)]))
-        entries.append(IndexEntry("tenant", t.id, t.full_name, getattr(t, "email", "") or "", "/tenants", text))
+        entries.append(IndexEntry("tenant", t.id, t.full_name, getattr(t, "email", "") or "", gs.TYPES_BY_NAME["tenant"].url(t), text))
 
     for u in store.list_units():
         entries.append(IndexEntry("unit", u.id, u.label, u.unit_type, f"/units/{u.id}", u.label))
 
     for d in store.list_documents():
         text = " ".join(filter(None, [d.title, getattr(d, "description", None)]))
-        entries.append(IndexEntry("document", d.id, d.title, d.document_type or "", "/documents", text))
+        entries.append(IndexEntry("document", d.id, d.title, d.document_type or "", gs.TYPES_BY_NAME["document"].url(d), text))
 
     for m in store.list_maintenance_cases():
         text = " ".join(filter(None, [m.title, getattr(m, "description", None)]))
-        entries.append(IndexEntry("maintenance", m.id, m.title, m.status, "/maintenance", text))
+        entries.append(IndexEntry("maintenance", m.id, m.title, m.status, gs.TYPES_BY_NAME["maintenance"].url(m), text))
 
     search_index.clear()
     search_index.add_entries(entries)

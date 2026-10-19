@@ -223,7 +223,7 @@ export default function Contracts() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/contracts/${row.id}`);
     } catch (err) {

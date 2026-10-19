@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..auth import require_auth
 from ..dependencies import store
@@ -28,6 +28,19 @@ def private_response(response: Response):
 
 
 router = APIRouter(prefix="/workspace", tags=["Personal workspace"], dependencies=[Depends(private_response)])
+
+
+def _get_or_none(actor: UserRead, kind: str, identifier: str, missing_ok: bool):
+    """A list or record seen for the first time has nothing saved yet; missing_ok answers that
+    with null instead of a 404, so the browser does not log a failed request each time."""
+    try:
+        return workspace.get_record(store, actor.id, kind, identifier)
+    except HTTPException as error:
+        if missing_ok and error.status_code == 404:
+            return None
+        raise
+
+
 Actor = Annotated[UserRead, Depends(require_auth)]
 PageSize = Annotated[int, Query(ge=1, le=200)]
 Cursor = Annotated[str | None, Query(max_length=2048)]
@@ -110,8 +123,8 @@ def list_favorites(actor: Actor, cursor: Cursor = None, limit: PageSize = 50):
 
 
 @router.get("/favorites/{kind}/{entity_id}")
-def get_favorite(kind: str, entity_id: str, actor: Actor):
-    return workspace.get_record(store, actor.id, "favorites", workspace.entity_key(kind, entity_id))
+def get_favorite(kind: str, entity_id: str, actor: Actor, missing_ok: bool = False):
+    return _get_or_none(actor, "favorites", workspace.entity_key(kind, entity_id), missing_ok)
 
 
 @router.put("/favorites/{kind}/{entity_id}")
@@ -135,8 +148,8 @@ def delete_recent(kind: str, entity_id: str, payload: WorkspaceMutation, actor: 
 
 
 @router.get("/view-state/{context:path}")
-def get_view_state(context: str, actor: Actor):
-    return workspace.get_record(store, actor.id, "view-state", contexts.context_identity(context))
+def get_view_state(context: str, actor: Actor, missing_ok: bool = False):
+    return _get_or_none(actor, "view-state", contexts.context_identity(context), missing_ok)
 
 
 @router.put("/view-state/{context:path}")

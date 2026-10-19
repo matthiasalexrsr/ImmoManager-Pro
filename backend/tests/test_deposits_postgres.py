@@ -130,6 +130,7 @@ def test_finalized_settlements_on_postgres_are_immutable_and_refuse_the_downgrad
                       "UPDATE deposit_payments SET amount = 1 WHERE deposit_id = :id",
                       "DELETE FROM deposit_instalments WHERE deposit_id = :id",
                       "UPDATE deposits SET amount = 1 WHERE id = :id",
+                      "UPDATE deposits SET carried_amount = 1 WHERE id = :id",
                       "DELETE FROM deposits WHERE id = :id"):
         with pytest.raises(sa.exc.DBAPIError, match="immutable"):
             with engine.begin() as connection:
@@ -186,3 +187,45 @@ def test_the_deposit_migration_goes_down_and_up_without_data_on_postgres(postgre
         triggers = {row[0] for row in connection.execute(sa.text(
             "SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'immo_deposit%'"))}
     assert TRIGGERS <= triggers
+
+
+def test_the_takeover_migration_guards_its_columns_and_the_downgrade_on_postgres(postgres):
+    engine, config = postgres
+    owner = auth.register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
+    deposit_id, _, _ = _draft(engine, owner)
+    with engine.begin() as connection:
+        connection.execute(sa.text("UPDATE deposits SET carried_on = '2024-01-01', carried_amount = 100 "
+                                   "WHERE id = :id"), {"id": deposit_id})
+    with pytest.raises(RuntimeError, match="takeover of deposits"):
+        command.downgrade(config, "f019a1b2c001")
+    with engine.begin() as connection:
+        connection.execute(sa.text("UPDATE deposits SET carried_on = NULL, carried_amount = NULL"))
+    command.downgrade(config, "f019a1b2c001")
+    columns = {c["name"] for c in sa.inspect(engine).get_columns("deposits")}
+    assert not {"carried_on", "carried_amount", "carried_interest", "carried_note"} & columns
+    with engine.connect() as connection:
+        definition = connection.exec_driver_sql(
+            "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'immo_deposits_settled'").scalar()
+    assert "UPDATE OF contract_id, amount, form " in definition
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        definition = connection.exec_driver_sql(
+            "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'immo_deposits_settled'").scalar()
+    assert "carried_amount" in definition
+
+
+def test_guards_reinstall_on_postgres_before_takeover_columns_are_added(postgres):
+    from backend.db.deposit_guards import install_deposit_guards
+
+    engine, config = postgres
+    command.downgrade(config, "f019a1b2c001")
+    with engine.begin() as connection:
+        install_deposit_guards(connection)
+        definition = connection.exec_driver_sql(
+            "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'immo_deposits_settled'").scalar_one()
+    assert "carried_amount" not in definition
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        definition = connection.exec_driver_sql(
+            "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 'immo_deposits_settled'").scalar_one()
+    assert "carried_amount" in definition

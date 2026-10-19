@@ -127,7 +127,7 @@ export default function Portfolios() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/portfolios/${row.id}`);
     } catch (err) {
@@ -159,7 +159,7 @@ export default function Portfolios() {
               borderLeft: `4px solid ${OWNER_COLORS[owner] || 'var(--border-color)'}`,
             }}>
               <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{owner}</div>
-              <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <div className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                 {data.count} Portfolio{data.count !== 1 ? 's' : ''} · {countsReady ? `${data.properties} Immobilien · ${data.units} Einheiten` : 'Immobilien und Einheiten unbekannt'}
               </div>
             </div>
