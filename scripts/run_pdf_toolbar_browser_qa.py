@@ -6,17 +6,17 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 from reportlab.pdfgen import canvas
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from scripts.run_daily_browser_qa import BinaryServer  # noqa: E402
 from tools.xstress.core import PASSWORD, Findings, Server, fresh_directory, setup_users  # noqa: E402
 from tools.xstress.processes import start_owned, stop_owned  # noqa: E402
-from scripts.run_daily_browser_qa import BinaryServer  # noqa: E402
 
 
 def main():
@@ -72,16 +72,19 @@ def main():
         if result['exit_code']:
             print((output / 'browser.log').read_text(encoding='utf-8', errors='replace')[-6000:], flush=True)
         elif args.suite == 'statement-letter':
-            from pypdf import PdfReader
-            pdf = PdfReader(output / 'checks/archived-letter.pdf')
-            text = '\n'.join(page.extract_text() for page in pdf.pages)
+            # Use the PDF reader from the pinned application requirements. The
+            # developer workstation may additionally have pypdf, CI does not.
+            import pdfplumber
+            with pdfplumber.open(output / 'checks/archived-letter.pdf') as pdf:
+                page_count = len(pdf.pages)
+                text = '\n'.join(page.extract_text() or '' for page in pdf.pages)
             (output / 'checks/archived-letter-text.txt').write_text(text, encoding='utf-8')
-            assert len(pdf.pages) >= 3, 'Real cost table must span several pages'
+            assert page_count >= 3, 'Real cost table must span several pages'
             assert all(value in text for value in ['Zoë', 'Łukasz', 'Иван', 'Μαρία', 'Kostenposition 72'])
-            draft_pdf = PdfReader(output / 'checks/draft-letter.pdf')
-            draft_text = '\n'.join(page.extract_text() for page in draft_pdf.pages)
+            with pdfplumber.open(output / 'checks/draft-letter.pdf') as draft_pdf:
+                draft_text = '\n'.join(page.extract_text() or '' for page in draft_pdf.pages)
             assert 'ENTWURF' in draft_text.upper(), 'Draft PDF must be visibly marked'
-            result['pdf_pages'] = len(pdf.pages)
+            result['pdf_pages'] = page_count
     except Exception as error:
         result['exit_code'] = 1
         result['error'] = str(error)
