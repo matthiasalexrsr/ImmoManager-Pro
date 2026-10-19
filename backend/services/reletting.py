@@ -675,7 +675,8 @@ def cancel(store, project_id: str, actor_id: str) -> dict:
 
 # ─── Applicants and viewings ─────────────────────────────────────────────────
 
-def _decided(previous: str | None, status: str, decided_at: datetime | None) -> datetime | None:
+def decision_time(previous: str | None, status: str, decided_at: datetime | None) -> datetime | None:
+    """When an applicant was accepted, declined or withdrew (the deletion hint counts from it)."""
     if status not in DECIDED:
         return None
     return decided_at if previous == status and decided_at else now()
@@ -690,7 +691,7 @@ def add_applicant(store, project_id: str, payload: ApplicantInput, actor_id: str
         stamp = now()
         values = payload.model_dump(exclude={"base_updated_at"})
         lead = Lead(id=new_id(), project_id=project.id, unit_id=project.unit_id, listing_id=project.listing_id,
-                    priority=0, decided_at=_decided(None, payload.status, None), created_at=stamp, updated_at=stamp,
+                    priority=0, decided_at=decision_time(None, payload.status, None), created_at=stamp, updated_at=stamp,
                     **values)
         _put(unit, "leads", lead)
         return _detail(unit, project)
@@ -706,7 +707,7 @@ def update_applicant(store, project_id: str, lead_id: str, payload: ApplicantInp
         if (payload.status == "accepted") != (lead.status == "accepted"):
             raise _conflict("Die Übernahme als Mieter ändert nur „Als Mieter übernehmen“.")
         values = payload.model_dump(exclude={"base_updated_at"})
-        lead = lead.model_copy(update={**values, "decided_at": _decided(lead.status, payload.status, lead.decided_at),
+        lead = lead.model_copy(update={**values, "decided_at": decision_time(lead.status, payload.status, lead.decided_at),
                                        "updated_at": now()})
         _put(unit, "leads", lead)
         return _detail(unit, project)

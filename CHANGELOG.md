@@ -53,7 +53,7 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
   - **Next step:** the overview and the project name what is to be done next, linked to the tab where it is done; a contract made with the accepted applicant is noticed ("Vertrag MV-7 angelegt: Projekt damit abschließen").
   - **Deleting applicants:** declined applications (any, once the project is closed) are deleted with their documents, viewings, notes, change history and marketing receipts; three months after a rejection they are marked for deletion (claims under § 21 Abs. 5 AGG run two months).
   Migration `c6e8a0b2d4f3` (on `f022a1b2c001`) adds the project and attachment tables and the applicant fields; it refuses a downgrade while any of them is used. Snapshots are format 11. The leads and viewing calendar forms keep the applicant details and the rating they do not show.
-- **Interessenten page:** statuses read in German also when grouped, "Zurückgezogen" is known, and an inquiry links to its re-letting project.
+- **Interessenten page:** statuses read in German also when grouped, "Zurückgezogen" is known, and an inquiry links to its re-letting project. A project applicant declined or withdrawn there gets the time of the decision, as in the project, so the deletion hint counts from it.
 - **Navigation:** "Neuvermietung" opens the Leerstand group; the groups a person opens stay open after a reload or the next sign-in; on a record's page the page name in the top bar leads back to its list; a unit without a tenancy links to the re-letting page.
 
 ## Unreleased — 2026-10-19 deposit takeover and interface round

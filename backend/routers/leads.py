@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Lead, LeadCreate, LeadPatch
-from ..services.reletting import CLOSED_OUT, lead_files, open_project_id
+from ..services.reletting import CLOSED_OUT, decision_time, lead_files, open_project_id
 from ..storage import NotFoundError, ValidationError
 from .reletting import remove_files
 
@@ -19,6 +19,13 @@ def _guard_project_decision(payload: LeadCreate, current: Lead | None = None) ->
         (payload.status == "accepted") != bool(current and current.status == "accepted")
     ):
         raise HTTPException(409, "Die Übernahme als Mieter erfolgt im Neuvermietungsprojekt über „Als Mieter übernehmen“.")
+
+
+def _with_decision(changed: LeadCreate, current: Lead) -> LeadCreate:
+    """A project applicant declined or withdrawn on this page gets the time of the decision, as in the project."""
+    if not current.project_id:
+        return changed
+    return changed.model_copy(update={"decided_at": decision_time(current.status, changed.status, current.decided_at)})
 
 
 @router.get("", response_model=list[Lead])
@@ -79,7 +86,7 @@ def update_lead(lead_id: str, payload: LeadCreate) -> Lead:
         values = current.model_dump(include=set(LeadCreate.model_fields))
         changed = LeadCreate.model_validate({**values, **payload.model_dump(exclude_unset=True)})
         _guard_project_decision(changed, current)
-        return store.update_lead(lead_id, changed)
+        return store.update_lead(lead_id, _with_decision(changed, current))
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -92,6 +99,9 @@ def patch_lead(lead_id: str, payload: LeadPatch) -> Lead:
         current = store.get_lead(lead_id)
         changed = current.model_copy(update=payload.model_dump(exclude_unset=True))
         _guard_project_decision(changed, current)
+        if current.project_id and changed.status != current.status:
+            values = changed.model_dump(include=set(LeadCreate.model_fields))
+            return store.update_lead(lead_id, _with_decision(LeadCreate.model_validate(values), current))
         return store._patch_entity("lead", lead_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
