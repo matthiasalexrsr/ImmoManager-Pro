@@ -64,6 +64,7 @@ def test_overview_does_not_turn_manual_paid_flags_into_payment_evidence(finance)
     assert row["status"] == "paid"  # no modification of the legacy record
     assert row["payment_summary"]["paid"] == 0
     assert row["payment_summary"]["open"] is None
+    assert row["payment_summary"]["status"] == "unclear"
     assert "ohne zugeordnete Zahlung" in row["payment_summary"]["note"]
 
 

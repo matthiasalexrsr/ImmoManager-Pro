@@ -54,7 +54,8 @@ const COLUMNS = [
   { key: 'open_amount', label: 'Restbetrag (€)', type: 'number', align: 'right', render: value => value == null ? 'Ungeklärt' : formatMoney(value) },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
   { key: 'payment_status', label: 'Zahlungsstand', filterType: 'select', render: (value, row) => <span title={row.payment_summary.note || undefined}>
-    {value === 'awaiting_review' ? <span className="badge badge-yellow">Freigabe offen</span>
+    {value === 'unclear' ? <span className="badge badge-yellow">Ungeklärt</span>
+      : value === 'awaiting_review' ? <span className="badge badge-yellow">Freigabe offen</span>
       : value === 'credit_note' ? <span className="badge badge-gray">Gutschrift</span>
         : value === 'overpaid' ? <span className="badge badge-yellow">Überzahlt</span>
           : <StatusBadge status={value} />}

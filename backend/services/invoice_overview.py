@@ -29,8 +29,9 @@ def overview(store: Any, invoices: Iterable[Any], *, today: date | None = None) 
                 note = "Trotz Storno sind Zahlungen zugeordnet. Bitte in der Rechnungsakte prüfen."
         elif balance.status == "legacy":
             if not paid and invoice.status in ("paid", "partial"):
-                state, remaining = invoice.status, None
-                note = "Manueller Zahlungsstatus ohne zugeordnete Zahlung; Restbetrag nicht nachgewiesen."
+                state, remaining = "unclear", None
+                manual = "bezahlt" if invoice.status == "paid" else "teilbezahlt"
+                note = f"Manuell als {manual} markiert, aber ohne zugeordnete Zahlung; Restbetrag nicht nachgewiesen."
             else:
                 remaining = max(money(invoice.gross_amount) - paid, ZERO)
                 state = "overpaid" if paid > money(invoice.gross_amount) else (

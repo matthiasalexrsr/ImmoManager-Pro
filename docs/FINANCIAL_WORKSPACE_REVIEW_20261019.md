@@ -8,7 +8,7 @@ Diese Runde baut auf `f60f2002` auf und bewahrt die bestehenden Abrechnungsorigi
 
 - `paid` bezeichnet tatsächlich zugeordnete wirksame Zahlungen.
 - `open` bezeichnet den nachgewiesenen Restbetrag. `null` bedeutet ungeklärt und wird nicht als Nullbetrag ausgegeben.
-- Ein alter manueller Status „bezahlt“ oder „teilbezahlt“ ohne Zahlungszuordnung bleibt im Datensatz erhalten. Die Übersicht weist den fehlenden Nachweis und den unbekannten Rest ausdrücklich aus.
+- Ein alter manueller Status „bezahlt“ oder „teilbezahlt“ ohne Zahlungszuordnung bleibt im Datensatz erhalten. Die Übersicht zeigt den Zahlungsstand „Ungeklärt“ und weist den fehlenden Nachweis und den unbekannten Rest ausdrücklich aus.
 - Noch nicht freigegebene Rechnungen werden gesondert ausgewiesen. Abgelehnte Rechnungen, Gutschriften und Überzahlungen behalten ihre eigene Bedeutung.
 - Fälligkeit am heutigen Kalendertag bedeutet nicht „überfällig“. Die Fälligkeit einer geprüften Rechnung wird aus deren vereinbarten Zahlungsbedingungen abgeleitet, ohne die gespeicherte Rechnungsangabe beim Bearbeiten zu überschreiben.
 

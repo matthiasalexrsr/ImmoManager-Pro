@@ -215,7 +215,11 @@ try {
       booking_date: '2026-01-02', amount: -1, payment_text: 'QA RE-REST Auswahl neuer ' + i });
     const older = await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
       booking_date: '2025-01-01', amount: -100, payment_text: 'QA RE-REST Auswahl älter' });
+    await call('POST', '/invoices', { supplier: 'QA Zahlungsnachweis fehlt', invoice_number: 'QA-RE-UNGEKLAERT',
+      property_id: north.id, invoice_date: '2026-01-01', net_amount: 90, gross_amount: 90, status: 'paid' });
     await page.goto(base.origin + '/invoices');
+    await expect(row('QA-RE-UNGEKLAERT')).toContainText('Ungeklärt');
+    await expect(row('QA-RE-UNGEKLAERT')).toContainText('ohne zugeordnete Zahlung');
     await expect(row('QA-RE-REST')).toContainText('83,45');
     await expect(row('QA-RE-REST')).toContainText('40,00');
     await page.getByRole('link', { name: 'QA-RE-REST', exact: true }).click();
@@ -243,6 +247,20 @@ try {
     await page.setViewportSize({ width: 360, height: 1000 });
     await shot('invoice-payments-360.png');
     await page.setViewportSize({ width: 1440, height: 1000 });
+  });
+  await step('Invoice receipt checkbox and its complete label remain usable at mobile and desktop widths', async () => {
+    const checkbox = page.getByRole('checkbox', { name: 'Umlagefähig', exact: true });
+    for (const width of [320, 360, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await checkbox.scrollIntoViewIfNeeded();
+      const bounds = await checkbox.evaluate(input => {
+        const box = input.getBoundingClientRect(), label = input.closest('label').getBoundingClientRect();
+        return { width: box.width, height: label.height, left: label.left, right: label.right, viewport: innerWidth };
+      });
+      assert.ok(bounds.width <= 32 && bounds.height <= 70 && bounds.left >= 0 && bounds.right <= bounds.viewport,
+        'Checkbox label is clipped or unreadable: ' + JSON.stringify(bounds));
+      await shot(`invoice-receipt-${width}.png`);
+    }
   });
   await step('Tenant and booking files keep the chosen date and open the exact linked source', async () => {
     const incoming = await call('POST', '/bookings', { account_id: account.id, property_id: north.id, unit_id: unit.id,

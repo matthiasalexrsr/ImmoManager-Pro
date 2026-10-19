@@ -143,7 +143,7 @@ describe('invoice object identity and explicit zero amounts', () => {
   it('uses residuals instead of full invoice amounts and exposes missing payment evidence', async () => {
     state.invoices = [
       { ...invoice('part', 'p1', 'open', 120), payment_summary: { status: 'overdue', paid: 20, open: 100, overdue: true, due_on: '2000-01-01' } },
-      { ...invoice('manual', 'p1', 'paid', 90), payment_summary: { status: 'paid', paid: 0, open: null,
+      { ...invoice('manual', 'p1', 'paid', 90), payment_summary: { status: 'unclear', paid: 0, open: null,
         overdue: false, note: 'Manueller Zahlungsstatus ohne zugeordnete Zahlung' } },
     ];
     show();
