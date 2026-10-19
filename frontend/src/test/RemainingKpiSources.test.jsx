@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { api } from '../api';
@@ -51,6 +51,19 @@ describe('remaining exact KPI sources', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gesamt: Quellvorgänge anzeigen' }));
     expect(screen.getByText('Anna Anfrage')).toBeInTheDocument();
     expect(screen.getByText('Ben Bestätigt')).toBeInTheDocument();
+  });
+
+  it('names lead statuses in German, also when grouped, and links an inquiry to its re-letting project', async () => {
+    api.list.mockImplementation(async path => path === '/leads' ? [
+      { id: 'l1', full_name: 'Anna Anfrage', status: 'contacted', project_id: 'p1' },
+      { id: 'l2', full_name: 'Zora Zurück', status: 'withdrawn' }] : []);
+    show(<Leads />);
+    expect(await screen.findByRole('button', { name: 'Zurückgezogen: Quellvorgänge anzeigen' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Projekt öffnen' })).toHaveAttribute('href', '/reletting/p1?tab=applicants');
+    fireEvent.click(within(screen.getByText('Gruppieren nach:').parentElement).getByRole('button', { name: 'Status' }));
+    expect(screen.getByRole('heading', { name: 'Kontaktiert (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Zurückgezogen (1)' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /withdrawn|contacted/ })).not.toBeInTheDocument();
   });
 
   it.each([[Meters, 'Zähler gesamt'], [Leads, 'Gesamt']])('shows unavailable source counts instead of invented zeroes', async (Page, label) => {

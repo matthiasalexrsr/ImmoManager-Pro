@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
@@ -9,7 +9,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import KpiAction from '../components/KpiAction';
-const STATUS_LABELS = { new: 'Neu', contacted: 'Kontaktiert', viewing_scheduled: 'Besichtigung geplant', offer_sent: 'Angebot gesendet', accepted: 'Angenommen', rejected: 'Abgelehnt' };
+const STATUS_LABELS = { new: 'Neu', contacted: 'Kontaktiert', viewing_scheduled: 'Besichtigung geplant', offer_sent: 'Angebot gesendet', accepted: 'Angenommen', rejected: 'Abgelehnt', withdrawn: 'Zurückgezogen' };
 
 const PRIORITY_COLORS = { 1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)' };
 
@@ -35,6 +35,9 @@ const COLUMNS = [
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
   { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
+  // an inquiry for a unit that is being re-let belongs to its project (comparison, viewings, decision)
+  { key: 'project_label', label: 'Neuvermietung', filterType: 'select',
+    render: (value, row) => (row.project_id ? <Link to={`/reletting/${encodeURIComponent(row.project_id)}?tab=applicants`}>Projekt öffnen</Link> : '—') },
   { key: 'created_at', label: 'Erstellt', type: 'date',
     render: v => formatDate(v) },
 ];
@@ -77,6 +80,7 @@ export default function Leads() {
   const enriched = leads.map(l => ({
     ...l,
     unit_label: unitMap[l.unit_id]?.label || '—',
+    project_label: l.project_id ? 'Mit Projekt' : '',
   }));
 
   // Sort by priority (higher priority = lower number = first), then by name
@@ -95,7 +99,7 @@ export default function Leads() {
     sorted.forEach(l => {
       let key;
       if (groupBy === 'unit') key = l.unit_label || 'Keine Einheit';
-      else if (groupBy === 'status') key = l.status || 'Unbekannt';
+      else if (groupBy === 'status') key = STATUS_LABELS[l.status] || l.status || 'Unbekannt';
       if (!groups[key]) groups[key] = [];
       groups[key].push(l);
     });
@@ -133,6 +137,7 @@ export default function Leads() {
       { value: 'offer_sent', label: 'Angebot gesendet' },
       { value: 'accepted', label: 'Angenommen' },
       { value: 'rejected', label: 'Abgelehnt' },
+      { value: 'withdrawn', label: 'Zurückgezogen' },
     ]},
     { key: 'notes', label: 'Notizen', type: 'textarea' },
   ];

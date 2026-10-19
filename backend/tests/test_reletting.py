@@ -190,6 +190,7 @@ def test_accepting_an_applicant_makes_the_tenant_prefills_the_contract_and_close
                                         "tenant_id": tenant.id, "status": "active", "start_date": "2026-12-01",
                                         "deposit_amount": 2400, "persons": 2}
     assert data["rent_applied"] is True
+    assert data["next_step"] == {"key": "contract", "label": "Mietvertrag", "detail": "Vertrag anlegen und verknüpfen"}
     unit = store.get_unit(estate["unit"].id)
     assert (unit.cold_rent, unit.service_charge_advance, unit.heating_advance) == (800, 150, 50)
     assert _applicants(data)["Anna Bergmann"]["status"] == "accepted"
@@ -200,6 +201,10 @@ def test_accepting_an_applicant_makes_the_tenant_prefills_the_contract_and_close
     assert contract.status_code == 201, contract.text
     assert client.get(f"{API}/contracts/current-rents", params={"as_of": "2026-12-15"}).json()[
         contract.json()["id"]]["cold_rent"] == 800
+    # the project notices the new contract and says what is left: close it with that contract
+    step = client.get(f"{BASE}/{project_id}").json()["next_step"]
+    assert step["key"] == "contract" and step["detail"] == "Vertrag MV-2026-7 angelegt: Projekt damit abschließen"
+    assert client.get(BASE).json()["projects"][0]["next_step"] == step
     other = _estate("Süd", "V-2", "Leipzig")
     elsewhere = store.create_contract(ContractCreate(contract_number="MV-9", property_id=other["property"].id,
                                                      unit_id=other["unit"].id, tenant_id=tenant.id,
@@ -213,13 +218,48 @@ def test_accepting_an_applicant_makes_the_tenant_prefills_the_contract_and_close
     project = closed.json()["project"]
     assert project["status"] == "closed" and project["contract_id"] == contract.json()["id"]
     assert store.get_listing(project["listing_id"]).status == "closed"
+    assert closed.json()["next_step"]["key"] == "privacy"
     assert client.put(f"{BASE}/{project_id}", json=OFFER).status_code == 409
     # once let, every remaining applicant may be deleted, the taken-over one included
     purge = client.post(f"{BASE}/{project_id}/purge", json={"lead_ids": [good["id"], bad["id"]], "confirmed": True})
     assert purge.status_code == 200, purge.text
     assert purge.json()["deleted"] == 2 and purge.json()["applicants"] == []
     assert next(step for step in purge.json()["steps"] if step["key"] == "privacy")["done"] is True
+    assert purge.json()["next_step"] is None
     assert store.get_tenant(tenant.id).full_name == "Anna Bergmann"           # the tenant record stays
+
+
+def test_inquiries_recorded_elsewhere_belong_to_the_units_project(client):
+    estate = _estate()
+    unit_id = estate["unit"].id
+    other = _estate("Süd", "V-2", "Leipzig")
+    listing = client.post(f"{API}/listings", json={"unit_id": unit_id, "title": "WE 3 frei", "status": "active"}).json()
+    early = client.post(f"{API}/leads", json={"full_name": "Clara Weiß", "unit_id": unit_id}).json()
+    by_listing = client.post(f"{API}/leads", json={"full_name": "Dana Ost", "listing_id": listing["id"],
+                                                   "status": "contacted"}).json()
+    past = client.post(f"{API}/leads", json={"full_name": "Egon Alt", "unit_id": unit_id, "status": "rejected"}).json()
+    foreign = client.post(f"{API}/leads", json={"full_name": "Fritz Fern", "unit_id": other["unit"].id}).json()
+    assert {early["project_id"], by_listing["project_id"], past["project_id"], foreign["project_id"]} == {None}
+    started = client.post(BASE, json={"unit_id": unit_id})
+    assert started.status_code == 201, started.text
+    data = started.json()
+    project_id = data["project"]["id"]
+    # the open inquiries and the unit's listing come along; the decided one and other units' stay out
+    assert data["adopted"] == 2 and data["project"]["listing_id"] == listing["id"]
+    assert set(_applicants(data)) == {"Clara Weiß", "Dana Ost"}
+    assert store.get_lead(by_listing["id"]).unit_id == unit_id
+    assert store.get_lead(past["id"]).project_id is None and store.get_lead(foreign["id"]).project_id is None
+    # a new inquiry for the unit joins the running project, a rejected one with the time of the decision
+    later = client.post(f"{API}/leads", json={"full_name": "Gina Neu", "unit_id": unit_id})
+    assert later.status_code == 201 and later.json()["project_id"] == project_id
+    declined = client.post(f"{API}/leads", json={"full_name": "Hans Nein", "listing_id": listing["id"],
+                                                 "status": "rejected"}).json()
+    assert declined["project_id"] == project_id and declined["unit_id"] == unit_id and declined["decided_at"]
+    # acceptance happens in the project only
+    taken = client.post(f"{API}/leads", json={"full_name": "Ida Ja", "unit_id": unit_id, "status": "accepted"}).json()
+    assert taken["project_id"] is None
+    assert set(_applicants(client.get(f"{BASE}/{project_id}").json())) == {"Clara Weiß", "Dana Ost", "Gina Neu",
+                                                                          "Hans Nein"}
 
 
 def test_rejected_applicants_are_deleted_with_their_documents_and_traces(client):

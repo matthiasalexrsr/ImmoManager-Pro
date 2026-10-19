@@ -35,7 +35,7 @@ const DE = {
   rejected: 'Abgelehnt', renovation: 'Renovierung', reserved: 'Reserviert', resolved: 'Erledigt', returned: 'Zurückgezahlt',
   review: 'In Prüfung', scheduled: 'Geplant', sent: 'Gesendet', signed: 'Unterschrieben', succeeded: 'Erfolgreich',
   terminated: 'Gekündigt', unread: 'Ungelesen', urgent: 'Dringend', vacant: 'Leer', viewing_scheduled: 'Besichtigung geplant',
-  warning: 'Warnung', info: 'Hinweis', written_off: 'Ausgebucht', not_configured: 'Nicht eingerichtet',
+  warning: 'Warnung', info: 'Hinweis', withdrawn: 'Zurückgezogen', written_off: 'Ausgebucht', not_configured: 'Nicht eingerichtet',
   configured: 'Eingerichtet', connected: 'Verbunden', unknown: 'Unbekannt',
   // appointments, notification kinds and other short keys
   viewing: 'Besichtigung', inspection: 'Begehung', meeting: 'Besprechung', deadline: 'Frist', other: 'Sonstiges',

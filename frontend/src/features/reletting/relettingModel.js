@@ -14,6 +14,11 @@ export const APPLICANT_BADGE = {
   new: 'badge-blue', contacted: 'badge-blue', viewing_scheduled: 'badge-yellow', offer_sent: 'badge-yellow',
   accepted: 'badge-green', rejected: 'badge-gray', withdrawn: 'badge-gray',
 };
+// the tab of the project page where a step of the process is done
+export const STEP_TAB = {
+  offer: 'overview', expose: 'expose', applicants: 'applicants', viewings: 'viewings', choice: 'compare',
+  contract: 'closing', privacy: 'closing',
+};
 export const VIEWING_STATUS = { scheduled: 'Geplant', completed: 'Wahrgenommen', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 export const EMPLOYMENT = {
   permanent: 'Unbefristet angestellt', temporary: 'Befristet angestellt', self_employed: 'Selbstständig',

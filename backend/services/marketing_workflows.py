@@ -16,6 +16,7 @@ from .. import models
 from ..db.orm_models import LeadORM, ViewingAppointmentORM
 from . import channel_workflows as flow
 from .integrations import connection_storage as db
+from .reletting import open_project_id
 from .workspace_contexts import resolve_context, same_revision
 
 
@@ -69,6 +70,7 @@ def action(store, actor, listing_id, payload):
                     email=params.get("email") or None,
                     phone=params.get("phone") or None,
                     source="Lokales Exposé",
+                    project_id=open_project_id(unit.store, listing.unit_id),
                 ).model_dump(),
             )
             _put(unit, LeadORM, "leads", record)

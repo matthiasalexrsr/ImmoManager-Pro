@@ -52,10 +52,11 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Neuvermietung (Leerstand):** Jede frei werdende Einheit wird zum Projekt:
   - Angebot mit Miete, Kaution, Vorgaben und den Pflichtangaben des Energieausweises;
   - Exposé als PDF und Texte für Immobilienportale zum Kopieren (es wird nichts automatisch veröffentlicht);
-  - Interessenten mit Unterlagen, Besichtigungen im Besichtigungskalender samt Eindruck danach;
+  - Interessenten mit Unterlagen (bereits erfasste Anfragen der Einheit und neue Anfragen kommen von selbst ins Projekt), Besichtigungen im Besichtigungskalender samt Eindruck danach;
   - Vergleich aller Bewerbungen nach denselben Kriterien, auf Wunsch als pseudonymisierte Frage an den KI-Assistenten;
   - Übernahme als Mieter mit vorausgefülltem Mietvertrag;
-  - abgelehnte Bewerber mit allen Unterlagen datenschutzkonform löschen (Hinweis nach drei Monaten).
+  - abgelehnte Bewerber mit allen Unterlagen datenschutzkonform löschen (Hinweis nach drei Monaten);
+  - Übersicht und Projekt nennen jeweils den nächsten Schritt, z. B. „Vertrag MV-7 angelegt: Projekt damit abschließen“.
 
 ### Schneller arbeiten
 - **Tabellen:**

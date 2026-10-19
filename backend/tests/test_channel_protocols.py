@@ -632,8 +632,13 @@ def test_manual_marketing_uses_existing_lead_viewing_contract_no_financial_write
             ),
         )
 
+    from backend.models_reletting import RelettingStart
+    from backend.services import reletting
+
+    project = reletting.start(store, RelettingStart(unit_id=store.get_listing(listing).unit_id), actor)["project"]
     before = {name: len(getattr(store, "list_" + name)()) for name in ("bookings", "contracts")}
     lead = act("lead", {"full_name": "Ausdrücklich gewählte Partei"})["lead"]
+    assert lead["project_id"] == project["id"]          # the inquiry joins the unit's re-letting project
     viewing = act(
         "viewing",
         {"lead_id": lead["id"], "lead_revision": lead["updated_at"], "scheduled_at": "2026-10-18T14:00:00+02:00"},

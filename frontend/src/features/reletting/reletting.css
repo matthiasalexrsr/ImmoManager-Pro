@@ -14,6 +14,10 @@
   display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700;
 }
 .reletting-steps li.is-done .reletting-step-mark { background: var(--success, #2e7d32); border-color: var(--success, #2e7d32); color: #fff; }
+.reletting-steps li.is-next .reletting-step-mark { border-color: var(--primary, #1f6f68); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #1f6f68) 20%, transparent); }
+.reletting-steps li.is-next .link-button { font-weight: 700; }
+.reletting-next { margin: 0 0 0.75rem; }
+.reletting-next .link-button { font-weight: 700; }
 
 .reletting-compare-actions, .reletting-expose-actions, .reletting-close-row {
   display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0 0 0.75rem;

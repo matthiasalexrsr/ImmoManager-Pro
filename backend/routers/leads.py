@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Lead, LeadCreate, LeadPatch
-from ..services.reletting import lead_files
+from ..services.reletting import CLOSED_OUT, lead_files, open_project_id
 from ..storage import NotFoundError, ValidationError
 from .reletting import remove_files
 
@@ -33,6 +35,18 @@ def list_leads(
 @router.post("", response_model=Lead, status_code=status.HTTP_201_CREATED)
 def create_lead(payload: LeadCreate) -> Lead:
     try:
+        if payload.project_id is None and payload.status != "accepted":
+            # an inquiry for a unit that is being re-let joins its project (acceptance stays there)
+            unit_id = payload.unit_id
+            if unit_id is None and payload.listing_id:
+                try:
+                    unit_id = store.get_listing(payload.listing_id).unit_id
+                except (NotFoundError, KeyError):
+                    unit_id = None
+            project_id = open_project_id(store, unit_id)
+            if project_id:
+                decided = payload.decided_at or (datetime.now(timezone.utc) if payload.status in CLOSED_OUT else None)
+                payload = payload.model_copy(update={"project_id": project_id, "unit_id": unit_id, "decided_at": decided})
         return store.create_lead(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

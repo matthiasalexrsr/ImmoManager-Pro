@@ -372,15 +372,18 @@ def overview(store, actor_id: str) -> dict:
                 viewings.setdefault(lead_project[viewing.lead_id], []).append(viewing)
         units = {u.id: u for u in unit.store.list_units()}
         properties = {p.id: p for p in unit.store.list_properties()}
+        contracts = unit.store.list_contracts()
+        current = datetime.now()              # viewings are kept in the office's local time, as entered
         rows = []
         for project in projects:
             apartment = units.get(project.unit_id)
             building = properties.get(apartment.property_id) if apartment else None
             group = leads.get(project.id, [])
-            current = datetime.now()          # viewings are kept in the office's local time, as entered
             planned = sorted(when for when in (_naive(v.scheduled_at) for v in viewings.get(project.id, [])
                                                if v.status == "scheduled") if when >= current)
             warm = warm_rent(project)
+            steps = _steps(project, _missing_for_ad(project, apartment) if apartment else [], group,
+                           viewings.get(project.id, []), _signed(project, contracts))
             due = [lead for lead in group if lead.status in CLOSED_OUT and lead.decided_at
                    and (today - lead.decided_at.date()).days >= PURGE_AFTER_DAYS]
             rows.append({
@@ -395,6 +398,7 @@ def overview(store, actor_id: str) -> dict:
                 "purge_due": len(due),
                 "next_viewing": planned[0].isoformat() if planned else None,
                 "accepted": next((lead.full_name for lead in group if lead.status == "accepted"), None),
+                "next_step": _next_step(project, steps),
                 "created_at": project.created_at.isoformat(), "closed_at": project.closed_at.isoformat()
                 if project.closed_at else None,
                 "href": f"/reletting/{quote(project.id, safe='')}",
@@ -432,8 +436,24 @@ def _missing_for_ad(project: RelettingProject, apartment: Any) -> list[str]:
     return missing
 
 
+def _signed(project: RelettingProject, contracts: Iterable[Any]) -> Any | None:
+    """A contract made for the unit with the accepted applicant while the project still runs."""
+    if project.status != "open" or project.tenant_id is None:
+        return None
+    return next((c for c in contracts if c.unit_id == project.unit_id and c.tenant_id == project.tenant_id
+                 and c.status in ("active", "draft")), None)
+
+
+def _contract_step(project: RelettingProject, signed: Any | None) -> str:
+    if project.contract_id:
+        return "Vertrag verknüpft, Projekt abgeschlossen"
+    if signed is not None:
+        return f"Vertrag {signed.contract_number} angelegt: Projekt damit abschließen"
+    return "Vertrag anlegen und verknüpfen"
+
+
 def _steps(project: RelettingProject, missing: list[str], leads: list[Lead],
-           viewings: list[ViewingAppointment]) -> list[dict]:
+           viewings: list[ViewingAppointment], signed: Any | None = None) -> list[dict]:
     attended = sum(1 for v in viewings if v.status == "completed")
     remaining = [lead for lead in leads if lead.status != "accepted"]
     accepted = next((lead for lead in leads if lead.status == "accepted"), None)
@@ -450,11 +470,27 @@ def _steps(project: RelettingProject, missing: list[str], leads: list[Lead],
         {"key": "choice", "label": "Bewerber auswählen", "done": accepted is not None,
          "detail": f"Übernommen: {accepted.full_name}" if accepted else "Vergleich nach einheitlichen Kriterien"},
         {"key": "contract", "label": "Mietvertrag", "done": project.contract_id is not None,
-         "detail": "Vertrag verknüpft, Projekt abgeschlossen" if project.contract_id else "Vertrag anlegen und verknüpfen"},
+         "detail": _contract_step(project, signed)},
         {"key": "privacy", "label": "Bewerberdaten löschen", "done": project.status != "open" and not remaining,
          "detail": (f"{project.deleted_applicants} Bewerbungen datenschutzkonform gelöscht"
                     if not remaining else f"{len(remaining)} Bewerbungen noch gespeichert")},
     ]
+
+
+def _next_step(project: RelettingProject, steps: list[dict]) -> dict | None:
+    """What to do next: the step after the furthest one done (earlier gaps stay visible in the project)."""
+    if project.status == "cancelled":
+        pending = [step for step in steps if step["key"] == "privacy" and not step["done"]]
+    else:
+        done = [index for index, step in enumerate(steps) if step["done"]]
+        start = done[-1] + 1 if done else 0
+        pending = [step for step in steps[start:] if not step["done"]]
+        if project.status == "open" and steps[0]["done"] is False:
+            pending = [steps[0]]                   # without rent and date there is nothing to offer
+    if not pending:
+        return None
+    step = pending[0]
+    return {"key": step["key"], "label": step["label"], "detail": step["detail"]}
 
 
 def _detail(unit: archive.Unit, project: RelettingProject) -> dict:
@@ -491,6 +527,7 @@ def _detail(unit: archive.Unit, project: RelettingProject) -> dict:
     contracts = [c for c in unit.store.list_contracts() if c.unit_id == project.unit_id
                  and (project.tenant_id is None or c.tenant_id == project.tenant_id) and c.status in ("active", "draft")]
     warm = warm_rent(project)
+    steps = _steps(project, missing, leads, viewings, _signed(project, contracts))
     return {
         "project": project.model_dump(mode="json"),
         "warm_rent": float(warm) if warm is not None else None,
@@ -500,7 +537,8 @@ def _detail(unit: archive.Unit, project: RelettingProject) -> dict:
                  "href": f"/units/{quote(apartment.id, safe='')}"},
         "property": {"id": building.id, "name": building.name, "address": _address(building),
                      "year_built": building.year_built, "href": f"/properties/{quote(building.id, safe='')}"},
-        "steps": _steps(project, missing, leads, viewings),
+        "steps": steps,
+        "next_step": _next_step(project, steps),
         "missing_for_ad": missing,
         "applicants": applicants,
         "viewings": [{**v.model_dump(mode="json"), "lead_name": names.get(v.lead_id)}
@@ -549,8 +587,30 @@ def start(store, payload: RelettingStart, actor_id: str) -> dict:
             "headline": f"{rooms}{kind} in {building.city}" if building.city else None,
             "year_built": building.year_built, "features_text": apartment.features,
             "created_at": stamp, "updated_at": stamp, **carried})
+        # the unit's current listing and the inquiries already recorded for it (on the Interessenten
+        # page or from the listing) belong to the project; decided ones stay with the earlier letting
+        listings = [item for item in unit.store.list_listings() if item.unit_id == apartment.id]
+        current = max((item for item in listings if item.status != "closed"), key=lambda item: item.created_at,
+                      default=None)
+        if current is not None:
+            project = project.model_copy(update={"listing_id": current.id})
         _put(unit, "reletting_projects", project)
-        return _detail(unit, project)
+        own = {item.id for item in listings}
+        adopted = 0
+        for lead in unit.store.list_leads():
+            if (lead.project_id is None and lead.status not in DECIDED
+                    and (lead.unit_id == apartment.id or (lead.unit_id is None and lead.listing_id in own))):
+                _put(unit, "leads", lead.model_copy(update={"project_id": project.id, "unit_id": apartment.id,
+                                                            "updated_at": stamp}))
+                adopted += 1
+        return {**_detail(unit, project), "adopted": adopted}
+
+
+def open_project_id(store: Any, unit_id: str | None) -> str | None:
+    """The running re-letting project of a unit: a new inquiry for the unit belongs to it."""
+    if not unit_id:
+        return None
+    return next((p.id for p in store.list_reletting_projects() if p.unit_id == unit_id and p.status == "open"), None)
 
 
 def update(store, project_id: str, payload: RelettingUpdate, actor_id: str) -> dict:

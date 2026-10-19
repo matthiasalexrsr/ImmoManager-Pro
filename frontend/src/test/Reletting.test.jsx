@@ -25,7 +25,8 @@ function Where() { const location = useLocation(); return <output aria-label="Ad
 const OVERVIEW = {
   totals: { open: 1, vacant_without_project: 1, applicants: 2, purge_due: 1 },
   projects: [{ id: 'p1', status: 'open', unit_id: 'u1', unit_label: 'WE 3', property_id: 'h1', property_name: 'Bautzner Straße',
-    available_from: '2026-12-01', warm_rent: 1000, applicants: 2, purge_due: 1, next_viewing: null, accepted: null, href: '/reletting/p1' }],
+    available_from: '2026-12-01', warm_rent: 1000, applicants: 2, purge_due: 1, next_viewing: null, accepted: null, href: '/reletting/p1',
+    next_step: { key: 'contract', label: 'Mietvertrag', detail: 'Vertrag MV-7 angelegt: Projekt damit abschließen' } }],
   vacancies: [{ unit_id: 'u2', unit_label: 'WE 5', unit_type: 'Wohnung', property_id: 'h1', property_name: 'Bautzner Straße',
     area_sqm: 48, rooms: 2, cold_rent: 420, vacant_since: '2026-09-30', free_from: null, href: '/units/u2' }],
 };
@@ -49,6 +50,7 @@ const PROJECT = {
   property: { id: 'h1', name: 'Bautzner Straße', address: 'Bautzner Straße 61, 01099 Dresden', href: '/properties/h1' },
   steps: [{ key: 'offer', label: 'Angebot festlegen', done: true, detail: 'Miete' }, { key: 'expose', label: 'Exposé und Portaltext', done: false, detail: 'Es fehlt: Art des Energieausweises' }],
   missing_for_ad: ['Art des Energieausweises'],
+  next_step: { key: 'expose', label: 'Exposé und Portaltext', detail: 'Es fehlt: Art des Energieausweises' },
   applicants: [
     applicant('a', 'Anna Bergmann', 'viewing_scheduled', ['met', 'met', 'met', 'met', 'met', 'open']),
     applicant('b', 'Bernd Krause', 'new', ['not_met', 'not_met', 'met', 'open', 'open', 'open']),
@@ -58,11 +60,11 @@ const PROJECT = {
   viewings: [], listing: null, tenant: null, contracts: [], purge_due: 1, retention_days: 90,
 };
 
-function renderProject() {
+function renderProject(entry = '/reletting/p1') {
   api.get.mockImplementation(path => Promise.resolve(path.endsWith('/portal-text')
     ? { blocks: [{ key: 'facts', label: 'Eckdaten und Kosten', text: 'Warmmiete: 1.000,00 €' }], missing: ['Art des Energieausweises'] }
     : path.endsWith('/ai-question') ? { question: 'Bitte vergleiche … Bewerbung A:', applicants: 2 } : PROJECT));
-  return render(<MemoryRouter initialEntries={['/reletting/p1']}>
+  return render(<MemoryRouter initialEntries={[entry]}>
     <Routes><Route path="/reletting/:id" element={<><RelettingProject /><Where /></>} />
       <Route path="*" element={<Where />} /></Routes></MemoryRouter>);
 }
@@ -70,14 +72,18 @@ function renderProject() {
 describe('Reletting hub', () => {
   it('lists the projects and starts one for a vacant unit', async () => {
     api.get.mockResolvedValue(OVERVIEW);
-    api.post.mockResolvedValue({ project: { id: 'p9' } });
+    api.post.mockResolvedValue({ project: { id: 'p9' }, adopted: 2 });
     render(<MemoryRouter initialEntries={['/reletting']}><Routes>
       <Route path="/reletting" element={<Reletting />} /><Route path="*" element={<Where />} /></Routes></MemoryRouter>);
     expect(await screen.findByRole('link', { name: 'WE 3' })).toHaveAttribute('href', '/reletting/p1');
     expect(screen.getByText('Laufende Projekte').closest('.stat-card')).toHaveTextContent('1');
     expect(screen.getByText('seit 30.09.2026')).toBeInTheDocument();
+    // what is left to do, linked to the tab where it is done
+    expect(screen.getByRole('link', { name: 'Mietvertrag' })).toHaveAttribute('href', '/reletting/p1?tab=closing');
+    expect(screen.getByText('Vertrag MV-7 angelegt: Projekt damit abschließen')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Neuvermietung starten' })); });
     expect(api.post).toHaveBeenCalledWith('/reletting', { unit_id: 'u2' });
+    expect(toast.success).toHaveBeenCalledWith('2 bereits erfasste Anfragen gehören jetzt zum Projekt.');
     expect(screen.getByRole('status', { name: 'Adresse' })).toHaveTextContent('/reletting/p9');
   });
 });
@@ -98,6 +104,18 @@ describe('Reletting project', () => {
     expect(api.get).toHaveBeenCalledWith('/reletting/p1/ai-question');
     expect(readAssistantDraft('u1', 'new')).toMatchObject({ body: 'Bitte vergleiche … Bewerbung A:', data_scope: 'none' });
     expect(screen.getByRole('status', { name: 'Adresse' })).toHaveTextContent('/assistant');
+  });
+
+  it('names the next step and opens the tab a link asks for', async () => {
+    renderProject();
+    await screen.findByRole('heading', { name: 'Helle 2-Zimmer-Wohnung' });
+    expect(screen.getByText(/Als Nächstes:/)).toHaveTextContent('Es fehlt: Art des Energieausweises');
+    fireEvent.click(within(screen.getByText(/Als Nächstes:/)).getByRole('button', { name: 'Exposé und Portaltext' }));
+    expect(screen.getByRole('tab', { name: 'Exposé & Portale' })).toHaveAttribute('aria-selected', 'true');
+    cleanup();
+    renderProject('/reletting/p1?tab=closing');
+    await screen.findByRole('heading', { name: 'Helle 2-Zimmer-Wohnung' });
+    expect(screen.getByRole('tab', { name: 'Abschluss & Datenschutz' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('takes the chosen applicant over and opens the prefilled contract form', async () => {

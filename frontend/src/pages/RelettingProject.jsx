@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import FormModal from '../components/FormModal';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { useCanWrite } from '../contexts/AuthContext';
 import { formatDate, formatMoney, formatNumber } from '../utils/format';
-import { OFFER_FIELDS, PROJECT_STATUS, offerPayload } from '../features/reletting/relettingModel';
+import { OFFER_FIELDS, PROJECT_STATUS, STEP_TAB, offerPayload } from '../features/reletting/relettingModel';
 import { ApplicantsTab, ClosingTab, ComparisonTab, ExposeTab, ViewingsTab } from '../features/reletting/ProjectTabs';
 import '../features/reletting/reletting.css';
 import './propertyDossier.css';
@@ -15,16 +15,19 @@ const TABS = [['overview', 'Übersicht'], ['expose', 'Exposé & Portale'], ['app
 
 export default function RelettingProject() {
   const { id } = useParams();
-  return <ProjectFile key={id} id={id} />;
+  const [params] = useSearchParams();
+  // a link may open the project on the tab of a step (?tab=closing from the overview's next step)
+  const start = params.get('tab');
+  return <ProjectFile key={id} id={id} initialTab={TABS.some(([key]) => key === start) ? start : 'overview'} />;
 }
 
-function ProjectFile({ id }) {
+function ProjectFile({ id, initialTab }) {
   const path = `/reletting/${encodeURIComponent(id)}`;
   const mayWrite = useCanWrite('/reletting');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(initialTab);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -120,8 +123,7 @@ function ProjectFile({ id }) {
 function Overview({ data, done, canWrite, onEdit, onGo }) {
   const { project, unit } = data;
   const depositRatio = project.deposit_amount != null && project.target_rent ? project.deposit_amount / project.target_rent : null;
-  const target = { offer: 'overview', expose: 'expose', applicants: 'applicants', viewings: 'viewings', choice: 'compare',
-    contract: 'closing', privacy: 'closing' };
+  const next = data.next_step;
   const facts = [
     ['Kaltmiete', project.target_rent != null && formatMoney(project.target_rent)],
     ['Nebenkosten', project.service_charge != null && formatMoney(project.service_charge)],
@@ -140,12 +142,15 @@ function Overview({ data, done, canWrite, onEdit, onGo }) {
       <section className="panel" aria-labelledby="reletting-steps">
         <div className="panel-header" id="reletting-steps">Ablauf · {done} von {data.steps.length} erledigt</div>
         <div className="panel-body">
+          {next && <p className="reletting-next">Als Nächstes: <button type="button" className="link-button"
+            onClick={() => onGo(STEP_TAB[next.key])}>{next.label}</button>
+            <span className="text-muted reletting-small"> · {next.detail}</span></p>}
           <ol className="reletting-steps">
             {data.steps.map(step => (
-              <li key={step.key} className={step.done ? 'is-done' : ''}>
+              <li key={step.key} className={step.done ? 'is-done' : step.key === next?.key ? 'is-next' : ''}>
                 <span className="reletting-step-mark" aria-hidden="true">{step.done ? '✓' : ''}</span>
-                <div><button type="button" className="link-button" onClick={() => onGo(target[step.key])}>{step.label}</button>
-                  <span className="sr-only">{step.done ? ' – erledigt' : ' – offen'}</span>
+                <div><button type="button" className="link-button" onClick={() => onGo(STEP_TAB[step.key])}>{step.label}</button>
+                  <span className="sr-only">{step.done ? ' – erledigt' : step.key === next?.key ? ' – als Nächstes' : ' – offen'}</span>
                   <div className="text-muted reletting-small">{step.detail}</div></div>
               </li>
             ))}

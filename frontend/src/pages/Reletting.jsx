@@ -6,7 +6,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { codeLabel } from '../utils/codeLabels';
 import { formatDate, formatDateTime, formatMoney, formatNumber } from '../utils/format';
-import { PROJECT_STATUS } from '../features/reletting/relettingModel';
+import { PROJECT_STATUS, STEP_TAB } from '../features/reletting/relettingModel';
 import '../features/reletting/reletting.css';
 
 // Neuvermietung: every vacant unit as a project, from the offer to the new tenancy.
@@ -31,6 +31,9 @@ export default function Reletting() {
     setStarting(row.unit_id);
     try {
       const created = await api.post('/reletting', { unit_id: row.unit_id });
+      if (created.adopted) {
+        toast.success(`${created.adopted} bereits erfasste${created.adopted === 1 ? ' Anfrage gehört' : ' Anfragen gehören'} jetzt zum Projekt.`);
+      }
       navigate(`/reletting/${encodeURIComponent(created.project.id)}`);
     } catch (failure) {
       toast.error(failure.message);
@@ -43,6 +46,9 @@ export default function Reletting() {
   if (!data) return <div className="page-loading" role="status">Neuvermietung wird geladen …</div>;
 
   const totals = data.totals;
+  // the next step as text (search, filter and CSV), with where it is done
+  const projects = data.projects.map(row => ({ ...row, next_step: row.next_step?.label || '', next_key: row.next_step?.key,
+    next_detail: row.next_step?.detail }));
   const projectColumns = [
     { key: 'unit_label', label: 'Einheit', filterType: 'text',
       render: (value, row) => <Link to={row.href}>{value || '—'}</Link> },
@@ -50,6 +56,9 @@ export default function Reletting() {
       render: (value, row) => (row.property_id ? <Link to={`/properties/${encodeURIComponent(row.property_id)}`}>{value}</Link> : value || '—') },
     { key: 'status', label: 'Status', filterType: 'select',
       render: value => <span className={`badge ${PROJECT_STATUS[value]?.badge || 'badge-gray'}`}>{PROJECT_STATUS[value]?.label || codeLabel(value)}</span> },
+    { key: 'next_step', label: 'Nächster Schritt', filterType: 'select', wrap: true,
+      render: (value, row) => (value ? <><Link to={`${row.href}?tab=${STEP_TAB[row.next_key]}`}>{value}</Link>
+        <div className="td-sub">{row.next_detail}</div></> : '—') },
     { key: 'available_from', label: 'Bezugsfrei ab', type: 'date', render: value => formatDate(value) },
     { key: 'warm_rent', label: 'Warmmiete', type: 'number', align: 'right', render: value => (value == null ? '—' : formatMoney(value)) },
     { key: 'applicants', label: 'Bewerbungen', type: 'number', align: 'right' },
@@ -86,7 +95,7 @@ export default function Reletting() {
           <div className="stat-value">{totals.purge_due}</div>
           {totals.purge_due > 0 && <div className="text-muted reletting-small">Absage länger als drei Monate her</div>}</div>
       </div>
-      <DataTable title="Neuvermietungsprojekte" columns={projectColumns} data={data.projects} writeArea="/reletting"
+      <DataTable title="Neuvermietungsprojekte" columns={projectColumns} data={projects} writeArea="/reletting"
         onRowClick={row => navigate(row.href)} emptyText="Noch kein Projekt. Unten eine freie Einheit wählen und die Neuvermietung starten." />
       <DataTable title="Freie und frei werdende Einheiten" columns={vacancyColumns} data={data.vacancies} writeArea="/reletting"
         settingsKey="reletting-vacancies"
