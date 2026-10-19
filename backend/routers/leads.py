@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Lead, LeadCreate, LeadPatch
+from ..services.reletting import lead_files
 from ..storage import NotFoundError, ValidationError
+from .reletting import remove_files
 
 router = APIRouter(prefix="/leads", tags=["Interessenten"])
 
@@ -47,7 +49,9 @@ def get_lead(lead_id: str) -> Lead:
 @router.put("/{lead_id}", response_model=Lead)
 def update_lead(lead_id: str, payload: LeadCreate) -> Lead:
     try:
-        return store.update_lead(lead_id, payload)
+        # fields the form does not show (the applicant details of a re-letting project) stay as they are
+        current = store.get_lead(lead_id).model_dump(include=set(LeadCreate.model_fields))
+        return store.update_lead(lead_id, LeadCreate.model_validate({**current, **payload.model_dump(exclude_unset=True)}))
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -65,6 +69,8 @@ def patch_lead(lead_id: str, payload: LeadPatch) -> Lead:
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_lead(lead_id: str) -> None:
     try:
+        files = lead_files(store, lead_id)
         store.delete_lead(lead_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    remove_files(files)        # the applicant's documents go with them

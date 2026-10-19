@@ -64,6 +64,7 @@ from .routers import (
     portfolios,
     properties,
     receivables,
+    reletting,
     rent_adjustments,
     rent_charges,
     reports,
@@ -156,6 +157,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(aktenwerk.router, dependencies=_auth_dep)
     api_v1.include_router(insurances.router, dependencies=_auth_dep)
     api_v1.include_router(service_contracts.router, dependencies=_auth_dep)
+    api_v1.include_router(reletting.router, dependencies=_auth_dep)
     api_v1.include_router(dunning.router, dependencies=_auth_dep)
     api_v1.include_router(photos.router, dependencies=_auth_dep)
     api_v1.include_router(files.router, dependencies=_auth_dep)

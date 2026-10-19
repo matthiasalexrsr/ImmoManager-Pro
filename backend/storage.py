@@ -120,6 +120,7 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from .models_reletting import LeadAttachment, RelettingProject
 from .services.memory_revisions import atomic_memory_update
 from .storage_deposits import DepositMemoryStore
 from .storage_dunning import DunningMemoryStore
@@ -191,6 +192,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     listing_photos: Dict[str, ListingPhoto] = field(default_factory=dict)
     leads: Dict[str, Lead] = field(default_factory=dict)
     viewing_appointments: Dict[str, ViewingAppointment] = field(default_factory=dict)
+    reletting_projects: Dict[str, RelettingProject] = field(default_factory=dict)
+    lead_attachments: Dict[str, LeadAttachment] = field(default_factory=dict)
     billing_periods: Dict[str, BillingPeriod] = field(default_factory=dict)
     allocation_keys: Dict[str, AllocationKey] = field(default_factory=dict)
     cost_items: Dict[str, CostItem] = field(default_factory=dict)
@@ -541,6 +544,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         for booking_id, booking in list(self.bookings.items()):
             if booking.tenant_id == tenant_id:
                 del self.bookings[booking_id]
+        self._unlink_reletting("tenant_id", tenant_id)
         del self.tenants[tenant_id]
 
     def list_contracts(self) -> List[Contract]:
@@ -1039,6 +1043,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         for photo_id, photo in list(self.listing_photos.items()):
             if photo.listing_id == listing_id:
                 del self.listing_photos[photo_id]
+        self._unlink_reletting("listing_id", listing_id)
         del self.listings[listing_id]
 
     def list_listing_photos(self) -> List[ListingPhoto]:
@@ -1109,11 +1114,22 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def delete_lead(self, lead_id: str) -> None:
         if lead_id not in self.leads:
             raise NotFoundError("Interessent nicht gefunden")
-        # Cascade: delete associated viewing appointments
+        # Cascade: delete associated viewing appointments and attachments
         for va_id, va in list(self.viewing_appointments.items()):
             if va.lead_id == lead_id:
                 del self.viewing_appointments[va_id]
+        for attachment_id, attachment in list(self.lead_attachments.items()):
+            if attachment.lead_id == lead_id:
+                del self.lead_attachments[attachment_id]
         del self.leads[lead_id]
+
+    # --- Re-letting projects (written by services/reletting.py) ---
+
+    def list_reletting_projects(self) -> List[RelettingProject]:
+        return list(self.reletting_projects.values())
+
+    def list_lead_attachments(self) -> List[LeadAttachment]:
+        return list(self.lead_attachments.values())
 
     # --- Viewing Appointments ---
 
@@ -1604,7 +1620,14 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             )
         return results[skip : skip + limit]
 
+    def _unlink_reletting(self, field_name: str, value: str) -> None:
+        """A deleted listing, tenant or contract leaves the re-letting project it ended (SET NULL in SQL)."""
+        for project_id, project in list(self.reletting_projects.items()):
+            if getattr(project, field_name) == value:
+                self.reletting_projects[project_id] = project.model_copy(update={field_name: None})
+
     def _delete_contract(self, contract_id: str) -> None:
+        self._unlink_reletting("contract_id", contract_id)
         for period_id, period in list(self.contract_rent_periods.items()):
             if period.contract_id == contract_id:
                 del self.contract_rent_periods[period_id]

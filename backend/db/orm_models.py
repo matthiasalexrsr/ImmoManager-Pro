@@ -23,6 +23,7 @@ from sqlalchemy import (
     event,
     func,
 )
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -423,10 +424,27 @@ class LeadORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="new")
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     notes: Mapped[str | None] = mapped_column(Text)
+    # an applicant of a re-letting project (migration c6e8a0b2d4f3). No foreign key: projects are
+    # closed, never deleted, and SQLite can then drop the column in place on a downgrade.
+    project_id: Mapped[str | None] = mapped_column(String(36))
+    household_size: Mapped[int | None] = mapped_column(Integer)
+    net_income: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    employment: Mapped[str | None] = mapped_column(String(20))
+    move_in_date: Mapped[date | None] = mapped_column(Date)
+    pets: Mapped[str | None] = mapped_column(String(200))
+    doc_self_disclosure: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_income: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_credit_report: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_landlord_reference: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                         server_default="0")
+    doc_id_checked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    rating: Mapped[int | None] = mapped_column(Integer)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        Index("idx_leads_project", "project_id"),
         Index("idx_leads_listing", "listing_id"),
         Index("idx_leads_unit", "unit_id"),
         Index("idx_leads_status", "status"),
@@ -443,6 +461,7 @@ class ViewingAppointmentORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="scheduled")
     agent: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[int | None] = mapped_column(Integer)          # impression after the viewing (c6e8a0b2d4f3)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -450,6 +469,70 @@ class ViewingAppointmentORM(Base):
         Index("idx_viewings_lead", "lead_id"),
         Index("idx_viewings_unit", "unit_id"),
     )
+
+
+class RelettingProjectORM(Base):
+    """Re-letting a vacant unit: the offer, its applicants and the tenancy it ends in (c6e8a0b2d4f3)."""
+
+    __tablename__ = "reletting_projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    unit_id: Mapped[str] = mapped_column(ForeignKey("units.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    available_from: Mapped[date | None] = mapped_column(Date)
+    target_rent: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    service_charge: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    heating_charge: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    deposit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    income_factor: Mapped[float] = mapped_column(Numeric(4, 2, asdecimal=False), nullable=False, default=3,
+                                                 server_default="3")
+    max_persons: Mapped[int | None] = mapped_column(Integer)
+    pets: Mapped[str | None] = mapped_column(String(20))
+    headline: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    location_text: Mapped[str | None] = mapped_column(Text)
+    features_text: Mapped[str | None] = mapped_column(Text)
+    energy_certificate: Mapped[str | None] = mapped_column(String(20))
+    energy_value: Mapped[float | None] = mapped_column(Numeric(8, 1, asdecimal=False))
+    energy_class: Mapped[str | None] = mapped_column(String(4))
+    energy_carrier: Mapped[str | None] = mapped_column(String(60))
+    heating_type: Mapped[str | None] = mapped_column(String(60))
+    year_built: Mapped[int | None] = mapped_column(Integer)
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    contact_phone: Mapped[str | None] = mapped_column(String(60))
+    contact_email: Mapped[str | None] = mapped_column(String(200))
+    listing_id: Mapped[str | None] = mapped_column(ForeignKey("listings.id", ondelete="SET NULL"))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
+    contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
+    deleted_applicants: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_reletting_projects_unit", "unit_id"),
+        # one open project per unit
+        Index("uq_reletting_projects_open_unit", "unit_id", unique=True,
+              sqlite_where=sql_text("status = 'open'"), postgresql_where=sql_text("status = 'open'")),
+        CheckConstraint("status IN ('open', 'closed', 'cancelled')", name="ck_reletting_projects_status"),
+    )
+
+
+class LeadAttachmentORM(Base):
+    """A document or photo of an applicant; deleted with the applicant (c6e8a0b2d4f3)."""
+
+    __tablename__ = "lead_attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="document")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    size: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (Index("idx_lead_attachments_lead", "lead_id"),)
 
 
 class BillingPeriodORM(Base):

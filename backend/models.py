@@ -701,6 +701,22 @@ class LeadCreate(BaseModel):
     status: str = "new"
     priority: int = 0
     notes: Optional[str] = None
+    # An applicant of a re-letting project (migration c6e8a0b2d4f3): only what the comparison needs,
+    # asked at the stage the law allows (income and household after the viewing, the credit report
+    # before the contract); the identity card is only shown, never copied.
+    project_id: Optional[str] = None
+    household_size: Optional[int] = Field(default=None, ge=1, le=20)
+    net_income: Optional[float] = Field(default=None, ge=0, le=1_000_000)     # household net income per month
+    employment: Optional[Literal["permanent", "temporary", "self_employed", "retired", "student", "other"]] = None
+    move_in_date: Optional[date] = None
+    pets: Optional[str] = Field(default=None, max_length=200)
+    doc_self_disclosure: bool = False
+    doc_income: bool = False
+    doc_credit_report: bool = False
+    doc_landlord_reference: bool = False
+    doc_id_checked: bool = False
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    decided_at: Optional[datetime] = None
 
 
 class Lead(LeadCreate):
@@ -719,6 +735,17 @@ class LeadPatch(BaseModel):
     status: Optional[str] = None
     priority: Optional[int] = None
     notes: Optional[str] = None
+    household_size: Optional[int] = Field(default=None, ge=1, le=20)
+    net_income: Optional[float] = Field(default=None, ge=0, le=1_000_000)
+    employment: Optional[Literal["permanent", "temporary", "self_employed", "retired", "student", "other"]] = None
+    move_in_date: Optional[date] = None
+    pets: Optional[str] = Field(default=None, max_length=200)
+    doc_self_disclosure: Optional[bool] = None
+    doc_income: Optional[bool] = None
+    doc_credit_report: Optional[bool] = None
+    doc_landlord_reference: Optional[bool] = None
+    doc_id_checked: Optional[bool] = None
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 class ViewingAppointmentCreate(BaseModel):
@@ -728,6 +755,7 @@ class ViewingAppointmentCreate(BaseModel):
     status: str = "scheduled"
     agent: Optional[str] = None
     notes: Optional[str] = None
+    rating: Optional[int] = Field(default=None, ge=1, le=5)    # impression after the viewing
 
 
 class ViewingAppointment(ViewingAppointmentCreate):
@@ -743,6 +771,7 @@ class ViewingAppointmentPatch(BaseModel):
     status: Optional[str] = None
     agent: Optional[str] = None
     notes: Optional[str] = None
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 # ---------------------------------------------------------------------------

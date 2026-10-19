@@ -49,6 +49,7 @@ export const NAV_SECTIONS = [
     labelKey: 'navigation.sections.vacancy',
     fallback: 'Leerstand',
     items: [
+      { to: '/reletting', labelKey: 'navigation.main.reletting', fallback: 'Neuvermietung', icon: UnitIcon },
       { to: '/leads', labelKey: 'navigation.main.leads', fallback: 'Interessenten', icon: TenantIcon },
       { to: '/listings', labelKey: 'navigation.main.listings', fallback: 'Inserate', icon: SearchIcon },
       { to: '/viewings', labelKey: 'navigation.main.viewings', fallback: 'Besichtigungen', icon: CalendarIcon },

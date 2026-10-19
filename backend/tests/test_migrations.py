@@ -958,14 +958,17 @@ def test_meter_contract_and_portal_columns_and_the_downgrade(migrate):
     assert "portal_url" in _schema(db_path)["service_contracts"]
 
 
+METER_HISTORY_MERGE = "f022a1b2c001"    # the reletting migration builds on it; this test checks the merge itself
+
+
 @pytest.mark.parametrize("previous", ["f021a1b2c001", METER_PORTAL_REVISION])
 def test_meter_history_merge_preserves_both_existing_branches(migrate, previous):
     from sqlalchemy import create_engine
 
     db_path = migrate(previous)
     _seed_previous_schema(db_path)
-    migrate()
-    assert _version(db_path) == migrate.head
+    migrate(METER_HISTORY_MERGE)
+    assert _version(db_path) == METER_HISTORY_MERGE
     with sqlite3.connect(db_path) as conn:
         conn.execute("INSERT INTO meters (id,unit_id,meter_type,portal_url,created_at,updated_at) "
                      "VALUES ('m','u1','electricity','https://example.org/customer','2025-01-01','2025-01-01')")
@@ -1011,19 +1014,19 @@ def test_meter_history_merge_preserves_both_existing_branches(migrate, previous)
             assert plan(other) == []
             migrate.downgrade(other)
             assert_unchanged(remaining)
-        migrate()
-        assert_unchanged({migrate.head})
+        migrate(METER_HISTORY_MERGE)
+        assert_unchanged({METER_HISTORY_MERGE})
 
     removed = plan(ASSISTANT_REVISION)
     assert removed.index("f020a1b2c001") < removed.index(METER_PORTAL_REVISION)
     with pytest.raises(RuntimeError, match="customer portal"):
         migrate.downgrade(ASSISTANT_REVISION)
-    assert_unchanged({migrate.head})
+    assert_unchanged({METER_HISTORY_MERGE})
     with sqlite3.connect(db_path) as conn:
         conn.execute("UPDATE meters SET portal_url=NULL")
     with pytest.raises(RuntimeError, match="takeover of deposits"):
         migrate.downgrade(ASSISTANT_REVISION)
-    assert_unchanged({migrate.head}, portal=None)
+    assert_unchanged({METER_HISTORY_MERGE}, portal=None)
 
     # Removing just the unused portal branch keeps the carried deposit and
     # independent history index; the deposit revision itself is not removed.
@@ -1034,8 +1037,8 @@ def test_meter_history_merge_preserves_both_existing_branches(migrate, previous)
     with sqlite3.connect(db_path) as conn:
         assert "idx_change_history_cursor" in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
         assert conn.execute("SELECT carried_amount FROM deposits WHERE id='d'").fetchone()[0] == 1500
-    migrate()
-    assert_unchanged({migrate.head}, portal=None)
+    migrate(METER_HISTORY_MERGE)
+    assert_unchanged({METER_HISTORY_MERGE}, portal=None)
 
     # The earlier merge is still a preflight boundary after f022 is unmerged.
     migrate.downgrade("f021a1b2c001")
@@ -1078,6 +1081,50 @@ def test_meter_history_merge_preserves_both_existing_branches(migrate, previous)
         assert "idx_change_history_cursor" not in {row[1] for row in conn.execute("PRAGMA index_list(change_history)")}
         assert conn.execute("SELECT amount FROM deposits WHERE id='d'").fetchone()[0] == 1500
         assert conn.execute("SELECT new_value FROM change_history WHERE id='old-history'").fetchone()[0] == "Unveränderter Verlauf"
-    migrate()
-    assert versions() == {migrate.head}
+    migrate(METER_HISTORY_MERGE)
+    assert versions() == {METER_HISTORY_MERGE}
     assert _schema(db_path) == before
+RELETTING_REVISION = "c6e8a0b2d4f3"
+APPLICANT_COLUMNS = {"project_id", "household_size", "net_income", "employment", "move_in_date", "pets",
+                     "doc_self_disclosure", "doc_income", "doc_credit_report", "doc_landlord_reference",
+                     "doc_id_checked", "rating", "decided_at"}
+
+
+def test_reletting_projects_applicant_columns_and_the_downgrade(migrate):
+    db_path = migrate(METER_HISTORY_MERGE)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    with sqlite3.connect(db_path) as conn:
+        unit = conn.execute("SELECT id FROM units LIMIT 1").fetchone()[0]
+        conn.execute("INSERT INTO leads (id, full_name, status, priority, created_at, updated_at) "
+                     "VALUES ('l1', 'Anna Bergmann', 'new', 0, '2026-01-01', '2026-01-01')")
+    migrate(RELETTING_REVISION)
+    schema = _schema(db_path)
+    assert APPLICANT_COLUMNS <= schema["leads"] and "rating" in schema["viewing_appointments"]
+    assert {"reletting_projects", "lead_attachments"} <= set(schema)
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT doc_income FROM leads WHERE id = 'l1'").fetchone() == (0,)   # existing rows
+        conn.execute("INSERT INTO reletting_projects (id, unit_id, status, income_factor, deleted_applicants, "
+                     "created_at, updated_at) VALUES ('p1', ?, 'open', 3, 0, '2026-01-01', '2026-01-01')", (unit,))
+        with pytest.raises(sqlite3.IntegrityError):         # one open project per unit
+            conn.execute("INSERT INTO reletting_projects (id, unit_id, status, income_factor, deleted_applicants, "
+                         "created_at, updated_at) VALUES ('p2', ?, 'open', 3, 0, '2026-01-01', '2026-01-01')", (unit,))
+    with pytest.raises(RuntimeError, match="re-letting projects"):
+        migrate.downgrade(METER_HISTORY_MERGE)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM reletting_projects")
+        conn.execute("UPDATE leads SET doc_income = 1")
+    with pytest.raises(RuntimeError, match="applicant details"):
+        migrate.downgrade(METER_HISTORY_MERGE)
+    assert _version(db_path) == RELETTING_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE leads SET doc_income = 0")
+    migrate.downgrade(METER_HISTORY_MERGE)
+    schema = _schema(db_path)
+    assert not APPLICANT_COLUMNS & schema["leads"] and "rating" not in schema["viewing_appointments"]
+    assert "reletting_projects" not in schema and "lead_attachments" not in schema
+    assert _triggers(db_path) == triggers          # dropped in place: the tables keep their triggers
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT full_name FROM leads").fetchall() == [("Anna Bergmann",)]
+    migrate(RELETTING_REVISION)
+    assert APPLICANT_COLUMNS <= _schema(db_path)["leads"]

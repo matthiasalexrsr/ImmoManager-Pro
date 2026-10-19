@@ -10,9 +10,11 @@ from ..db.orm_models import (
     ContractRentPeriodORM,
     DepositORM,
     HandoverProtocolORM,
+    LeadAttachmentORM,
     LeadORM,
     MeterReadingORM,
     PropertyORM,
+    RelettingProjectORM,
     RentAdjustmentORM,
     TenantORM,
     UnitORM,
@@ -41,6 +43,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from ..models_reletting import LeadAttachment, RelettingProject
 from ..storage import NotFoundError, ValidationError, check_occupancy_dates
 from .base import BaseRepository
 
@@ -57,6 +60,9 @@ class TenantRepository:
         self._viewings = BaseRepository(db, ViewingAppointmentORM, ViewingAppointment, "Besichtigungstermin nicht gefunden")
         self._handover_protocols = BaseRepository(db, HandoverProtocolORM, HandoverProtocol, "Übergabeprotokoll nicht gefunden")
         self._leads = BaseRepository(db, LeadORM, Lead, "Interessent nicht gefunden")
+        self._reletting = BaseRepository(db, RelettingProjectORM, RelettingProject,
+                                         "Neuvermietungsprojekt nicht gefunden")
+        self._lead_attachments = BaseRepository(db, LeadAttachmentORM, LeadAttachment, "Unterlage nicht gefunden")
         self._deposits = BaseRepository(db, DepositORM, Deposit, "Kaution nicht gefunden")
         self._rent_adjustments = BaseRepository(db, RentAdjustmentORM, RentAdjustment, "Mietanpassung nicht gefunden")
         self._rent_periods = BaseRepository(db, ContractRentPeriodORM, ContractRentPeriod, "Mietstand nicht gefunden")
@@ -404,6 +410,13 @@ class TenantRepository:
         return result
 
     def delete_lead(self, lead_id: str) -> None:
-        # Viewing appointments cascade via DB FK
+        # Viewing appointments and attachments cascade via DB FK
         self._leads.delete(lead_id)
         self._commit()
+
+    # --- Re-letting projects (written by services/reletting.py) ---
+    def list_reletting_projects(self) -> list[RelettingProject]:
+        return self._reletting.list_all()
+
+    def list_lead_attachments(self) -> list[LeadAttachment]:
+        return self._lead_attachments.list_all()

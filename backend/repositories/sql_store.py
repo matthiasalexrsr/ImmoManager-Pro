@@ -99,6 +99,7 @@ from ..models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
+from ..models_reletting import LeadAttachment, RelettingProject
 from ..storage import check_final_statement_change
 from .billing_repo import BillingRepository
 from .communication_repo import CommunicationRepository
@@ -553,6 +554,12 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
 
     def delete_lead(self, lead_id: str) -> None:
         self.tenant.delete_lead(lead_id)
+
+    def list_reletting_projects(self) -> list[RelettingProject]:
+        return self.tenant.list_reletting_projects()
+
+    def list_lead_attachments(self) -> list[LeadAttachment]:
+        return self.tenant.list_lead_attachments()
 
     # --- Viewing Appointments ---
     def list_viewing_appointments(self) -> list[ViewingAppointment]:

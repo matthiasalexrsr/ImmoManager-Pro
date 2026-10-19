@@ -51,6 +51,8 @@ const IntegrationConnections = lazy(() => import('./pages/IntegrationConnections
 const Teha = lazy(() => import('./pages/Teha'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Leads = lazy(() => import('./pages/Leads'));
+const Reletting = lazy(() => import('./pages/Reletting'));
+const RelettingProject = lazy(() => import('./pages/RelettingProject'));
 const Listings = lazy(() => import('./pages/Listings'));
 const Viewings = lazy(() => import('./pages/Viewings'));
 const RentAdjustments = lazy(() => import('./pages/RentAdjustments'));
@@ -201,6 +203,8 @@ export default function App() {
           <Route path="integration-connections" element={<IntegrationConnections />} />
           <Route path="teha" element={<Teha />} />
           <Route path="calendar" element={<Calendar />} />
+          <Route path="reletting" element={<Reletting />} />
+          <Route path="reletting/:id" element={<RelettingProject />} />
           <Route path="leads" element={<Leads />} />
           <Route path="listings" element={<Listings />} />
           <Route path="viewings" element={<Viewings />} />
