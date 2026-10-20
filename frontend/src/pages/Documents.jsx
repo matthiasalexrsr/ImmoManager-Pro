@@ -401,7 +401,7 @@ function DocumentsWorkspace() {
       {!loading && !error && <div className="kpi-row">
         <KpiAction label="Gesamt" value={documentPage?.total ?? enriched.length} onClick={() => openSources('all')} />
         <KpiAction label={`Mit Datei${tenantId ? ' auf dieser Seite' : ''}`} value={withFile} onClick={() => openSources('with_file')} />
-        <KpiAction label={`Text erkannt${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
+        <KpiAction label={`Texterkennung abgeschlossen${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
         {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
         {expiring > 0 && !tenantId && <KpiAction label="Läuft ab oder abgelaufen" value={expiring} color="var(--warning)" onClick={() => openSources('expiring')} />}
       </div>}
@@ -415,7 +415,7 @@ function DocumentsWorkspace() {
           { key: 'no_assignment', label: 'Ohne Zuordnung' },
           { key: 'ocr_open', label: 'Texterkennung offen' },
           { key: 'with_file', label: 'Mit Datei' },
-          { key: 'ocr_completed', label: 'Text erkannt' },
+          { key: 'ocr_completed', label: 'Texterkennung abgeschlossen' },
           { key: 'expiring', label: 'Läuft ab oder abgelaufen' },
         ].map(f => (
           <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
@@ -513,7 +513,7 @@ function DocumentsWorkspace() {
 
       {loading && <p role="status">Dokumente werden geladen …</p>}
       {tenantId && pageSource && !loading && !error && <section aria-label="Kennzahlquelle auf dieser Dokumentseite" className="panel">
-        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'Text erkannt' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
+        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'Texterkennung abgeschlossen' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
           <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPageSource(null)}>Quellansicht schließen</button></div>
         <DataTable title="Dokumente auf dieser Seite" settingsKey="documents-page-source" columns={columns}
           data={enriched.filter(row => pageSource === 'with_file' ? Boolean(row.file_url) : pageSource === 'ocr_completed' ? row.ocr_status === 'completed' : !row.property_id && !row.unit_id && !row.contract_id && !row.tenant_id)}

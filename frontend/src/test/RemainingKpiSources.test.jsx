@@ -77,7 +77,7 @@ describe('remaining exact KPI sources', () => {
     api.list.mockResolvedValue([{ id: 'd1', title: 'Erkannter Beleg', file_url: '/uploads/a.pdf', ocr_status: 'completed' },
       { id: 'd2', title: 'Papierakte', ocr_status: null }]);
     show(<Documents />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Text erkannt: Quellvorgänge anzeigen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Texterkennung abgeschlossen: Quellvorgänge anzeigen' }));
     expect(screen.getByText('Erkannter Beleg')).toBeInTheDocument();
     expect(screen.queryByText('Papierakte')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Gesamt: Quellvorgänge anzeigen' }));

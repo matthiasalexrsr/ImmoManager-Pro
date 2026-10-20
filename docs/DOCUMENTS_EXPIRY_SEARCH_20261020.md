@@ -20,7 +20,7 @@ Stand 20. Oktober 2026, Branch `claude/dreamy-gauss-nmaxhn`. Zweites und drittes
 
 **Suche.** `GET /api/v1/documents/search?q=…` sucht den Begriff wörtlich und ohne Groß-/Kleinschreibung (wie die globale Suche, ohne Platzhalterzeichen) und liefert die Treffer, neueste zuerst, mit einem Ausschnitt um die Fundstelle. `GET /api/v1/documents/text-index` nennt, wie viele sichtbare Dokumente durchsuchbar sind und wie viele keinen lesbaren Text haben; `POST /api/v1/documents/text-index` stößt die Indizierung sofort an. Auch die globale Suche findet Dokumente jetzt über ihren Inhalt.
 
-**Oberfläche.** Die Dokumentseite hat über der Liste den Bereich „Volltextsuche in Dokumenten“: Suchfeld, Treffer mit Ausschnitt und Zuordnung (Objekt, Einheit, Vertrag), Stand („12 von 14 Dokumenten durchsuchbar“) und, solange Dokumente noch gelesen werden, „Jetzt lesen“. Ein Treffer öffnet das Dokument.
+**Oberfläche.** Die Dokumentseite hat über der Liste den Bereich „Volltextsuche in Dokumenten“: Suchfeld, Treffer mit Ausschnitt und Zuordnung (Objekt, Einheit, Vertrag), Stand („12 von 14 Dokumenten im Inhalt durchsuchbar“) und, solange Dokumente noch gelesen werden, „Jetzt lesen“. Ein Treffer öffnet das Dokument.
 
 ## Stand der Umsetzung
 

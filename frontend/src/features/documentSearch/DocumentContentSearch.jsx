@@ -69,7 +69,7 @@ export default function DocumentContentSearch({ onOpen, places = {}, canWrite = 
           <button type="submit" className="btn btn-primary" disabled={busy}><Search size={16} aria-hidden="true" /> {busy ? 'Sucht …' : 'Suchen'}</button>
         </div>
         <small id={`${id}-status`} className="document-content-search-status">
-          {status ? <>{status.indexed} von {status.documents} Dokumenten durchsuchbar{status.unreadable ? `, ${status.unreadable} ohne lesbaren Text (z. B. Fotos ohne Texterkennung)` : ''}.
+          {status ? <>{status.indexed} von {status.documents} Dokumenten im Inhalt durchsuchbar{status.unreadable ? `, ${status.unreadable} ohne lesbaren Text (z. B. Fotos ohne Texterkennung)` : ''}.
             {pending > 0 && <> {pending} werden noch gelesen.{canWrite && <> <button type="button" className="btn-link" onClick={refresh}>Jetzt lesen</button></>}</>}</> : 'Durchsucht den Text von PDFs, Office- und Textdateien sowie erkannte Scans.'}
         </small>
       </form>

@@ -17,7 +17,7 @@ describe('search in document contents', () => {
     };
     const onOpen = vi.fn();
     render(<DocumentContentSearch service={service} onOpen={onOpen} places={{ p1: 'Bautzner Straße 61' }} canWrite />);
-    expect(await screen.findByText(/3 von 5 Dokumenten durchsuchbar, 1 ohne lesbaren Text/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 von 5 Dokumenten im Inhalt durchsuchbar, 1 ohne lesbaren Text/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Jetzt lesen' }));
     await waitFor(() => expect(service.refresh).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText('Im Dokumentinhalt suchen'), { target: { value: 'x' } });
