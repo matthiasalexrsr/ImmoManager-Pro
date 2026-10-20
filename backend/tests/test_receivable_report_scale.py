@@ -210,3 +210,37 @@ def test_booking_sources_show_a_restricted_account_only_its_portfolios_bounded_o
             assert statements and max(len(statement) for statement in statements) < 10000
     finally:
         engine.dispose()
+
+
+def test_payment_capacity_reads_the_returns_of_many_payments_together(tmp_path):
+    """Each returned payment's claim shares were read in a separate call (several queries each)."""
+    from backend.services.booking_payment_capacity import booking_payment_capacity
+    from backend.services.maintenance_rows import Rows
+    engine = create_engine(f"sqlite:///{tmp_path / 'capacity.db'}")
+    schema_state.initialise_empty(engine)
+    try:
+        with Session(engine) as session:
+            store = SQLAlchemyStore(session)
+            portfolio = store.create_portfolio(PortfolioCreate(name='Ausgaben'))
+            account = store.create_account(AccountCreate(portfolio_id=portfolio.id, name='Bank', account_type='bank'))
+            rows = []
+            for index in range(30):
+                rows.append({'id': f'pay-{index}', 'account_id': account.id, 'booking_date': date(2026, 1, 5),
+                             'amount': Decimal('-100.00'), 'status': 'open'})
+                rows.append({'id': f'back-{index}', 'account_id': account.id, 'booking_date': date(2026, 1, 9),
+                             'amount': Decimal('40.00'), 'status': 'open', 'reverses_booking_id': f'pay-{index}'})
+            session.execute(insert(BookingORM), rows)
+            session.commit()
+            reads = []
+            def count_reads(_conn, _cursor, statement, _parameters, _context, _many):
+                if statement.lstrip().upper().startswith('SELECT'):
+                    reads.append(statement)
+            event.listen(engine, 'before_cursor_execute', count_reads)
+            try:
+                capacity = booking_payment_capacity(Rows.reading(store), [f'pay-{index}' for index in range(30)])
+            finally:
+                event.remove(engine, 'before_cursor_execute', count_reads)
+            assert set(capacity.available.values()) == {Decimal('60.00')}
+            assert len(reads) < 25, f'{len(reads)} SQL reads for 30 returned payments'
+    finally:
+        engine.dispose()

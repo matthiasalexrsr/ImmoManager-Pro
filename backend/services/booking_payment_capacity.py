@@ -56,14 +56,18 @@ def booking_payment_capacity(rows: Rows, booking_ids: Iterable[str], *, as_of: d
     for allocation in rent_reserved:
         if allocation.source == "manual":
             tenant_reserved[allocation.booking_id] = tenant_reserved.get(allocation.booking_id, ZERO) + money(allocation.amount)
+    # The claim shares of each original's returns, read for all originals at once.
+    from .receivable_residuals import cash_reserved
+    original_of = {b.id: b.reverses_booking_id for b in reversals
+                   if b.reverses_booking_id in bookings and not bookings[b.reverses_booking_id].reverses_booking_id
+                   and (as_of is None or b.booking_date <= as_of)}
+    returned: dict[str, Decimal] = {}
+    for reversal_id, amount in (cash_reserved(rows.store, set(original_of)) if original_of else {}).items():
+        returned[original_of[reversal_id]] = returned.get(original_of[reversal_id], ZERO) + amount
     for key in left:
         reserved[key] = abs(tenant_reserved.get(key, ZERO))
-        if not bookings[key].reverses_booking_id:
-            from .receivable_residuals import cash_reserved
-            own_reversals = [b.id for b in reversals if b.reverses_booking_id == key and
-                             (as_of is None or b.booking_date <= as_of)]
-            if own_reversals:
-                reserved[key] = max(reserved[key] + sum(cash_reserved(rows.store, own_reversals).values(), ZERO), ZERO)
+        if key in returned:
+            reserved[key] = max(reserved[key] + returned[key], ZERO)
         left[key] = max(left[key] - reserved[key], ZERO)
 
     def ordering(entry):

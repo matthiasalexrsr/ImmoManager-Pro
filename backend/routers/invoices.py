@@ -136,16 +136,16 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
         invoice_date=invoice.invoice_date,
     )
 
-    bookings = store.list_bookings()
-    capacity = booking_payment_capacity(rows, [b.id for b in bookings])
     used = {p.booking_id for p in rows.find("invoice_payments", invoice_id=invoice_id)}
+    bookings = [booking for booking in store.list_bookings()
+                if booking.amount < 0 and booking.status == "open" and not booking.reverses_booking_id
+                and booking.id not in used
+                and not (invoice.property_id and booking.property_id not in (None, invoice.property_id))]
+    # Capacity only of the possible payments: computing it for every booking took seconds on a few years of data.
+    capacity = booking_payment_capacity(rows, [b.id for b in bookings])
     candidates = []
     for booking in bookings:
-        if booking.amount >= 0 or booking.status != "open" or booking.reverses_booking_id or booking.id in used:
-            continue
         if _is_tenant_money(store, booking):
-            continue
-        if invoice.property_id and booking.property_id not in (None, invoice.property_id):
             continue
         open_amount = max(capacity.available.get(booking.id, Decimal("0")), Decimal("0"))
         if open_amount > 0:
