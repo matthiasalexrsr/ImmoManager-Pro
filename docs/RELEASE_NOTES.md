@@ -20,7 +20,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Bearbeiten direkt dort;
   - „Neu für dieses Objekt“ öffnet Einheit, Vertrag, Wartungsfall, Buchung, Rechnung oder Aufgabe schon ausgefüllt.
 - **Parteiakte je Mieter:** Verträge, Mietverlauf, Konto, Dokumente, Kaution, Übergaben und Wohnungsgeberbestätigung. Auf der Mieterkonto-Seite lassen sich die Mieterdaten direkt bearbeiten.
-- **Durchgehend deutsch:** Status, Arten und Ja/Nein erscheinen überall als Wörter statt als interne Kürzel; Betragsspalten stehen bündig unter ihrer Überschrift.
+- **Durchgehend deutsch:** Status, Arten und Ja/Nein erscheinen überall als Wörter statt als interne Kürzel, auch in Meldungen des Programms; Betragsspalten stehen bündig unter ihrer Überschrift.
 - **Verlinkungen überall:**
   - Mietername → Parteiakte;
   - Objekt, Einheit, Wartungsfall, Rechnungsprüfung, Mieterkonto und Mahnfall → ihre Seite;
@@ -69,6 +69,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Suche, Filter und Seite bleiben beim Zurückkehren erhalten;
   - Einstellungen je Liste;
   - CSV für deutsche Tabellenprogramme.
+- **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar.
+- **Berichte auch bei großem Bestand zügig:** Übersicht, Prüfliste und Finanzberichte lesen ihre Daten gebündelt. Bei fünf Jahren Buchungen dauert die Liquiditätsplanung für ein Konto mit eingeschränktem Zugriff (z. B. Steuerberater) wenige Sekunden statt fast einer Minute.
 - **Formulare:** „Speichern & weiteren“, „Duplizieren“, „Heute“ neben jedem Datum, Strg+Enter zum Speichern; Eingaben gehen beim Schließen nicht verloren.
 - **Tastatur:** „/“ öffnet die Suche, Alt+N das Neu-Formular der Liste, „?“ zeigt alle Kürzel. Favoriten lassen sich in der Seitenleiste anheften; aufgeklappte Bereiche bleiben aufgeklappt, und auf einer Detailseite führt der Seitenname oben zurück zur Liste.
 
