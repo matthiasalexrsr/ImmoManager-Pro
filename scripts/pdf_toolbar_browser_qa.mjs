@@ -55,7 +55,8 @@ try {
   page = await context.newPage();
   page.on('pageerror', error => report.page_errors.push(String(error)));
   await page.goto(`${base.origin}/documents?focus_id=${encodeURIComponent(document.id)}`);
-  await page.getByRole('row').filter({ hasText: title }).getByText(title, { exact: true }).click();
+  // the title leads to the document page; the row's eye button opens the quick view checked here
+  await page.getByRole('row').filter({ hasText: title }).getByRole('button', { name: 'Dokument ansehen', exact: true }).click();
   const viewer = page.getByRole('dialog', { name: title, exact: true });
   await expect(viewer.getByRole('img', { name: /Seite 1 von 3/ })).toBeVisible();
   const toolbar = viewer.locator('.pdf-preview-toolbar');
