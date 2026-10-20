@@ -20,6 +20,8 @@ DOC_TYPE = "deposit_settlement"
 VIRTUAL_PREFIX = "deposit-settlements/"
 SCHEMA_VERSION = "deposit-settlement/1"
 PDF_FORMAT_VERSION = "deposit-settlement-pdf/1"
+# 2: a letter in the shared letterhead frame (source["letter"]); archived settlements of format 1 stay valid
+LETTERHEAD_FORMAT_VERSION = "deposit-settlement-pdf/2"
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 EXTENSION_KEYS = frozenset({"schema_version", "review", "review_hash", "request_sha256", "actor_id",
                             "idempotency_key", "deposit_id", "settlement_id", "confirmed", "payout_account_id"})
@@ -64,7 +66,7 @@ def validate_deposit_snapshot(row: Any, snapshot: Mapping[str, Any]) -> dict:
     review = extension["review"]
     if not isinstance(review, dict) or set(review) != REVIEW_KEYS:
         raise DepositValidationError("invalid deposit settlement review")
-    if review["format_version"] != PDF_FORMAT_VERSION:
+    if review["format_version"] not in (PDF_FORMAT_VERSION, LETTERHEAD_FORMAT_VERSION):
         raise DepositValidationError("unsupported deposit settlement PDF format")
     if review["pdf_sha256"] != _value(row, "sha256") or digest(review) != extension["review_hash"]:
         raise DepositValidationError("deposit settlement review hash mismatch")
@@ -83,8 +85,8 @@ def validate_deposit_snapshot(row: Any, snapshot: Mapping[str, Any]) -> dict:
     if not isinstance(outcome, dict) or set(outcome) != OUTCOME_KEYS:
         raise DepositValidationError("invalid deposit settlement outcome")
     source = review["source"]
-    if not isinstance(source, dict) or set(source) != SOURCE_KEYS or not all(
-            isinstance(source[name], dict) for name in SOURCE_KEYS):
+    keys = SOURCE_KEYS | {"letter"} if review["format_version"] == LETTERHEAD_FORMAT_VERSION else SOURCE_KEYS
+    if not isinstance(source, dict) or set(source) != keys or not all(isinstance(source[name], dict) for name in keys):
         raise DepositValidationError("invalid deposit settlement source snapshot")
     expected = {"portfolio": _value(row, "portfolio_id"), "property": _value(row, "property_id"),
                 "unit": _value(row, "unit_id"), "contract": _value(row, "contract_id"),

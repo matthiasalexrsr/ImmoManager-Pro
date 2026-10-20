@@ -346,3 +346,35 @@ def test_empty_required_letter_values_are_explicit_validation_errors(case, field
     response = case["client"].post(base(case) + "/letter-preview", json=payload)
     assert response.status_code == 422
     assert any(item["loc"][-1] == field for item in response.json()["detail"])
+
+
+def test_letters_carry_the_letterhead_and_older_originals_stay_valid(case):
+    from backend.services.billing_letter_types import LetterPublish
+    from backend.services.billing_letter_validation import FORMAT_VERSION, digest, request_hash
+
+    payload, shown, saved = publish(case)
+    assert shown["review"]["format_version"] == "billing-statement-letter-pdf/2"
+    assert shown["review"]["source"]["letterhead"]["sender_name"] == "Linda Reiser"
+    with archive.work(store, case["owner"].id) as unit:
+        row = archive.head(unit, saved["document_id"])
+        assert row is not None
+        snapshot = dict(row.metadata_snapshot)
+        values = {name: getattr(row, name) for name in ("actor_id", "request_sha256", "document_id", "sha256",
+                                                        "idempotency_key", "portfolio_id", "property_id", "unit_id",
+                                                        "contract_id", "tenant_id")}
+    proof = snapshot[DOC_TYPE]
+
+    def variant(format_version, source):
+        review = {**proof["review"], "format_version": format_version, "source": source,
+                  "source_revision": digest(source)}
+        command = LetterPublish(data=review["data"], source_revision=review["source_revision"],
+                                review_hash=digest(review), idempotency_key=proof["idempotency_key"])
+        request = request_hash(case["statement"].id, command)
+        return ({**values, "request_sha256": request},
+                {**snapshot, DOC_TYPE: {**proof, "review": review, "review_hash": digest(review), "request_sha256": request}})
+
+    older = {key: value for key, value in proof["review"]["source"].items() if key != "letterhead"}
+    from backend.services.billing_letter_validation import validate_billing_letter_snapshot
+    assert validate_billing_letter_snapshot(*variant(FORMAT_VERSION, older))   # archived before the letterhead
+    with pytest.raises(ValueError):
+        validate_billing_letter_snapshot(*variant("billing-statement-letter-pdf/2", older))

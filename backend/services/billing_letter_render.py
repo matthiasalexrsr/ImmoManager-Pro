@@ -13,15 +13,84 @@ from .housing_confirmation_render import _fonts, _p
 
 
 class _BillingTable(Table):
+    full_frame = A4[1] - 47 * mm        # body height of a page of the format-1 layout
+
     def split(self, availWidth, availHeight):
         # Prefer complete rows. ReportLab otherwise starts a second fragment
         # (and repeats the header) in the remaining space on the SAME page.
         # An exceptionally tall row may split, but only on a fresh full frame.
-        self.splitInRow = int(availHeight >= A4[1] - 47 * mm - 12 - .5)
+        self.splitInRow = int(availHeight >= self.full_frame - 12 - .5)
         return super().split(availWidth, availHeight)
 
 
-def render_pdf(review):
+class _FramedBillingTable(_BillingTable):
+    full_frame = A4[1] - 61 * mm        # later pages of the shared letterhead frame
+
+
+def render_pdf(review, logo=None):
+    """Format 1 (no letterhead in the source) as before; format 2 in the shared letterhead frame."""
+    if isinstance(review["source"].get("letterhead"), dict):
+        return _render_framed(review, logo)
+    return _render_plain(review)
+
+
+def _render_framed(review, logo):
+    from .letter_layout import TEXT_WIDTH, closing_flowables, letter_styles, render_frame
+
+    regular, bold = _fonts()
+    letter = letter_styles()
+    accent = colors.HexColor("#C8CBD0")
+    data, document = review["data"], review["source"]["document"]
+    width = TEXT_WIDTH
+    facts = dict(document["facts"])
+    head = {**review["source"]["letterhead"], "sender_name": data["sender_name"], "sender_address": data["sender_address"]}
+    cell = ParagraphStyle("FramedBillingCell", parent=letter["cell"])
+    amount = ParagraphStyle("FramedBillingAmount", parent=cell, alignment=TA_RIGHT)
+    head_cell = ParagraphStyle("FramedBillingHead", parent=letter["cell_head"])
+    head_amount = ParagraphStyle("FramedBillingHeadAmount", parent=head_cell, alignment=TA_RIGHT)
+
+    def table(rows, widths, header=True, numeric_columns=()):
+        cells = [[_p(str(value or ""), (head_amount if header and index == 0 else amount) if column in numeric_columns
+                     else head_cell if header and index == 0 else cell) for column, value in enumerate(row)]
+                 for index, row in enumerate(rows)]
+        result = _FramedBillingTable(cells, colWidths=widths, repeatRows=1 if header else 0, hAlign="LEFT", splitInRow=1)
+        result.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LINEBELOW", (0, 0), (-1, 0), .6, accent),
+            ("ROWBACKGROUNDS", (0, 1 if header else 0), (-1, -1), [colors.white, colors.HexColor("#F2F3F4")]),
+        ]))
+        return result
+
+    def text(value, kind="body"):
+        return _p(str(value or ""), letter[kind])
+
+    reference = " | ".join(f"{key}: {facts[key]}" for key in ("Abrechnungszeitraum", "Vertrag", "Einheit")
+                           if facts.get(key) and facts[key] != "—") or document["title"]
+    story = [text(f"Bezug: {reference}", "small"), Spacer(1, 2 * mm), text(data["salutation"]), text(data["intro"]),
+             Spacer(1, 2 * mm),
+             KeepTogether([table(document["totals"], [width - 45 * mm, 45 * mm], header=False, numeric_columns=(1,))]),
+             Spacer(1, 5 * mm),
+             text("Die beigefügte Einzelabrechnung zeigt den Abrechnungszeitraum, Ihre Kostenanteile und die "
+                  "berücksichtigten Vorauszahlungen."),
+             *closing_flowables(data["closing"], data["signature"], letter),
+             PageBreak(), _p(document["title"], ParagraphStyle("FramedBillingTitle", parent=letter["subject"], fontSize=13, leading=17)),
+             text("Einzelabrechnung und Berechnungsgrundlagen", "small"),
+             table(document["facts"], [46 * mm, width - 46 * mm], header=False), Spacer(1, 6 * mm)]
+    rows = [["Kostenposition", "Gesamtkosten", "Verteilung und Ihr Anteil", "Ihr Betrag"], *document["rows"]]
+    story += [table(rows, [55 * mm, 27 * mm, 54 * mm, width - 136 * mm], numeric_columns=(1, 3)), Spacer(1, 6 * mm)]
+    if document.get("advances"):
+        story += [text("Vorauszahlungen", "cell_head"), table([["Zeitraum", "Vereinbart", "Betrag"], *document["advances"]],
+                  [width - 85 * mm, 50 * mm, 35 * mm], numeric_columns=(1, 2)), Spacer(1, 6 * mm)]
+    story += [KeepTogether([text("Abrechnungsergebnis", "cell_head"), Spacer(1, 2 * mm),
+              table(document["totals"], [width - 45 * mm, 45 * mm], header=False, numeric_columns=(1,))])]
+    frame = {"recipient_name": data["recipient_name"], "recipient_address": data["recipient_address"],
+             "issue_date": data["issue_date"], "subject": data["subject"], "info": []}
+    return render_frame(frame, head, logo, story, draft=review["draft"], draft_label="ENTWURF")
+
+
+def _render_plain(review):
     regular, bold = _fonts()
     ink, muted, accent = colors.HexColor("#183D3C"), colors.HexColor("#59676A"), colors.HexColor("#126F68")
     styles = {name: ParagraphStyle("BillingLetter" + name, fontName=bold if name in {"title", "head"} else regular,

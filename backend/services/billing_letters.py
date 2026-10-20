@@ -28,10 +28,11 @@ from ..models import Document, DocumentCreate
 from ..permissions import may_write
 from ..storage import NotFoundError
 from . import document_versions as archive
+from . import letterhead as letterheads
 from .billing_letter_render import render_pdf
 from .billing_letter_validation import (
     DOC_TYPE,
-    FORMAT_VERSION,
+    LETTERHEAD_FORMAT_VERSION,
     SCHEMA_VERSION,
     VIRTUAL_PREFIX,
     digest,
@@ -127,6 +128,7 @@ def _source(unit, statement_id, *, lock=False):
         "document": document,
         "settings": {key: effective(unit, key, prop.id)[0] for key in
                      ("document_sender", "document_address", "document_signature")},
+        "letterhead": letterheads.source(unit, prop.id, fallback_sender=portfolio.owner_name or portfolio.name),
     }
     return source, statement, period, prop, tenant, portfolio
 
@@ -225,9 +227,13 @@ def _review(unit, statement_id, payload, *, lock=False):
     if digest(source) != payload.source_revision:
         raise HTTPException(412, "Abrechnung oder zugehörige Akten wurden geändert. Bitte die Briefvorschau neu laden.")
     draft = bool(_publication_problem(unit, statement, period))
-    review = {"format_version": FORMAT_VERSION, "source": source, "source_revision": payload.source_revision,
+    review = {"format_version": LETTERHEAD_FORMAT_VERSION, "source": source, "source_revision": payload.source_revision,
               "data": payload.data.model_dump(mode="json"), "draft": draft}
-    raw = render_pdf(review)
+    logo = letterheads.logo_bytes(unit, source["property"]["id"])
+    expected = source["letterhead"]["logo"]
+    if (logo is None) != (expected is None) or (logo is not None and hashlib.sha256(logo).hexdigest() != expected["sha256"]):
+        raise HTTPException(412, "Der Briefkopf wurde geändert. Bitte die Briefvorschau neu laden.")
+    raw = render_pdf(review, logo)
     review["pdf_sha256"] = hashlib.sha256(raw).hexdigest()
     return review, digest(review), raw, statement, period
 

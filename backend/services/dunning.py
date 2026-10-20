@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -98,8 +99,10 @@ from ..models_dunning import (
 )
 from ..store_errors import NotFoundError
 from . import document_versions as archive
+from . import letterhead as letterheads
 from .dunning_letter_validation import (
     DOC_TYPE,
+    LETTERHEAD_FORMAT_VERSION,
     PDF_FORMAT_VERSION,
     SCHEMA_VERSION,
     VIRTUAL_PREFIX,
@@ -531,6 +534,23 @@ def _parties(ctx: Any, contract: Any) -> dict:
     }
 
 
+def _with_letterhead(unit: Any, contract: Any, parties: dict) -> dict:
+    """The parties of a letter that is drafted, recalculated or finalized: with the shared letterhead."""
+    prop = unit.store.get_property(contract.property_id)
+    portfolio = unit.store.get_portfolio(prop.portfolio_id)
+    head = letterheads.source(unit, prop.id, fallback_sender=portfolio.owner_name or portfolio.name)
+    return {**parties, "letterhead": head}
+
+
+def _letter_logo(unit: Any, contract: Any, content: dict) -> bytes | None:
+    """The logo the content names, or None (an older draft, or a logo changed since the draft)."""
+    expected = (content.get("letterhead") or {}).get("logo")
+    if not expected:
+        return None
+    logo = letterheads.logo_bytes(unit, contract.property_id)
+    return logo if logo is not None and hashlib.sha256(logo).hexdigest() == expected["sha256"] else None
+
+
 def _s(value: Decimal) -> str:
     return str(money(value))
 
@@ -577,8 +597,10 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
     if missing:
         notes.append(f"Für Tage ab {missing.strftime('%d.%m.%Y')} ist kein Basiszinssatz erfasst; Zinsen für die "
                      "betroffenen Forderungen werden in diesem Schreiben nicht berechnet.")
+    head = parties.get("letterhead")
     content = {
-        "format_version": PDF_FORMAT_VERSION, "reference": reference, "stage": stage, "stage_label": rule.label,
+        "format_version": LETTERHEAD_FORMAT_VERSION if head else PDF_FORMAT_VERSION, "reference": reference,
+        "stage": stage, "stage_label": rule.label,
         "as_of": state.as_of.isoformat(), "letter_date": letter_date.isoformat(),
         "payment_deadline": deadline.isoformat(),
         "sender": parties["sender"], "recipient": {k: parties["recipient"][k] for k in ("name", "address")},
@@ -587,6 +609,9 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
         "fee": _s(fee), "interest": _s(total_interest), "total": _s(principal + earlier + fee + total_interest),
         "interest_missing_from": missing.isoformat() if missing else None, "interest_note": " ".join(notes) or None,
     }
+    if head:
+        content["letterhead"] = head
+        content["sender"] = {"name": head["sender_name"]}
     return content, interest_until
 
 
@@ -756,7 +781,7 @@ def _draft_letter(ctx: Any, state: State, stage: int, letter_date: date, rules: 
             DunningCaseItem, case_id=case.id, claim_key=claim.key, kind=claim.kind, receivable_id=claim.receivable_id,
             due_date=claim.due_date, description=claim.description, amount=as_number(claim.amount),
             first_stage=stage, interest_until=claim.due_date if claim.kind == "rent" else None))
-    parties = _parties(ctx, state.contract)
+    parties = _with_letterhead(ctx, state.contract, _parties(ctx, state.contract))
     content, _ = letter_content(ctx, state, stage, letter_date, case.reference, rules, rates, parties)
     numbers = _numbers(content)
     letter = _save(ctx, "dunning_letters", _new(
@@ -788,7 +813,8 @@ def refresh_letter(store: Any, letter_id: str, actor_id: str) -> dict:
         if not state.overdue_principal() and not state.open_charges():
             raise HTTPException(409, "Es ist keine Forderung mehr offen. Bitte den Entwurf verwerfen.")
         content, _ = letter_content(unit, state, letter.stage, letter.letter_date, letter.content["reference"],
-                                    stage_rules(unit), base_rates(unit), _parties(unit, contract))
+                                    stage_rules(unit), base_rates(unit),
+                                    _with_letterhead(unit, contract, _parties(unit, contract)))
         numbers = _numbers(content)
         letter = _save(unit, "dunning_letters", letter.model_copy(update={
             "content": content, "draft_hash": digest(content), "principal": numbers["principal"],
@@ -927,11 +953,16 @@ def finalize_letter(store: Any, letter_id: str, payload: FinalizeRequest, actor_
                                          f"{block.blocked_until:%d.%m.%Y}: {block.reason}")
         rules, rates = stage_rules(unit), base_rates(unit)
         content, interest_until = letter_content(unit, state, letter.stage, letter.letter_date, case.reference,
-                                                 rules, rates, _parties(unit, contract))
+                                                 rules, rates, _with_letterhead(unit, contract, _parties(unit, contract)))
         if not content["lines"] and not content["earlier_charges"]:
             raise HTTPException(409, "Es ist keine Forderung mehr offen (z. B. Zahlung eingegangen). "
                                      "Bitte den Entwurf verwerfen und das Ergebnis festhalten.")
         if digest(content) != letter.draft_hash:
+            figures = ("format_version", "letterhead", "sender")
+            if digest({k: v for k, v in content.items() if k not in figures}) == \
+                    digest({k: v for k, v in letter.content.items() if k not in figures}):
+                raise HTTPException(409, "Seit dem Entwurf hat sich der Briefkopf geändert. Bitte den Entwurf neu "
+                                         "berechnen und die PDF erneut prüfen.")
             raise HTTPException(409, "Seit dem Entwurf haben sich Forderungen oder Zahlungen geändert (z. B. "
                                      "Zahlungseingang oder Widerspruch). Bitte den Entwurf neu berechnen.")
 
@@ -962,7 +993,7 @@ def finalize_letter(store: Any, letter_id: str, payload: FinalizeRequest, actor_
                              if line.get("receivable_id")]
         _mark_level(unit, [rid for rid in claim_receivables if rid not in charge_ids], letter.stage)
 
-        pdf = render_pdf(content)
+        pdf = render_pdf(content, _letter_logo(unit, contract, content))
         stamp = now()
         prop = unit.store.get_property(contract.property_id)
         values = {
@@ -1029,7 +1060,8 @@ def letter_pdf(store: Any, letter_id: str, actor_id: str) -> tuple[bytes, str, b
         letter = _need(unit, "dunning_letters", letter_id, "Schreiben")
         name = f"{letter.content['stage_label']} {letter.content['reference']}.pdf".replace(" ", "_")
         if letter.status != "final":
-            return render_pdf(letter.content), name, False
+            return render_pdf(letter.content, _letter_logo(unit, _contract(unit, letter.contract_id), letter.content)), \
+                name, False
         try:
             document = unit.store.get_document(letter.document_id)
         except NotFoundError:

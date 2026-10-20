@@ -49,7 +49,7 @@ PAGE_WIDTH, PAGE_HEIGHT = A4
 LEFT = 25 * mm                      # text edge (DIN 5008)
 RIGHT = 20 * mm
 TEXT_WIDTH = PAGE_WIDTH - LEFT - RIGHT
-FOOTER_TOP = 31 * mm                # body text ends above the footer
+FOOTER_TOP = 34 * mm                # body text ends above the footer
 FIRST_BODY_TOP = 98.5 * mm          # subject line of Form B
 LATER_BODY_TOP = 27 * mm
 ADDRESS_LEFT, ADDRESS_TOP, ADDRESS_WIDTH, ADDRESS_HEIGHT = 20 * mm, 45 * mm, 85 * mm, 45 * mm
@@ -186,11 +186,48 @@ def _footer_columns(head: dict, styles: dict) -> list[list[Any]]:
     return columns
 
 
+def letter_styles() -> dict[str, ParagraphStyle]:
+    """The paragraph styles of the letter layout, for letters that build their own content."""
+    return _styles()
+
+
+def closing_flowables(closing: str, signature: str, styles: dict) -> list[Any]:
+    """Closing and name with room for a handwritten signature, kept on one page."""
+    parts: list[Any] = [Spacer(1, 2 * mm)]
+    if closing:
+        parts.append(Paragraph(_text(closing), styles["body"]))
+    parts.append(Spacer(1, 12 * mm))
+    if signature:
+        parts.append(Paragraph(_text(signature), styles["body"]))
+    return [KeepTogether(parts)]
+
+
 def render_letter(letter: dict, head: dict, logo: bytes | None, *, draft: bool = False,
                   draft_label: str = "ENTWURF", blocks: dict[str, dict] | None = None) -> bytes:
     """The letter as PDF. `letter`: recipient_name, recipient_address, issue_date, subject, info
     ([label, value] rows), salutation, body, closing, signature, optional appendix (after a rule,
     e.g. a declaration to sign) and attachments."""
+    styles = _styles()
+    story: list[Any] = []
+    if letter.get("salutation"):
+        story.append(Paragraph(_text(letter["salutation"]), styles["body"]))
+    story += body_flowables(letter.get("body") or "", styles, blocks)
+    story += closing_flowables(letter.get("closing") or "", letter.get("signature") or "", styles)
+    if letter.get("appendix"):
+        rule = Table([[""]], colWidths=[TEXT_WIDTH], style=[("LINEABOVE", (0, 0), (-1, -1), .5, RULE)])
+        story.append(KeepTogether([Spacer(1, 8 * mm), rule, Spacer(1, 3 * mm),
+                                   *body_flowables(letter["appendix"], styles, blocks)]))
+    if letter.get("attachments"):
+        story += [Spacer(1, 4 * mm), Paragraph("<b>Anlagen</b>", styles["small"])]
+        story += [Paragraph(escape(item), styles["small"]) for item in letter["attachments"]]
+    return render_frame(letter, head, logo, story, draft=draft, draft_label=draft_label)
+
+
+def render_frame(letter: dict, head: dict, logo: bytes | None, content: list[Any], *, draft: bool = False,
+                 draft_label: str = "ENTWURF") -> bytes:
+    """Any letter in the shared frame: letterhead, address field, information block, subject, then
+    `content` (flowables), footer and page numbers. `letter`: recipient_name, recipient_address,
+    issue_date, subject, info."""
     styles = _styles()
     regular, bold = _fonts()
     sender_lines = _lines(head.get("sender_address"))
@@ -205,7 +242,7 @@ def render_letter(letter: dict, head: dict, logo: bytes | None, *, draft: bool =
         canvas.line(LEFT, FOOTER_TOP - 3 * mm, PAGE_WIDTH - RIGHT, FOOTER_TOP - 3 * mm)
         width = TEXT_WIDTH / 3
         for index, column in enumerate(footer_columns):
-            y = FOOTER_TOP - 6 * mm
+            y = FOOTER_TOP - 5 * mm
             for flowable in column:
                 _, height = flowable.wrapOn(canvas, width - 3 * mm, 20 * mm)
                 flowable.drawOn(canvas, LEFT + index * width, y - height + 2)
@@ -215,9 +252,9 @@ def render_letter(letter: dict, head: dict, logo: bytes | None, *, draft: bool =
         if footer_note:
             text, size = _fit(" · ".join(_lines(footer_note)), regular, 6.9, TEXT_WIDTH - 22 * mm)
             canvas.setFont(regular, size)
-            canvas.drawString(LEFT, 7.5 * mm, text)
+            canvas.drawString(LEFT, 8.5 * mm, text)
             canvas.setFont(regular, 6.9)
-        canvas.drawRightString(PAGE_WIDTH - RIGHT, 7.5 * mm, f"Seite {doc.page}")
+        canvas.drawRightString(PAGE_WIDTH - RIGHT, 8.5 * mm, f"Seite {doc.page}")
         if draft:
             canvas.setFillColor(WATERMARK)
             canvas.setFont(bold, 92)
@@ -294,24 +331,7 @@ def render_letter(letter: dict, head: dict, logo: bytes | None, *, draft: bool =
         canvas.restoreState()
         footer(canvas, doc)
 
-    story: list[Any] = [Paragraph(_text(letter["subject"]), styles["subject"])]
-    if letter.get("salutation"):
-        story.append(Paragraph(_text(letter["salutation"]), styles["body"]))
-    story += body_flowables(letter.get("body") or "", styles, blocks)
-    closing = [Spacer(1, 2 * mm)]
-    if letter.get("closing"):
-        closing.append(Paragraph(_text(letter["closing"]), styles["body"]))
-    closing += [Spacer(1, 12 * mm)]
-    if letter.get("signature"):
-        closing.append(Paragraph(_text(letter["signature"]), styles["body"]))
-    story.append(KeepTogether(closing))
-    if letter.get("appendix"):
-        rule = Table([[""]], colWidths=[TEXT_WIDTH], style=[("LINEABOVE", (0, 0), (-1, -1), .5, RULE)])
-        story.append(KeepTogether([Spacer(1, 8 * mm), rule, Spacer(1, 3 * mm),
-                                   *body_flowables(letter["appendix"], styles, blocks)]))
-    if letter.get("attachments"):
-        story += [Spacer(1, 4 * mm), Paragraph("<b>Anlagen</b>", styles["small"])]
-        story += [Paragraph(escape(item), styles["small"]) for item in letter["attachments"]]
+    story: list[Any] = [Paragraph(_text(letter["subject"]), styles["subject"]), *content]
 
     output = BytesIO()
     frame = dict(leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)

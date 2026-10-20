@@ -625,3 +625,67 @@ def test_snapshots_and_the_data_access_export_carry_the_dunning_file(client, own
     assert {name: len(export[name]) for name in ("dunning_cases", "dunning_letters", "dunning_replies",
                                                  "dunning_blocks", "dunning_events")} == {
         "dunning_cases": 1, "dunning_letters": 1, "dunning_replies": 1, "dunning_blocks": 1, "dunning_events": 5}
+
+
+def _clear_letterhead():
+    if hasattr(store, "db"):
+        store.db.rollback()
+        with store.db.get_bind().connect() as connection, connection.begin():
+            connection.exec_driver_sql("DELETE FROM daily_setting_rules WHERE key LIKE 'document_%'")
+    else:
+        store.__dict__.pop("_daily_rules", None)
+
+
+def test_letters_carry_the_letterhead_and_a_changed_letterhead_asks_for_a_recalculation(client, owner):
+    from io import BytesIO
+    from uuid import uuid4
+
+    import pdfplumber
+
+    from backend.domain.dunning_process import digest
+    from backend.services import document_versions as archive
+    from backend.services.dunning_letter_validation import (
+        PDF_FORMAT_VERSION,
+        DunningLetterValidationError,
+        validate_dunning_letter_snapshot,
+    )
+
+    def setting(key, value, revision):
+        response = client.put("/api/v1/auth/users/me/settings", headers=owner, json={
+            "values": {key: value}, "base_revision": revision, "idempotency_key": str(uuid4()), "scope": "global"})
+        assert response.status_code == 200, response.text
+
+    lease = _lease()
+    try:
+        setting("document_bank", "Hausverwaltung Nord\nIBAN DE02 1203 0000 0000 2020 51", 0)
+        [draft] = _run(client, owner, lease["contract"].id, "2026-07-10")["letters"]
+        setting("document_contact", "Telefon 0341 123456", 0)
+        refused = _finalize(client, owner, draft["id"])
+        assert refused.status_code == 409 and "Briefkopf" in refused.json()["error"]["message"]
+        assert client.post(f"{API}/letters/{draft['id']}/refresh", headers=owner).status_code == 200
+        final = _finalize(client, owner, draft["id"], key="fin-letterhead")
+        assert final.status_code == 200, final.text
+        original = client.get(f"{API}/letters/{draft['id']}/pdf", headers=owner)
+        with pdfplumber.open(BytesIO(original.content)) as document:
+            text = "\n".join(page.extract_text() or "" for page in document.pages)
+        assert "IBAN DE02 1203 0000 0000 2020 51" in text and "Telefon 0341 123456" in text
+        assert "auf das Konto in der Fußzeile" in text
+
+        with archive.work(store, auth.list_users()[0].id) as unit:
+            row = archive.head(unit, final.json()["document_id"])
+            assert row is not None
+            snapshot = dict(row.metadata_snapshot)
+        extension = snapshot["dunning_letter"]
+        assert extension["content"]["format_version"] == "dunning-letter-pdf/2"
+        values = {name: getattr(row, name) for name in ("actor_id", "request_sha256", "document_id", "contract_id")}
+        # an original archived before the letterhead (format 1) stays valid
+        older = {key: value for key, value in extension["content"].items() if key != "letterhead"}
+        older["format_version"] = PDF_FORMAT_VERSION
+        assert validate_dunning_letter_snapshot(values, {**snapshot, "dunning_letter": {
+            **extension, "content": older, "draft_hash": digest(older)}})
+        broken = {**older, "format_version": "dunning-letter-pdf/2"}
+        with pytest.raises(DunningLetterValidationError):
+            validate_dunning_letter_snapshot(values, {**snapshot, "dunning_letter": {
+                **extension, "content": broken, "draft_hash": digest(broken)}})
+    finally:
+        _clear_letterhead()

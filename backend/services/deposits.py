@@ -80,10 +80,11 @@ from ..models_deposits import (
 )
 from ..storage import NotFoundError
 from . import document_versions as archive
+from . import letterhead as letterheads
 from .deposit_render import render_pdf
 from .deposit_validation import (
     DOC_TYPE,
-    PDF_FORMAT_VERSION,
+    LETTERHEAD_FORMAT_VERSION,
     SCHEMA_VERSION,
     VIRTUAL_PREFIX,
     DepositValidationError,
@@ -218,6 +219,13 @@ def _parents(unit: archive.Unit, contract_id: str, *, lock: bool = False, deposi
     if location.property_id != prop.id:
         raise HTTPException(503, "Einheit und Objekt des Vertrags passen nicht zusammen. Bestand prüfen.")
     return contract, prop, location, tenant, portfolio
+
+
+def _postal(row) -> str:
+    """A postal address in lines (street, postcode and town), or "" if it is incomplete."""
+    line = (row.address_line or "").strip()
+    city = " ".join(part.strip() for part in (row.postal_code, row.city) if part and part.strip())
+    return f"{line}\n{city}" if line and city else ""
 
 
 def _source(contract, prop, location, tenant, portfolio) -> dict[str, Any]:
@@ -1143,8 +1151,12 @@ def _review(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlement)
     contract, prop, location, tenant, portfolio = _parents(unit, deposit.contract_id)
     evaluation = _evaluate(unit, deposit, settlement, contract)
     computed = evaluation["computed"]
+    source = _source(contract, prop, location, tenant, portfolio)
+    source["letter"] = {"letterhead": letterheads.source(unit, prop.id, fallback_sender=portfolio.owner_name or portfolio.name),
+                        "recipient_name": tenant.full_name,
+                        "recipient_address": _postal(tenant) or _postal(prop)}
     review = {
-        "format_version": PDF_FORMAT_VERSION,
+        "format_version": LETTERHEAD_FORMAT_VERSION,
         "deposit": {"id": deposit.id, "contract_id": deposit.contract_id, "amount": _text(money(deposit.amount)),
                     "form": deposit.form, "institution": deposit.institution,
                     "account_reference": deposit.account_reference, "account_holder": deposit.account_holder,
@@ -1167,11 +1179,11 @@ def _review(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlement)
                      "years": _interest_json(computed)},
         "outcome": _outcome_json(evaluation["outcome"]),
         "previous": evaluation["previous"],
-        "source": _source(contract, prop, location, tenant, portfolio),
+        "source": source,
     }
     if evaluation["carried_interest"] is not None:     # only with a takeover: other reviews keep their shape
         review["interest"]["carried"] = _text(evaluation["carried_interest"])
-    pdf = render_pdf(review) if review["outcome"] is not None else b""
+    pdf = render_pdf(review, letterheads.logo_bytes(unit, prop.id)) if review["outcome"] is not None else b""
     review["pdf_sha256"] = hashlib.sha256(pdf).hexdigest()
     return review, digest(review), pdf, evaluation, (contract, prop, location, tenant, portfolio)
 

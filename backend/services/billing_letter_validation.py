@@ -12,6 +12,8 @@ from .billing_letter_types import LetterData, LetterPublish
 DOC_TYPE = "billing_statement_letter"
 SCHEMA_VERSION = "billing-statement-letter/1"
 FORMAT_VERSION = "billing-statement-letter-pdf/1"
+# 2: the shared letterhead (source["letterhead"]); archived letters of format 1 stay valid
+LETTERHEAD_FORMAT_VERSION = "billing-statement-letter-pdf/2"
 VIRTUAL_PREFIX = "billing-letters/"
 
 
@@ -52,7 +54,9 @@ def validate_billing_letter_snapshot(row, snapshot):
         expected_document = {"title": frozen.get("title", "Betriebskostenabrechnung"),
             "facts": frozen.get("facts", []), "rows": frozen.get("rows", []),
             "advances": frozen.get("advances", []), "totals": frozen.get("totals", [])}
-        if (proof["schema_version"] != SCHEMA_VERSION or review["format_version"] != FORMAT_VERSION
+        if (proof["schema_version"] != SCHEMA_VERSION
+                or review["format_version"] not in (FORMAT_VERSION, LETTERHEAD_FORMAT_VERSION)
+                or (review["format_version"] == LETTERHEAD_FORMAT_VERSION) != isinstance(source.get("letterhead"), dict)
                 or review["draft"] is not False or data.model_dump(mode="json") != review["data"]
                 or review["pdf_sha256"] != value("sha256") or digest(review) != proof["review_hash"]
                 or digest(source) != review["source_revision"]

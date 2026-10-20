@@ -869,3 +869,50 @@ def test_plain_records_still_work_and_a_bare_deposit_can_be_deleted(client):
     detail = _file(client, estate)
     assert client.delete(f"{BASE}/{detail['deposit']['id']}").status_code == 204
     assert store.list_deposit_instalments() == []
+
+
+def test_settlement_letter_names_the_tenant_and_older_originals_stay_valid(client):
+    from backend.services import document_versions as archive
+    from backend.services.deposit_validation import (
+        PDF_FORMAT_VERSION,
+        DepositValidationError,
+        finalize_request_hash,
+        validate_deposit_snapshot,
+    )
+    from backend.services.housing_confirmation_validation import digest
+
+    estate = _estate()
+    deposit_id = _paid_deposit(client, estate)
+    draft = client.post(f"{BASE}/{deposit_id}/settlements", json={"kind": "final"}).json()["settlements"][0]
+    draft = _settle(client, deposit_id, draft, [{"kind": "other", "description": "Reinigung", "amount": 90,
+                                                 "reason": "Rechnung 5"}])
+    preview, response = _finalize(client, deposit_id, draft["id"], key="settle-letter-1")
+    assert response.status_code == 200, response.text
+    final = response.json()["settlements"][0]
+    with archive.work(store, auth.list_users()[0].id) as unit:
+        row = archive.head(unit, final["document_id"])
+        assert row is not None
+        snapshot = dict(row.metadata_snapshot)
+        values = {name: getattr(row, name) for name in ("actor_id", "request_sha256", "document_id", "contract_id",
+                                                        "portfolio_id", "property_id", "unit_id", "tenant_id",
+                                                        "sha256", "idempotency_key")}
+    validate_deposit_snapshot(values, snapshot)
+    extension = snapshot["deposit_settlement"]
+    letter = extension["review"]["source"]["letter"]
+    assert extension["review"]["format_version"] == "deposit-settlement-pdf/2"
+    assert letter["recipient_name"] == estate["tenant"].full_name and letter["letterhead"]["sender_name"] == "Linda Reiser"
+
+    def variant(format_version, source):
+        review = {**extension["review"], "format_version": format_version, "source": source}
+        review_hash = digest(review)
+        payload = {"idempotency_key": extension["idempotency_key"], "review_hash": review_hash, "confirmed": True,
+                   "payout_account_id": extension["payout_account_id"]}
+        request = finalize_request_hash(extension["settlement_id"], payload)
+        return ({**values, "request_sha256": request},
+                {**snapshot, "deposit_settlement": {**extension, "review": review, "review_hash": review_hash,
+                                                    "request_sha256": request}})
+
+    older = {key: value for key, value in extension["review"]["source"].items() if key != "letter"}
+    validate_deposit_snapshot(*variant(PDF_FORMAT_VERSION, older))          # archived before the letterhead
+    with pytest.raises(DepositValidationError):
+        validate_deposit_snapshot(*variant("deposit-settlement-pdf/2", older))

@@ -53,15 +53,44 @@ def _table(rows: list[list[Any]], widths: list[float]) -> Table:
     return table
 
 
-def render_pdf(review: dict) -> bytes:
+def render_pdf(review: dict, logo: bytes | None = None) -> bytes:
+    """Format 1 (no letter in the source) as before; format 2 as a letter in the shared letterhead frame."""
+    if isinstance(review["source"].get("letter"), dict):
+        return _render_letter(review, logo)
+    return _render_plain(review)
+
+
+def _render_letter(review: dict, logo: bytes | None) -> bytes:
+    from .letter_layout import TEXT_WIDTH, closing_flowables, letter_styles, render_frame
+
+    styles, letter = _styles(), letter_styles()
+    settlement, source = review["settlement"], review["source"]
+    kind = KINDS[settlement["kind"]]
+    head = source["letter"]["letterhead"]
+    opening = ("mit dieser Abrechnung rechnen wir die Mietsicherheit für das beendete Mietverhältnis ab."
+               if settlement["kind"] == "final" else
+               "mit dieser Abrechnung geben wir den bisher einbehaltenen Teil der Mietsicherheit frei.")
+    story: list[Any] = [_p(f"Stichtag {day(settlement['settlement_date'])} · Mietsicherheit nach § 551 BGB", letter["small"]),
+                        Spacer(1, 3 * mm), _p(f"Guten Tag {source['tenant'].get('full_name') or ''},", letter["body"]),
+                        _p(opening, letter["body"]), Spacer(1, 2 * mm),
+                        *_sections(review, styles, TEXT_WIDTH),
+                        *closing_flowables("Mit freundlichen Grüßen", head.get("signature") or head.get("sender_name") or "",
+                                           letter)]
+    unit, contract = source["unit"], source["contract"]
+    frame = {"recipient_name": source["letter"]["recipient_name"], "recipient_address": source["letter"]["recipient_address"],
+             "issue_date": settlement["settlement_date"], "subject": f"{kind} – Mietvertrag {contract['contract_number']}",
+             "info": [["Mietvertrag", contract["contract_number"]],
+                      ["Objekt", f"{source['property'].get('name') or ''}, {unit.get('label') or ''}".strip(", ")]]}
+    return render_frame(frame, head, logo, story)
+
+
+def _render_plain(review: dict) -> bytes:
     styles = _styles()
     regular, _ = _fonts()
-    head, cell = styles["table_bold"], styles["table"]
     width = A4[0] - 32 * mm
-    settlement, deposit, source = review["settlement"], review["deposit"], review["source"]
-    outcome, interest = review["outcome"], review["interest"]
+    settlement, source = review["settlement"], review["source"]
     kind = KINDS[settlement["kind"]]
-    contract, tenant, prop, unit = source["contract"], source["tenant"], source["property"], source["unit"]
+    contract = source["contract"]
 
     def decorate(canvas, doc):
         canvas.saveState()
@@ -77,12 +106,25 @@ def render_pdf(review: dict) -> bytes:
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=A4, invariant=1, title=kind, author="ImmoManager",
                             leftMargin=16 * mm, rightMargin=16 * mm, topMargin=16 * mm, bottomMargin=19 * mm)
+    story: list[Any] = [
+        _p(kind.upper(), styles["title"]),
+        _p(f"Stichtag {day(settlement['settlement_date'])} · Mietsicherheit nach § 551 BGB", styles["subtitle"]),
+        *_sections(review, styles, width),
+    ]
+    doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
+    return output.getvalue()
+
+
+def _sections(review: dict, styles: dict, width: float) -> list[Any]:
+    """Tenancy, agreement, receipts, interest, claims and result: the same in both formats."""
+    head, cell = styles["table_bold"], styles["table"]
+    settlement, deposit, source = review["settlement"], review["deposit"], review["source"]
+    outcome, interest = review["outcome"], review["interest"]
+    contract, tenant, prop, unit = source["contract"], source["tenant"], source["property"], source["unit"]
     address = "\n".join(part for part in (prop.get("address_line"),
                                           " ".join(v for v in (prop.get("postal_code"), prop.get("city")) if v))
                         if part)
     story: list[Any] = [
-        _p(kind.upper(), styles["title"]),
-        _p(f"Stichtag {day(settlement['settlement_date'])} · Mietsicherheit nach § 551 BGB", styles["subtitle"]),
         _section("Mietverhältnis", styles, width), Spacer(1, 4),
         _facts([
             ("Objekt", "\n".join(part for part in (prop.get("name"), address) if part)),
@@ -177,5 +219,4 @@ def render_pdf(review: dict) -> bytes:
     story += [Spacer(1, 12), _p("Abgeschlossene Abrechnungen bleiben unverändert im Dokumentarchiv. Die Auszahlung "
                                 "bzw. Restforderung ist als Buchung bzw. Forderung erfasst; ein Versand an den "
                                 "Mieter erfolgt nicht automatisch.", styles["small"])]
-    doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
-    return output.getvalue()
+    return story

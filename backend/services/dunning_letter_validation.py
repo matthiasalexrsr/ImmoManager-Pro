@@ -20,6 +20,9 @@ DOC_TYPE = "dunning_letter"
 VIRTUAL_PREFIX = "dunning-letters/"
 SCHEMA_VERSION = "dunning-letter/1"
 PDF_FORMAT_VERSION = "dunning-letter-pdf/1"
+# 2: the shared letterhead (content["letterhead"]); archived letters of format 1 stay valid
+LETTERHEAD_FORMAT_VERSION = "dunning-letter-pdf/2"
+PDF_FORMAT_VERSIONS = frozenset({PDF_FORMAT_VERSION, LETTERHEAD_FORMAT_VERSION})
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 EXTENSION_KEYS = frozenset({"schema_version", "content", "draft_hash", "request_sha256", "actor_id", "command_key",
                             "letter_id", "case_id", "reference", "stage", "claim_keys", "receivable_ids",
@@ -56,7 +59,8 @@ def validate_dunning_letter_snapshot(row: Any, snapshot: Mapping[str, Any]) -> d
     if (extension["actor_id"] != _value(row, "actor_id") or extension["request_sha256"] != _value(row, "request_sha256")
             or not isinstance(extension["draft_hash"], str) or not _HASH.fullmatch(extension["draft_hash"])
             or not isinstance(content, dict) or digest(content) != extension["draft_hash"]
-            or content.get("format_version") != PDF_FORMAT_VERSION
+            or content.get("format_version") not in PDF_FORMAT_VERSIONS
+            or (content.get("format_version") == LETTERHEAD_FORMAT_VERSION) != isinstance(content.get("letterhead"), dict)
             or content.get("reference") != extension["reference"] or content.get("stage") != extension["stage"]):
         raise DunningLetterValidationError("invalid dunning letter proof")
     document_id = _value(row, "document_id")

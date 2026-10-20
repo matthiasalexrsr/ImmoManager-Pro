@@ -71,12 +71,67 @@ def plain_text(content: dict) -> str:
         lines.append(f"- Verzugszinsen bis {day(content['letter_date'])}: {eur(content['interest'])}")
     lines += ["", f"Gesamtbetrag: {eur(content['total'])}",
               f"Bitte zahlen Sie bis spätestens {day(content['payment_deadline'])} unter Angabe des Aktenzeichens "
-              f"{content['reference']}.", "", CLOSINGS[content["stage"]], "", "Mit freundlichen Grüßen",
-              content["sender"]["name"]]
+              f"{content['reference']}."]
+    bank = [line.strip() for line in ((content.get("letterhead") or {}).get("bank") or "").split("\n") if line.strip()]
+    if bank:
+        lines += ["", "Bankverbindung:", *bank]
+    lines += ["", CLOSINGS[content["stage"]], "", "Mit freundlichen Grüßen", content["sender"]["name"]]
     return "\n".join(lines)
 
 
-def render_pdf(content: dict) -> bytes:
+def _claims_and_totals(content: dict, styles: dict, width: float) -> list[Any]:
+    head, cell = styles["table_bold"], styles["table"]
+    rows = [[_p(text, head) for text in ("Forderung", "Fällig", "Betrag", "Gezahlt", "Offen")]]
+    for line in [*content["lines"], *content["earlier_charges"]]:
+        rows.append([_p(line["description"], cell), _p(day(line["due_date"]), cell), _p(eur(line["amount"]), cell),
+                     _p(eur(line["paid"]), cell), _p(eur(line["outstanding"]), cell)])
+    totals = [("Offene Hauptforderung", eur(content["principal"]))]
+    if Decimal(content["earlier_charges_total"]):
+        totals.append(("Gebühren und Zinsen früherer Schreiben", eur(content["earlier_charges_total"])))
+    if Decimal(content["fee"]):
+        totals.append(("Mahngebühr dieses Schreibens", eur(content["fee"])))
+    if Decimal(content["interest"]):
+        totals.append((f"Verzugszinsen bis {day(content['letter_date'])}", eur(content["interest"])))
+    totals.append(("Gesamtbetrag", eur(content["total"])))
+    story: list[Any] = [_section("Offene Forderungen", styles, width), Spacer(1, 4),
+                        _table(rows, [width - 112 * mm, 24 * mm, 30 * mm, 28 * mm, 30 * mm], styles),
+                        Spacer(1, 8), _facts(totals, styles, width), Spacer(1, 8)]
+    if content.get("interest_note"):
+        story += [_p(content["interest_note"], styles["small"]), Spacer(1, 6)]
+    return story
+
+
+def _render_with_letterhead(content: dict, logo: bytes | None) -> bytes:
+    """Format 2: the shared letterhead frame, with the bank details in the footer."""
+    from .letter_layout import TEXT_WIDTH, closing_flowables, letter_styles, render_frame
+
+    head = content["letterhead"]
+    styles, letter = _styles(), letter_styles()
+    contract = content["contract"]
+    place = " · ".join(part for part in (contract.get("property"), contract.get("unit")) if part) or "—"
+    account = " auf das Konto in der Fußzeile" if (head.get("bank") or "").strip() else ""
+    story: list[Any] = [_p("Sehr geehrte Damen und Herren,", letter["body"]),
+                        _p(OPENINGS[content["stage"]], letter["body"]), Spacer(1, 4),
+                        *_claims_and_totals(content, styles, TEXT_WIDTH),
+                        _p(f"Bitte überweisen Sie den Gesamtbetrag bis spätestens {day(content['payment_deadline'])}"
+                           f"{account} unter Angabe des Aktenzeichens {content['reference']}.", letter["body"]),
+                        _p(CLOSINGS[content["stage"]], letter["body"]),
+                        *closing_flowables("Mit freundlichen Grüßen", head.get("signature") or content["sender"]["name"],
+                                           letter),
+                        Spacer(1, 6),
+                        _p("Dieses Schreiben wurde maschinell erstellt; das archivierte Original ist unveränderlich.",
+                           letter["small"])]
+    frame = {"recipient_name": content["recipient"]["name"], "recipient_address": content["recipient"].get("address") or "",
+             "issue_date": content["letter_date"], "subject": subject(content),
+             "info": [["Aktenzeichen", content["reference"]], ["Mietvertrag", contract["number"]], ["Objekt", place],
+                      ["Zahlungsziel", day(content["payment_deadline"])]]}
+    return render_frame(frame, head, logo, story)
+
+
+def render_pdf(content: dict, logo: bytes | None = None) -> bytes:
+    """Format 1 (no letterhead in the content) as before; format 2 in the shared letterhead frame."""
+    if isinstance(content.get("letterhead"), dict):
+        return _render_with_letterhead(content, logo)
     styles = _styles()
     regular, _ = _fonts()
     head, cell = styles["table_bold"], styles["table"]
