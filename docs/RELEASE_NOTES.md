@@ -44,6 +44,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - das Programm versendet nichts selbst.
 - **Rechnungsprüfung:** sachlich und rechnerisch prüfen, freigeben (auf Wunsch mit vier Augen), Skonto, Reklamation. Ist eine ältere Rechnung als bezahlt markiert, aber keine Zahlung zugeordnet, zeigt die Übersicht „Ungeklärt“ statt einen Nachweis vorzutäuschen.
 - **Kaution** vom Vereinbaren bis zur Abrechnung beim Auszug.
+- **SEPA-Lastschriftdatei für Mieten** (Forderungen → „SEPA-Lastschriftdatei …“): Für ein Konto und einen Monat erstellt das Programm die Datei für das Online-Banking mit den offenen Mieten aller Lastschriftzahler (pain.008, wie es die deutschen Banken erwarten). Es zeigt vorher, was bei einem Mieter noch fehlt (IBAN, Mandat, Datum der Unterschrift), merkt sich die Gläubiger-ID je Konto und verhindert, dass dieselbe Miete versehentlich zweimal eingezogen wird. Gesendet wird nichts; die Datei lädt man selbst bei der Bank hoch. IBAN, Kontoinhaber und Mandatsdatum stehen beim Mieter.
 
 ### Haus und Betrieb
 - **Übergabeprotokolle:** Räume, Mängel, Fotos, Schlüssel und Zählerstände; abgeschlossen als unveränderliches PDF.
@@ -80,6 +81,9 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol oder ihre Beschriftung.
 - **Ablaufdaten für Dokumente:** Energieausweis, Wartungsnachweis oder Police bekommen „Gültig bis“ und einen Vorlauf. Rechtzeitig vorher entstehen eine Aufgabe und eine Benachrichtigung, je Ablaufdatum genau einmal. Die Dokumentliste zeigt, was bald abläuft oder abgelaufen ist.
 - **Aufbewahrungsfristen:** Jedes Dokument hat eine Aufbewahrungsfrist nach seinem Typ (Rechnungen und Abrechnungen 8 Jahre, Briefe 6 Jahre, Steuerunterlagen 10 Jahre, Verträge bis 3 Jahre nach Vertragsende) oder nach eigener Wahl. Solange sie läuft, lässt sich das Dokument nicht versehentlich löschen; Eigentümer und Verwaltung können es mit Begründung trotzdem löschen, der Grund wird protokolliert. Ein Filter zeigt, was gelöscht werden darf.
+- **Seite je Dokument:** Ein Klick auf den Titel öffnet Vorschau, Angaben, Zuordnung, Aufbewahrung, alle Fassungen und den gelesenen Text. Eine korrigierte oder neu eingescannte Datei wird dort als **neue Fassung** desselben Dokuments abgelegt statt als zweites Dokument; frühere Fassungen bleiben unverändert und herunterladbar.
+- **Startseite nach eigenem Geschmack:** „Kacheln anpassen“ blendet Kacheln aus und ändert ihre Reihenfolge; die Einstellung gilt je Person.
+- **Selten Gebrauchtes unter „Mehr“:** Aktenwerk und TEHA stehen auf der Dokument- und der Objektseite in einem Menü „Mehr“, jeweils mit einem Satz, wofür sie da sind.
 - **Volltextsuche in Dokumenten:** Die Dokumentseite durchsucht den Inhalt von PDFs, Text- und Office-Dateien und zeigt die Fundstelle. Auch die globale Suche findet Dokumente über ihren Inhalt. Das Lesen geschieht im Hintergrund und auf dem eigenen Rechner.
 - **Dokumenteneingang nur für Unerledigtes:** Abgelegte Dokumente (mit Art und Zuordnung zu Objekt, Einheit, Vertrag oder Partei) zählen nicht mehr als offener Eingang; Rechnungsbelege bleiben dort, bis sie erfasst sind. „Texterkennung“ statt „OCR“.
 - **Zahlungsvorschläge** zu einer Rechnung erscheinen auch bei vielen Buchungen sofort.
