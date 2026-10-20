@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import LargeBinary, case, cast, func, literal, select
+from sqlalchemy import LargeBinary, case, cast, exists, func, literal, or_, select
 
 from ..db.orm_models import Base
 
@@ -171,7 +171,14 @@ def _sql_match(db, model, spec: SearchType, needle: str):
     haystack: Any = parts[0]
     for part in parts[1:]:
         haystack = haystack.op("||")(part)
-    return _sql_lower(db)(haystack).like(f"%{escape_like(needle)}%", escape="\\")
+    match = _sql_lower(db)(haystack).like(f"%{escape_like(needle)}%", escape="\\")
+    if spec.entity_type == "document":
+        # also the text of the document's file (full-text index, services/document_text)
+        from ..db.orm_models import DocumentTextORM
+        match = or_(match, exists(select(1).where(
+            DocumentTextORM.document_id == model.id,
+            DocumentTextORM.search_text.like(f"%{escape_like(needle)}%", escape="\\"))))
+    return match
 
 
 def _sql_page(db, spec: SearchType, needle: str, limit: int, after: str | None, with_total: bool) -> Page:
@@ -188,7 +195,12 @@ def _sql_page(db, spec: SearchType, needle: str, limit: int, after: str | None, 
 # ── memory ──
 
 def _memory_page(store, spec: SearchType, needle: str, limit: int, after: str | None, with_total: bool) -> Page:
-    matches = sorted((item for item in getattr(store, spec.list_method)() if _memory_match(item, spec, needle)),
+    by_text: set[str] = set()
+    if spec.entity_type == "document":
+        from .document_text import memory_match_ids
+        by_text = memory_match_ids(store, needle)
+    matches = sorted((item for item in getattr(store, spec.list_method)()
+                      if _memory_match(item, spec, needle) or item.id in by_text),
                      key=lambda item: item.id)
     total = len(matches) if with_total else None
     if after is not None:

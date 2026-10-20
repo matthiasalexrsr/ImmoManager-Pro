@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
+from ..services import document_text
 from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
@@ -45,7 +46,9 @@ def list_documents(
 @router.post("", response_model=Document, status_code=status.HTTP_201_CREATED)
 def create_document(payload: DocumentCreate) -> Document:
     try:
-        return store.create_document(payload)
+        document = store.create_document(payload)
+        document_text.schedule(f"created:{document.id}")
+        return document
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -89,7 +92,9 @@ async def import_document(
             if ocr_text:
                 ocr_key = f"{key.rsplit('.', 1)[0]}_ocr.txt"
                 storage.save(ocr_key, BytesIO(ocr_text.encode("utf-8")), content_type="text/plain")
-        return await run_in_threadpool(store.create_document, payload)
+        document = await run_in_threadpool(store.create_document, payload)
+        await run_in_threadpool(document_text.schedule, f"created:{document.id}")
+        return document
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -123,6 +128,26 @@ def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict:
     }
 
 
+@router.get("/search")
+def search_documents(q: str = Query(..., min_length=2, max_length=200),
+                     limit: int = Query(25, ge=1, le=100)) -> dict:
+    """Documents whose text contains `q` (literal, case-insensitive), with a snippet around the hit."""
+    return document_text.search(store, q, limit=limit)
+
+
+@router.get("/text-index")
+def text_index_status() -> dict:
+    """How many of the visible documents are searchable by their content."""
+    return document_text.status(store)
+
+
+@router.post("/text-index", status_code=status.HTTP_202_ACCEPTED)
+def text_index_now() -> dict:
+    """Index new and changed documents now (in the background)."""
+    document_text.schedule("manual:" + uuid.uuid4().hex)
+    return document_text.status(store)
+
+
 @router.get("/{document_id}", response_model=Document)
 def get_document(document_id: str) -> Document:
     try:
@@ -135,7 +160,9 @@ def get_document(document_id: str) -> Document:
 def update_document(document_id: str, payload: DocumentCreate) -> Document:
     try:
         ensure_binding_kept(store, "document", document_id, store.get_document(document_id), payload.model_dump())
-        return store.update_document(document_id, payload)
+        document = store.update_document(document_id, payload)
+        document_text.schedule(f"changed:{document.id}:{document.updated_at.isoformat()}")
+        return document
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -146,7 +173,10 @@ def patch_document(document_id: str, payload: DocumentPatch) -> Document:
     try:
         ensure_binding_kept(store, "document", document_id, store.get_document(document_id),
                             payload.model_dump(exclude_unset=True))
-        return store._patch_entity("document", document_id, payload)
+        document = store._patch_entity("document", document_id, payload)
+        if "file_url" in payload.model_fields_set:
+            document_text.schedule(f"changed:{document.id}:{document.updated_at.isoformat()}")
+        return document
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
@@ -157,5 +187,6 @@ def delete_document(document_id: str) -> None:
     try:
         ensure_no_originals(store, "document", document_id)
         store.delete_document(document_id)
+        document_text.forget(store, document_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

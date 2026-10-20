@@ -85,6 +85,7 @@ _THIRD_PARTY_PACKAGES = [
     'jinja2',
     'markupsafe',
     'reportlab',
+    'pypdf',
     'httpx',
     'httpcore',
 ]

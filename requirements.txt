@@ -25,6 +25,8 @@ jinja2==3.1.6
 reportlab==4.4.10
 pillow==12.3.0
 python-docx==1.2.0
+# Text layer of PDFs for the full-text search of documents (pure Python, BSD)
+pypdf==6.19.0
 
 # HTTP client (updater + autotest)
 httpx==0.28.1

@@ -19,6 +19,7 @@ import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 import KpiAction from '../components/KpiAction';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
+import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -404,6 +405,8 @@ function DocumentsWorkspace() {
         {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
         {expiring > 0 && !tenantId && <KpiAction label="Läuft ab oder abgelaufen" value={expiring} color="var(--warning)" onClick={() => openSources('expiring')} />}
       </div>}
+
+      {!tenantId && <DocumentContentSearch onOpen={setViewerFile} places={propMap} canWrite={canWrite} />}
 
       {/* Filter tabs */}
       {!tenantId && <div className="filter-chips">

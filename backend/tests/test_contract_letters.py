@@ -356,3 +356,20 @@ def test_letterhead_fields_reach_the_letter_and_staff_without_rights_cannot_writ
                                             "idempotency_key": "letter-tech-01"}).status_code == 403
     finally:
         staff.close()
+
+
+def test_archived_letters_are_found_by_their_content(case):
+    from backend.services import document_text
+
+    composed = compose(case, "builtin:rent_increase", RENT_INCREASE)
+    payload, shown = preview(case, composed)
+    saved = case["client"].post(base(case), json={**payload, "review_hash": shown["review_hash"],
+                                                  "idempotency_key": "letter-index-01"}).json()
+    while document_text.index_pending(store)[1] is not None:
+        pass
+    if hasattr(store, "db"):
+        store.db.commit()
+    row = document_text.get(store, saved["document_id"])
+    assert row is not None and row.source == "pdf_text" and row.source_ref.startswith("version:")
+    found = case["client"].get("/api/v1/documents/search", params={"q": "ortsüblichen vergleichsmiete"}).json()
+    assert [item["id"] for item in found["items"]] == [saved["document_id"]]

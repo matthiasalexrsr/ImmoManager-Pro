@@ -333,6 +333,25 @@ class DocumentORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
 
+class DocumentTextORM(Base):
+    """The text of a document's file for the full-text search (migration e2b4d6f8a0c1).
+
+    Derived data: the indexing job fills and refreshes it from the file or the archived
+    original; it is not part of the JSON export and can always be rebuilt. `source_ref`
+    names what was read (the file URL or the archived version), `source` how (pdf_text,
+    ocr, plain, office, none), `search_text` is the lower-cased text the search compares.
+    """
+    __tablename__ = "document_texts"
+
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    source_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    search_text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    characters: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    indexed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+
 class TaskORM(Base):
     __tablename__ = "tasks"
     __table_args__ = (

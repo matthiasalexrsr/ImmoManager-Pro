@@ -21,6 +21,7 @@ from backend.services.jobs.core import JobContext, JobRunner, LeaseLost, MemoryJ
 from backend.services.jobs.schedule import BERLIN, DailyAt, local_today
 from backend.services.jobs.scheduler import (
     DOCUMENT_EXPIRY_KIND,
+    DOCUMENT_TEXT_KIND,
     ESCALATION_KIND,
     PERIODIC,
     SERVICE_CONTRACT_KIND,
@@ -405,6 +406,7 @@ def test_the_scheduler_runs_each_periodic_job_once_per_slot(backend):
     template = backend.template(due_date=date(2026, 10, 1), recurrence_rule="FREQ=DAILY")
     first = tick(backend.jobs, now=datetime(2026, 10, 7, 5, 0))       # 07:00 Berlin: every slot of today due
     assert sorted((run.kind, run.status) for run in first) == [(DOCUMENT_EXPIRY_KIND, "succeeded"),
+                                                               (DOCUMENT_TEXT_KIND, "succeeded"),
                                                                (ESCALATION_KIND, "succeeded"),
                                                                (SERVICE_CONTRACT_KIND, "succeeded"),
                                                                (recurring.KIND, "succeeded")]

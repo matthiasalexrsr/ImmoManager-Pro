@@ -97,6 +97,8 @@ INTERNAL = frozenset({
     # Each service predicates by owner/current source grants before any private read.
     "bank_imports", "bank_source_links", "bank_fints_sessions",
     "saved_finance_reports",  # owner predicate plus current definition/source checks in finance_reports
+    # Derived full-text index: every read joins (or correlates with) documents, whose boundary applies.
+    "document_texts",
     # Private workspace services always predicate by owner and recheck source visibility.
     "workspace_drafts", "workspace_views", "workspace_recents", "workspace_favorites",
     "workspace_view_states", "workspace_deferrals", "workspace_commands",

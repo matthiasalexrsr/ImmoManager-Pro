@@ -399,3 +399,28 @@ def test_a_restricted_account_works_normally_inside_its_portfolios(client, estat
     assert note.status_code == 200, note.text
     assert client.delete(f"/api/v1/units/{unit.json()['id']}", headers=staff).status_code in (200, 204)
     assert store.get_property(north["property"].id).name == "Nordhaus"
+
+
+def test_full_text_search_stays_within_the_portfolios_of_the_account(client, estate):
+    """Document texts are found only for documents the account may see: content search and global search."""
+    from backend.services import document_text
+
+    for side in ("north", "south"):
+        document = estate[side]["document"]
+        text = f"Wartungsprotokoll Rauchwarnmelder {MARK if side == 'south' else 'NORDTEXT'} geprüft"
+        document_text.save(store, document_text.TextRow(document.id, f"file:{document.file_url}", "pdf_text", text,
+                                                         text.lower(), len(text), document_text.now()))
+    if hasattr(store, "db"):
+        store.db.commit()
+    staff = _bearer(_staff("staff", estate["north"]["portfolio"]))
+    found = client.get("/api/v1/documents/search", params={"q": "rauchwarnmelder"}, headers=staff)
+    assert found.status_code == 200, found.text
+    assert [item["id"] for item in found.json()["items"]] == [estate["north"]["document"].id]
+    assert MARK not in found.text and found.json()["index"]["documents"] == 1
+    assert client.get("/api/v1/documents/search", params={"q": MARK.lower()}, headers=staff).json()["items"] == []
+    hits = client.get("/api/v1/search", params={"q": "rauchwarnmelder"}, headers=staff)
+    assert hits.status_code == 200 and estate["south"]["document"].id not in hits.text
+    assert estate["north"]["document"].id in hits.text
+    owner = _bearer(_staff("owner", role="eigentuemer", mode="all"))
+    both = client.get("/api/v1/documents/search", params={"q": "rauchwarnmelder"}, headers=owner).json()
+    assert {item["id"] for item in both["items"]} == {estate[side]["document"].id for side in ("north", "south")}
