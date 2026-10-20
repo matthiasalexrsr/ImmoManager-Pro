@@ -33,6 +33,11 @@ DEFAULTS.update(currency_display='symbol', document_sender='', document_address=
 DEFAULTS.update(bank_import_format='csv', bank_csv_encoding='utf-8-sig', bank_csv_delimiter=';', bank_csv_decimal='.',
                 bank_csv_date_format='%Y-%m-%d', bank_csv_date_column='date', bank_csv_amount_column='amount', bank_csv_text_column='text',
                 preferred_connection='')
+# How long documents are kept, by retention class (services/document_retention): legal periods
+# of § 147 Abs. 3 AO (since 2025: booking records 8 years), the contract one a recommendation.
+RETENTION_YEARS = dict(document_retention_booking_years=8, document_retention_accounts_years=10,
+                       document_retention_letters_years=6, document_retention_contract_years=3)
+DEFAULTS.update(RETENTION_YEARS)
 LABELS = dict(theme="Farbschema", locale="Sprache und Zahlenformat", sidebar_collapsed="Seitenleiste einklappen",
               items_per_page="Zeilen je Tabelle", date_format="Datumsformat", currency="Bisherige Währungspräferenz (Quellwährung bleibt maßgeblich)",
               default_due_day="Fälligkeitstag für neue Forderungsentwürfe", email_notifications="E-Mail-Hinweise",
@@ -51,12 +56,16 @@ LABELS.update(bank_import_format='Bankimportprofil: Dateiformat', bank_csv_encod
               bank_csv_date_format='Bankimportprofil: CSV-Datumsformat', bank_csv_date_column='Bankimportprofil: Datumsspalte',
               bank_csv_amount_column='Bankimportprofil: Betragsspalte', bank_csv_text_column='Bankimportprofil: Verwendungszweckspalte',
               preferred_connection='Bevorzugte bestehende Integrationsverbindung')
+LABELS.update(document_retention_booking_years='Aufbewahrung: Buchungsbelege, Rechnungen, Abrechnungen (Jahre, § 147 Abs. 3 AO)',
+              document_retention_accounts_years='Aufbewahrung: Bücher, Abschlüsse, Steuerunterlagen (Jahre, § 147 Abs. 3 AO)',
+              document_retention_letters_years='Aufbewahrung: Geschäftsbriefe und sonstige Unterlagen (Jahre, § 147 Abs. 3 AO)',
+              document_retention_contract_years='Aufbewahrung: Vertragsunterlagen nach Vertragsende (Jahre, Verjährung §§ 195, 199 BGB)')
 CHOICES: dict[str, list[Any]] = dict(theme=["light", "dark", "system"], locale=["de-DE", "en-US", "es-ES"],
                date_format=["DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY"], currency=["EUR", "CHF", "USD"],
                email_notifications=["all", "important", "none"], items_per_page=[10,25,50,100],
                sidebar_collapsed=[False, True], density=["comfortable", "compact"], start_page=["/", "/work-center", "/properties", "/tasks", "/notifications"])
 BUSINESS = {"default_due_day", "reminder_days"}
-GLOBAL_ONLY = {'contract_number_prefix', 'contract_number_start', 'contract_number_width'}
+GLOBAL_ONLY = {'contract_number_prefix', 'contract_number_start', 'contract_number_width', *RETENTION_YEARS}
 BUSINESS |= GLOBAL_ONLY | {'document_sender', 'document_address', 'document_signature', 'document_profile',
                            'document_contact', 'document_bank', 'document_footer',
                            'booking_category', 'invoice_cost_category', 'invoice_recoverable', 'confirmed_cost_defaults'}
@@ -103,6 +112,8 @@ def validate(values):
             raise HTTPException(422, 'Nummernpräfix enthält unzulässige Zeichen.')
         if key in ('contract_number_start', 'contract_number_width') and (type(value) is not int or not 1 <= value <= (999999999 if key.endswith('start') else 12)):
             raise HTTPException(422, 'Ungültige Nummernkreisgrenze.')
+        if key in RETENTION_YEARS and (type(value) is not int or not (0 if key.endswith('contract_years') else 1) <= value <= 30):
+            raise HTTPException(422, f"{LABELS[key]}: ganze Jahre zwischen {0 if key.endswith('contract_years') else 1} und 30.")
         if key in CHOICES and (type(value) is not type(DEFAULTS[key]) or value not in CHOICES[key]):
             raise HTTPException(422, f"Ungültiger Wert für {LABELS[key]}.")
         if key == "default_due_day" and (type(value) is not int or not 1 <= value <= 31):
@@ -212,7 +223,8 @@ def _update(store, actor_id, values, base_revision=None, idempotency_key=None, s
     if not values:
         raise HTTPException(422, 'Mindestens eine Einstellung angeben.')
     if set(values) & GLOBAL_ONLY and scope != 'global':
-        raise HTTPException(422, 'Nummernkreise gelten installationsweit.')
+        raise HTTPException(422, 'Aufbewahrungsfristen gelten installationsweit.' if set(values) & RETENTION_YEARS.keys()
+                            else 'Nummernkreise gelten installationsweit.')
     if scope != "personal" and (set(values) - BUSINESS or not (scope == "global" or scope.startswith("object:"))):
         raise HTTPException(422, "Diese Einstellung ist nur persönlich zulässig.")
     area = "/auth/users/me/preferences" if scope == "personal" else "/properties"

@@ -48,7 +48,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 10: document recovery/evidence records, joined with the canonical finance contract
 # 11: re-letting projects, applicant details and their documents (likewise)
 # 12: document expiry dates and reminder lead times (likewise)
-SNAPSHOT_FORMAT_VERSION = 12
+# 13: the retention class chosen on a document (likewise)
+SNAPSHOT_FORMAT_VERSION = 13
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}

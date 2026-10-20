@@ -1,14 +1,16 @@
 import uuid
 from io import BytesIO
+from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from ..auth import get_current_user
 from ..dependencies import store
-from ..models import Document, DocumentCreate, DocumentPatch
+from ..models import Document, DocumentCreate, DocumentPatch, UserRead
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
-from ..services import document_text
+from ..services import document_retention, document_text
 from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
@@ -148,6 +150,12 @@ def text_index_now() -> dict:
     return document_text.status(store)
 
 
+@router.get("/retention")
+def retention_of_documents() -> dict:
+    """Retention class, period and deletion lock of every visible document, and the rules."""
+    return {"rules": document_retention.rules(store), "items": document_retention.assess_all(store)}
+
+
 @router.get("/{document_id}", response_model=Document)
 def get_document(document_id: str) -> Document:
     try:
@@ -183,9 +191,17 @@ def patch_document(document_id: str, payload: DocumentPatch) -> Document:
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(document_id: str) -> None:
+def delete_document(document_id: str,
+                    retention_override: Annotated[str | None, Query(max_length=600)] = None,
+                    actor: Annotated[UserRead | None, Depends(get_current_user)] = None) -> None:
+    """Delete a document; refused (409) while its retention period runs, unless an owner or
+    manager gives `retention_override` (a reason, kept in the audit journal)."""
     try:
         ensure_no_originals(store, "document", document_id)
+        user = actor.model_dump() if actor is not None else None
+        retention = document_retention.ensure_deletable(store, document_id, actor=user, override_reason=retention_override)
+        if retention.get("override") and user is not None:
+            document_retention.record_override(store, user, store.get_document(document_id), retention)
         store.delete_document(document_id)
         document_text.forget(store, document_id)
     except NotFoundError as exc:

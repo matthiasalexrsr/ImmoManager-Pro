@@ -34,7 +34,7 @@ ORM_ADOPTION_HEAD = "f016a1b2c001"
 ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001",
                                    "f020a1b2c001", "a7d3c5e9f2b1", "f021a1b2c001",
                                    "b4d6f8a0c2e1", "f022a1b2c001", "c6e8a0b2d4f3", "d8a1c3e5f7b9",
-                                   "e2b4d6f8a0c1"})
+                                   "e2b4d6f8a0c1", "f4c6e8a0b2d3"})
 
 
 def _current_addition_names():
@@ -120,6 +120,9 @@ def _current_additions_are_present(connection) -> bool:
         # And the document expiry columns of d8a1c3e5f7b9 (guarded, additive).
         if action == 'add_column' and (difference[2], difference[3].name) in {
                 ('documents', 'valid_until'), ('documents', 'reminder_days')}:
+            continue
+        # And the retention class of f4c6e8a0b2d3 (guarded, additive).
+        if action == 'add_column' and (difference[2], difference[3].name) == ('documents', 'retention_class'):
             continue
         if action == 'add_table' and item.name not in additions:
             continue

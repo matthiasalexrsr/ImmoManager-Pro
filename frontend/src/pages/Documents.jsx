@@ -11,7 +11,7 @@ import { Eye, Mail, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
-import { useCanWrite } from '../contexts/AuthContext';
+import { useAuth, useCanWrite } from '../contexts/AuthContext';
 import { documentTypeLabel } from '../utils/documentType';
 import { formatDate } from '../utils/format';
 import { expiryState } from '../utils/documentExpiry';
@@ -20,6 +20,8 @@ import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../f
 import KpiAction from '../components/KpiAction';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
+import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
+import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -49,6 +51,10 @@ function DocumentsWorkspace() {
   const confirm = useConfirm();
   const store = useDataStore();
   const canWrite = useCanWrite('/documents');
+  const auth = useAuth();
+  const canOverrideRetention = auth?.role === 'eigentuemer' || auth?.role === 'verwalter';
+  const [retention, setRetention] = useState(null);
+  const [lockTarget, setLockTarget] = useState(null);
   const party = usePartyWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = searchParams.get('tenant_id') || '';
@@ -125,6 +131,8 @@ function DocumentsWorkspace() {
     const request = tenantId
       ? Promise.all([api.get(`/tenants/${encodeURIComponent(tenantId)}/documents?${params}`, options), api.get(`/tenants/${encodeURIComponent(tenantId)}/overview`, options)])
       : api.list('/documents', options).then(items => [{ items }, null]);
+    Promise.resolve().then(() => retentionService.load(options)).then(value => { if (!cancelled) setRetention(value); })
+      .catch(() => { if (!cancelled) setRetention(null); });   // the list works without it; deleting still asks the server
     request.then(([page, overview]) => {
       if (!Array.isArray(page?.items) || (tenantId && (!Number.isInteger(page.total) || page.total < 0))) throw new Error('Die Dokumentquelle konnte nicht vollständig gelesen werden.');
       if (!cancelled) { setDocuments(page.items); setDocumentPage(tenantId ? page : null); setPartyOverview(overview); }
@@ -149,6 +157,8 @@ function DocumentsWorkspace() {
     party_id: doc.tenant_id || contractTenantMap[doc.contract_id] || (tenantId || null),
     party_name: tenantMap[doc.tenant_id || contractTenantMap[doc.contract_id] || tenantId] || '—',
     has_file: !!doc.file_url,
+    retention: retention?.items?.[doc.id] || null,
+    retention_label: retentionCell(retention?.items?.[doc.id]),
   });
   const enriched = documents.map(enrichDocument);
 
@@ -188,6 +198,7 @@ function DocumentsWorkspace() {
     if (filter === 'with_file') return enriched.filter(d => d.file_url);
     if (filter === 'ocr_completed') return enriched.filter(d => d.ocr_status === 'completed');
     if (filter === 'expiring') return enriched.filter(d => ['expired', 'due'].includes(expiryState(d)));
+    if (filter === 'retention_ended') return enriched.filter(d => d.retention?.state === 'ended');
     return enriched;
   }, [enriched, filter, tenantId]);
 
@@ -195,6 +206,7 @@ function DocumentsWorkspace() {
   const withFile = enriched.filter(d => d.file_url).length;
   const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id && !d.tenant_id).length;
   const expiring = enriched.filter(d => ['expired', 'due'].includes(expiryState(d))).length;
+  const retentionEnded = enriched.filter(d => d.retention?.state === 'ended').length;
   const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
 
   const columns = [
@@ -210,6 +222,8 @@ function DocumentsWorkspace() {
       const state = expiryState(row);
       return <span className={`document-expiry document-expiry-${state}`}>{formatDate(value)}{state === 'expired' ? ' · abgelaufen' : state === 'due' ? ' · läuft ab' : ''}</span>;
     } },
+    { key: 'retention_label', label: 'Aufbewahrung', filterType: 'text',
+      render: (value, row) => <span className={`document-retention document-retention-${row.retention?.state || 'none'}`} title={row.retention?.text}>{value}</span> },
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
     { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
       render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
@@ -343,12 +357,15 @@ function DocumentsWorkspace() {
     { key: 'valid_until', label: 'Gültig bis', type: 'date',
       hint: 'z. B. Energieausweis 10 Jahre, Rauchmelder- oder Wartungsnachweis 1 Jahr, Police bis zum Ablauf. Das Programm erinnert vorher mit einer Aufgabe.' },
     { key: 'reminder_days', label: 'Erinnern (Tage vorher)', type: 'number', step: '1', min: 0, max: 730, hint: 'leer: 30 Tage' },
+    { key: 'retention_class', label: 'Aufbewahrung', type: 'select', options: retentionOptions(retention?.rules),
+      hint: 'Solange die Frist läuft, lässt sich das Dokument nicht löschen. Automatisch: Rechnungen und Abrechnungen 8 Jahre, Briefe 6 Jahre, Verträge bis 3 Jahre nach Vertragsende.' },
     { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
     { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
-  ], [t, DOC_TYPES, tenantId, tenants, properties, units, contracts, overview, uploadedUrl]);
+  ], [t, DOC_TYPES, tenantId, tenants, properties, units, contracts, overview, uploadedUrl, retention]);
 
-  const handleSave = async (data) => {
+  const handleSave = async (values) => {
+    const data = { ...values, retention_class: values.retention_class || null };   // empty: by document type
     if (modal === 'create') {
       await api.post('/documents', data);
     } else {
@@ -360,6 +377,7 @@ function DocumentsWorkspace() {
   };
 
   const handleDelete = async (row) => {
+    if (row.retention?.locked) { setLockTarget(row); return; }
     if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     try {
       await api.del(`/documents/${encodeURIComponent(row.id)}`);
@@ -404,6 +422,7 @@ function DocumentsWorkspace() {
         <KpiAction label={`Texterkennung abgeschlossen${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
         {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
         {expiring > 0 && !tenantId && <KpiAction label="Läuft ab oder abgelaufen" value={expiring} color="var(--warning)" onClick={() => openSources('expiring')} />}
+        {retentionEnded > 0 && !tenantId && <KpiAction label="Aufbewahrung abgelaufen" value={retentionEnded} onClick={() => openSources('retention_ended')} />}
       </div>}
 
       {!tenantId && <DocumentContentSearch onOpen={setViewerFile} places={propMap} canWrite={canWrite} />}
@@ -417,6 +436,7 @@ function DocumentsWorkspace() {
           { key: 'with_file', label: 'Mit Datei' },
           { key: 'ocr_completed', label: 'Texterkennung abgeschlossen' },
           { key: 'expiring', label: 'Läuft ab oder abgelaufen' },
+          { key: 'retention_ended', label: 'Aufbewahrung abgelaufen' },
         ].map(f => (
           <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
@@ -561,6 +581,9 @@ function DocumentsWorkspace() {
           onClose={() => setModal(null)}
         />
       )}
+      {lockTarget?.retention && <RetentionLockDialog document={lockTarget} retention={lockTarget.retention}
+        canOverride={canWrite && canOverrideRetention} onClose={() => setLockTarget(null)}
+        onDeleted={() => { setLockTarget(null); refreshData(); if (store) store.invalidateRelated('documents'); }} />}
       {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
       {postDocument && <section className="panel" aria-label="Brief und Frankatur">
         <button type="button" className="btn btn-secondary" onClick={() => setPostDocument(null)}>Briefvorbereitung schließen</button>

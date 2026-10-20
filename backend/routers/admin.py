@@ -279,6 +279,9 @@ def bulk_delete(entity_type: str, payload: dict):
                 ensure_deletable(store, guarded[entity_type], eid)
             if entity_type == "documents":
                 ensure_no_originals(store, "document", eid)
+                from ..services.document_retention import ensure_deletable as ensure_retention_ended
+
+                ensure_retention_ended(store, eid)    # no reason can be given here: one by one only
             if entity_type == "bookings":
                 from ..services.maintenance_projects import ensure_booking_unallocated
 

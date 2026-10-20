@@ -1158,3 +1158,33 @@ def test_document_expiry_columns_and_the_downgrade(migrate):
         assert conn.execute("SELECT title FROM documents WHERE id = 'doc-e'").fetchone() == ("Energieausweis",)
     migrate(DOCUMENT_EXPIRY_REVISION)
     assert {"valid_until", "reminder_days"} <= _schema(db_path)["documents"]
+
+
+DOCUMENT_RETENTION_REVISION = "f4c6e8a0b2d3"
+DOCUMENT_TEXTS_REVISION = "e2b4d6f8a0c1"
+
+
+def test_document_retention_class_and_the_downgrade(migrate):
+    db_path = migrate(DOCUMENT_TEXTS_REVISION)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO documents (id, title, file_url, created_at, updated_at) "
+                     "VALUES ('doc-k', 'Kaufvertrag', '/uploads/documents/kv.pdf', '2026-01-01', '2026-01-01')")
+    migrate(DOCUMENT_RETENTION_REVISION)
+    assert "retention_class" in _schema(db_path)["documents"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT retention_class FROM documents WHERE id = 'doc-k'").fetchone() == (None,)
+        conn.execute("UPDATE documents SET retention_class = 'permanent' WHERE id = 'doc-k'")
+    with pytest.raises(RuntimeError, match="retention class"):
+        migrate.downgrade(DOCUMENT_TEXTS_REVISION)
+    assert _version(db_path) == DOCUMENT_RETENTION_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE documents SET retention_class = NULL")
+    migrate.downgrade(DOCUMENT_TEXTS_REVISION)
+    assert "retention_class" not in _schema(db_path)["documents"]
+    assert _triggers(db_path) == triggers
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT title FROM documents WHERE id = 'doc-k'").fetchone() == ("Kaufvertrag",)
+    migrate(DOCUMENT_RETENTION_REVISION)
+    assert "retention_class" in _schema(db_path)["documents"]

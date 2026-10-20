@@ -317,6 +317,7 @@ class DocumentORM(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     valid_until: Mapped[date | None] = mapped_column(Date)            # expiry (d8a1c3e5f7b9)
     reminder_days: Mapped[int | None] = mapped_column(Integer)        # reminder lead time in days
+    retention_class: Mapped[str | None] = mapped_column(String(20))  # f4c6e8a0b2d3; empty = by document type
     document_type: Mapped[str | None] = mapped_column(Text)
     document_date: Mapped[date | None] = mapped_column(Date)
     tags: Mapped[str | None] = mapped_column(Text)

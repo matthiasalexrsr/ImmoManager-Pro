@@ -328,6 +328,12 @@ class MaintenanceCase(MaintenanceCaseCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+# How long a document must be kept (services/document_retention): booking record (8 years),
+# books and annual accounts (10), business letters and other tax-relevant papers (6), contract papers
+# (years after the contract ends), permanent, none.
+RetentionClass = Literal["booking_record", "accounts", "business_letter", "contract", "permanent", "none"]
+
+
 class DocumentCreate(BaseModel):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
@@ -343,6 +349,9 @@ class DocumentCreate(BaseModel):
     # detector inspection, guarantee … The daily job reminds `reminder_days` (default 30) before.
     valid_until: Optional[date] = None
     reminder_days: Optional[int] = Field(default=None, ge=0, le=730)
+    # How long the document must be kept (migration f4c6e8a0b2d3); empty = decided by its type,
+    # see services/document_retention. Deleting is refused while the period runs.
+    retention_class: Optional[RetentionClass] = None
 
 
 class Document(DocumentCreate):
@@ -643,6 +652,7 @@ class DocumentPatch(BaseModel):
     file_url: Optional[str] = None
     valid_until: Optional[date] = None
     reminder_days: Optional[int] = Field(default=None, ge=0, le=730)
+    retention_class: Optional[RetentionClass] = None
 
 
 class TaskPatch(BaseModel):

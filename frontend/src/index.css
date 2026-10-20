@@ -3704,3 +3704,8 @@ table.data-table tbody tr:last-child td {
 /* Documents: expiry state next to the date (Gültig bis) */
 .document-expiry-expired { color: var(--color-danger); font-weight: 600; }
 .document-expiry-due { color: var(--color-warning); font-weight: 600; }
+.document-retention-ended { color: var(--color-success); }
+.document-retention-none { color: var(--color-text-muted); }
+.retention-lock-dialog { max-width: 560px; }
+.retention-lock-dialog form { display: grid; gap: var(--space-2); }
+.retention-lock-dialog textarea { width: 100%; }

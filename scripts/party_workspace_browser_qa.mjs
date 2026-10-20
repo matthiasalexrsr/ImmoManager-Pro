@@ -406,7 +406,9 @@ try {
     const unique = [...new Map(entities.map(value => [`${value.collection}/${value.id}`, value])).values()];
     const priority = { documents: 0, contracts: 1, tenants: 2, units: 3, properties: 4, portfolios: 5 };
     for (const entity of unique.sort((a, b) => priority[a.collection] - priority[b.collection])) {
-      const response = await api.delete(`/api/v1/${entity.collection}/${entity.id}`, { timeout: 10000 }).catch(error => ({ status: () => -1, text: async () => error.message }));
+      // documents of this run may be under a retention period; the QA owner deletes them with a reason
+      const suffix = entity.collection === 'documents' ? `?${new URLSearchParams({ retention_override: 'Testdaten dieses QA-Laufs' })}` : '';
+      const response = await api.delete(`/api/v1/${entity.collection}/${entity.id}${suffix}`, { timeout: 10000 }).catch(error => ({ status: () => -1, text: async () => error.message }));
       results.cleanup.push({ ...entity, status: response.status(), ...(response.status() !== 204 ? { error: await response.text() } : {}) });
     }
     await api.dispose();
