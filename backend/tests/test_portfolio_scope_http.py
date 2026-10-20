@@ -310,7 +310,7 @@ def test_figures_are_those_of_an_installation_without_the_other_portfolio(client
     # the actor. They are still covered by the marker-leak check above, but
     # are not financial figures that must equal the owner's reduced estate.
     actor_metadata = {'/api/v1/integration-connections', '/api/v1/integration-connections/catalog',
-                      '/api/v1/messages/communication', '/api/v1/teha/connections'}
+                      '/api/v1/messages/communication', '/api/v1/teha/connections', '/api/v1/letterhead'}
     differing = [path for path in restricted if path not in actor_metadata
                  if path in alone and alone[path] == steady[path] and restricted[path] != alone[path]]
     for path in differing:

@@ -71,7 +71,7 @@ function SettingField({ item, onSaved }) {
     {item.editable ? <div className="setting-controls">
       {item.choices ? <select id={id} value={String(value)} onChange={e => edit(e.target.value)} disabled={busy}>
         {item.choices.map(choice => <option key={String(choice.value ?? choice)} value={String(choice.value ?? choice)}>{choice.label || (choice === true ? 'Ja' : choice === false ? 'Nein' : choiceLabels[choice] || String(choice))}</option>)}
-      </select> : item.key === 'document_address' ? <textarea id={id} value={value} onChange={e => edit(e.target.value)} disabled={busy} /> : <input id={id} type={item.input_type || "number"} min={item.key === 'reminder_days' ? 0 : 1} max={item.key === 'reminder_days' ? 365 : item.key === 'default_due_day' ? 31 : undefined} value={value} onChange={e => edit(e.target.value)} disabled={busy} />}
+      </select> : item.input_type === 'textarea' || item.key === 'document_address' ? <textarea id={id} value={value} onChange={e => edit(e.target.value)} disabled={busy} /> : <input id={id} type={item.input_type || "number"} min={item.key === 'reminder_days' ? 0 : 1} max={item.key === 'reminder_days' ? 365 : item.key === 'default_due_day' ? 31 : undefined} value={value} onChange={e => edit(e.target.value)} disabled={busy} />}
       <button className="btn btn-primary" onClick={() => save()} disabled={busy || !dirty}>{busy ? 'Speichert …' : 'Speichern'}</button>
       {dirty && <small>Ungespeicherte Eingabe (in diesem Tab gesichert)</small>}
     </div> : <p id={id}>{typeof item.value === 'boolean' ? (item.value ? 'Ja' : 'Nein') : String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}

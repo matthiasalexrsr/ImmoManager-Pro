@@ -46,7 +46,7 @@ const DE = {
   deposit_account: 'Kautionskonto', guarantee: 'Bürgschaft', pledged_savings: 'Verpfändetes Sparbuch',
   credit_note: 'Gutschrift', service_contract: 'Objektvertrag', letter: 'Schreiben', rent_adjustment: 'Mietanpassung',
   housing_confirmation: 'Wohnungsgeberbestätigung', handover_protocol: 'Übergabeprotokoll', dunning_letter: 'Mahnschreiben',
-  billing_statement_letter: 'Abrechnungsschreiben',
+  billing_statement_letter: 'Abrechnungsschreiben', template_letter: 'Brief',
   deposit_settlement: 'Kautionsabrechnung', maintenance_protocol: 'Instandhaltungsprotokoll', teha_original: 'TEHA-Original',
   true: 'Ja', false: 'Nein',
 };

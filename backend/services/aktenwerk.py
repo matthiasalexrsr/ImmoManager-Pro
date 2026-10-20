@@ -43,7 +43,8 @@ _RAW_KINDS: dict[str, str] = {
     "deposit_settlement": "abrechnung",
     "protokoll": "protokoll", "ubergabeprotokoll": "protokoll", "handover_protocol": "protokoll",
     "maintenance_protocol": "protokoll",
-    "mahnung": "korrespondenz", "dunning_letter": "korrespondenz",
+    "mahnung": "korrespondenz", "dunning_letter": "korrespondenz", "template_letter": "korrespondenz",
+    "billing_statement_letter": "korrespondenz",
     "steuerbescheid": "bescheid", "grundbuchauszug": "nachweis", "energieausweis": "nachweis",
     "housing_confirmation": "bescheinigung",
     # short keys of imported and demo data, and keys the program uses internally

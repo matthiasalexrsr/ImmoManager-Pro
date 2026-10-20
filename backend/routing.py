@@ -53,6 +53,7 @@ from .routers import (
     invoice_review,
     invoices,
     leads,
+    letters,
     listings,
     maintenance,
     maintenance_projects,
@@ -106,6 +107,9 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(units.router, dependencies=_auth_dep)
     api_v1.include_router(tenants.router, dependencies=_auth_dep)
     api_v1.include_router(housing_confirmations.router, dependencies=_auth_dep)
+    api_v1.include_router(letters.contract_router, dependencies=_auth_dep)
+    api_v1.include_router(letters.letterhead_router, dependencies=_auth_dep)
+    api_v1.include_router(letters.templates_router, dependencies=_auth_dep)
     api_v1.include_router(contracts.router, dependencies=_auth_dep)
     api_v1.include_router(accounts.router, dependencies=_auth_dep)
     api_v1.include_router(bookings.router, dependencies=_auth_dep)

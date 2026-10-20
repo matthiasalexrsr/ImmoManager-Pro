@@ -26,6 +26,7 @@ DEFAULTS = dict(theme="light", locale="de-DE", sidebar_collapsed=False, items_pe
 ORM_KEYS = frozenset(DEFAULTS)
 DEFAULTS.update(density="comfortable", start_page="/", quiet_start="", quiet_end="")
 DEFAULTS.update(currency_display='symbol', document_sender='', document_address='', document_signature='',
+                document_contact='', document_bank='', document_footer='',
                 document_profile='housing_provider', booking_category='', invoice_cost_category='',
                 invoice_recoverable=False, confirmed_cost_defaults=False,
                 contract_number_prefix='', contract_number_start=1, contract_number_width=5)
@@ -39,6 +40,8 @@ LABELS = dict(theme="Farbschema", locale="Sprache und Zahlenformat", sidebar_col
 LABELS.update(density="Tabellendichte", start_page="Persönliche Startseite", quiet_start="Ruhezeit ab (Europe/Berlin)", quiet_end="Ruhezeit bis (Europe/Berlin)")
 LABELS.update(currency_display='Währungsdarstellung (Quellwährung)', document_sender='Briefkopf: Name des Wohnungsgebers',
               document_address='Briefkopf: Anschrift des Wohnungsgebers', document_signature='Unterschriftszeile: Ausstellername (keine elektronische Signatur)',
+              document_contact='Briefkopf: Kontakt (Telefon, E-Mail, Sprechzeiten)', document_bank='Briefkopf: Bankverbindung (Kontoinhaber, IBAN, BIC, Bank)',
+              document_footer='Briefkopf: Fußzeile (z. B. Steuernummer)',
               document_profile='Dokumentprofil: Ausstellerrolle der Wohnungsgeberbestätigung', booking_category='Kostenregel: Kategorie für neue manuelle Buchungsentwürfe',
               invoice_cost_category='Kostenregel: Kostenart für neue manuelle Rechnungseingänge', invoice_recoverable='Kostenregel: Umlagefähig für neue Rechnungseingänge',
               confirmed_cost_defaults='Kostenregeln ausdrücklich als Entwurfsvorgabe bestätigt', contract_number_prefix='Mietvertragsnummer: Präfix (leer deaktiviert)',
@@ -55,12 +58,16 @@ CHOICES: dict[str, list[Any]] = dict(theme=["light", "dark", "system"], locale=[
 BUSINESS = {"default_due_day", "reminder_days"}
 GLOBAL_ONLY = {'contract_number_prefix', 'contract_number_start', 'contract_number_width'}
 BUSINESS |= GLOBAL_ONLY | {'document_sender', 'document_address', 'document_signature', 'document_profile',
+                           'document_contact', 'document_bank', 'document_footer',
                            'booking_category', 'invoice_cost_category', 'invoice_recoverable', 'confirmed_cost_defaults'}
 CHOICES.update(currency_display=['symbol', 'code'], document_profile=['housing_provider', 'authorized_person'],
                invoice_recoverable=[False, True], confirmed_cost_defaults=[False, True])
 CHOICES.update(bank_import_format=['csv', 'mt940', 'camt'], bank_csv_encoding=['utf-8-sig', 'cp1252', 'latin-1', 'utf-16'],
                bank_csv_delimiter=[';', ',', '\t', '|'], bank_csv_decimal=['.', ','], bank_csv_date_format=['%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'])
 TEXT_KEYS = {'document_sender', 'document_address', 'document_signature', 'booking_category', 'invoice_cost_category', 'contract_number_prefix'}
+# letterhead blocks: several lines each (address up to 1500 characters, the others 500)
+MULTILINE_KEYS = {'document_address', 'document_contact', 'document_bank', 'document_footer'}
+TEXT_KEYS |= MULTILINE_KEYS
 TEXT_KEYS |= {'bank_csv_date_column', 'bank_csv_amount_column', 'bank_csv_text_column', 'preferred_connection'}
 ENV_KEYS = {"backup_daily_at": "Uhrzeit der täglichen Sicherung", "backup_keep_daily": "Tägliche Sicherungen aufbewahren",
             "backup_keep_monthly": "Monatliche Sicherungen aufbewahren", "backup_schedule_enabled": "Automatische Sicherung",
@@ -88,8 +95,9 @@ def validate(values):
     if set(values) - DEFAULTS.keys():
         raise HTTPException(422, "Unbekannte Einstellung.")
     for key, value in values.items():
-        if key in TEXT_KEYS and (not isinstance(value, str) or len(value) > (1500 if key == 'document_address' else 120)
-                                or any(ord(char) < 32 and not (key == 'document_address' and char == '\n') for char in value)):
+        limit = 1500 if key == 'document_address' else 500 if key in MULTILINE_KEYS else 120
+        if key in TEXT_KEYS and (not isinstance(value, str) or len(value) > limit
+                                or any(ord(char) < 32 and not (key in MULTILINE_KEYS and char == '\n') for char in value)):
             raise HTTPException(422, 'Ungültiger Text für ' + LABELS[key] + '.')
         if key == 'contract_number_prefix' and (not isinstance(value, str) or value and not re.fullmatch(r'[A-Za-z0-9ÄÖÜäöüß._/-]{1,40}', value)):
             raise HTTPException(422, 'Nummernpräfix enthält unzulässige Zeichen.')
@@ -179,7 +187,7 @@ def catalogue(store, actor_id, property_id=None):
                 choices = [{'value': '', 'label': 'Keine bevorzugte Verbindung'}] + [{'value': row.id, 'label': row.name} for row in rows]
             if key not in GLOBAL_ONLY:
                 result.append(dict(key=key, label=LABELS[key], value=value, origin=origin, scope="personal", editable=key != "currency",
-                               revision=state.get(unit, "preferences")["revision"], choices=choices, input_type="time" if key in ("quiet_start", "quiet_end") else 'text' if key in TEXT_KEYS else "number",
+                               revision=state.get(unit, "preferences")["revision"], choices=choices, input_type="time" if key in ("quiet_start", "quiet_end") else 'textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else "number",
                                inherited=key not in own, restart_required=False, secret=False,
                                group="Benachrichtigungen" if key in ("email_notifications", "reminder_days", "quiet_start", "quiet_end") else 'Dokumente und Kostenregeln' if key in BUSINESS else "Ansicht und Arbeitsweise"))
             if admin and key in BUSINESS:
@@ -188,7 +196,7 @@ def catalogue(store, actor_id, property_id=None):
                         saved = rule(unit, scope, key)
                         result.append(dict(key=key, label=LABELS[key], value=saved["payload"].get("value", DEFAULTS[key]),
                                            origin=scope if saved["payload"] else "Standard", scope=scope, editable=True,
-                                           revision=saved["revision"], choices=choices, input_type='text' if key in TEXT_KEYS else 'number', restart_required=False, secret=False, group="Fachliche Vorgaben"))
+                                           revision=saved["revision"], choices=choices, input_type='textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else 'number', restart_required=False, secret=False, group="Fachliche Vorgaben"))
         if admin and scope_from_user(unit.user).unrestricted:
             for key, label in ENV_KEYS.items():
                 result.append(dict(key=key, label=label, value=getattr(settings, key), scope="installation", origin=getattr(runtime_config, "SETTING_ORIGINS", {}).get(key, "Unbekannt (beim Start nicht erfasst)"),

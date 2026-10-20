@@ -72,8 +72,9 @@ def validate_manifest_identity(row: Any, snapshot: Mapping) -> None:
 
 def validate_feature_snapshot(row: Any, snapshot: Mapping) -> None:
     """Checks of a feature that stores its proof in the manifest (Wohnungsgeberbestätigung, protocols, letters,
-    deposit settlements)."""
+    template letters, deposit settlements)."""
     from .billing_letter_validation import validate_billing_letter_snapshot
+    from .contract_letter_validation import validate_contract_letter_snapshot
     from .deposit_validation import validate_deposit_snapshot
     from .dunning_letter_validation import validate_dunning_letter_snapshot
     from .handover_protocol_validation import validate_handover_snapshot
@@ -86,6 +87,7 @@ def validate_feature_snapshot(row: Any, snapshot: Mapping) -> None:
     validate_dunning_letter_snapshot(row, snapshot)
     validate_deposit_snapshot(row, snapshot)
     validate_billing_letter_snapshot(row, snapshot)
+    validate_contract_letter_snapshot(row, snapshot)
 
 
 def _fail() -> NoReturn:
