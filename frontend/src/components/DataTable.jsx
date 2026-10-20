@@ -904,9 +904,11 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                   {hasActions && (
                     <td className="action-cell" onClick={e => e.stopPropagation()}>
                       {rowActions?.(row).map(action => (
-                        <button key={action.label} onClick={event => action.onClick(row, event)} className="btn btn-sm btn-ghost"
+                        // an action without an icon shows its label, never an empty button
+                        <button key={action.label} onClick={event => action.onClick(row, event)}
+                                className={`btn btn-sm btn-ghost${action.icon ? '' : ' row-action-text'}`}
                                 aria-label={action.label} aria-description={String(bulkWords.rowName(row))} title={action.label}>
-                          {action.icon}
+                          {action.icon || action.label}
                         </button>
                       ))}
                       {onEdit && (

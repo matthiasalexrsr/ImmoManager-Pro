@@ -14,7 +14,7 @@ import StatementBreakdown from '../features/billing/StatementBreakdown';
 import { codeLabel } from '../utils/codeLabels';
 import { formatMoney } from '../utils/format';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { FileText, ListChecks, Pencil } from 'lucide-react';
+import { FileText, FolderOpen, ListChecks, Pencil } from 'lucide-react';
 import './statements.css';
 
 const sumMoney = (rows, key) => rows.reduce((sum, row) => sum + Math.round(Number(row[key] || 0) * 100), 0) / 100;
@@ -832,7 +832,7 @@ export default function Statements() {
       if (ocrRes?.success) {
         setOcrDraft(ocrRes);
       } else {
-        toast.show(ocrRes?.error || 'OCR-Erkennung fehlgeschlagen');
+        toast.show(ocrRes?.error || 'Texterkennung fehlgeschlagen');
       }
     } catch (err) {
       toast.show(err.message || 'Import fehlgeschlagen');
@@ -1555,10 +1555,10 @@ export default function Statements() {
         onApplyView={config => setParams(current => { const next = new URLSearchParams(current); const value = config.column_filters?.source_filter;
           if (['statements', 'preflight_blockers'].includes(value)) next.set('filter', value); else next.delete('filter'); return next; })}
         onAdd={sourceFilter === 'statements' || !canManagePeriods ? undefined : () => setModal('create')}
-        onEdit={openSourceRow}
         onRowClick={openSourceRow}
+        // one way to open a row: "Bearbeiten" opened the same as this action, with the same pencil
         rowActions={row => [{ label: sourceFilter === 'statements' ? 'Aufschlüsselung öffnen' : 'Kosten und Abrechnung öffnen',
-          icon: sourceFilter === 'statements' ? <ListChecks size={16} /> : <Pencil size={16} />,
+          icon: sourceFilter === 'statements' ? <ListChecks size={16} /> : <FolderOpen size={16} />,
           onClick: () => sourceFilter === 'statements' ? setBreakdown(row) : handleSelectPeriod(row) }]}
       />
       {documentDialogs}

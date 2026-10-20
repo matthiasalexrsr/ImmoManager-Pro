@@ -35,7 +35,7 @@ function withPeriod(changes, extra = []) {
 async function openPeriod() {
   render(<MemoryRouter><Statements /></MemoryRouter>);
   const row = (await screen.findAllByRole('cell', { name: 'MFH Leipzig' }))[0].closest('tr');
-  fireEvent.click(within(row).getByLabelText('ui.buttons.edit'));
+  fireEvent.click(within(row).getByRole('button', { name: 'Kosten und Abrechnung öffnen' }));
   return screen.findByText('Lukas Becker');
 }
 

@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { History } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -262,7 +263,7 @@ export default function Meters() {
             viewConfig={{ column_filters: { meter_filter: sourceFilter } }}
             onApplyView={config => setSourceFilter(config.column_filters?.meter_filter || 'all')}
             onEdit={row => setModal(row)}
-            rowActions={row => [{ label: 'Verlauf', onClick: () => setHistoryOf(row) }]}
+            rowActions={row => [{ label: 'Verlauf', icon: <History size={15} aria-hidden="true" />, onClick: () => setHistoryOf(row) }]}
             onAdd={gi === 0 ? () => setModal('create-meter') : undefined}
             onDelete={handleDeleteMeter}
           />

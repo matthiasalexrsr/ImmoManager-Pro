@@ -7,6 +7,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
+import { Eye, Mail, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
@@ -202,7 +203,7 @@ function DocumentsWorkspace() {
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
     { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
       render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
-    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'OCR', render: v => {
+    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'Texterkennung', render: v => {
       if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
       if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
       if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
@@ -387,7 +388,7 @@ function DocumentsWorkspace() {
       {!loading && !error && <div className="kpi-row">
         <KpiAction label="Gesamt" value={documentPage?.total ?? enriched.length} onClick={() => openSources('all')} />
         <KpiAction label={`Mit Datei${tenantId ? ' auf dieser Seite' : ''}`} value={withFile} onClick={() => openSources('with_file')} />
-        <KpiAction label={`OCR erkannt${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
+        <KpiAction label={`Text erkannt${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
         {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
       </div>}
 
@@ -396,9 +397,9 @@ function DocumentsWorkspace() {
         {[
           { key: 'all', label: 'Alle' },
           { key: 'no_assignment', label: 'Ohne Zuordnung' },
-          { key: 'ocr_open', label: 'OCR offen' },
+          { key: 'ocr_open', label: 'Texterkennung offen' },
           { key: 'with_file', label: 'Mit Datei' },
-          { key: 'ocr_completed', label: 'OCR erkannt' },
+          { key: 'ocr_completed', label: 'Text erkannt' },
         ].map(f => (
           <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
@@ -449,11 +450,13 @@ function DocumentsWorkspace() {
           <PlusIcon size={24} />
           <span>{uploading ? (t('pages.documents.upload.uploading') || 'Wird hochgeladen...') : (t('pages.documents.upload.dropHint') || 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)')}</span>
           <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
-            {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs'}
+            {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — bei Bildern und PDFs wird der Text automatisch erkannt'}
+          </span>
+          <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
+            Eine Datei: Angaben prüfen und speichern. Mehrere Dateien: Jede Datei wird als eigenes Dokument mit ihrem Dateinamen importiert.
           </span>
           {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
         </div>
-        <p className="text-muted">Eine Datei: Angaben prüfen und speichern. Mehrere Dateien: Jede Datei wird als eigenes Dokument mit ihrem Dateinamen importiert.</p>
       </div>}
 
       {/* Upload queue */}
@@ -493,7 +496,7 @@ function DocumentsWorkspace() {
 
       {loading && <p role="status">Dokumente werden geladen …</p>}
       {tenantId && pageSource && !loading && !error && <section aria-label="Kennzahlquelle auf dieser Dokumentseite" className="panel">
-        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'OCR erkannt' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
+        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'Text erkannt' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
           <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPageSource(null)}>Quellansicht schließen</button></div>
         <DataTable title="Dokumente auf dieser Seite" settingsKey="documents-page-source" columns={columns}
           data={enriched.filter(row => pageSource === 'with_file' ? Boolean(row.file_url) : pageSource === 'ocr_completed' ? row.ocr_status === 'completed' : !row.property_id && !row.unit_id && !row.contract_id && !row.tenant_id)}
@@ -518,8 +521,9 @@ function DocumentsWorkspace() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row)}
-        rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <span aria-hidden="true">↗</span>, onClick: () => setViewerFile(row) }, { label: 'Brief und Frankatur', onClick: () => setPostDocument(row) },
-          { label: 'Dokumentwerkzeuge', onClick: () => setSearchParams(previous => {
+        rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
+          { label: 'Brief und Frankatur', icon: <Mail size={15} aria-hidden="true" />, onClick: () => setPostDocument(row) },
+          { label: 'Dokumentwerkzeuge', icon: <Wrench size={15} aria-hidden="true" />, onClick: () => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('tool_id', row.id); return next;
           }) }] : []}
         rowName={row => row.title || row.id}

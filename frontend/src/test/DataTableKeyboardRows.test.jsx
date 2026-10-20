@@ -39,3 +39,10 @@ it('rein lesbare Tabellen erhalten keine zusätzlichen Tabstopps', () => {
   expect(row).not.toHaveAttribute('tabindex');
   expect(row).not.toHaveAttribute('aria-label');
 });
+
+it('eine Zeilenaktion ohne Symbol zeigt ihre Beschriftung statt einer leeren Schaltfläche', () => {
+  render(<DataTable title="Vorgänge" columns={columns} data={rows}
+    rowActions={() => [{ label: 'Verlauf', onClick: vi.fn() }]} />);
+  const button = within(screen.getAllByRole('row')[1]).getByRole('button', { name: 'Verlauf' });
+  expect(button).toHaveTextContent('Verlauf');
+});

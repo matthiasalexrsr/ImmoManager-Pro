@@ -22,7 +22,7 @@ let data;
 function page() { return <MemoryRouter><Statements /></MemoryRouter>; }
 async function openPeriod(label = original.label) {
   const row = (await screen.findByRole('cell', { name: label === original.label ? 'Prüfhaus' : 'Zweites Prüfhaus' })).closest('tr');
-  fireEvent.click(within(row).getByLabelText('ui.buttons.edit'));
+  fireEvent.click(within(row).getByRole('button', { name: 'Kosten und Abrechnung öffnen' }));
   await screen.findByRole('heading', { name: label });
 }
 async function openDecision(action = 'reject') {

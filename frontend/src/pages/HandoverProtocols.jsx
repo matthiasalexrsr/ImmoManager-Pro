@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { FolderOpen } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
@@ -106,7 +107,7 @@ export default function HandoverProtocols({ service = handoverProtocolService })
         writeArea="/handover-protocols"
         onAdd={() => setCreating(true)}
         onRowClick={row => setEditor(row.id)}
-        rowActions={() => [{ label: say('open'), onClick: row => setEditor(row.id) }]}
+        rowActions={() => [{ label: say('open'), icon: <FolderOpen size={15} aria-hidden="true" />, onClick: row => setEditor(row.id) }]}
         onDelete={remove}
       />
       {creating && <FormModal title={say('newProtocol')} fields={fields} initial={null} onSave={create}
