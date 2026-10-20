@@ -57,6 +57,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Briefvorlagen** (Konfiguration → Briefvorlagen) und „Brief schreiben“ am Vertrag und in der Parteiakte:
   - Mieterhöhung auf die ortsübliche Vergleichsmiete mit Prüfung von Sperrfrist, Wartefrist und Kappungsgrenze und dem Datum, ab dem sie gilt;
   - Anpassung der Vorauszahlungen mit Vorschlag aus der letzten Abrechnung;
+  - Mietanpassung bei Indexmiete: neue Miete aus dem Verbraucherpreisindex, Termin und Jahresfrist geprüft; die Indexwerte trägt man auf der Seite Briefvorlagen ein (das Programm ruft nichts ab);
   - Bestätigung einer Kündigung mit der gesetzlichen Frist, Mietbescheinigung, Terminankündigung und freies Schreiben;
   - Platzhalter wie `{{mieter.name}}` füllt das Programm aus dem Vertrag; eigene Vorlagen entstehen als Kopie einer mitgelieferten;
   - der fertige Brief wird als unveränderliches Original in der Akte abgelegt; versendet wird nichts.
@@ -78,6 +79,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - CSV für deutsche Tabellenprogramme.
 - **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol oder ihre Beschriftung.
 - **Ablaufdaten für Dokumente:** Energieausweis, Wartungsnachweis oder Police bekommen „Gültig bis“ und einen Vorlauf. Rechtzeitig vorher entstehen eine Aufgabe und eine Benachrichtigung, je Ablaufdatum genau einmal. Die Dokumentliste zeigt, was bald abläuft oder abgelaufen ist.
+- **Aufbewahrungsfristen:** Jedes Dokument hat eine Aufbewahrungsfrist nach seinem Typ (Rechnungen und Abrechnungen 8 Jahre, Briefe 6 Jahre, Steuerunterlagen 10 Jahre, Verträge bis 3 Jahre nach Vertragsende) oder nach eigener Wahl. Solange sie läuft, lässt sich das Dokument nicht versehentlich löschen; Eigentümer und Verwaltung können es mit Begründung trotzdem löschen, der Grund wird protokolliert. Ein Filter zeigt, was gelöscht werden darf.
 - **Volltextsuche in Dokumenten:** Die Dokumentseite durchsucht den Inhalt von PDFs, Text- und Office-Dateien und zeigt die Fundstelle. Auch die globale Suche findet Dokumente über ihren Inhalt. Das Lesen geschieht im Hintergrund und auf dem eigenen Rechner.
 - **Dokumenteneingang nur für Unerledigtes:** Abgelegte Dokumente (mit Art und Zuordnung zu Objekt, Einheit, Vertrag oder Partei) zählen nicht mehr als offener Eingang; Rechnungsbelege bleiben dort, bis sie erfasst sind. „Texterkennung“ statt „OCR“.
 - **Zahlungsvorschläge** zu einer Rechnung erscheinen auch bei vielen Buchungen sofort.
@@ -104,10 +106,11 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Prognosen rechnen mit den Vertragsmieten;
   - noch nicht abgeschlossene Nebenkostenabrechnungen ergeben bei neuer Erzeugung korrekte Beträge.
   - Abgeschlossene Abrechnungen bleiben unverändert.
-- **Datenexport (JSON):** Ein Export dieser Version hat das Format 12 (mit Ablaufdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
+- **Datenexport (JSON):** Ein Export dieser Version hat das Format 13 (mit Ablaufdaten und Aufbewahrungsklassen). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
 
 ## Bekannte Grenzen
+- **Aufbewahrung:** Die Löschsperre schützt vor versehentlichem Löschen; sie macht das Programm nicht zu einem revisionssicheren Archiv (GoBD), und die Einstufung ersetzt keine steuerliche Beratung.
 - **Volltextsuche bei Scans und Fotos:** Im Windows-Paket ist keine Texterkennung für Bilder enthalten. Gescannte PDFs ohne Textebene und Fotos sind deshalb nicht durchsuchbar; die Suche nennt, wie viele Dokumente das betrifft.
 - **Kündigungsfrist:** Die Briefvorlage berücksichtigt nur bundesweite Feiertage. Serienbriefe an alle Mieter eines Objekts gibt es noch nicht.
 - **Versand:** E-Mails und Mahnbriefe erzeugt das Programm als Entwurf oder PDF und versendet sie nicht. Zahlungsdateien (SEPA) gibt es nicht.
