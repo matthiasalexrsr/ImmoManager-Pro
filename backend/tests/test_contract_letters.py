@@ -373,3 +373,21 @@ def test_archived_letters_are_found_by_their_content(case):
     assert row is not None and row.source == "pdf_text" and row.source_ref.startswith("version:")
     found = case["client"].get("/api/v1/documents/search", params={"q": "ortsüblichen vergleichsmiete"}).json()
     assert [item["id"] for item in found["items"]] == [saved["document_id"]]
+
+    # bullet points of a letter came out of the PDF as DEL (0x7f) and reached the snippet
+    notice = compose(case, "builtin:appointment_notice", {"appointment_type": "meter_reading",
+        "appointment_date": "2026-11-23", "time_from": "08:00", "time_to": "12:00", "company": "Techem",
+        "reason": "Ablesung der Heizkostenverteiler"})
+    payload, shown = preview(case, notice)
+    saved = case["client"].post(base(case), json={**payload, "review_hash": shown["review_hash"],
+                                                  "idempotency_key": "letter-index-02"}).json()
+    while document_text.index_pending(store)[1] is not None:
+        pass
+    if hasattr(store, "db"):
+        store.db.commit()
+    text = document_text.get(store, saved["document_id"]).text
+    assert "Ausführung: Techem" in text
+    assert not any(ord(char) < 32 and char != "\n" or 127 <= ord(char) < 160 for char in text)
+    found = case["client"].get("/api/v1/documents/search", params={"q": "heizkostenverteiler"}).json()
+    assert [item["id"] for item in found["items"]] == [saved["document_id"]]
+    assert "\x7f" not in found["items"][0]["snippet"]

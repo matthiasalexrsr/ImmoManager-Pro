@@ -41,6 +41,7 @@ SYSTEM_USER = {"id": "system:document-text", "role": "eigentuemer", "is_active":
 PLAIN = {"txt", "csv", "md", "text"}
 OFFICE = {"docx": "word/document.xml", "odt": "content.xml", "ods": "content.xml", "xlsx": "xl/sharedStrings.xml"}
 IMAGES = {"png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"}
+CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 
 def now() -> datetime:
@@ -55,7 +56,8 @@ def _naive(value: datetime | None) -> datetime | None:
 
 def normalize(text: str) -> str:
     """Readable stored text: no control characters, single spaces, at most two line breaks."""
-    text = text.replace("\x00", " ").replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = CONTROL.sub(" ", text)      # e.g. list bullets of PDFs come out as DEL (0x7f)
     text = re.sub(r"[^\S\n]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
