@@ -81,7 +81,7 @@ describe('Statements detail', () => {
     changed = true;
     await act(async () => { finishUpload({ file_url: '/uploads/scan.pdf' }); });
     expect(api.post).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog', { name: 'OCR-Ergebnis prüfen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Erkannten Text prüfen' })).not.toBeInTheDocument();
     expect(screen.getByText('Sitzung gewechselt')).toBeInTheDocument();
   });
 

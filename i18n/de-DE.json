@@ -1386,7 +1386,7 @@
     "fileViewer": {
       "title": "Dateiansicht",
       "original": "Original",
-      "ocrText": "OCR-Text",
+      "ocrText": "Erkannter Text",
       "copied": "Kopiert!",
       "copyText": "Text kopieren",
       "document": "Dokument",
@@ -1517,10 +1517,10 @@
       "importResult": "Import-Ergebnis",
       "imported": "importiert",
       "errorsIn": "Fehler in:",
-      "docsOcr": "Dokumente & OCR",
-      "autoOcr": "Automatische OCR",
+      "docsOcr": "Dokumente & Texterkennung",
+      "autoOcr": "Automatische Texterkennung",
       "ocrActive": "Aktiv (für PDF, PNG, JPG, TIFF)",
-      "ocrLanguages": "OCR-Sprachen",
+      "ocrLanguages": "Sprachen der Texterkennung",
       "ocrLangs": "Deutsch + Englisch",
       "fileStorage": "Dateispeicher",
       "fileStorageLocal": "Lokal (uploads/)",
@@ -1655,9 +1655,9 @@
       "colLabel": "Bezeichnung",
       "colCreated": "Erstellt",
       "show": "Anzeigen",
-      "ocrRunning": "OCR läuft…",
-      "ocrImport": "Beleg importieren (OCR)",
-      "ocrResult": "OCR-Ergebnis prüfen",
+      "ocrRunning": "Texterkennung läuft…",
+      "ocrImport": "Beleg importieren (mit Texterkennung)",
+      "ocrResult": "Erkannten Text prüfen",
       "ocrSupplier": "Lieferant",
       "ocrAmount": "Betrag",
       "ocrCategory": "Kostenart",
@@ -1847,11 +1847,11 @@
       "upload": {
         "uploading": "Wird hochgeladen...",
         "dropHint": "Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)",
-        "supportedFormats": "Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs",
+        "supportedFormats": "Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — bei Bildern und PDFs wird der Text automatisch erkannt",
         "uploaded": "Hochgeladen:",
         "failed": "Upload fehlgeschlagen",
-        "ocrUnavailable": "OCR nicht verfügbar",
-        "ocrUnsupported": "Dateityp nicht OCR-fähig"
+        "ocrUnavailable": "Texterkennung nicht verfügbar",
+        "ocrUnsupported": "Bei diesem Dateityp ist keine Texterkennung möglich"
       },
       "uploaded": "Hochgeladen:",
       "title": "Dokumente",
@@ -1864,7 +1864,7 @@
         "tags": "Tags",
         "file": "Datei",
         "filePresent": "Vorhanden",
-        "ocr": "OCR"
+        "ocr": "Texterkennung"
       },
       "ocr": {
         "completed": "✓ Erkannt",

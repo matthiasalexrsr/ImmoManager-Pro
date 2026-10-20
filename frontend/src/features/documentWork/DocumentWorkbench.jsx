@@ -17,7 +17,7 @@ const kinds = { highlight: 'Hervorhebung', comment: 'Kommentar', text: 'Textnoti
 const tools = { copy: 'Originalgetreue Kopie', flatten: 'Anmerkungen einbetten', rotate: 'Seiten drehen',
   pages: 'Seiten ordnen / entnehmen', insert: 'Seiten einfügen', merge: 'PDFs zusammenführen', split: 'PDF teilen',
   crop: 'Zuschneiden (Ansicht)', forms: 'Formularfelder ausfüllen', redact: 'Inhalt endgültig schwärzen',
-  edit_content: 'Inhalt im Rechteck ersetzen', optimize: 'Größe verlustfrei optimieren', ocr: 'OCR-Textschicht', docx_pdf: 'DOCX als PDF ausgeben' };
+  edit_content: 'Inhalt im Rechteck ersetzen', optimize: 'Größe verlustfrei optimieren', ocr: 'Durchsuchbare Textebene erzeugen', docx_pdf: 'DOCX als PDF ausgeben' };
 
 export default function DocumentWorkbench({ documentId, onClose }) {
   const base = `/documents/${encodeURIComponent(documentId)}/work`;

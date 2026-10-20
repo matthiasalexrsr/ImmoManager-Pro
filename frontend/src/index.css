@@ -611,9 +611,9 @@ table.data-table th {
   padding: 0.7rem 0.75rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  /* sentence case, as the list tables (DataTable.css) show their headings */
+  letter-spacing: .01em;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
@@ -2674,12 +2674,12 @@ table.data-table tbody tr:last-child td {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+/* headings as in the list tables (DataTable.css): sentence case, not capitals */
 .simple-table th {
   font-weight: 600;
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: .01em;
 }
 
 .simple-table tr:hover {

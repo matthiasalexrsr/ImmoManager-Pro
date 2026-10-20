@@ -38,7 +38,7 @@ describe('FileViewer', () => {
     view.rerender(<FileViewer fileUrl="/uploads/new.pdf" onClose={() => {}} />);
     await act(async () => resolveOld({ has_ocr: true, text: 'Veralteter Text' }));
     await waitFor(() => expect(pdfSources).toContain(`${window.location.origin}/uploads/new.pdf`));
-    expect(screen.queryByRole('button', { name: 'OCR-Text' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Erkannter Text' })).not.toBeInTheDocument();
     expect(screen.queryByText('Veralteter Text')).not.toBeInTheDocument();
   });
 });

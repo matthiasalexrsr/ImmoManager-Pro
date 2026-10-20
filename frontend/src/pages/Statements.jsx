@@ -1381,9 +1381,9 @@ export default function Statements() {
         {/* OCR Import Preview Dialog */}
         {ocrDraft && (
           <div className="modal-overlay" onClick={() => setOcrDraft(null)}>
-            <div className="modal" role="dialog" aria-modal="true" aria-label="OCR-Ergebnis prüfen" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal" role="dialog" aria-modal="true" aria-label="Erkannten Text prüfen" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
               <div className="modal-header">
-                <h3>OCR-Ergebnis prüfen</h3>
+                <h3>Erkannten Text prüfen</h3>
                 <button className="btn-close" onClick={() => setOcrDraft(null)} aria-label="Schließen">&times;</button>
               </div>
               <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>

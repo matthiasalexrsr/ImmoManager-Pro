@@ -257,7 +257,7 @@ describe('Billing workspace', () => {
       : { ...body, id: 'ocr-cost' });
     render(page()); await open();
     fireEvent.change(screen.getByLabelText('pages.statements.ocrImport'), { target: { files: [new File(['fixture'], 'beleg.pdf', { type: 'application/pdf' })] } });
-    const preview = await screen.findByRole('dialog', { name: 'OCR-Ergebnis prüfen' });
+    const preview = await screen.findByRole('dialog', { name: 'Erkannten Text prüfen' });
     fireEvent.click(within(preview).getByRole('button', { name: 'Kostenposition prüfen und ergänzen' }));
     const editor = screen.getByRole('dialog', { name: 'Kostenposition hinzufügen' });
     expect(within(editor).getByLabelText(/pages.statements.formAmount/)).toHaveValue(null);
