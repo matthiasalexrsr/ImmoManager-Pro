@@ -103,8 +103,10 @@ describe('document intake with explicit review', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Dokumentvorschläge' });
     expect(within(dialog).getByText('Erkannte Heizungsrechnung')).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Speichern' })).not.toBeInTheDocument();
+    // the dialog takes the focus in the effect that also listens for Escape: wait for it under load
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('continues across cursor pages and carries only opted-in assignments to unassigned documents', async () => {
