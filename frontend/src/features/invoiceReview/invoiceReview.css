@@ -41,6 +41,8 @@
 .ir-missing label { color: var(--warning-text, #b45309); }
 .ir-check-actions { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
 .ir-wrap { flex-wrap: wrap; }
+.ir-check { display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 100%; min-height: 44px; cursor: pointer; }
+.ir-check input[type="checkbox"] { flex: 0 0 1rem; width: 1rem; min-width: 1rem; max-width: 1rem; height: 1rem; min-height: 0; padding: 0; margin: 0; }
 .ir-note { background: rgba(37, 99, 235, 0.06); border-radius: 6px; padding: 0.5rem 0.75rem; }
 .ir-vat { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .ir-vat th, .ir-vat td { text-align: right; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border-color, #e5e7eb); }

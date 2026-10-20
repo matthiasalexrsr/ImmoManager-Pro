@@ -2,6 +2,8 @@ import { useTranslation } from '../../i18n';
 
 // Texts of the invoice review (Rechnungsprüfung) in German, English and Spanish.
 export const de = {
+  duplicateCheckFailed: 'Dublettenprüfung nicht verfügbar. Beim Speichern wird erneut geprüft.',
+  openBooking: 'Ausgewählte Buchung öffnen', otherProperties: 'Auch Buchungen anderer Immobilien anzeigen',
   title: 'Rechnungsprüfung', inbox: 'Eingang', proposals: 'Zahlungsvorschläge', loading: 'Wird geladen …',
   loadFailed: 'Konnte nicht geladen werden.', retry: 'Erneut laden', back: 'Zur Rechnungsprüfung', save: 'Speichern',
   cancel: 'Abbrechen', close: 'Schließen', saved: 'Gespeichert.', search: 'Suche (Lieferant, Nummer)',
@@ -82,6 +84,8 @@ export const de = {
 };
 
 export const en = {
+  duplicateCheckFailed: 'Duplicate check unavailable. It will be repeated when saving.',
+  openBooking: 'Open selected booking', otherProperties: 'Include bookings of other properties',
   title: 'Invoice review', inbox: 'Inbox', proposals: 'Payment proposals', loading: 'Loading …',
   loadFailed: 'Could not be loaded.', retry: 'Reload', back: 'Back to invoice review', save: 'Save',
   cancel: 'Cancel', close: 'Close', saved: 'Saved.', search: 'Search (supplier, number)',
@@ -162,6 +166,8 @@ export const en = {
 };
 
 export const es = {
+  duplicateCheckFailed: 'Comprobación de duplicados no disponible. Se repetirá al guardar.',
+  openBooking: 'Abrir el movimiento seleccionado', otherProperties: 'Incluir movimientos de otros inmuebles',
   title: 'Revisión de facturas', inbox: 'Entrada', proposals: 'Propuestas de pago', loading: 'Cargando …',
   loadFailed: 'No se pudo cargar.', retry: 'Recargar', back: 'Volver a la revisión', save: 'Guardar',
   cancel: 'Cancelar', close: 'Cerrar', saved: 'Guardado.', search: 'Buscar (proveedor, número)',

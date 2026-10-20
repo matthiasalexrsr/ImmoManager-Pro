@@ -475,6 +475,9 @@ def test_partial_approval_dispute_credit_note_and_result(owner, estate):
     view = _view(owner, invoice["id"])
     assert (view["status"], view["review"]["dispute_status"]) == ("partially_approved", "open")
     assert view["settlement"]["payable"] == 990.0 and view["settlement"]["dispute_open"] == 200.0
+    listed = {i["id"]: i for i in _ok(owner.get(f"{API}/invoices/overview"))}
+    assert listed[invoice["id"]]["payment_summary"]["open"] == 990
+    assert listed[invoice["id"]]["payment_summary"]["paid"] == 0
     costs = _ok(owner.get(f"{API}/maintenance/{case['id']}/costs"))
     assert costs["invoiced"] == 990.0                                      # the approved amount feeds the project
     # proposed for payment: the approved part only
@@ -482,6 +485,9 @@ def test_partial_approval_dispute_credit_note_and_result(owner, estate):
     assert proposal[invoice["id"]]["proposed_amount"] == 990.0 and proposal[invoice["id"]]["dispute_open"] == 200.0
     _ok(_pay(owner, invoice["id"], _booking(estate, -990), 990), 201)
     assert _view(owner, invoice["id"])["settlement"]["payment_status"] == "paid"
+    listed = {i["id"]: i for i in _ok(owner.get(f"{API}/invoices/overview"))}
+    assert listed[invoice["id"]]["payment_summary"]["open"] == 0
+    assert listed[invoice["id"]]["payment_summary"]["paid"] == 990
     assert invoice["id"] not in {p["invoice_id"] for p in
                                  _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"]}
 

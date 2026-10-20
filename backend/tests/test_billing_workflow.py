@@ -156,6 +156,11 @@ def test_create_receivables_from_finalized_period():
 
     receivables = store.list_receivables()
     assert len(receivables) >= 1
+    from backend.routers.receivables import list_receivables
+    selected = receivables[-1]
+    page = list_receivables(skip=0, limit=1, contract_id=None, status_filter=None,
+                            sort_by="id", sort_order="asc", statement_id=selected.statement_id)
+    assert len(page) == 1 and page[0].statement_id == selected.statement_id
 
 
 def test_create_receivables_rejects_draft_period():
@@ -167,6 +172,31 @@ def test_create_receivables_rejects_draft_period():
     with pytest.raises(HTTPException) as exc_info:
         billing.create_receivables_from_period(period.id)
     assert exc_info.value.status_code == 400
+
+
+def test_delivered_period_can_still_create_its_claims_without_duplicates():
+    period, *_ = _setup_full_scenario()
+    billing.generate_utility_statements(period.id)
+    billing.finalize_billing_period(period.id)
+    billing._set_period_status(period.id, "delivered")
+    first = billing.create_receivables_from_period(period.id)
+    assert first["created_receivables"] > 0
+    second = billing.create_receivables_from_period(period.id)
+    assert second["created_receivables"] == 0
+    assert second["skipped_existing"] == first["created_receivables"]
+
+
+def test_invalid_delivery_channel_never_changes_a_statement():
+    import pytest
+    from fastapi import HTTPException
+    period, *_ = _setup_full_scenario()
+    statements = billing.generate_utility_statements(period.id)
+    billing.finalize_billing_period(period.id)
+    before = store.get_utility_statement(statements[0].id).model_dump()
+    with pytest.raises(HTTPException) as error:
+        billing.mark_statement_delivered(statements[0].id, channel="invalid-channel")
+    assert error.value.status_code == 422
+    assert store.get_utility_statement(statements[0].id).model_dump() == before
 
 
 # ---------------------------------------------------------------------------

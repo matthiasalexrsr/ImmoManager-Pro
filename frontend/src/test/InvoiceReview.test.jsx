@@ -15,6 +15,8 @@ const access = vi.hoisted(() => ({ canWrite: true }));
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => access.canWrite, useAuth: () => null }));
 vi.mock('../components/PdfPreview', () => ({ default: ({ url }) => <div data-testid="pdf">{url}</div> }));
 vi.mock('../components/FileViewer', () => ({ default: () => <div data-testid="viewer" /> }));
+// The locally selected calendar day can differ from the UTC day (after midnight).
+vi.mock('../utils/occupancy', async original => ({ ...await original(), localDay: () => '2026-10-20' }));
 
 const SETTLED = { gross: 1190, status: 'received', payable: null, approved: null, credits: 0, disputed: 0, dispute_open: 0,
   dispute_settled: 0, written_off: 0, paid: 0, skonto_amount: 0, skonto_until: null, skonto_taken: 0,
@@ -99,6 +101,10 @@ describe('invoice review inbox', () => {
 });
 
 describe('invoice review view', () => {
+  it('defaults the receipt to the local calendar day rather than the UTC day', async () => {
+    showDetail({ ...VIEW, review: null, status: 'legacy', abilities: { ...ABILITIES, receive: true } });
+    expect(await screen.findByLabelText('Eingang am')).toHaveValue('2026-10-20');
+  });
   it('offers precise read-only context links to the property, invoice and assigned maintenance', async () => {
     showDetail();
     const links = await screen.findByRole('navigation', { name: 'Verknüpfte Seiten' });

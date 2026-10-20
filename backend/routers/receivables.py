@@ -17,8 +17,9 @@ def list_receivables(
     status_filter: str | None = Query(None, alias="status"),
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
+    statement_id: str | None = None,
 ) -> list[Receivable]:
-    filters = {"contract_id": contract_id, "status": status_filter}
+    filters = {"contract_id": contract_id, "status": status_filter, "statement_id": statement_id}
     results = store._list_paginated(
         entity_type="receivable",
         skip=skip,

@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import TenantAccount from '../pages/TenantAccount';
 import { api } from '../api';
 
@@ -34,7 +34,8 @@ describe('TenantAccount', () => {
     expect(screen.getByRole('link', { name: 'MV-Whg' })).toHaveAttribute('href', '/contracts?contract_id=w');
     expect(screen.getByRole('link', { name: 'MV-Garage' })).toHaveAttribute('href', '/contracts?contract_id=g');
     expect(screen.getByRole('link', { name: 'Nachzahlung' })).toHaveAttribute('href', '/bookings?booking_id=b');
-    expect(screen.getByRole('link', { name: 'Buchungen dieses Mieters' })).toHaveAttribute('href', '/bookings?tenant_id=t1');
+    expect(screen.getByRole('link', { name: 'Buchungen dieses Mieters' })).toHaveAttribute('href', '/bookings?tenant_id=t1&date_to=2026-10-15');
+    expect(screen.getByRole('link', { name: 'Nicht zugeordnete Buchungen bis zum Stichtag öffnen' })).toHaveAttribute('href', '/bookings?tenant_id=t1&date_to=2026-10-15&flow=unassigned');
     expect(screen.getByRole('link', { name: 'Verträge dieses Mieters' })).toHaveAttribute('href', '/contracts?tenant_id=t1');
     expect(screen.getByText('Nachzahlung')).toBeInTheDocument();
     expect(screen.getByText(/15\.700,00/)).toBeInTheDocument();  // open in total
@@ -66,5 +67,32 @@ describe('TenantAccount', () => {
     expect(api.put).toHaveBeenCalledWith('/tenants/t1', expect.objectContaining({ phone: '0341 1234' }));
     expect(api.get.mock.calls.length).toBeGreaterThan(loads);      // the account and the person load again
     expect(screen.queryByRole('dialog', { name: 'Mieter bearbeiten' })).not.toBeInTheDocument();
+  });
+
+  it('retains the chosen cutoff in the URL and all financial source links', async () => {
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/account') ? ACCOUNT : { full_name: 'Mieter A' }));
+    render(<MemoryRouter initialEntries={['/tenants/t1/account?as_of=2025-12-31']}>
+      <Routes><Route path="/tenants/:id/account" element={<TenantAccount />} /></Routes>
+    </MemoryRouter>);
+    expect(await screen.findByLabelText('Stichtag')).toHaveValue('2025-12-31');
+    expect(api.get).toHaveBeenCalledWith('/tenants/t1/account?as_of=2025-12-31', expect.anything());
+    fireEvent.change(screen.getByLabelText('Stichtag'), { target: { value: '2026-01-31' } });
+    expect(await screen.findByRole('link', { name: 'Buchungen dieses Mieters' })).toHaveAttribute('href', '/bookings?tenant_id=t1&date_to=2026-01-31');
+  });
+
+  it('does not carry an open tenant edit into another party file or accept late data from the old file', async () => {
+    let finishOld;
+    api.get.mockImplementation(path => path.includes('/t1/account') ? Promise.resolve(ACCOUNT)
+      : path === '/tenants/t1' ? Promise.resolve({ id: 't1', full_name: 'Partei A' })
+        : path.includes('/t2/account') ? new Promise(resolve => { finishOld = resolve; })
+          : Promise.resolve({ id: 't2', full_name: 'Partei B' }));
+    render(<MemoryRouter initialEntries={['/tenants/t1/account']}><Link to="/tenants/t2/account">Andere Partei</Link>
+      <Routes><Route path="/tenants/:id/account" element={<TenantAccount />} /></Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mieter bearbeiten' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Partei A');
+    fireEvent.click(screen.getByRole('link', { name: 'Andere Partei' }));
+    await act(async () => finishOld(ACCOUNT));
+    expect(await screen.findByRole('heading', { name: 'Mieterkonto Partei B' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

@@ -45,6 +45,18 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it('retains the exact statement filter and links its claim back to the original calculation', async () => {
+  api.list.mockResolvedValue([
+    { id: 'r1', statement_id: 'stmt-a', contract_id: 'k1', amount_due: -25, status: 'open', due_date: '2026-09-01', description: 'Abrechnungsguthaben' },
+    { id: 'r2', statement_id: 'stmt-b', contract_id: 'k1', amount_due: 90, status: 'open', due_date: '2026-09-02', description: 'Andere Abrechnung' },
+  ]);
+  show('/receivables?statement_id=stmt-a');
+  expect(await screen.findByText('Abrechnungsguthaben')).toBeInTheDocument();
+  expect(screen.queryByText('Andere Abrechnung')).not.toBeInTheDocument();
+  expect(api.list).toHaveBeenCalledWith('/receivables?statement_id=stmt-a', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(screen.getByRole('link', { name: 'Einzelabrechnung öffnen' })).toHaveAttribute('href', '/statements?statement_id=stmt-a');
+});
+
 it('connects a dunned receivable directly to the proper contract file without issuing writes', async () => {
   show('/receivables?status=dunning');
   const contract = await screen.findByRole('link', { name: 'MV-A' });

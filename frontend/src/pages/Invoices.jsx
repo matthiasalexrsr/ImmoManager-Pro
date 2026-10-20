@@ -11,7 +11,7 @@ import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
-import { CheckCircleIcon, SearchIcon } from '../components/Icons';
+import { SearchIcon } from '../components/Icons';
 import { formatDate, formatMoney, formatPercent } from '../utils/format';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
@@ -38,12 +38,10 @@ const COLUMNS = [
   { key: 'category', hidden: true, label: 'Kategorie', filterType: 'select',
     render: v => CATEGORY_LABELS[v] || v || '—' },
   { key: 'invoice_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
-  { key: 'due_date', label: 'Fällig am', type: 'date', filterType: 'dateRange',
+  { key: 'payment_due_on', label: 'Fällig am', type: 'date', filterType: 'dateRange',
     render: (v, row) => {
       if (!v) return '—';
-      const due = new Date(v);
-      const today = new Date();
-      const overdue = row.status !== 'paid' && row.status !== 'cancelled' && due < today;
+      const overdue = row.payment_summary.overdue;
       return <span style={{ color: overdue ? 'var(--danger)' : 'inherit', fontWeight: overdue ? 600 : 400 }}>{formatDate(v)}</span>;
     }},
   { key: 'net_amount', hidden: true, label: 'Netto (€)', type: 'number', sum: true, align: 'right',
@@ -52,8 +50,18 @@ const COLUMNS = [
     render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount)} (${formatPercent(row.vat_rate)})` : '—' },
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
+  { key: 'paid_amount', label: 'Zugeordnet bezahlt (€)', type: 'number', sum: true, align: 'right', render: formatMoney },
+  { key: 'open_amount', label: 'Restbetrag (€)', type: 'number', align: 'right', render: value => value == null ? 'Ungeklärt' : formatMoney(value) },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
-  { key: 'status', label: 'Status', type: 'status', filterType: 'select',
+  { key: 'payment_status', label: 'Zahlungsstand', filterType: 'select', render: (value, row) => <span title={row.payment_summary.note || undefined}>
+    {value === 'unclear' ? <span className="badge badge-yellow">Ungeklärt</span>
+      : value === 'awaiting_review' ? <span className="badge badge-yellow">Freigabe offen</span>
+      : value === 'credit_note' ? <span className="badge badge-gray">Gutschrift</span>
+        : value === 'overpaid' ? <span className="badge badge-yellow">Überzahlt</span>
+          : <StatusBadge status={value} />}
+    {row.payment_summary.note && <span className="td-sub">{row.payment_summary.note}</span>}
+  </span> },
+  { key: 'status', label: 'Manueller Status', hidden: true, type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
 
@@ -68,6 +76,7 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const [modal, setModal] = useState(null);
   // values of a duplicated invoice for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
@@ -85,42 +94,50 @@ export default function Invoices() {
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 
-  const refreshData = () => {
-    setLoading(true);
-    setLoadError(null);
-    api.list('/invoices')
-      .then(inv => { if (!Array.isArray(inv)) throw new Error('Rechnungen konnten nicht gelesen werden.'); setInvoices(inv); })
-      .catch(failure => setLoadError(failure.message))
-      .finally(() => setLoading(false));
-  };
+  const refreshData = () => setAttempt(value => value + 1);
 
   useEffect(() => {
-    let cancelled = false;
-    api.list('/invoices')
-      .then(data => { if (!Array.isArray(data)) throw new Error('Rechnungen konnten nicht gelesen werden.'); if (!cancelled) setInvoices(data); })
-      .catch(failure => { if (!cancelled) setLoadError(failure.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const controller = new AbortController();
+    setLoading(true); setLoadError(null);
+    api.list('/invoices/overview', { signal: controller.signal })
+      .then(data => {
+        if (!Array.isArray(data) || data.some(row => !row.payment_summary
+          || !Number.isFinite(row.payment_summary.paid)
+          || !(row.payment_summary.open === null || Number.isFinite(row.payment_summary.open)))) {
+          throw new Error('Rechnungen und Zahlungsstände konnten nicht vollständig gelesen werden.');
+        }
+        if (!controller.signal.aborted) setInvoices(data);
+      })
+      .catch(failure => { if (!controller.signal.aborted) setLoadError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [attempt]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const enriched = invoices.filter(inv => !propertyId || inv.property_id === propertyId).map(inv => ({
     ...inv,
     property_name: propMap[inv.property_id] || '—',
     invoice_number: inv.invoice_number || inv.id?.toString().slice(0, 8),
+    payment_status: inv.payment_summary.status,
+    paid_amount: inv.payment_summary.paid,
+    open_amount: inv.payment_summary.open,
+    payment_due_on: inv.payment_summary.due_on || inv.due_date,
   }));
 
   const filtered = useMemo(() => {
     if (filter === 'all') return enriched;
-    if (filter === 'unpaid') return enriched.filter(i => i.status === 'open' || i.status === 'overdue' || i.status === 'partial');
-    return enriched.filter(i => i.status === filter);
+    if (filter === 'unpaid') return enriched.filter(i => i.open_amount > 0);
+    if (filter === 'unclear') return enriched.filter(i => i.open_amount === null);
+    if (filter === 'payments') return enriched.filter(i => i.paid_amount !== 0);
+    return enriched.filter(i => i.payment_status === filter);
   }, [enriched, filter]);
 
   // Summary stats
   const sum = (rows, key) => rows.reduce((s, i) => s + Math.round((Number(i[key]) || 0) * 100), 0) / 100;
-  const totalOpen = sum(enriched.filter(i => i.status === 'open'), 'gross_amount');
-  const totalOverdue = sum(enriched.filter(i => i.status === 'overdue'), 'gross_amount');
-  const totalPaid = sum(enriched.filter(i => i.status === 'paid'), 'gross_amount');
+  const totalOpen = sum(enriched, 'open_amount');
+  const totalOverdue = sum(enriched.filter(i => i.payment_summary.overdue), 'open_amount');
+  const totalPaid = sum(enriched, 'paid_amount');
+  const unclearCount = enriched.filter(i => i.open_amount === null).length;
   const totalVat = sum(enriched, 'vat_amount');
 
   const defaultVatRate = taxRates.find(t => t.is_default)?.rate ?? 19;
@@ -195,12 +212,6 @@ export default function Invoices() {
     if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
   };
 
-  const markPaid = async (row) => {
-    await api.patch(`/invoices/${row.id}`, { status: 'paid' });
-    refreshData();
-    if (store) store.invalidateRelated('invoices', 'contracts', 'receivables');
-  };
-
   // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
   if (loading && invoices.length === 0 && !modal) return <div className="page-loading">Lade Rechnungen...</div>;
 
@@ -218,11 +229,13 @@ export default function Invoices() {
       {/* Summary cards */}
       {!loadError && <div className="kpi-row">
         <KpiAction label="Gesamt" value={enriched.length} onClick={() => openSources('all')} />
-        <KpiAction label="Offen" value={formatMoney(totalOpen)} color="var(--warning)" onClick={() => openSources('open')} />
+        <KpiAction label="Offen" value={formatMoney(totalOpen)} color="var(--warning)" onClick={() => openSources('unpaid')} />
         <KpiAction label="Überfällig" value={formatMoney(totalOverdue)} color="var(--danger)" onClick={() => openSources('overdue')} />
-        <KpiAction label="Bezahlt" value={formatMoney(totalPaid)} color="var(--success)" onClick={() => openSources('paid')} />
+        <KpiAction label="Bezahlt" value={formatMoney(totalPaid)} color="var(--success)" onClick={() => openSources('payments')} />
+        {unclearCount > 0 && <KpiAction label="Zahlungsstand ungeklärt" value={unclearCount} onClick={() => openSources('unclear')} />}
         <KpiAction label="MwSt gesamt" value={formatMoney(totalVat)} onClick={() => openSources('all')} />
       </div>}
+      {!loadError && <p className="text-muted">„Offen“ enthält die nachgewiesenen Restbeträge einschließlich überfälliger Rechnungen. „Bezahlt“ zeigt zugeordnete Zahlungen. Ungeklärte Beträge sind gesondert ausgewiesen.</p>}
 
       {/* Filter tabs */}
       <div className="filter-chips">
@@ -231,7 +244,10 @@ export default function Invoices() {
           { key: 'unpaid', label: 'Unbezahlt' },
           { key: 'open', label: 'Offen' },
           { key: 'overdue', label: 'Überfällig' },
+          { key: 'partial', label: 'Teilbezahlt' },
           { key: 'paid', label: 'Bezahlt' },
+          { key: 'payments', label: 'Mit Zahlungen' },
+          { key: 'unclear', label: 'Ungeklärt' },
           { key: 'cancelled', label: 'Storniert' },
         ].map(f => (
           <button
@@ -269,14 +285,10 @@ export default function Invoices() {
           label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
           // a new invoice of the same supplier: its own number, state and document
           onClick: () => { setPrefill(duplicateOf(row, ['invoice_number', 'status', 'source_document_id', 'payment_reference'])); setModal('create'); },
-        }, ...(row.status === 'open' || row.status === 'overdue' ? [{
-          label: 'Als bezahlt markieren',
+        }, ...(!['paid', 'cancelled', 'rejected', 'credit_note', 'overpaid'].includes(row.payment_status) ? [{
+          label: 'Zahlung zuordnen',
           write: true,
-          icon: <CheckCircleIcon size={15} />,
-          onClick: async () => {
-            if (await confirm(`"${row.supplier}" ${t('pages.invoices.markPaidConfirm') || 'als bezahlt markieren?'}`,
-              { action: 'markPaid' })) markPaid(row);
-          },
+          onClick: () => navigate(`/invoice-review/${encodeURIComponent(row.id)}#ir-payment`),
         }] : [])]}
       />
 

@@ -42,7 +42,9 @@ const currentParams = () => new URL(screen.getByTestId('location').textContent, 
 const unit = (id, rent, extra = {}) => ({ id, property_id: 'p1', label: `Einheit ${id}`, unit_type: 'apartment',
   area_sqm: 50, cold_rent: rent, service_charge_advance: 0, heating_advance: 0, ...extra });
 const invoice = (id, property, status, amount) => ({ id, property_id: property, status, supplier: `Lieferant ${id}`,
-  invoice_number: `RE-${id}`, invoice_date: '2026-10-01', net_amount: amount, vat_rate: 0, vat_amount: 0, gross_amount: amount });
+  invoice_number: `RE-${id}`, invoice_date: '2026-10-01', net_amount: amount, vat_rate: 0, vat_amount: 0, gross_amount: amount,
+  payment_summary: { status, paid: status === 'paid' ? amount : 0,
+    open: ['paid', 'cancelled'].includes(status) ? 0 : amount, overdue: status === 'overdue', due_on: null, note: null } });
 const stat = name => screen.getByRole('button', { name }).querySelector('.stat-value');
 
 beforeEach(() => {
@@ -51,7 +53,7 @@ beforeEach(() => {
   state.units = [unit('u1', 500)]; state.contracts = []; state.invoices = []; state.taxRates = []; state.views = [];
   api.list.mockImplementation(async path => {
     const resource = path.split('?')[0];
-    if (resource === '/invoices') return state.invoices;
+    if (resource === '/invoices' || resource === '/invoices/overview') return state.invoices;
     if (resource === '/units') return state.units;
     if (resource === '/contracts') return state.contracts;
     return [];
@@ -82,7 +84,7 @@ describe('invoice object identity and explicit zero amounts', () => {
     expect(open).toHaveTextContent('10,00');
     fireEvent.click(open);
     expect(currentParams().get('property_id')).toBe('p1');
-    expect(currentParams().get('status')).toBe('open');
+    expect(currentParams().get('status')).toBe('unpaid');
   });
 
   it('clears only the visible object filter, preserving status and unrelated URL parameters', async () => {
@@ -137,6 +139,24 @@ describe('invoice object identity and explicit zero amounts', () => {
     fireEvent.change(within(form).getByLabelText('Netto (€) *'), { target: { value: '100' } });
     return form;
   }
+
+  it('uses residuals instead of full invoice amounts and exposes missing payment evidence', async () => {
+    state.invoices = [
+      { ...invoice('part', 'p1', 'open', 120), payment_summary: { status: 'overdue', paid: 20, open: 100, overdue: true, due_on: '2000-01-01' } },
+      { ...invoice('manual', 'p1', 'paid', 90), payment_summary: { status: 'unclear', paid: 0, open: null,
+        overdue: false, note: 'Manueller Zahlungsstatus ohne zugeordnete Zahlung' } },
+    ];
+    show();
+    await screen.findByText('RE-part');
+    expect(screen.getByRole('button', { name: 'Offen: Quellvorgänge anzeigen' })).toHaveTextContent('100,00');
+    expect(screen.getByRole('button', { name: 'Überfällig: Quellvorgänge anzeigen' })).toHaveTextContent('100,00');
+    expect(screen.getByRole('button', { name: 'Bezahlt: Quellvorgänge anzeigen' })).toHaveTextContent('20,00');
+    expect(screen.getByRole('button', { name: 'Zahlungsstand ungeklärt: Quellvorgänge anzeigen' })).toHaveTextContent('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Bezahlt: Quellvorgänge anzeigen' }));
+    expect(screen.getByText('RE-part')).toBeInTheDocument();
+    expect(screen.queryByText('RE-manual')).not.toBeInTheDocument();
+    expect(api.patch).not.toHaveBeenCalled();
+  });
 
   it('uses an explicitly configured default VAT rate of zero and fills only a missing VAT amount', async () => {
     state.taxRates = [{ id: 'zero', name: 'Steuerfrei', rate: 0, is_default: true }, { id: 'regular', name: 'Regel', rate: 19 }];

@@ -874,10 +874,13 @@ def payment_candidates(store: Any, invoice_id: str, *, q: str | None = None, ski
     invoice = rows.require("invoices", invoice_id, "Rechnung nicht gefunden")
     q = (q or "").strip() or None
     same_place = not all_properties and invoice.property_id
+    used = {p.booking_id for p in rows.find("invoice_payments", invoice_id=invoice_id)}
     if hasattr(store, "db"):
         from sqlalchemy import or_, select
 
         query = select(BookingORM).where(BookingORM.amount < 0, BookingORM.reverses_booking_id.is_(None))
+        if used:
+            query = query.where(BookingORM.id.not_in(used))
         if same_place:
             query = query.where(or_(BookingORM.property_id == invoice.property_id, BookingORM.property_id.is_(None)))
         if q:
@@ -887,9 +890,10 @@ def payment_candidates(store: Any, invoice_id: str, *, q: str | None = None, ski
     else:
         found = sorted((b for b in store.bookings.values()
                         if money(b.amount) < 0 and not b.reverses_booking_id
+                        and b.id not in used
                         and (not same_place or b.property_id in (None, invoice.property_id))
                         and _matches(q, (b.payment_text,))),
-                       key=lambda b: (b.booking_date, b.id), reverse=True)[skip:skip + limit + 1]
+                       key=lambda b: (-b.booking_date.toordinal(), b.id))[skip:skip + limit + 1]
     items, more = _page(found, limit)
     return {"items": [{**_dump(booking), "free": as_number(max(_booking_left(rows, booking), ZERO))}
                       for booking in items], "skip": skip, "limit": limit, "has_more": more}

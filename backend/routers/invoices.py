@@ -17,6 +17,18 @@ from ..storage import NotFoundError, ValidationError
 router = APIRouter(prefix="/invoices", tags=["Rechnungen"])
 
 
+@router.get("/overview")
+def invoice_overview(skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=1000)) -> list[dict]:
+    """Complete invoice facts with evidence-based payment balances, one page.
+
+    The legacy collection keeps its existing response contract.
+    """
+    from ..services.invoice_overview import overview
+
+    return overview(store, store._list_paginated(entity_type="invoice", skip=skip, limit=limit,
+                                                order_by="id"))
+
+
 @router.get("", response_model=list[Invoice])
 def list_invoices(
     skip: int = Query(0, ge=0),
@@ -107,24 +119,35 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
+    from ..services.booking_payment_capacity import booking_payment_capacity
+    from ..services.invoice_review import settlements
+    from ..services.maintenance_rows import Rows
+    from ..services.service_contracts import _is_tenant_money
+
+    rows = Rows.reading(store)
+    balance = settlements(rows, [invoice], date.today())[invoice.id]
+    remaining = (max(money(invoice.gross_amount) - balance.paid, Decimal("0"))
+                 if balance.payable is None else balance.open)
+    if invoice.status == "cancelled" or balance.payment_status in ("rejected", "credit_note"):
+        raise HTTPException(409, "Für eine stornierte/abgelehnte Rechnung oder Gutschrift gibt es keinen Zahlungsvorschlag.")
     invoice_to_match = InvoiceToMatch(
         invoice_id=invoice.id,
-        gross_amount=money(invoice.gross_amount),
+        gross_amount=remaining,
         invoice_date=invoice.invoice_date,
     )
 
     bookings = store.list_bookings()
-    # a reversal pays nothing; a reversed payment pays only what is left of it
-    reversed_by: dict[str, Decimal] = {}
-    for booking in bookings:
-        if booking.reverses_booking_id:
-            reversed_by[booking.reverses_booking_id] = (reversed_by.get(booking.reverses_booking_id, Decimal("0"))
-                                                        + money(booking.amount))
+    capacity = booking_payment_capacity(rows, [b.id for b in bookings])
+    used = {p.booking_id for p in rows.find("invoice_payments", invoice_id=invoice_id)}
     candidates = []
     for booking in bookings:
-        if booking.amount >= 0 or booking.status != "open" or booking.reverses_booking_id:
+        if booking.amount >= 0 or booking.status != "open" or booking.reverses_booking_id or booking.id in used:
             continue
-        open_amount = abs(money(booking.amount) + reversed_by.get(booking.id, Decimal("0")))
+        if _is_tenant_money(store, booking):
+            continue
+        if invoice.property_id and booking.property_id not in (None, invoice.property_id):
+            continue
+        open_amount = max(capacity.available.get(booking.id, Decimal("0")), Decimal("0"))
         if open_amount > 0:
             candidates.append(BookingCandidate(booking_id=booking.id, open_amount=open_amount,
                                                booking_date=booking.booking_date))
