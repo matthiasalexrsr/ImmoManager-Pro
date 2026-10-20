@@ -42,7 +42,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Briefe als PDF;
   - Antworten den Fällen zuordnen;
   - das Programm versendet nichts selbst.
-- **Rechnungsprüfung:** sachlich und rechnerisch prüfen, freigeben (auf Wunsch mit vier Augen), Skonto, Reklamation.
+- **Rechnungsprüfung:** sachlich und rechnerisch prüfen, freigeben (auf Wunsch mit vier Augen), Skonto, Reklamation. Ist eine ältere Rechnung als bezahlt markiert, aber keine Zahlung zugeordnet, zeigt die Übersicht „Ungeklärt“ statt einen Nachweis vorzutäuschen.
 - **Kaution** vom Vereinbaren bis zur Abrechnung beim Auszug.
 
 ### Haus und Betrieb
@@ -69,7 +69,9 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Suche, Filter und Seite bleiben beim Zurückkehren erhalten;
   - Einstellungen je Liste;
   - CSV für deutsche Tabellenprogramme.
-- **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar.
+- **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol oder ihre Beschriftung.
+- **Dokumenteneingang nur für Unerledigtes:** Abgelegte Dokumente (mit Art und Zuordnung zu Objekt, Einheit, Vertrag oder Partei) zählen nicht mehr als offener Eingang; Rechnungsbelege bleiben dort, bis sie erfasst sind. „Texterkennung“ statt „OCR“.
+- **Zahlungsvorschläge** zu einer Rechnung erscheinen auch bei vielen Buchungen sofort.
 - **Berichte auch bei großem Bestand zügig:** Übersicht, Prüfliste und Finanzberichte lesen ihre Daten gebündelt. Bei fünf Jahren Buchungen dauert die Liquiditätsplanung für ein Konto mit eingeschränktem Zugriff (z. B. Steuerberater) wenige Sekunden statt fast einer Minute.
 - **Formulare:** „Speichern & weiteren“, „Duplizieren“, „Heute“ neben jedem Datum, Strg+Enter zum Speichern; Eingaben gehen beim Schließen nicht verloren.
 - **Tastatur:** „/“ öffnet die Suche, Alt+N das Neu-Formular der Liste, „?“ zeigt alle Kürzel. Favoriten lassen sich in der Seitenleiste anheften; aufgeklappte Bereiche bleiben aufgeklappt, und auf einer Detailseite führt der Seitenname oben zurück zur Liste.
