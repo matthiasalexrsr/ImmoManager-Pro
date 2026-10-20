@@ -385,7 +385,9 @@ def test_archived_letters_are_found_by_their_content(case):
         pass
     if hasattr(store, "db"):
         store.db.commit()
-    text = document_text.get(store, saved["document_id"]).text
+    row = document_text.get(store, saved["document_id"])
+    assert row is not None
+    text = row.text
     assert "Ausführung: Techem" in text
     assert not any(ord(char) < 32 and char != "\n" or 127 <= ord(char) < 160 for char in text)
     found = case["client"].get("/api/v1/documents/search", params={"q": "heizkostenverteiler"}).json()
