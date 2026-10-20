@@ -84,3 +84,33 @@
   .dashboard-finance-open > a > span { min-width: 110px; }
   .dashboard-item-list li { flex-wrap: wrap; }
 }
+
+/* The work view's tiles: order and visibility chosen per person (Kacheln anpassen). */
+.dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.dashboard-toolbar .dashboard-view-switch { margin-bottom: 0; }
+.dashboard-tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 22px 22px; align-items: start; grid-auto-flow: row dense; }
+.dashboard-tile { min-width: 0; grid-column: span 12; }
+.dashboard-tile--wide { grid-column: span 7; }
+.dashboard-tile--narrow { grid-column: span 5; }
+.dashboard-tile--third { grid-column: span 4; }
+.dashboard-tile > * { margin-top: 0; margin-bottom: 0; }
+.dashboard-tile > .dashboard-activity { height: 100%; }
+.dashboard-tile:empty { display: none; }
+.dashboard-hidden-note { margin: 18px 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.dashboard-hidden-note button { padding: 0; border: 0; background: none; color: var(--color-primary); font: inherit; font-weight: 600; cursor: pointer; }
+.dashboard-tile-settings { margin-bottom: 22px; padding: 18px 20px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
+.dashboard-tile-settings__head h2 { margin: 0 0 4px; font-size: var(--text-lg); }
+.dashboard-tile-settings__head p { margin: 0 0 12px; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.dashboard-tile-settings__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 6px 18px; }
+.dashboard-tile-settings__list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-radius: 8px; background: var(--bg-secondary); }
+.dashboard-tile-settings__list li.is-hidden label { color: var(--color-text-secondary); }
+.dashboard-tile-settings__list label { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
+.dashboard-tile-settings__moves { display: inline-flex; gap: 2px; }
+.dashboard-tile-settings__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+@media (max-width: 1150px) {
+  .dashboard-tile--third { grid-column: span 6; }
+}
+@media (max-width: 780px) {
+  .dashboard-tile--wide, .dashboard-tile--narrow, .dashboard-tile--third { grid-column: span 12; }
+  .dashboard-tiles { gap: 16px; }
+}

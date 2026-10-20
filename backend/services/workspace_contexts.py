@@ -56,8 +56,12 @@ CONTEXTS = {
     "maintenance-protocol": ("maintenance", "MaintenanceProtocol"),
     "dunning-action": ("contract", "DunningAction"),
     "work-center": ("task", "WorkCenterView"),
+    # the dashboard's tiles: order (column_order) and hidden ones (hidden_columns), nothing else
+    "dashboard": ("task", "WorkCenterView"),
     "contract-wizard": ("contract", "ContractWizard"),
 }
+# contexts that keep a personal view only, never a form draft
+VIEW_ONLY = frozenset({"work-center", "dashboard"})
 CUSTOM_FIELDS = {
     "BillingStatementLetter": {"sender_name", "sender_address", "recipient_name", "recipient_address", "issue_date",
                               "subject", "salutation", "intro", "closing", "signature"},
@@ -144,8 +148,8 @@ def actor(actor_id: str, store=None) -> dict:
 
 def check_context(actor_id: str, context: str, *, edit: bool = False) -> str:
     key = context_key(context)
-    if edit and key == "work-center":
-        raise HTTPException(422, "Die Arbeitszentrale speichert Ansichten, keine Fachvorgangsformulare.")
+    if edit and key in VIEW_ONLY:
+        raise HTTPException(422, "Hier werden Ansichten gespeichert, keine Fachvorgangsformulare.")
     user = actor(actor_id)
     writable = may_write(user["role"], context_area(key))
     if key == "invoice-review-action":
@@ -200,7 +204,7 @@ def field_keys(context: str) -> set[str]:
 def registry(actor_id: str) -> list[dict]:
     user = actor(actor_id)
     return [{"context": key, "kind": kind, "area": context_area(key), "field_keys": sorted(field_keys(key)),
-             "can_edit": key != "work-center" and (may_write(user["role"], context_area(key))
+             "can_edit": key not in VIEW_ONLY and (may_write(user["role"], context_area(key))
                  or key == "invoice-review-action" and may_write(user["role"], "/invoices/workspace/review/factual-check"))}
             for key, (kind, _) in CONTEXTS.items()]
 

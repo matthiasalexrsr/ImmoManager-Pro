@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -13,6 +13,9 @@ import {
   PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
 } from 'recharts';
 import { formatDate, formatDateTime, formatMoney, formatMoneyCompact, formatNumber } from '../utils/format';
+import TileSettings from '../features/dashboard/TileSettings';
+import { DEFAULT_LAYOUT, arrange, tileOf } from '../features/dashboard/dashboardTiles';
+import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
 import './dashboard.css';
 
 const CHART_COLORS = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)', 'var(--color-danger)', '#8b5cf6', '#0891b2'];
@@ -194,6 +197,10 @@ export default function Dashboard() {
   };
   const [dashView, setDashView] = useState('work');
   const [auditOpen, setAuditOpen] = useState(false);
+  const [layout, setLayout] = useState(DEFAULT_LAYOUT);
+  const [customizing, setCustomizing] = useState(false);
+  const tiles = useMemo(() => arrange(layout), [layout]);
+  useWorkspaceViewState('dashboard', tiles, saved => setLayout(arrange(saved)));
   const inventory = useDashboardSource('/dashboard/stats', validStats);
   const taskSource = useDashboardSource('/tasks?status=open&limit=5', Array.isArray);
   const notificationSource = useDashboardSource('/notifications?status=unread&limit=5', Array.isArray);
@@ -266,28 +273,40 @@ export default function Dashboard() {
       <div><h1>Verwaltungsübersicht</h1></div>
       <div className="dashboard-header-side"><time dateTime={isoDate}>{dateLabel}</time><Link to="/tasks" className="btn btn-primary">Aufgaben öffnen <ArrowRightIcon size={15} /></Link></div>
     </header>
-    <div className="dashboard-view-switch" aria-label="Dashboardansichten">
+    <div className="dashboard-toolbar"><div className="dashboard-view-switch" aria-label="Dashboardansichten">
       <button type="button" aria-pressed={dashView === 'work'} onClick={() => setDashView('work')}>Arbeit</button>
       <button type="button" aria-pressed={dashView === 'analysis'} onClick={() => setDashView('analysis')}>Analyse</button>
     </div>
+    {dashView === 'work' && <button type="button" className="btn btn-sm btn-secondary dashboard-customize" aria-expanded={customizing}
+      onClick={() => setCustomizing(value => !value)}>Kacheln anpassen</button>}</div>
     <SetupChecklist stats={stats} ready={inventory.status === 'success'} />
-    <FinanceReports />
-    <Inventory source={inventory} stats={stats} />
     {dashView === 'work' && <>
-      <WorkSummary />
-      <div className="dashboard-start-grid"><DashboardWorkflow {...workflowProps} section="attention" /><FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} /></div>
-      <div className="dashboard-activity-grid">
-        <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">
-          {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><div><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></div><StatusBadge status={task.priority} /></li>)}</ul>}
-        </ActivityCard>
-        <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts?filter=expiring90" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
-          {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><div><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></div><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></li>)}</ul>}
-        </ActivityCard>
-        <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/messages" linkLabel="Alle Hinweise" subtitle="Bis zu fünf Einträge">
-          {notifications.length > 0 && <ul className="dashboard-item-list">{notifications.map(item => <li key={item.id}><strong>{item.title}</strong><StatusBadge status={item.severity} /></li>)}</ul>}
-        </ActivityCard>
+      {customizing && <TileSettings layout={tiles} onChange={value => setLayout(arrange(value))} onClose={() => setCustomizing(false)} />}
+      <div className="dashboard-tiles">
+        {tiles.column_order.filter(key => !tiles.hidden_columns.includes(key)).map(key => <div key={key} data-tile={key}
+          className={`dashboard-tile dashboard-tile--${tileOf(key).size}`}>{{
+          reports: <FinanceReports />,
+          inventory: <Inventory source={inventory} stats={stats} />,
+          sources: <WorkSummary />,
+          attention: <DashboardWorkflow {...workflowProps} section="attention" />,
+          finance: <FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} />,
+          tasks: <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">
+            {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><div><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></div><StatusBadge status={task.priority} /></li>)}</ul>}
+          </ActivityCard>,
+          deadlines: <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts?filter=expiring90" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
+            {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><div><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></div><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></li>)}</ul>}
+          </ActivityCard>,
+          notices: <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/messages" linkLabel="Alle Hinweise" subtitle="Bis zu fünf Einträge">
+            {notifications.length > 0 && <ul className="dashboard-item-list">{notifications.map(item => <li key={item.id}><strong>{item.title}</strong><StatusBadge status={item.severity} /></li>)}</ul>}
+          </ActivityCard>,
+          areas: <DashboardWorkflow {...workflowProps} section="areas" />,
+        }[key]}</div>)}
       </div>
-      <DashboardWorkflow {...workflowProps} section="areas" />
+      {tiles.hidden_columns.length > 0 && !customizing && <p className="dashboard-hidden-note">{tiles.hidden_columns.length === 1 ? 'Eine Kachel ist' : `${tiles.hidden_columns.length} Kacheln sind`} ausgeblendet. <button type="button" onClick={() => setCustomizing(true)}>Kacheln anpassen</button></p>}
+    </>}
+    {dashView === 'analysis' && <>
+      <FinanceReports />
+      <Inventory source={inventory} stats={stats} />
     </>}
       {dashView === 'analysis' && (
         <>

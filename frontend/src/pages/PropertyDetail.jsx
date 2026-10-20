@@ -11,6 +11,7 @@ import StatusBadge from '../components/StatusBadge';
 import FileViewer from '../components/FileViewer';
 import { ArrowRightIcon, EditIcon } from '../components/Icons';
 import NewForMenu from '../components/NewForMenu';
+import MoreMenu from '../components/MoreMenu';
 import { formatArea, formatDate, formatMoney, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { newEntryLink } from '../utils/newEntry';
@@ -261,11 +262,12 @@ function PropertyDossier({ id }) {
         <StatusBadge status={property.status} />
         <div className="dossier-actions">
           <Link className="btn btn-secondary btn-sm" to={`/reports?kind=cash-v2&property_id=${encodeURIComponent(id)}`}>Auswertungen dieses Objekts</Link>
-          <Link className="btn btn-secondary btn-sm" to={`/teha?property_id=${encodeURIComponent(id)}`}>TEHA Kundenportal</Link>
           {canEdit && <button type="button" className="btn btn-secondary btn-sm" onClick={openEdit} disabled={editLoading}><EditIcon size={15} /> {editLoading ? 'Auswahl wird geladen…' : 'Bearbeiten'}</button>}
           <NewForMenu label="Neu für dieses Objekt" items={NEW_FOR_PROPERTY} prefill={{ property_id: id }} />
           <EntityActions entityType="property" entityId={id} entityRevision={property.updated_at} title={property.name}
             onChanged={() => setActivityRevision(value => value + 1)} />
+          <MoreMenu items={[{ key: 'teha', label: 'TEHA Kundenportal', to: `/teha?property_id=${encodeURIComponent(id)}`,
+            description: 'Verbrauchsdaten und Heizkostenabrechnungen des Messdienstes TEHA für dieses Objekt.' }]} />
         </div>
       </div>
 

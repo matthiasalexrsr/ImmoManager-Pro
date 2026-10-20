@@ -483,3 +483,17 @@ def test_anchor_only_create_draft_detects_changes_and_rebases_without_executing_
     assert deleted.status_code == 200, deleted.text
     assert deleted.json()["source_state"]["status"] == "deleted"
     assert deleted.json()["values"]["body"] == "Noch nicht geführtes Gespräch"
+
+
+def test_dashboard_tiles_are_a_personal_view_for_every_role():
+    for name, role in (("tiles-owner", "eigentuemer"), ("tiles-reader", "readonly")):
+        _, person = client(name, role)
+        tiles = {"column_order": ["tasks", "finance", "inventory"], "hidden_columns": ["reports"]}
+        saved = person.put(f"{API}/view-state/dashboard", json=command(state=tiles))
+        assert saved.status_code == 200, saved.text
+        assert person.get(f"{API}/view-state/dashboard").json()["state"] == tiles
+    _, owner = client("tiles-other", "eigentuemer")
+    assert owner.get(f"{API}/view-state/dashboard", params={"missing_ok": True}).json() is None   # each person their own
+    assert owner.put(f"{API}/view-state/dashboard", json=command(state={"layout": "x"})).status_code == 422
+    assert owner.put(f"{API}/view-state/dashboard", json=command(state={"column_order": ["no tile!"]})).status_code == 422
+    assert owner.put(f"{API}/drafts/dashboard", json=command(context="dashboard", values={})).status_code in (404, 422)

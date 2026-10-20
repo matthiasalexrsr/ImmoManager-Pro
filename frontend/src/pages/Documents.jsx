@@ -18,6 +18,7 @@ import { expiryState } from '../utils/documentExpiry';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 import KpiAction from '../components/KpiAction';
+import MoreMenu from '../components/MoreMenu';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
 import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
@@ -377,10 +378,13 @@ function DocumentsWorkspace() {
       <div className="page-header">
         <h1>{t('pages.documents.title') || 'Dokumente'}</h1>
         <div className="page-header-actions">
-          {/* contracts, invoices, receipts for the document management system: package or hand-over */}
-          <button type="button" className="btn btn-secondary" onClick={() => setAktenwerkOpen(true)}>Aktenwerk …</button>
           <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
-          <Link className="btn btn-secondary" to="/teha">TEHA-Empfang und Originalhistorie</Link>
+          <MoreMenu items={[
+            { key: 'aktenwerk', label: 'Aktenwerk …', onSelect: () => setAktenwerkOpen(true),
+              description: 'Verträge, Rechnungen und Belege als Paket für ein Dokumentenmanagementsystem bereitstellen oder dorthin übergeben.' },
+            { key: 'teha', label: 'TEHA-Empfang und Originalhistorie', to: '/teha',
+              description: 'Abrechnungsdaten und Originale vom Messdienst TEHA ansehen und übernehmen.' },
+          ]} />
         </div>
       </div>
       <div className="toolbar">
