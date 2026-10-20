@@ -105,6 +105,27 @@ def normalize_payment_method(value: Optional[str]) -> Optional[str]:
     return key if key in PAYMENT_METHODS else PAYMENT_METHOD_ALIASES.get(key, value)
 
 
+def normalize_sepa_iban(value: Optional[str]) -> Optional[str]:
+    """IBAN of a tenant's direct debit: compact upper case; empty means none; invalid is refused."""
+    from .services.sepa_rules import compact, iban_problem
+    if value is None or not compact(value):
+        return None
+    problem = iban_problem(value)
+    if problem:
+        raise ValueError(problem)
+    return compact(value)
+
+
+def normalize_sepa_bic(value: Optional[str]) -> Optional[str]:
+    from .services.sepa_rules import bic_problem, compact
+    if value is None or not compact(value):
+        return None
+    problem = bic_problem(value)
+    if problem:
+        raise ValueError(problem)
+    return compact(value)
+
+
 class TenantCreate(BaseModel):
     full_name: str
     email: Optional[str] = None
@@ -115,6 +136,11 @@ class TenantCreate(BaseModel):
     country: Optional[str] = None
     payment_method: Optional[str] = None
     sepa_mandate: Optional[str] = None
+    # direct debit: the debtor's account and the date the mandate was signed
+    sepa_iban: Optional[str] = None
+    sepa_bic: Optional[str] = None
+    sepa_account_holder: Optional[str] = None
+    sepa_mandate_date: Optional[date] = None
     notes: Optional[str] = None
     archived: bool = False
 
@@ -122,6 +148,16 @@ class TenantCreate(BaseModel):
     @classmethod
     def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
         return normalize_payment_method(v)
+
+    @field_validator("sepa_iban")
+    @classmethod
+    def normalize_sepa_iban(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_sepa_iban(v)
+
+    @field_validator("sepa_bic")
+    @classmethod
+    def normalize_sepa_bic(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_sepa_bic(v)
 
     @field_validator("email")
     @classmethod
@@ -531,6 +567,10 @@ class TenantPatch(BaseModel):
     country: Optional[str] = None
     payment_method: Optional[str] = None
     sepa_mandate: Optional[str] = None
+    sepa_iban: Optional[str] = None
+    sepa_bic: Optional[str] = None
+    sepa_account_holder: Optional[str] = None
+    sepa_mandate_date: Optional[date] = None
     notes: Optional[str] = None
     archived: Optional[bool] = None
 
@@ -538,6 +578,16 @@ class TenantPatch(BaseModel):
     @classmethod
     def normalize_payment_method(cls, v: Optional[str]) -> Optional[str]:
         return normalize_payment_method(v)
+
+    @field_validator("sepa_iban")
+    @classmethod
+    def normalize_sepa_iban(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_sepa_iban(v)
+
+    @field_validator("sepa_bic")
+    @classmethod
+    def normalize_sepa_bic(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_sepa_bic(v)
 
     @field_validator("email")
     @classmethod

@@ -388,7 +388,8 @@ def dsgvo_export_tenant_data(tenant_id: str):
 
 # Personal fields of a tenant that anonymization clears; the name gets a placeholder.
 _TENANT_PERSONAL_FIELDS = ("email", "phone", "address_line", "postal_code", "city", "country",
-                           "payment_method", "sepa_mandate", "notes")
+                           "payment_method", "sepa_mandate", "sepa_iban", "sepa_bic", "sepa_account_holder",
+                           "sepa_mandate_date", "notes")
 
 
 @router.post("/dsgvo/tenant/{tenant_id}/anonymize", response_model=None)

@@ -72,6 +72,7 @@ from .routers import (
     review,
     safe_actions,
     search,
+    sepa_debits,
     service_contracts,
     tasks,
     tasks_status,
@@ -119,6 +120,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(assistant.router, dependencies=_auth_dep)
     api_v1.include_router(safe_actions.router, dependencies=_auth_dep)
     api_v1.include_router(business_qol.router, dependencies=_auth_dep)
+    api_v1.include_router(sepa_debits.router, dependencies=_auth_dep)     # before /receivables/{id}
     api_v1.include_router(receivables.router, dependencies=_auth_dep)
     api_v1.include_router(invoices.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance.router, dependencies=_auth_dep)

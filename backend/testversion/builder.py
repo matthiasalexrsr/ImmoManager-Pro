@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import calendar
 import random
+import zlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
@@ -242,6 +243,10 @@ class Builder:
                 "full_name": tenant.name, "email": tenant.email, "phone": tenant.phone,
                 "payment_method": tenant.payment,
                 "sepa_mandate": f"MR-{self.rnd.randint(100000, 999999)}" if tenant.payment == "sepa_direct_debit" else None,
+                # the debtor's account and the mandate signed before the lease began (no draw: same data as before)
+                **({"sepa_iban": german_iban(12030000, zlib.crc32(tenant.name.encode()) % 10_000_000_000),
+                    "sepa_mandate_date": (t.start - timedelta(days=10)).isoformat()}
+                   if tenant.payment == "sepa_direct_debit" else {}),
                 "city": t.prop.city if t.start < self.start else None})["id"]
         known_end = t.end if t.notice and t.notice <= self.today else None
         deposit = round(cold * t.deposit_months, 2) if t.deposit_months else None

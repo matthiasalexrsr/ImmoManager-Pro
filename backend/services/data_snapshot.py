@@ -49,7 +49,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 11: re-letting projects, applicant details and their documents (likewise)
 # 12: document expiry dates and reminder lead times (likewise)
 # 13: the retention class chosen on a document (likewise)
-SNAPSHOT_FORMAT_VERSION = 13
+# 14: a tenant's direct debit account and mandate date (likewise)
+SNAPSHOT_FORMAT_VERSION = 14
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}

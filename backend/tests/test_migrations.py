@@ -1188,3 +1188,29 @@ def test_document_retention_class_and_the_downgrade(migrate):
         assert conn.execute("SELECT title FROM documents WHERE id = 'doc-k'").fetchone() == ("Kaufvertrag",)
     migrate(DOCUMENT_RETENTION_REVISION)
     assert "retention_class" in _schema(db_path)["documents"]
+
+
+TENANT_SEPA_REVISION = "a5c7e9b1d3f5"
+
+
+def test_tenant_direct_debit_details_and_the_downgrade(migrate):
+    db_path = migrate(DOCUMENT_RETENTION_REVISION)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    migrate(TENANT_SEPA_REVISION)
+    added = {"sepa_iban", "sepa_bic", "sepa_account_holder", "sepa_mandate_date"}
+    assert added <= _schema(db_path)["tenants"]
+    with sqlite3.connect(db_path) as conn:
+        tenant = conn.execute("SELECT id FROM tenants LIMIT 1").fetchone()
+        assert tenant is not None
+        conn.execute("UPDATE tenants SET sepa_iban = 'DE02120300000000202051' WHERE id = ?", tenant)
+    with pytest.raises(RuntimeError, match="direct debit"):
+        migrate.downgrade(DOCUMENT_RETENTION_REVISION)
+    assert _version(db_path) == TENANT_SEPA_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE tenants SET sepa_iban = NULL")
+    migrate.downgrade(DOCUMENT_RETENTION_REVISION)
+    assert not added & _schema(db_path)["tenants"]
+    assert _triggers(db_path) == triggers
+    migrate(TENANT_SEPA_REVISION)
+    assert added <= _schema(db_path)["tenants"]
