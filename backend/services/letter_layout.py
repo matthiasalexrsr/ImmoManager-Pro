@@ -256,6 +256,10 @@ def render_frame(letter: dict, head: dict, logo: bytes | None, content: list[Any
             canvas.setFont(regular, 6.9)
         canvas.drawRightString(PAGE_WIDTH - RIGHT, 8.5 * mm, f"Seite {doc.page}")
         if draft:
+            # readable as text too: PDF readers split the rotated watermark into single letters
+            canvas.setFillColor(INK)
+            canvas.setFont(bold, 8)
+            canvas.drawRightString(PAGE_WIDTH - RIGHT, PAGE_HEIGHT - 7 * mm, f"{draft_label} – nicht zum Versand")
             canvas.setFillColor(WATERMARK)
             canvas.setFont(bold, 92)
             canvas.translate(PAGE_WIDTH / 2, PAGE_HEIGHT / 2)

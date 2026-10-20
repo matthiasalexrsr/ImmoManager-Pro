@@ -85,6 +85,9 @@ def test_context_warns_missing_addresses_and_draft_preview_is_marked_without_wri
     pdf = case["client"].post(base(case) + "/letter-preview-pdf", json=payload)
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF-")
     assert hashlib.sha256(pdf.content).hexdigest() == shown["pdf_sha256"]
+    import pdfplumber
+    with pdfplumber.open(BytesIO(pdf.content)) as document:   # as the browser workflow reads it
+        assert "ENTWURF – nicht zum Versand" in "\n".join(page.extract_text() or "" for page in document.pages)
     assert case["client"].post(base(case) + "/letter-publish", json=command(payload, shown)).status_code == 409
     assert archive.count_originals(store, "contract", case["contract"].id) == 0
     assert not [doc for doc in store.list_documents() if doc.document_type == DOC_TYPE]
