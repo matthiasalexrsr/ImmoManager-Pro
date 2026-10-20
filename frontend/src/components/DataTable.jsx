@@ -68,7 +68,7 @@ const keyHash = value => { let hash = 2166136261; for (const char of value || ''
 // link: { kind, idKey } (or just the kind) makes the shown name lead to its record; subLink does
 // the same for the second line (the property under a unit). Default id keys follow the kind.
 const ID_KEYS = { tenant: 'tenant_id', property: 'property_id', unit: 'unit_id', contract: 'contract_id',
-  maintenance: 'id', serviceContract: 'service_contract_id', contact: 'contact_id', lead: 'lead_id', account: 'account_id' };
+  maintenance: 'id', document: 'id', serviceContract: 'service_contract_id', contact: 'contact_id', lead: 'lead_id', account: 'account_id' };
 function linked(spec, row, text) {
   if (!spec || text == null || text === '' || text === '\u2014') return text;
   const { kind, idKey } = typeof spec === 'string' ? { kind: spec } : spec;

@@ -36,7 +36,7 @@ describe('links between records', () => {
     expect(entityHref('booking', 'b?1#')).toBe('/bookings?booking_id=b%3F1%23');
     expect(entityHref('invoice', 'i/1', 'RE-1')).toBe('/invoices?focus_id=i%2F1');
     expect(entityHref('contact', 'c 1', 'Gleicher Name')).toBe('/contacts?focus_id=c%201');
-    expect(entityHref('document', 'd?1')).toBe('/documents?focus_id=d%3F1');
+    expect(entityHref('document', 'd?1')).toBe('/documents/d%3F1');
     expect(entityHref('tenantAccount', 't 1')).toBe('/tenants/t%201/account');
     expect(entityHref('property', null)).toBeNull();
   });

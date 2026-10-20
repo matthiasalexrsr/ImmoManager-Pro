@@ -1,0 +1,42 @@
+/* The page of one document: preview beside its facts, then versions and the text read for the search. */
+.document-dossier .detail-header { flex-wrap: wrap; gap: 0.75rem; }
+.document-dossier-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.document-dossier-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(min(320px, 100%), 2fr);
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.document-dossier-side { display: grid; gap: 1rem; min-width: 0; }
+.document-dossier-side .panel, .document-preview-panel { margin-bottom: 0; }
+.document-preview-panel .panel-body { min-height: 240px; }
+.document-preview-image { display: block; max-width: 100%; max-height: 75vh; margin: 0 auto; border-radius: 6px; }
+.document-dossier-note { font-size: var(--text-sm); margin: 0.5rem 0 0; }
+.document-dossier-description { margin: 0.75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.document-versions { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; gap: 0.5rem; }
+.document-versions li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.6rem 0.75rem; border: 1px solid var(--color-border); border-radius: 8px;
+}
+.document-versions li > div { min-width: 0; overflow-wrap: anywhere; }
+.document-versions .badge { margin-left: 0.5rem; }
+.document-versions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.document-version-comment { margin-top: 0.15rem; }
+.document-version-file { font-size: var(--text-xs); }
+.document-version-form {
+  display: grid; gap: 0.4rem; max-width: 560px; margin-top: 1rem; padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.document-version-form h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-base); }
+.document-version-form label { font-size: var(--text-sm); font-weight: 600; margin-top: 0.25rem; }
+.document-dossier-text {
+  max-height: 360px; overflow: auto; margin: 0.5rem 0 0; padding: 0.75rem; white-space: pre-wrap;
+  overflow-wrap: anywhere; font-size: var(--text-xs); background: var(--bg-secondary); border-radius: 6px;
+}
+.document-dossier-danger { margin-top: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+.document-dossier-danger .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 900px) {
+  .document-dossier-grid { grid-template-columns: minmax(0, 1fr); }
+}

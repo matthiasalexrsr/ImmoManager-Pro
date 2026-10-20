@@ -662,3 +662,8 @@ def test_document_page_and_version_upload_over_http(prepared, owner):
                           files={"file": ("dritte.exe", b"MZ", "application/octet-stream")})
     assert refused.status_code in (409, 415, 422)
     assert client.get("/api/v1/documents/does-not-exist/details").status_code == 404
+    loose = store.create_document(DocumentCreate(title="Ohne Zuordnung", document_type="Sonstiges",
+                                                 file_url="/uploads/documents/lose.pdf"))
+    page = client.get(f"/api/v1/documents/{loose.id}/details")
+    assert page.status_code == 200 and page.json()["versions"]["items"] == []
+    assert "keiner Immobilie" in page.json()["versions"]["unavailable"]

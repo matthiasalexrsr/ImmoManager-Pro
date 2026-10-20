@@ -63,7 +63,7 @@ describe('statement letter review and immutable original', () => {
       source_revision: 'revision-one', data: defaults, review_hash: 'a'.repeat(64), idempotency_key: 'fixed-command-key',
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mocks.draft.clear).toHaveBeenCalledWith({ completed: true });
-    expect(screen.getAllByRole('link', { name: 'Dokument öffnen' }).some(link => link.getAttribute('href') === '/documents?focus_id=old-document')).toBe(true);
+    expect(screen.getAllByRole('link', { name: 'Dokument öffnen' }).some(link => link.getAttribute('href') === '/documents/old-document')).toBe(true);
     fireEvent.click(screen.getAllByRole('button', { name: 'Original herunterladen' })[0]);
     await waitFor(() => expect(service.downloadOriginal).toHaveBeenCalledWith(result, expect.objectContaining({ signal: expect.any(AbortSignal) })));
     expect(screen.getByText(/Der Brief wurde nicht versendet/)).toBeInTheDocument();

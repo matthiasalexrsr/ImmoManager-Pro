@@ -27,6 +27,7 @@ const Maintenance = lazy(() => import('./pages/Maintenance'));
 const MaintenanceDetail = lazy(() => import('./pages/MaintenanceDetail'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Documents = lazy(() => import('./pages/Documents'));
+const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 const RentOverview = lazy(() => import('./pages/RentOverview'));
 const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
@@ -185,6 +186,7 @@ export default function App() {
           <Route path="notifications/open/:id" element={<NotificationLanding />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="documents/:documentId" element={<DocumentDetail />} />
           <Route path="rent-overview" element={<RentOverview />} />
           <Route path="meters" element={<Meters />} />
           <Route path="contacts" element={<Contacts />} />

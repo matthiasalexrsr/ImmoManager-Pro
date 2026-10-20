@@ -177,10 +177,17 @@ def document_details(document_id: str, actor: Annotated[UserRead | None, Depends
               "contract": name(store.get_contract, document.contract_id, "contract_number"),
               "tenant": name(store.get_tenant, document.tenant_id, "full_name")}
     text = document_text.get(store, document.id)
-    versions: dict = {"items": [], "next_before": None}
+    versions: dict = {"items": [], "next_before": None, "unavailable": None}
     if actor is not None:
         from ..services import document_versions
-        versions = document_versions.history(store, document.id, actor.id, limit=10)
+        try:
+            versions = {**document_versions.history(store, document.id, actor.id, limit=10), "unavailable": None}
+        except ValidationError as exc:           # versions need a property or contract the document belongs to
+            versions["unavailable"] = str(exc)
+        except HTTPException as exc:
+            if exc.status_code >= 500:
+                raise
+            versions["unavailable"] = str(exc.detail)
     return {"document": document.model_dump(mode="json"), "places": places,
             "retention": document_retention.assess_all(store, [document])[document.id],
             "text": None if text is None else {"source": text.source, "characters": text.characters,

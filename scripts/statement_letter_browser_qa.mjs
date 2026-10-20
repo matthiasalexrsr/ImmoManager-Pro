@@ -114,7 +114,7 @@ try {
     await dialog.getByRole('button', { name: 'Schließen', exact: true }).click(); await expect(dialog).toBeHidden();
     await page.getByRole('button', { name: 'Anschreiben & PDF', exact: true }).click();
     await expect(dialog.getByRole('button', { name: 'Original herunterladen', exact: true })).toBeEnabled();
-    await expect(dialog.getByRole('link', { name: 'Dokument öffnen', exact: true })).toHaveAttribute('href', `/documents?focus_id=${firstSaved.document_id}`);
+    await expect(dialog.getByRole('link', { name: 'Dokument öffnen', exact: true })).toHaveAttribute('href', `/documents/${firstSaved.document_id}`);
   });
   assert.deepEqual(report.page_errors, []); assert.deepEqual(report.external, []);
 } finally { await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2)); await context?.close(); await browser?.close(); await api?.dispose(); }

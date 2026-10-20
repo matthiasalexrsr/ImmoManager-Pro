@@ -1,18 +1,18 @@
 import ChannelPanel from '../features/channels/ChannelPanel';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
 import { PlusIcon } from '../components/Icons';
-import { Eye, Mail, Wrench } from 'lucide-react';
+import { Eye, FileText, Mail, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import { useAuth, useCanWrite } from '../contexts/AuthContext';
-import { documentTypeLabel } from '../utils/documentType';
+import { documentTypeLabel, documentTypeOptions } from '../utils/documentType';
 import { formatDate } from '../utils/format';
 import { expiryState } from '../utils/documentExpiry';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
@@ -49,6 +49,7 @@ export default function Documents() {
 function DocumentsWorkspace() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const store = useDataStore();
   const canWrite = useCanWrite('/documents');
   const auth = useAuth();
@@ -103,22 +104,7 @@ function DocumentsWorkspace() {
   useEffect(() => () => { uploadGeneration.current += 1; }, [tenantId]);
   useEffect(() => () => exportRequest.current?.abort(), []);
 
-  const DOC_TYPES = useMemo(() => [
-    { value: 'Mietvertrag', label: t('pages.documents.docTypes.mietvertrag') || 'Mietvertrag' },
-    { value: 'Rechnung', label: t('pages.documents.docTypes.rechnung') || 'Rechnung' },
-    { value: 'Nebenkostenabrechnung', label: t('pages.documents.docTypes.nebenkostenabrechnung') || 'Nebenkostenabrechnung' },
-    { value: 'Protokoll', label: t('pages.documents.docTypes.protokoll') || 'Protokoll' },
-    { value: 'Versicherung', label: t('pages.documents.docTypes.versicherung') || 'Versicherung' },
-    { value: 'Grundbuchauszug', label: t('pages.documents.docTypes.grundbuchauszug') || 'Grundbuchauszug' },
-    { value: 'Energieausweis', label: t('pages.documents.docTypes.energieausweis') || 'Energieausweis' },
-    { value: 'Betriebskostenabrechnung', label: t('pages.documents.docTypes.betriebskostenabrechnung') || 'Betriebskostenabrechnung' },
-    { value: 'Mahnung', label: t('pages.documents.docTypes.mahnung') || 'Mahnung' },
-    { value: 'Kündigung', label: t('pages.documents.docTypes.kuendigung') || 'Kündigung' },
-    { value: 'Übergabeprotokoll', label: t('pages.documents.docTypes.uebergabeprotokoll') || 'Übergabeprotokoll' },
-    { value: 'Handwerkerrechnung', label: t('pages.documents.docTypes.handwerkerrechnung') || 'Handwerkerrechnung' },
-    { value: 'Steuerbescheid', label: t('pages.documents.docTypes.steuerbescheid') || 'Steuerbescheid' },
-    { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
-  ], [t]);
+  const DOC_TYPES = useMemo(() => documentTypeOptions(t), [t]);
 
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
 
@@ -210,7 +196,7 @@ function DocumentsWorkspace() {
   const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
 
   const columns = [
-    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
+    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text', link: 'document' },
     { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
     { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
     { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
@@ -558,11 +544,12 @@ function DocumentsWorkspace() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row)}
-        rowActions={row => row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
+        rowActions={row => [{ label: 'Dokumentseite öffnen', icon: <FileText size={15} aria-hidden="true" />, onClick: () => navigate(`/documents/${encodeURIComponent(row.id)}`) },
+          ...(row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
           { label: 'Brief und Frankatur', icon: <Mail size={15} aria-hidden="true" />, onClick: () => setPostDocument(row) },
           { label: 'Dokumentwerkzeuge', icon: <Wrench size={15} aria-hidden="true" />, onClick: () => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('tool_id', row.id); return next;
-          }) }] : []}
+          }) }] : [])]}
         rowName={row => row.title || row.id}
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : []}
       />}

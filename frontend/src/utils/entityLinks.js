@@ -10,7 +10,7 @@ const TARGETS = {
   contract: id => `/contracts?contract_id=${encodeURIComponent(id)}`,
   booking: id => `/bookings?booking_id=${encodeURIComponent(id)}`,
   invoice: id => `/invoices?focus_id=${encodeURIComponent(id)}`,
-  document: id => `/documents?focus_id=${encodeURIComponent(id)}`,
+  document: id => `/documents/${encodeURIComponent(id)}`,
   task: id => `/tasks?focus_id=${encodeURIComponent(id)}`,
   receivable: id => `/receivables?focus_id=${encodeURIComponent(id)}`,
   contact: id => `/contacts?focus_id=${encodeURIComponent(id)}`,
