@@ -8,7 +8,7 @@ export const letterData = values => Object.fromEntries(LETTER_FIELDS.map(key => 
 export const letterSignature = (data, inputs) => JSON.stringify([letterData(data), inputs || {}]);
 
 export const LETTERHEAD_FIELDS = [
-  { name: 'sender_name', key: 'document_sender', label: 'Absender (Name oder Firma)', rows: 1 },
+  { name: 'sender_name', key: 'document_sender', label: 'Absender (Name oder Firma)', rows: 1, hint: 'leer: der Eigentümer laut Portfolio' },
   { name: 'sender_address', key: 'document_address', label: 'Anschrift', rows: 3, hint: 'Straße und Hausnummer, darunter PLZ und Ort' },
   { name: 'contact', key: 'document_contact', label: 'Kontakt', rows: 3, hint: 'z. B. Telefon, E-Mail, Sprechzeiten' },
   { name: 'bank', key: 'document_bank', label: 'Bankverbindung', rows: 4, hint: 'Kontoinhaber, IBAN, BIC, Bank' },

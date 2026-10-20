@@ -195,7 +195,7 @@ export default function ContractLetterDialog({ contractId, onClose, onPublished,
         {context && <>
           {context.warnings?.length > 0 && <ul className="letter-checks">{context.warnings.map((warning, index) => <li key={index} className="letter-check letter-check-warning"><AlertTriangle size={16} aria-hidden="true" /><span>{warning} <Link to="/settings?section=letterhead">Briefkopf öffnen</Link></span></li>)}</ul>}
           <section className="contract-letter-step" aria-labelledby={`${id}-step1`}>
-            <h3 id={`${id}-step1`}><span className="letter-step-number">1</span> Vorlage</h3>
+            <h3 id={`${id}-step1`}><span className="letter-step-number">1</span> Vorlage wählen</h3>
             <div className="letters-grid">
               <div className="letters-field letters-field-wide"><label htmlFor={`${id}-template`}>Vorlage</label>
                 <select id={`${id}-template`} value={templateId} disabled={Boolean(busy)} onChange={event => { setTemplateId(event.target.value); setComposed(null); setForm(null); invalidate(); }}>
@@ -253,7 +253,7 @@ export default function ContractLetterDialog({ contractId, onClose, onPublished,
             {!allowed || !context?.can_publish ? <span className="letters-hint">Briefe archivieren Eigentümer und Verwaltung.</span> : <>
               <label className="letters-check"><input type="checkbox" checked={confirmed} disabled={!preview || preview.review.draft || Boolean(busy)} onChange={event => setConfirmed(event.target.checked)} />Ich habe die PDF geprüft und möchte sie als Original ablegen.</label>
               <button type="button" className="btn btn-primary" disabled={!confirmed || !preview || preview.review.draft || Boolean(busy) || Boolean(published)} onClick={publish}>{busy === 'publish' ? 'Wird archiviert …' : 'Als Original archivieren'}</button>
-              {preview?.review.draft && <small className="letters-error-text">{errors} Fehler verhindern die Archivierung.</small>}
+              {preview?.review.draft && <small className="letters-error-text">{errors} {errors === 1 ? 'Fehler verhindert' : 'Fehler verhindern'} die Archivierung.</small>}
             </>}
           </div>}
       </footer>

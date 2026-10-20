@@ -92,7 +92,7 @@ describe('letter from a template', () => {
     expect(screen.getByRole('heading', { name: 'Entwurf – so nicht archivierbar' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /PDF geprüft/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Als Original archivieren' })).toBeDisabled();
-    expect(screen.getByText('1 Fehler verhindern die Archivierung.')).toBeInTheDocument();
+    expect(screen.getByText('1 Fehler verhindert die Archivierung.')).toBeInTheDocument();
     expect(service.publish).not.toHaveBeenCalled();
   });
 

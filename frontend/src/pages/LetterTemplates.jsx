@@ -83,7 +83,7 @@ export default function LetterTemplates({ service = templatesService }) {
   const readOnly = !editor || editor.mode === 'view' || !canEdit;
 
   const card = template => <li key={template.id} className={`letter-template-card${template.archived ? ' is-archived' : ''}`}>
-    <div><strong>{template.name}</strong><span>{kinds[template.kind]?.label || template.kind}{template.archived ? ' · archiviert' : ''}</span></div>
+    <div><strong>{template.name}</strong>{!template.builtin && <span>{kinds[template.kind]?.label || template.kind}{template.archived ? ' · archiviert' : ''}</span>}</div>
     <div className="letters-actions">
       {template.builtin ? <>
         <button type="button" className="btn btn-sm btn-secondary" onClick={() => open(template)}>Ansehen</button>
