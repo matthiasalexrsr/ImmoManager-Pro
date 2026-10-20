@@ -120,7 +120,8 @@ export default function DocumentIntakeQueue() {
   };
   const targets = feed.items.filter(row => selected.has(row.document_id) && processable(row));
   return <div className="page work-center"><header className="work-center-header"><div><h1>Dokumenteneingang</h1>
-    <p>Erkennungsvorschläge prüfen und zuordnen. Eine Analyse ändert keine Rechnung und keine Zuordnung.</p></div>
+    <p>Erkennungsvorschläge prüfen und zuordnen. Eine Analyse ändert keine Rechnung und keine Zuordnung.</p>
+    <p className="text-muted">Bereits abgelegte Dokumente – mit Dokumentart und Zuordnung, ausgenommen Rechnungen – stehen nicht im offenen Eingang; unter dem Status „Offen“ lassen sie sich trotzdem analysieren.</p></div>
     <Link to="/documents?create=1" className="btn btn-primary">Dokumente hochladen</Link></header>
     <div className="work-center-filters"><label>Status<select value={status} disabled={busy} onChange={event => {
       setSelected(new Set()); setReport(null); setParams(event.target.value ? { status: event.target.value } : {});

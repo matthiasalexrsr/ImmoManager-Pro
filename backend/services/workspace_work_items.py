@@ -82,6 +82,23 @@ def due_column(kind: str):
             else orm.protocol_date if kind == "tenant_change" else orm.due_date)
 
 
+# Receipts to be captured as invoices stay in the intake after filing; other documents leave it once filed.
+INVOICE_DOCUMENT_TYPES = ("invoice", "Rechnung", "Handwerkerrechnung")
+
+
+def document_filed():
+    """A classified document assigned to a property, unit, contract or party, other than an invoice receipt."""
+    return and_(DocumentORM.document_type.is_not(None), DocumentORM.document_type != "",
+                DocumentORM.document_type.not_in(INVOICE_DOCUMENT_TYPES),
+                or_(DocumentORM.property_id.is_not(None), DocumentORM.unit_id.is_not(None),
+                    DocumentORM.contract_id.is_not(None), DocumentORM.tenant_id.is_not(None)))
+
+
+def memory_document_filed(document: Any) -> bool:
+    return (bool(document.document_type) and document.document_type not in INVOICE_DOCUMENT_TYPES
+            and any((document.property_id, document.unit_id, document.contract_id, document.tenant_id)))
+
+
 def source_predicate(kind: str, store: Any = None):
     orm = SOURCES[kind][0]
     if kind == "document":
@@ -89,7 +106,10 @@ def source_predicate(kind: str, store: Any = None):
         finished = exists(select(DocumentIntakeORM.id).where(
             DocumentIntakeORM.document_id == DocumentORM.id, DocumentIntakeORM.status == "done",
             DocumentIntakeORM.source_file_url == DocumentORM.file_url))
-        return and_(~original, ~finished)
+        # an analysis once started stays open until reviewed; otherwise only documents not yet filed are open
+        started = exists(select(DocumentIntakeORM.id).where(
+            DocumentIntakeORM.document_id == DocumentORM.id, DocumentIntakeORM.source_file_url == DocumentORM.file_url))
+        return and_(~original, ~finished, or_(started, ~document_filed()))
     if kind == "dunning":
         return exists(select(DunningCaseORM.id).where(DunningCaseORM.contract_id == ContractORM.id,
                                                      DunningCaseORM.status == "open"))
@@ -156,8 +176,11 @@ def _memory_applicable(store: Any, kind: str, row: Any) -> bool:
         if any(version.document_id == row.id for version in memory_archive(store).versions.values()):
             return False
         raw = object.__getattribute__(store, "__dict__")
-        return not any(item.document_id == row.id and item.status == "done" and item.source_file_url == row.file_url
-                       for item in raw.get("business_document_intake", {}).values())
+        intakes = [item for item in raw.get("business_document_intake", {}).values()
+                   if item.document_id == row.id and item.source_file_url == row.file_url]
+        if any(item.status == "done" for item in intakes):
+            return False
+        return bool(intakes) or not memory_document_filed(row)
     if kind == "dunning":
         return any(item.contract_id == row.id and item.status == "open" for item in store.dunning_cases.values())
     if kind == "contract":

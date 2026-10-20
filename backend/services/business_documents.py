@@ -33,6 +33,7 @@ from .business_field_history import record_unit_changes
 from .file_storage import LocalStorage, S3Storage, get_file_storage
 from .portfolio_scope import require_file_access, scope_context, scope_from_user
 from .workspace_contexts import actor, resolve_context
+from .workspace_work_items import document_filed, memory_document_filed
 
 office.RECORDS.update({"business_document_intake": (DocumentIntakeORM, DocumentIntake),
                        "business_duplicate_exceptions": (DuplicateExceptionORM, DuplicateException)})
@@ -206,7 +207,9 @@ def document_queue(store, actor_id: str, *, status=None, cursor=None, limit=50) 
             elif status:
                 selected = selected.where(DocumentIntakeORM.status == status)
             else:
-                selected = selected.where(or_(DocumentIntakeORM.id.is_(None), DocumentIntakeORM.status != "done"))
+                # the open intake: analyses not yet reviewed, and documents not yet filed (see document_filed)
+                selected = selected.where(or_(DocumentIntakeORM.status != "done",
+                                              and_(DocumentIntakeORM.id.is_(None), ~document_filed())))
             if before:
                 moment = office.utc(datetime.fromisoformat(before[0])).replace(tzinfo=None)
                 selected = selected.where(or_(DocumentORM.created_at < moment,
@@ -223,7 +226,8 @@ def document_queue(store, actor_id: str, *, status=None, cursor=None, limit=50) 
                 matching = item is not None and item.source_file_url == document.file_url
                 state = item.status if matching else "pending"
                 key = (office.utc(document.created_at).isoformat(), document.id)
-                if (not status and state == "done" or status and state != status or before and key >= tuple(before)):
+                if (not status and state == "done" or status and state != status or before and key >= tuple(before)
+                        or not status and not matching and memory_document_filed(document)):
                     continue
                 candidates.append((document, item))
             candidates.sort(key=lambda pair: (office.utc(pair[0].created_at), pair[0].id), reverse=True)

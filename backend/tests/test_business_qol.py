@@ -686,3 +686,27 @@ def test_dunning_work_deadline_is_final_letter_payment_deadline_not_tenancy_star
         assert owner[1].get("/api/v1/workspace/deferrals/" + old_key).status_code == 404
     finally:
         purge_originals(store)
+
+
+def test_filed_documents_leave_the_open_intake_but_invoice_receipts_and_started_analyses_stay(owner, estate, file_storage):
+    """A classified, assigned document is filed: it counted as an open intake item for ever (92 on the test version)."""
+    receipt = make_document(estate, file_storage, 1)                       # assigned, not classified: to be processed
+    filed = store.create_document(DocumentCreate(property_id=estate["property"].id, title="Energieausweis",
+                                                 document_type="Energieausweis", file_url="/uploads/documents/qol-2.pdf"))
+    invoice = store.create_document(DocumentCreate(property_id=estate["property"].id, title="Rechnung Dach",
+                                                   document_type="Rechnung", file_url="/uploads/documents/qol-3.pdf"))
+    unassigned = store.create_document(DocumentCreate(title="Scan", document_type="Sonstiges",
+                                                      file_url="/uploads/documents/qol-4.pdf"))
+    def open_ids():
+        return {row["document_id"] for row in owner[1].get(API + "/documents").json()["items"]}
+    assert open_ids() == {receipt.id, invoice.id, unassigned.id}
+    assert owner[1].get(API + "/summary").json()["counts"]["document"] == 3
+    # still reachable for an analysis on purpose
+    assert filed.id in {row["document_id"] for row in owner[1].get(API + "/documents", params={"status": "pending"}).json()["items"]}
+    # an analysis once started stays open until it is reviewed
+    file_storage.save("documents/qol-2.pdf", BytesIO(b"synthetic certificate"))
+    started = owner[1].post(API + f"/documents/{filed.id}/process",
+                            json={"base_revision": revision(owner, "document", filed.id), "idempotency_key": str(uuid4())})
+    assert started.status_code == 200, started.text
+    assert filed.id in open_ids()
+    assert owner[1].get(API + "/summary").json()["counts"]["document"] == 4
