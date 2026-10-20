@@ -53,6 +53,13 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Termine und Versicherungen:** Die Einheitenauswahl folgt der Immobilie; beim Immobilienwechsel wird eine nicht mehr passende Einheit zurückgesetzt. Kalendereinträge zeigen verlinkte Immobilien und Einheiten.
 - **Wartungsfall als Projektakte:** Angebot, Auftrag, Nachträge, Rechnungen und Zahlungen.
 - **Wohnungsgeberbestätigung** als PDF mit Original im Archiv.
+- **Briefe mit Briefkopf:** Unter Einstellungen → Briefkopf stehen Absender, Kontakt, Bankverbindung, Fußzeile und Logo einmal für alle Briefe (Abrechnungsschreiben, Mahnbriefe, Kautionsabrechnungen und neue Briefe), nach DIN 5008 mit Anschriftfeld für Fensterumschläge.
+- **Briefvorlagen** (Konfiguration → Briefvorlagen) und „Brief schreiben“ am Vertrag und in der Parteiakte:
+  - Mieterhöhung auf die ortsübliche Vergleichsmiete mit Prüfung von Sperrfrist, Wartefrist und Kappungsgrenze und dem Datum, ab dem sie gilt;
+  - Anpassung der Vorauszahlungen mit Vorschlag aus der letzten Abrechnung;
+  - Bestätigung einer Kündigung mit der gesetzlichen Frist, Mietbescheinigung, Terminankündigung und freies Schreiben;
+  - Platzhalter wie `{{mieter.name}}` füllt das Programm aus dem Vertrag; eigene Vorlagen entstehen als Kopie einer mitgelieferten;
+  - der fertige Brief wird als unveränderliches Original in der Akte abgelegt; versendet wird nichts.
 - **Zählerverlauf:** Ein Klick auf die Zählernummer zeigt alle Ablesungen mit Verbrauch je Zeitraum und je Kalenderjahr, weist auf Auffälligkeiten hin und verlinkt den eigenen Versorgungsvertrag sowie das Kundenportal des Anbieters.
 - **Neuvermietung (Leerstand):** Jede frei werdende Einheit wird zum Projekt:
   - Angebot mit Miete, Kaution, Vorgaben und den Pflichtangaben des Energieausweises;
@@ -70,6 +77,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Einstellungen je Liste;
   - CSV für deutsche Tabellenprogramme.
 - **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol oder ihre Beschriftung.
+- **Ablaufdaten für Dokumente:** Energieausweis, Wartungsnachweis oder Police bekommen „Gültig bis“ und einen Vorlauf. Rechtzeitig vorher entstehen eine Aufgabe und eine Benachrichtigung, je Ablaufdatum genau einmal. Die Dokumentliste zeigt, was bald abläuft oder abgelaufen ist.
+- **Volltextsuche in Dokumenten:** Die Dokumentseite durchsucht den Inhalt von PDFs, Text- und Office-Dateien und zeigt die Fundstelle. Auch die globale Suche findet Dokumente über ihren Inhalt. Das Lesen geschieht im Hintergrund und auf dem eigenen Rechner.
 - **Dokumenteneingang nur für Unerledigtes:** Abgelegte Dokumente (mit Art und Zuordnung zu Objekt, Einheit, Vertrag oder Partei) zählen nicht mehr als offener Eingang; Rechnungsbelege bleiben dort, bis sie erfasst sind. „Texterkennung“ statt „OCR“.
 - **Zahlungsvorschläge** zu einer Rechnung erscheinen auch bei vielen Buchungen sofort.
 - **Berichte auch bei großem Bestand zügig:** Übersicht, Prüfliste und Finanzberichte lesen ihre Daten gebündelt. Bei fünf Jahren Buchungen dauert die Liquiditätsplanung für ein Konto mit eingeschränktem Zugriff (z. B. Steuerberater) wenige Sekunden statt fast einer Minute.
@@ -95,9 +104,12 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Prognosen rechnen mit den Vertragsmieten;
   - noch nicht abgeschlossene Nebenkostenabrechnungen ergeben bei neuer Erzeugung korrekte Beträge.
   - Abgeschlossene Abrechnungen bleiben unverändert.
+- **Datenexport (JSON):** Ein Export dieser Version hat das Format 12 (mit Ablaufdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
 
 ## Bekannte Grenzen
+- **Volltextsuche bei Scans und Fotos:** Im Windows-Paket ist keine Texterkennung für Bilder enthalten. Gescannte PDFs ohne Textebene und Fotos sind deshalb nicht durchsuchbar; die Suche nennt, wie viele Dokumente das betrifft.
+- **Kündigungsfrist:** Die Briefvorlage berücksichtigt nur bundesweite Feiertage. Serienbriefe an alle Mieter eines Objekts gibt es noch nicht.
 - **Versand:** E-Mails und Mahnbriefe erzeugt das Programm als Entwurf oder PDF und versendet sie nicht. Zahlungsdateien (SEPA) gibt es nicht.
 - **Vollbackup zurückspielen:** nur über die Kommandozeile (`ImmoManager-Pro.exe ops restore …`), siehe „LIES MICH.txt“.
 - **Signaturen:** keine elektronische Unterschrift auf Übergabeprotokollen.
