@@ -306,14 +306,14 @@ def test_letterhead_logo_is_normalized_versioned_and_printed(case):
     client = case["client"]
     view = client.get("/api/v1/letterhead").json()
     assert view["logo"] is None and view["logo_rules"]["global"]["revision"] == 0 and view["can_edit"]
-    refused = client.put("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0001"},
+    refused = client.post("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0001"},
                          files={"file": ("logo.txt", b"kein Bild", "text/plain")})
     assert refused.status_code == 415
-    saved = client.put("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0002"},
+    saved = client.post("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0002"},
                        files={"file": ("logo.png", _png(2400, 600), "image/png")})
     assert saved.status_code == 200, saved.text
     assert saved.json()["logo"]["width"] == 1200 and saved.json()["logo"]["height"] == 300
-    stale = client.put("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0003"},
+    stale = client.post("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0003"},
                        files={"file": ("logo.png", _png(), "image/png")})
     assert stale.status_code == 409
     png = client.get("/api/v1/letterhead/logo")
@@ -347,7 +347,7 @@ def test_letterhead_fields_reach_the_letter_and_staff_without_rights_cannot_writ
     technician = auth.register_user("letter-tech", "tech@example.test", "Tom Technik", "Secret123", "techniker")
     staff = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(technician.id)})
     try:
-        assert staff.put("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0005"},
+        assert staff.post("/api/v1/letterhead/logo", data={"base_revision": "0", "idempotency_key": "logo-0005"},
                          files={"file": ("logo.png", _png(), "image/png")}).status_code == 403
         assert staff.post("/api/v1/letter-templates", json={"kind": "free", "name": "X", "subject": "S",
                                                            "idempotency_key": "template-tech-1"}).status_code == 403

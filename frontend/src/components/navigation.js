@@ -96,6 +96,7 @@ export const NAV_SECTIONS = [
       { to: '/integrations', labelKey: 'navigation.main.integrations', fallback: 'Schnittstellen', icon: IntegrationIcon },
       { to: '/integration-connections', labelKey: 'navigation.main.connectionWorkspace', fallback: 'Verbindungen und Vorgänge', icon: IntegrationIcon },
       { to: '/escalation-rules', labelKey: 'navigation.main.escalationRules', fallback: 'Eskalationsregeln', icon: MaintenanceIcon },
+      { to: '/letter-templates', labelKey: 'navigation.main.letterTemplates', fallback: 'Briefvorlagen', icon: DocumentIcon },
       { to: '/notification-templates', labelKey: 'navigation.main.notificationTemplates', fallback: 'Benachrichtigungsvorlagen', icon: MessageIcon },
       { to: '/history', labelKey: 'navigation.main.history', fallback: 'Änderungsprotokoll', icon: DocumentIcon },
       { to: '/settings', labelKey: 'navigation.main.settings', fallback: 'Einstellungen', icon: SettingsIcon },

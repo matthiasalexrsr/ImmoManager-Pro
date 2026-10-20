@@ -10,8 +10,9 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { RentIcon } from '../components/Icons';
-import { ClipboardCheck, FileCheck, PiggyBank, Users } from 'lucide-react';
+import { ClipboardCheck, FileCheck, Mail, PiggyBank, Users } from 'lucide-react';
 import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
+import ContractLetterDialog from '../features/letters/ContractLetterDialog';
 import HandoverProtocolsDialog from '../features/handoverProtocol/HandoverProtocolsDialog';
 import { handoverText } from '../features/handoverProtocol/handoverProtocolText';
 import OccupancyDialog from '../features/contracts/OccupancyDialog';
@@ -57,6 +58,7 @@ export default function Contracts() {
   const [rents, setRents] = useState({});
   const [history, setHistory] = useState(null);
   const [housing, setHousing] = useState(null);
+  const [letter, setLetter] = useState(null);
   const [handover, setHandover] = useState(null);
   const [deposit, setDeposit] = useState(null);
   const [occupants, setOccupants] = useState(null);
@@ -337,6 +339,7 @@ export default function Contracts() {
         onDelete={handleDelete}
         rowActions={() => [
           { label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory },
+          { label: 'Brief schreiben', icon: <Mail size={15} aria-hidden="true" />, onClick: row => setLetter(row.id) },
           { label: 'Wohnungsgeberbestätigung', icon: <FileCheck size={15} aria-hidden="true" />, onClick: row => setHousing(row.id) },
           { label: handoverText(locale, 'action'), icon: <ClipboardCheck size={15} aria-hidden="true" />, onClick: row => setHandover(row.id) },
           { label: depositText(locale, 'action'), icon: <PiggyBank size={15} aria-hidden="true" />, onClick: row => setDeposit(row.id) },
@@ -353,6 +356,8 @@ export default function Contracts() {
         onChanged={() => store?.invalidateRelated('deposits', 'bookings', 'receivables', 'documents')} />}
 
       {housing && <HousingConfirmationDialog contractId={housing} onClose={() => setHousing(null)} onPublished={() => store?.invalidateRelated('documents')} />}
+
+      {letter && <ContractLetterDialog contractId={letter} onClose={() => setLetter(null)} onPublished={() => store?.invalidateRelated('documents')} />}
 
       {modal && (
         <FormModal

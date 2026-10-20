@@ -50,7 +50,7 @@ def letterhead_logo(actor: Actor, scope: str = Query("global", max_length=160)):
     return Response(content, media_type="image/png", headers=_PRIVATE)
 
 
-@letterhead_router.put("/logo")
+@letterhead_router.post("/logo")
 def letterhead_logo_put(actor: Actor, file: UploadFile = File(...), scope: str = Form("global", max_length=160),
                         base_revision: int = Form(...), idempotency_key: str = Form(..., max_length=120)):
     raw = file.file.read(letterhead.MAX_UPLOAD_BYTES + 1)

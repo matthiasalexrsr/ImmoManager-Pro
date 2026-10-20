@@ -68,6 +68,7 @@ const DuplicateFinder = lazy(() => import('./features/workCenter/DuplicateFinder
 const RentCharges = lazy(() => import('./pages/RentCharges'));
 const EscalationRules = lazy(() => import('./pages/EscalationRules'));
 const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
+const LetterTemplates = lazy(() => import('./pages/LetterTemplates'));
 const History = lazy(() => import('./pages/History'));
 const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
@@ -216,6 +217,7 @@ export default function App() {
           <Route path="rent-charges" element={<RentCharges />} />
           <Route path="escalation-rules" element={<EscalationRules />} />
           <Route path="notification-templates" element={<NotificationTemplates />} />
+          <Route path="letter-templates" element={<LetterTemplates />} />
           <Route path="history" element={<History />} />
           <Route path="allocation-keys" element={<AllocationKeys />} />
           <Route path="handover-protocols" element={<HandoverProtocols />} />

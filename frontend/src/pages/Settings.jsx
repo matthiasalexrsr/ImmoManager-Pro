@@ -13,6 +13,7 @@ import AutotestSection from './settings/AutotestSection';
 import BackupSection from './settings/BackupSection';
 import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
+import LetterheadSection from '../features/letters/LetterheadSection';
 
 export default function Settings() {
   const [params] = useSearchParams();
@@ -40,6 +41,7 @@ export default function Settings() {
 
   const tabs = [
     { key: 'catalogue', label: 'Einstellungen finden' },
+    { key: 'letterhead', label: 'Briefkopf' },
     { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
     ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
@@ -64,6 +66,7 @@ export default function Settings() {
 
       <div className="settings-grid">
         {settingsTab === 'catalogue' && <><SettingsCatalogue /><button className="btn btn-secondary" onClick={() => tutorial?.start(0)}>Bedienungstour starten</button></>}
+        {settingsTab === 'letterhead' && <LetterheadSection />}
         {settingsTab === 'security' && <SecuritySection />}
 
         {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}

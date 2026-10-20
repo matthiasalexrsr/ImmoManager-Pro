@@ -20,6 +20,7 @@ const BUILTIN_TRANSLATIONS = {
       main: {
         contractWizard: 'Mietvertrag-Wizard',
         notificationTemplates: 'Benachrichtigungsvorlagen',
+        letterTemplates: 'Briefvorlagen',
         notifications: 'Benachrichtigungen',
         reports: 'Auswertungen',
         assistant: 'KI-Assistent',
@@ -158,6 +159,7 @@ const BUILTIN_TRANSLATIONS = {
       main: {
         contractWizard: 'Lease Wizard',
         notificationTemplates: 'Notification Templates',
+        letterTemplates: 'Letter templates',
         notifications: 'Notifications',
         reports: 'Reports',
         assistant: 'AI assistant',
@@ -296,6 +298,7 @@ const BUILTIN_TRANSLATIONS = {
       main: {
         contractWizard: 'Asistente de contrato',
         notificationTemplates: 'Plantillas de notificacion',
+        letterTemplates: 'Plantillas de cartas',
         notifications: 'Notificaciones',
         reports: 'Informes',
         assistant: 'Asistente de IA',
