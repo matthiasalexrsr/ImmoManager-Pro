@@ -596,3 +596,69 @@ def test_native_annotation_validation_does_not_hold_writer_and_rechecks_source(p
             command(source, AnnotationSave, session_revision=0, annotations=[]), owner.id)
     assert failure.value.status_code == 409
     assert service.source(store, identifier, owner.id)["layer_revision"] == 0
+
+
+def test_a_new_version_keeps_the_first_upload_and_becomes_what_the_document_shows(prepared, owner):
+    from backend.services import document_text
+    identifier = prepared["document"].id
+    store.__dict__.pop("_document_texts", None)
+    while document_text.index_pending(store)[1] is not None:
+        pass
+    if hasattr(store, "db"):
+        store.db.commit()
+    indexed = document_text.get(store, identifier)
+    assert indexed is not None and "Änderung" in indexed.text
+
+    initial = service.source(store, identifier, owner.id)
+    renewed = docx_bytes(text="Neue Fassung mit Heizkostenverteiler", paragraphs=3)
+    request = command(initial)
+    result = service.upload_version(store, identifier, request, renewed, "rechnung-korrigiert.docx",
+                                    "korrigierte Rechnungsnummer", owner.id)
+    assert result["previous"]["number"] == 1 and result["previous"]["operation"] == "archive_original"
+    assert result["version"]["number"] == 2 and result["version"]["comment"] == "Neue Fassung: korrigierte Rechnungsnummer"
+    assert service.upload_version(store, identifier, request, renewed, "rechnung-korrigiert.docx",
+                                  "korrigierte Rechnungsnummer", owner.id) == result              # replay
+    current = service.source(store, identifier, owner.id)
+    assert current["version"]["id"] == result["version"]["id"]
+    assert current["sha256"] == hashlib.sha256(renewed).hexdigest()
+    first, _ = service.download(store, identifier, result["previous"]["id"], owner.id)
+    assert first == prepared["content"]                                            # nothing lost
+    with pytest.raises(HTTPException) as stale:
+        service.upload_version(store, identifier, request.model_copy(update={"command_key": str(uuid4())}),
+                               docx_bytes(text="noch eine"), "x.docx", "", owner.id)
+    assert stale.value.status_code == 409
+    with pytest.raises(HTTPException) as same:
+        service.upload_version(store, identifier, command(current), renewed, "gleich.docx", "", owner.id)
+    assert same.value.status_code == 422
+
+    # the full-text search reads the new version although the record itself did not change
+    assert identifier in [document.id for document in document_text.pending(store, "", 50)]
+    while document_text.index_pending(store)[1] is not None:
+        pass
+    if hasattr(store, "db"):
+        store.db.commit()
+    row = document_text.get(store, identifier)
+    assert row is not None
+    assert "Heizkostenverteiler" in row.text and row.source_ref == "version:" + result["version"]["id"]
+    assert identifier not in [document.id for document in document_text.pending(store, "", 50)]
+
+
+def test_document_page_and_version_upload_over_http(prepared, owner):
+    identifier = prepared["document"].id
+    client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(owner.id)})
+    details = client.get(f"/api/v1/documents/{identifier}/details").json()
+    assert details["document"]["id"] == identifier and details["versions"]["items"] == []
+    assert details["places"]["property"] == prepared["property"].name
+    assert details["retention"]["retention_class"] == "booking_record"           # an invoice
+    source = client.get(f"/api/v1/documents/{identifier}/work/source").json()
+    renewed = docx_bytes(text="Zweite Fassung", paragraphs=2)
+    form = {"command_key": str(uuid4()), "expected_sha256": source["sha256"],
+            "expected_document_revision": source["document_revision"], "comment": "neu eingescannt"}
+    uploaded = client.post(f"/api/v1/documents/{identifier}/work/versions", data=form,
+                           files={"file": ("zweite.docx", renewed, "application/octet-stream")})
+    assert uploaded.status_code == 200, uploaded.text
+    assert [item["number"] for item in client.get(f"/api/v1/documents/{identifier}/details").json()["versions"]["items"]] == [2, 1]
+    refused = client.post(f"/api/v1/documents/{identifier}/work/versions", data={**form, "command_key": str(uuid4())},
+                          files={"file": ("dritte.exe", b"MZ", "application/octet-stream")})
+    assert refused.status_code in (409, 415, 422)
+    assert client.get("/api/v1/documents/does-not-exist/details").status_code == 404

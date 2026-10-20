@@ -11,7 +11,7 @@ class DocumentWorkEvent(BaseModel):
     portfolio_id: str
     protocol_id: str | None = None
     actor_id: str
-    kind: Literal["archive", "session", "annotations", "export", "analysis", "invoice_proposal", "invoice_taken", "evidence"]
+    kind: Literal["archive", "session", "annotations", "export", "analysis", "invoice_proposal", "invoice_taken", "evidence", "version"]
     resource_id: str
     revision: int = Field(ge=1)
     command_key: str

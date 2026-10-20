@@ -25,8 +25,9 @@ from io import BytesIO
 from typing import Any
 from xml.etree import ElementTree
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, literal, or_, select
 
+from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import DocumentORM, DocumentTextORM
 from ..store_errors import NotFoundError
 
@@ -229,12 +230,17 @@ def index_document(store, document) -> TextRow:
 
 
 def pending(store, after: str, limit: int) -> list[Any]:
-    """Documents after `after` (by id) without text or changed since they were indexed."""
+    """Documents after `after` (by id) without text, changed since they were indexed, or with an archived
+    version newer than the one read (an edit in the document workbench, a new version uploaded)."""
     if hasattr(store, "db"):
+        head = (select(DocumentVersionORM.id).where(DocumentVersionORM.document_id == DocumentORM.id)
+                .order_by(DocumentVersionORM.number.desc()).limit(1).correlate(DocumentORM).scalar_subquery())
         ids = store.db.scalars(
             select(DocumentORM.id).outerjoin(DocumentTextORM, DocumentTextORM.document_id == DocumentORM.id)
             .where(DocumentORM.id > after, or_(DocumentTextORM.document_id.is_(None),
-                                               DocumentORM.updated_at > DocumentTextORM.indexed_at))
+                                               DocumentORM.updated_at > DocumentTextORM.indexed_at,
+                                               and_(head.is_not(None),
+                                                    DocumentTextORM.source_ref != literal("version:").concat(head))))
             .order_by(DocumentORM.id).limit(limit)).all()
         result = []
         for identifier in ids:
@@ -244,9 +250,20 @@ def pending(store, after: str, limit: int) -> list[Any]:
                 continue
         return result
     rows = memory_rows(store)
-    documents = sorted((document for document in store.list_documents() if document.id > after
-                        and (document.id not in rows
-                             or (_naive(document.updated_at) or now()) > rows[document.id].indexed_at)),
+    from . import document_versions as archive
+    heads: dict[str, Any] = {}
+    for version in archive.memory_archive(store).versions.values():
+        if version.document_id not in heads or version.number > heads[version.document_id].number:
+            heads[version.document_id] = version
+
+    def stale(document) -> bool:
+        row = rows.get(document.id)
+        if row is None or (_naive(document.updated_at) or now()) > row.indexed_at:
+            return True
+        latest = heads.get(document.id)
+        return latest is not None and row.source_ref != f"version:{latest.id}"
+
+    documents = sorted((document for document in store.list_documents() if document.id > after and stale(document)),
                        key=lambda document: document.id)
     return documents[:limit]
 

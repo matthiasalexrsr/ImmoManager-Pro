@@ -79,6 +79,25 @@ def versions(document_id: str, actor: Actor, before: int | None = None, limit: i
         return call(service.archive.history, unit.store, document_id, actor.id, before=before, limit=limit)
 
 
+@router.post("/versions")
+async def upload_version(document_id: str, actor: Actor, file: UploadFile = File(...),
+                         command_key: str = Form(..., min_length=1, max_length=100),
+                         expected_sha256: str = Form(...), expected_document_revision: str = Form(...),
+                         expected_version: str | None = Form(None), comment: str = Form("", max_length=300)):
+    """A corrected or renewed file as the next version of this document (instead of a second document)."""
+    from pydantic import ValidationError as PayloadError
+    from starlette.concurrency import run_in_threadpool
+    try:
+        command = Command(command_key=command_key, expected_sha256=expected_sha256,
+                          expected_document_revision=expected_document_revision,
+                          expected_version=expected_version or None)
+    except PayloadError:
+        raise HTTPException(422, "Bitte Datei und Quellstand prüfen.") from None
+    content = await read_limited(file)
+    return await run_in_threadpool(call, service.upload_version, store, document_id, command, content,
+                                   file.filename or "Dokument", comment, actor.id)
+
+
 @router.get("/versions/{version_id}/download")
 def download(document_id: str, version_id: str, actor: Actor):
     content, row = call(service.download, store, document_id, version_id, actor.id)

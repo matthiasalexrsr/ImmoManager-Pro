@@ -156,6 +156,39 @@ def retention_of_documents() -> dict:
     return {"rules": document_retention.rules(store), "items": document_retention.assess_all(store)}
 
 
+@router.get("/{document_id}/details")
+def document_details(document_id: str, actor: Annotated[UserRead | None, Depends(get_current_user)] = None) -> dict:
+    """Everything the document page shows: the record, its places by name, retention, the text read
+    for the full-text search and the first archived versions."""
+    try:
+        document = store.get_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    def name(getter, identifier, field):
+        if not identifier:
+            return None
+        try:
+            return getattr(getter(identifier), field)
+        except NotFoundError:
+            return None
+    places = {"property": name(store.get_property, document.property_id, "name"),
+              "unit": name(store.get_unit, document.unit_id, "label"),
+              "contract": name(store.get_contract, document.contract_id, "contract_number"),
+              "tenant": name(store.get_tenant, document.tenant_id, "full_name")}
+    text = document_text.get(store, document.id)
+    versions: dict = {"items": [], "next_before": None}
+    if actor is not None:
+        from ..services import document_versions
+        versions = document_versions.history(store, document.id, actor.id, limit=10)
+    return {"document": document.model_dump(mode="json"), "places": places,
+            "retention": document_retention.assess_all(store, [document])[document.id],
+            "text": None if text is None else {"source": text.source, "characters": text.characters,
+                                               "indexed_at": text.indexed_at.isoformat(), "excerpt": text.text[:3000],
+                                               "source_ref": text.source_ref},
+            "versions": versions}
+
+
 @router.get("/{document_id}", response_model=Document)
 def get_document(document_id: str) -> Document:
     try:

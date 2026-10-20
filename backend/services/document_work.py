@@ -122,13 +122,13 @@ def check_source(document, row, content, command):
         archive.fail("Die Quelle wurde geändert. Eingaben bleiben erhalten; bitte Quelle neu laden und vergleichen.")
 
 
-def publish(unit, document, binding, content, name, media, key, request_hash, *, extra=None):
+def publish(unit, document, binding, content, name, media, key, request_hash, *, extra=None, comment=None):
     previous = archive.head(unit, document.id)
     row = DocumentVersionORM(id=str(uuid4()), document_id=document.id, **binding,
         number=previous.number + 1 if previous else 1, predecessor_id=previous.id if previous else None,
         restored_from_id=None, actor_id=unit.actor_id, idempotency_key=key,
         request_sha256=request_hash, operation="upload" if previous else "archive_original",
-        comment="Bearbeitete Fassung" if previous else "Unveränderliches Eingangsoriginal",
+        comment=comment or ("Bearbeitete Fassung" if previous else "Unveränderliches Eingangsoriginal"),
         filename=archive.filename(name), media_type=media, sha256=digest(content), size_bytes=len(content),
         metadata_snapshot=document.model_dump(mode="json") | ({"document_work": extra} if extra else {}),
         created_at=archive.now())
@@ -166,6 +166,41 @@ def archive_upload(store, document_id, command, actor_id):
         result = {"version": archive.public(row)}
         append(unit, document_id, binding, "archive", str(uuid4()), command.command_key, hashed, result)
         return result
+
+
+def upload_version(store, document_id, command, content, filename, comment, actor_id):
+    """A corrected or renewed file as the next version of the same document instead of a second document.
+
+    A document without an archived original first gets its current upload archived as version 1, so
+    nothing is lost; the new file becomes the next version and what the document now shows. Earlier
+    versions stay immutable and downloadable."""
+    name = archive.filename(filename)
+    info = formats.inspect_file(content, name)
+    note = " ".join((comment or "").split())[:300]
+    request = {**command.model_dump(mode="json"), "sha256": digest(content), "filename": name, "comment": note}
+    hashed = fingerprint("upload_version", document_id, request)
+    with work(store, actor_id, AREA) as unit:
+        doc, binding, row, current, current_name = read_source(unit, document_id, lock=True)
+        repeated = replay(unit, document_id, command.command_key, hashed)
+        if repeated is not None:
+            return repeated
+        check_source(doc, row, current, command)
+        if digest(content) == digest(current):
+            archive.fail("Die Datei ist mit der aktuellen Fassung identisch.", 422)
+        if row is None:
+            first = formats.inspect_file(current, current_name)
+            row = publish(unit, doc, binding, current, current_name, first["media_type"], command.command_key + ":original",
+                          hashed, extra={"inspection": first, "origin": "ordinary_upload"})
+            append(unit, document_id, binding, "archive", str(uuid4()), command.command_key + ":original", hashed,
+                   {"version": archive.public(row)})
+        version = publish(unit, doc, binding, content, name, info["media_type"], command.command_key, hashed,
+                          extra={"inspection": info, "origin": "new_version"},
+                          comment="Neue Fassung" + (f": {note}" if note else ""))
+        result = {"version": archive.public(version), "previous": archive.public(row)}
+        append(unit, document_id, binding, "version", str(uuid4()), command.command_key, hashed, result)
+    from . import document_text
+    document_text.schedule(f"version:{version.id}")
+    return result
 
 
 def open_session(store, document_id, command, actor_id):
