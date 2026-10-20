@@ -29,6 +29,7 @@ from sqlalchemy import select
 from ..db.daily_models import SettingRuleORM
 from . import daily_state as state
 from . import document_versions as archive
+from . import price_index
 from .settings_catalogue import record_audit, rule
 
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+(?:\.[a-z_]+)*)\s*\}\}")
@@ -68,6 +69,7 @@ GENERAL = {
 }
 BLOCKS = {"miete": "Tabelle: Miete zum Briefdatum (bzw. Stichtag)",
           "mieterhoehung": "Tabelle: Miete bisher und neu",
+          "indexmiete": "Tabelle: Verbraucherpreisindex und Miete bisher und neu",
           "vorauszahlung": "Tabelle: Vorauszahlungen bisher und neu"}
 
 JUSTIFICATIONS = [("mietspiegel", "Mietspiegel"), ("comparables", "Vergleichswohnungen"),
@@ -111,6 +113,32 @@ KINDS: dict[str, dict[str, Any]] = {
             "erhoehung.qm_neu": "Neu je m²",
         },
         "blocks": ["mieterhoehung", "miete"],
+    },
+    "index_rent": {
+        "label": "Mietanpassung bei Indexmiete (§ 557b BGB)",
+        "description": "Neue Nettokaltmiete nach dem Verbraucherpreisindex; prüft die Indexvereinbarung und die "
+                       "Jahresfrist und rechnet Miete und Wirksamkeit (übernächster Monat nach Zugang).",
+        "inputs": [
+            _input("receipt_date", "Voraussichtlicher Zugang beim Mieter", "date",
+                   hint="Die neue Miete gilt ab dem übernächsten Monat nach Zugang (§ 557b Abs. 3 BGB)."),
+            _input("base_month", "Ausgangsmonat des Index", "month",
+                   hint="Monat, dessen Index der bisherigen Miete zugrunde liegt: bei der ersten Anpassung der in "
+                        "der Indexklausel genannte Monat (meist Vertragsbeginn), sonst der Monat aus dem letzten "
+                        "Anpassungsschreiben."),
+            _input("base_index", "Index im Ausgangsmonat", "index"),
+            _input("new_month", "Aktueller Indexmonat", "month",
+                   hint="Der zuletzt veröffentlichte Monat (Statistisches Bundesamt, Tabelle 61111-0002)."),
+            _input("new_index", "Aktueller Index", "index"),
+        ],
+        "placeholders": {
+            "index.zugang": "Voraussichtlicher Zugang", "index.wirksam_ab": "Wirksam ab",
+            "index.basismonat": "Ausgangsmonat", "index.basiswert": "Index im Ausgangsmonat",
+            "index.neumonat": "Aktueller Indexmonat", "index.neuwert": "Aktueller Index",
+            "index.basisjahr": "Basisjahr des Index", "index.veraenderung": "Veränderung des Index in Prozent",
+            "index.bisherige_kaltmiete": "Bisherige Nettokaltmiete", "index.neue_kaltmiete": "Neue Nettokaltmiete",
+            "index.erhoehung": "Erhöhung in Euro", "index.neue_gesamtmiete": "Neue Gesamtmiete",
+        },
+        "blocks": ["indexmiete", "miete"],
     },
     "advance_adjustment": {
         "label": "Anpassung der Vorauszahlungen (§ 560 Abs. 4 BGB)",
@@ -216,6 +244,27 @@ BUILTIN: dict[str, dict[str, str]] = {
             "{{erhoehung.wirksam_ab}} zu.\n\n\n"
             "______________________________________\n"
             "Ort, Datum, Unterschrift {{mieter.name}}"),
+    },
+    "index_rent": {
+        "name": "Mietanpassung bei Indexmiete (§ 557b BGB)",
+        "subject": "Anpassung der Miete nach der Indexvereinbarung – {{einheit.bezeichnung}}, {{objekt.anschrift}}",
+        "salutation": "Guten Tag {{mieter.name}},",
+        "body": (
+            "für die von Ihnen gemietete Wohnung {{einheit.bezeichnung}} im Objekt {{objekt.anschrift}} "
+            "(Mietvertrag {{vertrag.nummer}}) ist eine Indexmiete vereinbart: Die Nettokaltmiete folgt dem vom "
+            "Statistischen Bundesamt ermittelten Verbraucherpreisindex für Deutschland (§ 557b BGB).\n\n"
+            "Der Index ist von {{index.basiswert}} Punkten im {{index.basismonat}} auf {{index.neuwert}} Punkte im "
+            "{{index.neumonat}} gestiegen ({{index.basisjahr}} = 100). Das ist eine Veränderung um "
+            "{{index.veraenderung}}.\n\n"
+            "Die Nettokaltmiete ändert sich im gleichen Verhältnis von {{index.bisherige_kaltmiete}} um "
+            "{{index.erhoehung}} auf **{{index.neue_kaltmiete}}** monatlich. Die neue Miete ist ab dem "
+            "**{{index.wirksam_ab}}** zu zahlen (§ 557b Abs. 3 BGB). Die Vorauszahlungen für Betriebs- und "
+            "Heizkosten bleiben unverändert.\n\n"
+            "{{tabelle.indexmiete}}\n\n"
+            "Bitte zahlen Sie ab diesem Zeitpunkt monatlich insgesamt **{{index.neue_gesamtmiete}}**. Haben Sie "
+            "einen Dauerauftrag eingerichtet, passen Sie ihn bitte entsprechend an."),
+        "closing": "Mit freundlichen Grüßen",
+        "appendix": "",
     },
     "advance_adjustment": {
         "name": "Anpassung der Vorauszahlungen nach einer Abrechnung (§ 560 Abs. 4 BGB)",
@@ -373,6 +422,29 @@ def rent_on(steps: list[dict], value: date) -> dict | None:
     return current
 
 
+def rent_model(contract: dict) -> str | None:
+    """"index", "stepped", "fixed" or None. The contract form stores these keys; imported and older data
+    may hold a German text ("Indexmiete (VPI)", "Staffelmiete")."""
+    value = str(contract.get("index_rent") or "").strip().lower()
+    if not value:
+        return None
+    if value.startswith("index") or "vpi" in value:
+        return "index"
+    if value.startswith(("stepped", "staffel")):
+        return "stepped"
+    return "fixed" if value.startswith(("fixed", "fest")) else value
+
+
+def residential(location: dict) -> bool | None:
+    """True for a flat, False for business premises, None for other or unknown units (parking, cellar …)."""
+    kind = str(location.get("unit_type") or "").strip().lower()
+    if kind in ("", "wohnung", "residential", "apartment", "flat"):
+        return True
+    if kind in ("gewerbe", "commercial", "office", "büro", "laden", "retail"):
+        return False
+    return None
+
+
 def last_cold_rent_change(steps: list[dict]) -> date | None:
     """The day the cold rent last changed after the start of the contract (None: unchanged since then)."""
     ordered = sorted(steps, key=lambda item: item["valid_from"])
@@ -414,6 +486,12 @@ def parse_inputs(kind: str, raw: dict) -> dict[str, Any]:
                 result[key] = date.fromisoformat(value).isoformat()
             except ValueError:
                 raise HTTPException(422, f"„{field['label']}“: kein gültiges Datum.") from None
+        elif field["type"] == "month":
+            if not re.fullmatch(r"(?:19|20)\d\d-(?:0[1-9]|1[0-2])", value):
+                raise HTTPException(422, f"„{field['label']}“: Monat im Format JJJJ-MM angeben.")
+            result[key] = value
+        elif field["type"] == "index":
+            result[key] = str(price_index.parse_value(value, f"„{field['label']}“"))
         elif field["type"] == "time":
             if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
                 raise HTTPException(422, f"„{field['label']}“: Uhrzeit im Format HH:MM angeben.")
@@ -448,6 +526,15 @@ def default_inputs(kind: str, source: dict, issue: date) -> dict[str, Any]:
     if kind == "rent_increase":
         return {"receipt_date": (issue + timedelta(days=3)).isoformat(), "new_cold_rent": None,
                 "justification": "mietspiegel", "justification_text": None, "cap_percent": "20"}
+    if kind == "index_rent":
+        series = (source.get("price_index") or {}).get("values") or {}
+        changed = last_cold_rent_change(steps) or date.fromisoformat(source["contract"]["start_date"])
+        base_month = changed.strftime("%Y-%m")
+        published = [month for month in sorted(series) if month <= issue.strftime("%Y-%m")]
+        new_month = published[-1] if published else None
+        return {"receipt_date": (issue + timedelta(days=3)).isoformat(), "base_month": base_month,
+                "base_index": series.get(base_month), "new_month": new_month,
+                "new_index": series.get(new_month) if new_month else None}
     if kind == "advance_adjustment":
         statement = source.get("statement")
         service, heating = amount(current.get("service_charge_advance")), amount(current.get("heating_advance"))
@@ -532,6 +619,8 @@ def evaluate(kind: str, source: dict, inputs: dict, issue: date) -> dict[str, An
 
     if kind == "rent_increase":
         _rent_increase(source, inputs, issue, values, blocks, checks, area)
+    elif kind == "index_rent":
+        _index_rent(source, inputs, issue, values, blocks, checks)
     elif kind == "advance_adjustment":
         _advance_adjustment(source, inputs, issue, values, blocks, checks, rent)
     elif kind == "termination_confirmation":
@@ -605,10 +694,17 @@ def _rent_increase(source, inputs, issue, values, blocks, checks, area) -> None:
              ["Gesamtmiete", eur(cold + service + heating), eur(new_cold + service + heating)]]
     blocks["mieterhoehung"] = {"rows": rows, "numeric": [1, 2], "widths": [0.5, 0.25, 0.25], "total": True}
 
-    if contract.get("index_rent") == "index":
+    living = residential(source["unit"])
+    if living is False:
+        checks.append(_check("error", "Die Einheit ist als Gewerbe erfasst. § 558 BGB gilt nur für Wohnraum; bei "
+                                      "Gewerbe richtet sich eine Mieterhöhung nach dem Vertrag."))
+    elif living is None:
+        checks.append(_check("warning", "Die Einheit ist keine Wohnung. § 558 BGB gilt für Wohnraum; bitte prüfen, ob "
+                                        "das Verlangen hier passt."))
+    if rent_model(contract) == "index":
         checks.append(_check("error", "Bei einer Indexmiete ist eine Mieterhöhung nach § 558 BGB ausgeschlossen "
                                       "(§ 557b Abs. 2 BGB)."))
-    elif contract.get("index_rent") == "stepped":
+    elif rent_model(contract) == "stepped":
         checks.append(_check("error", "Bei einer Staffelmiete ist eine Mieterhöhung nach § 558 BGB ausgeschlossen "
                                       "(§ 557a Abs. 2 BGB)."))
     if receipt < issue:
@@ -646,6 +742,89 @@ def _rent_increase(source, inputs, issue, values, blocks, checks, area) -> None:
     if not area:
         checks.append(_check("warning", "Die Wohnfläche ist nicht erfasst; Angaben je m² entfallen. Für eine "
                                         "Begründung mit dem Mietspiegel wird sie meist gebraucht."))
+
+
+def _points(value: Decimal) -> str:
+    """Index points as published: one decimal, more only when entered."""
+    places = next(places for places in (1, 2, 3) if value == value.quantize(Decimal(1).scaleb(-places)))
+    return number(value, places)
+
+
+def _index_rent(source, inputs, issue, values, blocks, checks) -> None:
+    contract, steps = source["contract"], source["rent_steps"]
+    series = source.get("price_index") or {}
+    stored, base_year = series.get("values") or {}, series.get("base_year")
+    receipt = date.fromisoformat(inputs["receipt_date"])
+    effective = add_months(receipt.replace(day=1), 2)
+    base, new = Decimal(inputs["base_index"]), Decimal(inputs["new_index"])
+    current = rent_on(steps, receipt) or {}
+    cold = amount(current.get("cold_rent"))
+    service, heating = amount(current.get("service_charge_advance")), amount(current.get("heating_advance"))
+    new_cold = (cold * new / base).quantize(CENT, ROUND_HALF_UP) if base else cold
+    change = (new / base - 1) * 100 if base else Decimal(0)
+    base_label, new_label = price_index.month_label(inputs["base_month"]), price_index.month_label(inputs["new_month"])
+    values.update({
+        "index.zugang": day(receipt), "index.wirksam_ab": day(effective),
+        "index.basismonat": base_label, "index.basiswert": _points(base),
+        "index.neumonat": new_label, "index.neuwert": _points(new),
+        "index.basisjahr": str(base_year) if base_year else None,
+        "index.veraenderung": f"{number(change, 2)} %",
+        "index.bisherige_kaltmiete": eur(cold), "index.neue_kaltmiete": eur(new_cold),
+        "index.erhoehung": eur(new_cold - cold), "index.neue_gesamtmiete": eur(new_cold + service + heating),
+    })
+    blocks["indexmiete"] = {"rows": [
+        ["", "bisher", f"ab {day(effective)}"],
+        [f"Verbraucherpreisindex ({base_year} = 100)" if base_year else "Verbraucherpreisindex",
+         f"{values['index.basiswert']} ({base_label})", f"{values['index.neuwert']} ({new_label})"],
+        ["Nettokaltmiete", eur(cold), eur(new_cold)],
+        ["Vorauszahlung Betriebskosten", eur(service), eur(service)],
+        ["Vorauszahlung Heizkosten", eur(heating), eur(heating)],
+        ["Gesamtmiete", eur(cold + service + heating), eur(new_cold + service + heating)]],
+        "numeric": [1, 2], "widths": [0.44, 0.28, 0.28], "total": True}
+
+    if residential(source["unit"]) is not True:
+        checks.append(_check("warning", "Die Einheit ist keine Wohnung. § 557b BGB gilt für Wohnraum; bei Gewerbe oder "
+                                        "Nebenflächen gilt die Wertsicherungsklausel des Vertrags. Bitte den Text "
+                                        "(„Wohnung“, Paragrafen, Wirksamkeit) daran anpassen."))
+    if rent_model(contract) != "index":
+        checks.append(_check("error", "Für diesen Vertrag ist keine Indexmiete vereinbart (Vertrag → Mietanpassung "
+                                      "„Indexmiete“). Ohne Indexvereinbarung ist eine Anpassung nach § 557b BGB "
+                                      "nicht möglich."))
+    if receipt < issue:
+        checks.append(_check("error", "Der Zugang kann nicht vor dem Briefdatum liegen."))
+    if not cold:
+        checks.append(_check("error", "Die bisherige Nettokaltmiete ist im Mietverlauf nicht erfasst."))
+        return
+    if inputs["new_month"] <= inputs["base_month"]:
+        checks.append(_check("error", "Der aktuelle Indexmonat muss nach dem Ausgangsmonat liegen."))
+    if inputs["new_month"] > issue.strftime("%Y-%m"):
+        checks.append(_check("error", "Der aktuelle Indexmonat liegt nach dem Briefdatum; es zählt nur ein "
+                                      "veröffentlichter Index."))
+    if new <= base:
+        checks.append(_check("error", "Der Index ist seit dem Ausgangsmonat nicht gestiegen; eine Erhöhung nach der "
+                                      "Indexvereinbarung ist nicht möglich."))
+    for month, entered, label in ((inputs["base_month"], base, "Ausgangsmonat"),
+                                  (inputs["new_month"], new, "aktuellen Indexmonat")):
+        known = stored.get(month)
+        if known is None:
+            checks.append(_check("warning", f"Für {price_index.month_label(month)} ist kein Indexwert hinterlegt "
+                                            "(Briefvorlagen → Verbraucherpreisindex). Bitte den eingegebenen Wert mit "
+                                            "der Veröffentlichung des Statistischen Bundesamts abgleichen."))
+        elif Decimal(known) != entered:
+            checks.append(_check("warning", f"Der Index für den {label} ({price_index.month_label(month)}) weicht vom "
+                                            f"hinterlegten Wert {_points(Decimal(known))} ab."))
+    changed = last_cold_rent_change(steps) or date.fromisoformat(contract["start_date"])
+    if effective < add_months(changed, 12):
+        checks.append(_check("error", f"Bei einer Indexmiete muss die Miete jeweils mindestens ein Jahr unverändert "
+                                      f"bleiben (§ 557b Abs. 2 BGB). Unverändert seit {day(changed)}, also frühestens "
+                                      f"wirksam ab {day(add_months(changed, 12))}. Erhöhungen nach §§ 559 bis 560 BGB "
+                                      "bleiben davon unberührt; gab es solche, bitte den Mietverlauf prüfen."))
+    checks.append(_check("info", f"Neue Nettokaltmiete = bisherige Miete × {values['index.neuwert']} ÷ "
+                                 f"{values['index.basiswert']}, auf Cent gerundet. Wirksam ab {day(effective)} ohne "
+                                 "Zustimmung des Mieters; das Schreiben nennt die Änderung des Index und die neue "
+                                 "Miete (§ 557b Abs. 3 BGB)."))
+    checks.append(_check("info", "Nach dem Wirksamwerden bitte die neue Miete im Vertrag als Mietanpassung (Index) "
+                                 "eintragen; der Brief ändert den Mietverlauf nicht."))
 
 
 def _advance_adjustment(source, inputs, issue, values, blocks, checks, rent) -> None:

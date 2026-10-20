@@ -251,7 +251,7 @@ class Builder:
             "status": "terminated" if known_end else "active",
             "notice_period": "3 Monate" if t.unit.kind != "commercial" else "6 Monate zum Quartalsende",
             "deposit_amount": deposit,
-            "index_rent": {"index": "Indexmiete (VPI)", "stepped": "Staffelmiete"}.get(t.rent_model),
+            "index_rent": t.rent_model if t.rent_model in ("index", "stepped") else None,   # keys as the form stores
             "persons": t.unit.persons if t.unit.kind in ("flat", "house") else None})
         t.id = contract["id"]
         t.steps = [(t.start, cold, service, heating)]

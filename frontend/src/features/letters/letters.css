@@ -105,3 +105,7 @@
   .contract-letter-header, .contract-letter-body, .contract-letter-footer { padding: .75rem; }
   .contract-letter-footer .btn { min-height: 44px; white-space: normal; }
 }
+
+.price-index-section { margin-top: var(--space-6); max-width: 70ch; }
+.price-index-form { display: grid; gap: var(--space-3); }
+.price-index-form textarea { font-family: var(--font-mono, monospace); }

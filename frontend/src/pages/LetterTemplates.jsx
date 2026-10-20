@@ -4,6 +4,7 @@ import { Archive, Copy, FilePlus2, Pencil } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { mayWrite } from '../utils/permissions';
 import { templatesService } from '../features/letters/lettersApi';
+import PriceIndexSection from '../features/letters/PriceIndexSection';
 import '../features/letters/letters.css';
 
 const TEXTS = [
@@ -112,6 +113,7 @@ export default function LetterTemplates({ service = templatesService }) {
           <label className="letters-check"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} /> Archivierte zeigen</label></div>
         {own.length ? <ul className="letter-template-list">{own.map(card)}</ul>
           : <p className="letters-hint">Noch keine eigenen Vorlagen. Kopieren Sie eine mitgelieferte Vorlage, um ihren Text anzupassen; Prüfungen und Angaben bleiben erhalten.</p>}
+        <PriceIndexSection />
       </>}
       {editor && <div className="letter-template-editor">
         <form className="letter-template-form" onSubmit={event => { event.preventDefault(); void save(); }}>

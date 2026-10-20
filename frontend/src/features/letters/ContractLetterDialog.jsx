@@ -41,7 +41,9 @@ function InputField({ field, value, onChange, id }) {
     <label htmlFor={id}>{field.label}{field.required ? ' *' : ''}</label>
     {field.type === 'choice' ? <select {...common}>{field.choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select>
       : field.multiline ? <textarea rows={3} {...common} />
-        : <input type={field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : 'text'} inputMode={field.type === 'amount' ? 'decimal' : undefined} {...common} />}
+        : <input type={field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : field.type === 'month' ? 'month' : 'text'}
+          inputMode={field.type === 'amount' || field.type === 'index' ? 'decimal' : undefined}
+          placeholder={field.type === 'month' ? 'JJJJ-MM' : field.type === 'index' ? 'z. B. 121,4' : undefined} {...common} />}
     {field.hint && <small>{field.hint}</small>}
   </div>;
 }

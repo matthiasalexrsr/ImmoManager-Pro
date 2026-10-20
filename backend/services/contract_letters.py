@@ -28,7 +28,7 @@ from ..permissions import may_write
 from ..storage import NotFoundError
 from . import document_versions as archive
 from . import letter_templates as templates
-from . import letterhead
+from . import letterhead, price_index
 from .contract_letter_types import ComposeRequest, LetterPreview, LetterPublish
 from .contract_letter_validation import (
     DOC_TYPE,
@@ -136,13 +136,14 @@ def _source(unit, contract_id: str, *, lock: bool = False):
                                      "start_date", "end_date", "notice_period", "deposit_amount", "index_rent",
                                      "persons", "updated_at")),
         "tenant": _pick(tenant, ("id", "full_name", "address_line", "postal_code", "city", "country", "updated_at")),
-        "unit": _pick(location, ("id", "property_id", "label", "area_sqm", "rooms", "floor", "updated_at")),
+        "unit": _pick(location, ("id", "property_id", "label", "unit_type", "area_sqm", "rooms", "floor", "updated_at")),
         "property": _pick(prop, ("id", "portfolio_id", "name", "address_line", "postal_code", "city", "country",
                                  "updated_at")),
         "portfolio": _pick(portfolio, ("id", "name", "owner_name", "updated_at")),
         "rent_steps": steps,
         "statement": _statement(unit, contract.id),
         "letterhead": letterhead.source(unit, prop.id, fallback_sender=portfolio.owner_name or portfolio.name),
+        "price_index": {key: value for key, value in price_index.read(unit).items() if key != "revision"},
     }
     return source, contract, prop, location, tenant
 

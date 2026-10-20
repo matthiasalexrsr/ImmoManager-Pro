@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from ..auth import require_auth
 from ..dependencies import store
 from ..models import UserRead
-from ..services import contract_letters, letter_templates, letterhead
+from ..services import contract_letters, letter_templates, letterhead, price_index
 from ..services.contract_letter_types import ComposeRequest, LetterPreview, LetterPublish
 from ..storage import NotFoundError
 
@@ -80,6 +80,18 @@ def templates_create(payload: dict[str, Any], actor: Actor):
     if "id" in payload:
         raise HTTPException(422, "Eine neue Vorlage hat noch keine Kennung.")
     return _call(letter_templates.save, store, actor.id, payload)
+
+
+@templates_router.get("/price-index")
+def price_index_view(actor: Actor, response: Response):
+    """The consumer price index series kept for index rents (entered by hand, never fetched)."""
+    response.headers.update(_PRIVATE)
+    return _call(price_index.view, store, actor.id)
+
+
+@templates_router.put("/price-index")       # before /{template_id}, which would take the path
+def price_index_save(payload: dict[str, Any], actor: Actor):
+    return _call(price_index.save, store, actor.id, payload)
 
 
 @templates_router.put("/{template_id}")

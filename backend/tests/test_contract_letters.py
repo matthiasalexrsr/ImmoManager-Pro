@@ -33,7 +33,7 @@ def _clear_rules():
         store.db.rollback()
         with store.db.get_bind().connect() as connection, connection.begin():
             connection.exec_driver_sql("DELETE FROM daily_setting_rules WHERE key LIKE 'letter_template:%' "
-                                       "OR key LIKE 'document_%'")
+                                       "OR key LIKE 'document_%' OR key LIKE 'price_index:%'")
             connection.exec_driver_sql("DELETE FROM daily_commands")
     else:
         for key in ("_daily_rules", "_daily_commands"):
@@ -393,3 +393,86 @@ def test_archived_letters_are_found_by_their_content(case):
     found = case["client"].get("/api/v1/documents/search", params={"q": "heizkostenverteiler"}).json()
     assert [item["id"] for item in found["items"]] == [saved["document_id"]]
     assert "\x7f" not in found["items"][0]["snippet"]
+
+
+VPI = {"base_year": 2020, "values": {"2024-03": "117.4", "2026-09": "123.6"}}   # test values, not Destatis figures
+
+
+def test_index_rent_follows_the_price_index_and_keeps_a_year_between_changes(case):
+    from backend.models import ContractPatch
+    client = case["client"]
+    path = "/api/v1/letter-templates/price-index"
+    assert client.get(path).json()["values"] == {}
+    saved = client.put(path, json={**VPI, "base_revision": 0, "idempotency_key": "vpi-2026-09"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["revision"] == 1 and saved.json()["months"] == ["2024-03", "2026-09"]
+    assert client.put(path, json={**VPI, "base_revision": 0, "idempotency_key": "vpi-2026-09"}).json() == saved.json()
+    assert client.put(path, json={**VPI, "base_revision": 0, "idempotency_key": "vpi-stale-1"}).status_code == 409
+    for wrong in ({"2026-13": "120"}, {"2026-09": "0"}, {"2026-09": "120.1234"}, {"2026-09": "abc"}):
+        assert client.put(path, json={"base_year": 2020, "values": wrong, "base_revision": 1,
+                                      "idempotency_key": f"vpi-bad-{len(str(wrong))}"}).status_code == 422
+
+    # suggestions from the rent history and the series; refused without an index clause
+    composed = compose(case, "builtin:index_rent")
+    assert composed["inputs"] == {"receipt_date": "2026-10-23", "base_month": "2024-03", "base_index": "117.4",
+                                  "new_month": "2026-09", "new_index": "123.6"}
+    assert any(check["level"] == "error" and "keine Indexmiete" in check["text"] for check in composed["checks"])
+
+    store._patch_entity("contract", case["contract"].id, ContractPatch(index_rent="index"))
+    if hasattr(store, "db"):
+        store.db.commit()
+    composed = compose(case, "builtin:index_rent")
+    assert not [check for check in composed["checks"] if check["level"] == "error"], composed["checks"]
+    body = composed["data"]["body"]
+    assert "von 117,4 Punkten im März 2024 auf 123,6 Punkte im September 2026 gestiegen (2020 = 100)" in body
+    assert "Veränderung um 5,28 %" in body                      # 123.6 / 117.4 − 1
+    assert "von 650,00 € um 34,33 € auf **684,33 €**" in body    # 650 × 123.6 ÷ 117.4, to the cent
+    assert "ab dem **01.12.2026**" in body                       # second month after receipt in October
+    rows = composed["blocks"]["indexmiete"]["rows"]
+    assert rows[1][1:] == ["117,4 (März 2024)", "123,6 (September 2026)"] and rows[-1][1:] == ["880,00 €", "914,33 €"]
+
+    # the rent must stay unchanged for a year; a lower index gives no increase; entries differing from the series warn
+    early = compose(case, "builtin:index_rent", {"receipt_date": "2024-12-20", "base_month": "2024-03", "base_index": "117.4",
+                                                  "new_month": "2024-11", "new_index": "119"}, issue="2024-12-15")
+    assert any(check["level"] == "error" and "frühestens wirksam ab 01.03.2025" in check["text"] for check in early["checks"])
+    assert any(check["level"] == "warning" and "November 2024" in check["text"] for check in early["checks"])
+    lower = compose(case, "builtin:index_rent", {**composed["inputs"], "new_index": "117.0"})
+    assert any("nicht gestiegen" in check["text"] for check in lower["checks"] if check["level"] == "error")
+    assert any("weicht vom hinterlegten Wert 123,6 ab" in check["text"] for check in lower["checks"])
+    bad = case["client"].post(base(case) + "/compose", json={"template_id": "builtin:index_rent", "issue_date": ISSUE,
+                                                             "inputs": {**composed["inputs"], "new_month": "2026-9"}})
+    assert bad.status_code == 422
+
+    # archived like every letter
+    payload, shown = preview(case, composed)
+    archived = client.post(base(case), json={**payload, "review_hash": shown["review_hash"], "idempotency_key": "index-letter-1"})
+    assert archived.status_code in (200, 201), archived.text
+
+
+def test_only_owner_or_manager_keep_the_price_index(case):
+    clerk = auth.register_user("letter-books", "books-letters@example.test", "Nora Buch", "Secret123", "buchhaltung")
+    with TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(clerk.id)}) as client:
+        assert client.get("/api/v1/letter-templates/price-index").json()["can_edit"] is False
+        refused = client.put("/api/v1/letter-templates/price-index", json={**VPI, "base_revision": 0,
+                                                                          "idempotency_key": "vpi-clerk-1"})
+        assert refused.status_code == 403
+
+
+@pytest.mark.parametrize("stored, model", [("index", "index"), ("Indexmiete (VPI)", "index"), ("stepped", "stepped"),
+                                           ("Staffelmiete", "stepped"), ("fixed", "fixed"), ("Festmiete", "fixed"),
+                                           (None, None), ("", None)])
+def test_the_rent_model_is_read_from_keys_and_older_texts(stored, model):
+    from backend.services.letter_templates import rent_model
+    assert rent_model({"index_rent": stored}) == model
+
+
+def test_rent_letters_name_business_premises(case):
+    from backend.models import UnitPatch
+    store._patch_entity("unit", case["unit"].id, UnitPatch(unit_type="Gewerbe"))
+    if hasattr(store, "db"):
+        store.db.commit()
+    increase = compose(case, "builtin:rent_increase", RENT_INCREASE)
+    assert any(check["level"] == "error" and "nur für Wohnraum" in check["text"] for check in increase["checks"])
+    index = compose(case, "builtin:index_rent", {"receipt_date": "2026-10-23", "base_month": "2024-03",
+                                                 "base_index": "117.4", "new_month": "2026-09", "new_index": "123.6"})
+    assert any(check["level"] == "warning" and "Wertsicherungsklausel" in check["text"] for check in index["checks"])

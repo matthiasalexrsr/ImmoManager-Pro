@@ -70,3 +70,36 @@ export const letterheadService = {
   removeLogo: (baseRevision, options) => api.del(`/letterhead/logo?scope=global&base_revision=${baseRevision}&idempotency_key=${crypto.randomUUID()}`, options),
   sample: options => api.getBlob('/letterhead/sample-pdf', options),
 };
+
+export const priceIndexService = {
+  view: options => api.get('/letter-templates/price-index', options),
+  save: (payload, options) => api.put('/letter-templates/price-index', payload, options),
+};
+
+const MONTH_FORMS = [/^(\d{4})-(\d{1,2})$/, /^(\d{1,2})[./](\d{4})$/];
+
+/** Lines like "2025-08;121,4", "08/2025 121,4" or "08.2025<Tab>121.4" → {"2025-08": "121.4"}; with the lines that could not be read. */
+export function parsePriceIndex(text) {
+  const values = {};
+  const errors = [];
+  String(text || '').split(/\r?\n/).forEach((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const [rawMonth, rawValue, ...rest] = trimmed.split(/[;\t ]+/);
+    let year; let month;
+    for (const form of MONTH_FORMS) {
+      const match = rawMonth?.match(form);
+      if (match) { [year, month] = form === MONTH_FORMS[0] ? [match[1], match[2]] : [match[2], match[1]]; break; }
+    }
+    const value = (rawValue || '').replace(',', '.');
+    if (!year || Number(month) < 1 || Number(month) > 12 || rest.length || !/^\d{1,4}(\.\d{1,3})?$/.test(value)) {
+      errors.push(`Zeile ${index + 1}: „${trimmed}“`);
+      return;
+    }
+    values[`${year}-${String(month).padStart(2, '0')}`] = value;
+  });
+  return { values, errors };
+}
+
+export const formatPriceIndex = values => Object.keys(values || {}).sort()
+  .map(month => `${month};${String(values[month]).replace('.', ',')}`).join('\n');
