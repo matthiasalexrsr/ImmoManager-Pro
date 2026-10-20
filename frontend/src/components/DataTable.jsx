@@ -326,7 +326,10 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     }
     setStored(current => ({ ...current, sortKey: config.sort?.key || null, sortDir: config.sort?.direction === 'desc' ? 'desc' : 'asc',
       pageSize: PAGE_SIZES.includes(config.page_size) ? config.page_size : 25,
-      hiddenCols: Object.fromEntries(columns.map(col => [col.key, Array.isArray(config.visible_columns) ? !config.visible_columns.includes(col.key) : Boolean(col.hidden)])),
+      // a column the view did not know when it was saved (added by an update) keeps its default
+      hiddenCols: Object.fromEntries(columns.map(col => [col.key, Array.isArray(config.visible_columns)
+        && !(Array.isArray(config.column_order) && !config.column_order.includes(col.key))
+        ? !config.visible_columns.includes(col.key) : Boolean(col.hidden)])),
       columnOrder: Array.isArray(config.column_order) ? config.column_order.filter(key => columns.some(col => col.key === key)) : columns.map(col => col.key),
     }));
     setPage(0);

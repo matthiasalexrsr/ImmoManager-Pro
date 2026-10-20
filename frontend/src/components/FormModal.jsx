@@ -500,7 +500,8 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         required={f.required}
                         disabled={fieldDisabled}
                       >
-                        <option value="">{t('ui.form.pleaseSelect')}</option>
+                        {/* a list with its own empty choice ("— Keine —", "Automatisch …") needs no second one */}
+                        {!options?.some(o => o.value === '') && <option value="">{t('ui.form.pleaseSelect')}</option>}
                         {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         {/* A stored value the list does not offer (imported, older data) stays selectable instead of being lost. */}
                         {values[f.key] !== '' && values[f.key] != null && !options?.some(o => String(o.value) === String(values[f.key])) && (

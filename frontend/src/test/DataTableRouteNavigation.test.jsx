@@ -190,6 +190,22 @@ describe('DataTable navigation within one list', () => {
     expect(within(table()).getByText('Alpha 31')).toBeInTheDocument();
   });
 
+  it('shows a column a saved view did not know yet, and keeps hiding one it hid', async () => {
+    auth.owner = 'owner';
+    workspace.list.mockResolvedValue({ items: [
+      { id: 'saved-before', name: 'Vor dem Update', config: { page_size: 10, visible_columns: ['title'], column_order: ['title'], column_filters: {} } },
+      { id: 'saved-hidden', name: 'Bezirk aus', config: { page_size: 50, visible_columns: ['title'], column_order: ['title', 'district'], column_filters: {} } },
+    ] });
+    mount(`/maintenance${alpha}`, { routeViews: true });
+    await screen.findByRole('option', { name: 'Vor dem Update' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ansicht' }), { target: { value: 'saved-before' } });
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Zeilen pro Seite' })).toHaveValue('10'));
+    expect(screen.getByRole('columnheader', { name: /Bezirk/ })).toBeInTheDocument();      // added after the view was saved
+    fireEvent.change(screen.getByRole('combobox', { name: 'Ansicht' }), { target: { value: 'saved-hidden' } });
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Zeilen pro Seite' })).toHaveValue('50'));
+    expect(screen.queryByRole('columnheader', { name: /Bezirk/ })).not.toBeInTheDocument();
+  });
+
   it('lets a secondary table filter its own rows without inheriting the main record focus', () => {
     render(<MemoryRouter initialEntries={['/maintenance?focus_id=Alpha-31']}>
       <DataTable title="Hauptvorgänge" settingsKey="main-focus" columns={columns} data={data} />
