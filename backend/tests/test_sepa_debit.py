@@ -95,8 +95,9 @@ def case(monkeypatch):
     account = store.create_account(AccountCreate(portfolio_id=portfolio.id, name="Mietkonto", bank_name="Testbank",
                                                  iban="DE89 3704 0044 0532 0130 00", account_type="bank"))
 
-    def lease(number, tenant, place=prop):
-        unit = store.create_unit(UnitCreate(property_id=place.id, label=f"Whg {number}", unit_type="apartment", area_sqm=60))
+    def lease(number, tenant, place=prop, **rent):
+        unit = store.create_unit(UnitCreate(property_id=place.id, label=f"Whg {number}", unit_type="apartment", area_sqm=60,
+                                            **rent))
         return store.create_contract(ContractCreate(contract_number=number, property_id=place.id, unit_id=unit.id,
                                                     tenant_id=tenant.id, start_date=date(2021, 5, 1), status="active"))
 
@@ -105,7 +106,8 @@ def case(monkeypatch):
 
     complete = dict(sepa_iban="DE02120300000000202051", sepa_mandate="MR-100001", sepa_mandate_date=date(2021, 4, 20))
     contracts = {
-        "ready": lease("MV-1", debit("Jürgen Weiß", **complete)),
+        "ready": lease("MV-1", debit("Jürgen Weiß", **complete), cold_rent=700, service_charge_advance=150,
+                       heating_advance=60),
         "no_iban": lease("MV-2", debit("Sabine Krause", sepa_mandate="MR-100002", sepa_mandate_date=date(2021, 4, 20))),
         "transfer": lease("MV-3", store.create_tenant(TenantCreate(full_name="Ida Überweisung", payment_method="bank_transfer"))),
         "foreign": lease("MV-4", debit("Fremd Mieter", **complete), foreign),
@@ -113,8 +115,8 @@ def case(monkeypatch):
                                                          "sepa_account_holder": "Paula und Peter Pünktlich"})),
     }
     receivables = {
-        "rent": store.create_receivable(ReceivableCreate(contract_id=contracts["ready"].id, due_date=date(2026, 11, 3),
-                                                         amount_due=812.40, description="Miete")),
+        "back_payment": store.create_receivable(ReceivableCreate(contract_id=contracts["ready"].id, due_date=date(2026, 11, 3),
+                                                                 amount_due=812.40, description="Nachzahlung 2025")),
         "extra": store.create_receivable(ReceivableCreate(contract_id=contracts["ready"].id, due_date=date(2026, 11, 3),
                                                           amount_due=55.00, description="Stellplatz")),
         "october": store.create_receivable(ReceivableCreate(contract_id=contracts["ready"].id, due_date=date(2026, 10, 3),
@@ -153,14 +155,17 @@ def test_preview_lists_the_portfolio_s_direct_debit_contracts_with_what_is_open(
     lines = {line["contract_number"]: line for line in preview["lines"]}
     assert set(lines) == {"MV-1", "MV-2", "MV-5"}                      # not the transfer, not the other portfolio
     ready = lines["MV-1"]
-    assert ready["ready"] and ready["amount"] == "867.40" and ready["iban"] == "DE02 … 2051"
-    assert [item["description"] for item in ready["receivables"]] == ["Miete", "Stellplatz"]   # not October
+    # the monthly rent from the tenant account (nothing paid) and the stored receivables due in November
+    assert ready["ready"] and ready["amount"] == "1777.40" and ready["iban"] == "DE02 … 2051"
+    assert [(item["description"], item["open"]) for item in ready["receivables"]] == [
+        ("Miete", "910.00"), ("Nachzahlung 2025", "812.40"), ("Stellplatz", "55.00")]      # not October
     assert lines["MV-2"]["problems"] == ["IBAN fehlt."] and not lines["MV-2"]["ready"]
     assert lines["MV-5"]["amount"] == "0.00" and not lines["MV-5"]["ready"]
     assert lines["MV-5"]["account_holder"] == "Paula und Peter Pünktlich"
-    assert preview["ready_count"] == 1 and preview["ready_total"] == "867.40"
+    assert preview["ready_count"] == 1 and preview["ready_total"] == "1777.40"
     assert preview["collection_date"] == "2026-11-02" and preview["collection_date_problem"] is None
     assert preview["creditor"]["creditor_id"] == ""
+    assert preview["creditor"]["suggested_name"] == "Linda Reiser"                     # the portfolio's owner
     assert _preview(case["books"], case, collection_date="2026-11-01")["collection_date_problem"].startswith("Der 01.11.2026")
 
 
@@ -170,15 +175,15 @@ def test_the_file_is_valid_recorded_replayed_and_not_written_twice_by_accident(c
     response = _file(case["books"], case, [ready], key)
     assert response.status_code == 200, response.text
     result = response.json()
-    assert result["count"] == 1 and result["total"] == "867.40" and result["filename"] == "SEPA-Lastschriften_2026-11_2026-11-03.xml"
+    assert result["count"] == 1 and result["total"] == "1777.40" and result["filename"] == "SEPA-Lastschriften_2026-11_2026-11-03.xml"
     document = etree.fromstring(result["xml"].encode())
     schema = etree.XMLSchema(etree.parse(str(XSD)))
     assert schema.validate(document), schema.error_log
     assert document.findtext(".//p:ReqdColltnDt", namespaces=NS) == "2026-11-03"
     assert document.findtext(".//p:CdtrSchmeId/p:Id/p:PrvtId/p:Othr/p:Id", namespaces=NS) == CREDITOR
-    assert document.findtext(".//p:DrctDbtTxInf/p:InstdAmt", namespaces=NS) == "867.40"
+    assert document.findtext(".//p:DrctDbtTxInf/p:InstdAmt", namespaces=NS) == "1777.40"
     assert document.findtext(".//p:MndtId", namespaces=NS) == "MR-100001"
-    assert document.findtext(".//p:Ustrd", namespaces=NS) == "Miete, Stellplatz 11/2026 Vertrag MV-1"
+    assert document.findtext(".//p:Ustrd", namespaces=NS) == "Miete, Nachzahlung 2025, Stellplatz 11/2026 Vertrag MV-1"
     # the same request again (a lost answer): the same file, no second record
     again = _file(case["books"], case, [ready], key)
     assert again.status_code == 200 and again.json()["message_id"] == result["message_id"]

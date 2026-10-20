@@ -1,0 +1,15 @@
+.sepa-debit-dialog { max-width: min(1080px, calc(100vw - 2rem)); }
+.sepa-debit-intro { font-size: var(--text-sm); margin: 0 0 1rem; }
+.sepa-debit-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.sepa-debit-fields label { display: grid; gap: 0.3rem; font-size: var(--text-sm); font-weight: 600; }
+.sepa-debit-table { max-width: 100%; overflow-x: auto; margin-bottom: 0.75rem; }
+.sepa-debit-table table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.sepa-debit-table th, .sepa-debit-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.sepa-debit-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sepa-debit-table .text-muted { font-size: var(--text-xs); }
+.sepa-debit-blocked td { color: var(--color-text-muted, #6b7280); }
+.sepa-debit-repeat { display: block; margin: 0.5rem 0; font-size: var(--text-sm); }
+.sepa-debit-files { margin: 0.5rem 0; font-size: var(--text-sm); }
+.sepa-debit-sum { margin-right: auto; font-weight: 600; }
+.sepa-debit-dialog .modal-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.sepa-debit-fields select, .sepa-debit-fields input { width: 100%; min-width: 0; max-width: 100%; }

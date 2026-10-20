@@ -166,7 +166,10 @@ function TenantFacts({ tenant }) {
   const payment = PAYMENT_METHODS.find(option => option.value === tenant.payment_method)?.label;
   const facts = [['E-Mail', tenant.email && <a href={`mailto:${tenant.email}`}>{tenant.email}</a>],
     ['Telefon', tenant.phone && <a href={`tel:${tenant.phone}`}>{tenant.phone}</a>], ['Anschrift', address],
-    ['Zahlungsart', payment], ['SEPA-Mandat', tenant.sepa_mandate]].filter(([, value]) => value);
+    ['Zahlungsart', payment],
+    ['SEPA-Mandat', tenant.sepa_mandate && [tenant.sepa_mandate, tenant.sepa_mandate_date && `vom ${day(tenant.sepa_mandate_date)}`].filter(Boolean).join(' ')],
+    ['Lastschriftkonto', tenant.sepa_iban && [tenant.sepa_iban.replace(/(.{4})/g, '$1 ').trim(), tenant.sepa_account_holder && `(${tenant.sepa_account_holder})`].filter(Boolean).join(' ')],
+  ].filter(([, value]) => value);
   if (!facts.length) return null;
   return <section className="card" aria-label="Stammdaten" style={{ marginBottom: '1rem' }}><div className="card-body">
     <dl className="overview-dl">{facts.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>

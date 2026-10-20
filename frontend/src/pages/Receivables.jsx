@@ -15,6 +15,8 @@ import { entityHref } from '../utils/entityLinks';
 import { dunningText } from '../features/dunning/dunningText';
 import './receivablesLinks.css';
 import ReceivableSettlement from '../features/ReceivableSettlement';
+import SepaDebitDialog from '../features/sepaDebit/SepaDebitDialog';
+import { useCanWrite } from '../contexts/AuthContext';
 
 export default function Receivables() {
   const [params, setParams] = useSearchParams();
@@ -29,6 +31,8 @@ export default function Receivables() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
+  const [sepaOpen, setSepaOpen] = useState(false);
+  const canDebit = useCanWrite('/receivables/sepa-debits/files');
   const [deleteError, setDeleteError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const statementId = params.get('statement_id') || '';
@@ -140,6 +144,11 @@ export default function Receivables() {
         <button className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
           const next = new URLSearchParams(current); next.delete('statement_id'); return next;
         })}>Abrechnungsfilter entfernen</button></p>}
+      {canDebit && <div className="toolbar receivables-toolbar">
+        <button type="button" className="btn btn-secondary" onClick={() => setSepaOpen(true)}>SEPA-Lastschriftdatei …</button>
+        <span className="text-muted">Datei für das Online-Banking mit den offenen Mieten der Lastschriftzahler.</span>
+      </div>}
+      {sepaOpen && <SepaDebitDialog onClose={() => setSepaOpen(false)} />}
       <div className="filter-chips">{[['', 'Alle Vorgänge'], ['unpaid', 'Offene Forderungen'], ['credits', 'Offene Guthaben']].map(([value, label]) => <button type="button" key={value} className={`btn btn-sm ${selectedStatus === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setParams(current => { const next = new URLSearchParams(current); if (value) next.set('status', value); else next.delete('status'); return next; })}>{label}</button>)}</div>
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>

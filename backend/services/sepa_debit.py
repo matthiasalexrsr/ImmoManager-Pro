@@ -90,13 +90,17 @@ def _creditor(unit, account) -> dict:
             "creditor_name": value.get("creditor_name") or ""}
 
 
-def _suggested_name(unit) -> str:
-    """The sender of the installation's letterhead, as a first suggestion for the creditor name."""
+def _suggested_name(unit, account) -> str:
+    """A first suggestion for the creditor name: the letterhead's sender, else the portfolio's owner."""
     try:
         from .letterhead import source
-        return source(unit, None)["sender_name"]
+        sender = source(unit, None)["sender_name"]
     except Exception:              # a damaged letterhead must not block the direct debit
-        return ""
+        sender = ""
+    if sender:
+        return sender
+    portfolio = unit.store.get_portfolio(account.portfolio_id)
+    return (portfolio.owner_name or portfolio.name or "").strip()
 
 
 def _files(unit) -> list[dict]:
@@ -130,17 +134,43 @@ def _earlier(files: list[dict]) -> dict[str, list[dict]]:
     return found
 
 
+def _rent_due(store, contracts: list, start: date, end: date, today: date) -> dict[str, list[dict]]:
+    """Per contract the monthly rent falling due in the month, as far as payments booked up to today
+    have not paid it (the tenant account's FIFO, as in the rent overview and the liquidity plan)."""
+    from ..domain.lease_engine import LeaseEngine
+    from .payment_allocations import contract_ledger, credited_by_tenant
+    from .read_cache import CachedReads
+    credited = credited_by_tenant(store, {contract.tenant_id for contract in contracts if contract.tenant_id})
+    reads = CachedReads(store)
+    found: dict[str, list[dict]] = {}
+    last = end - timedelta(days=1)
+    for contract in contracts:
+        claims, payments = contract_ledger(reads, contract, last, credited.get(contract.tenant_id, []), payments_until=today)
+        for line in LeaseEngine.build_settlement_report(claims, payments, today=today):
+            # monthly rent only: arrears carried over and returned payments are a matter for dunning
+            if line.label is None and start <= line.due_date < end and line.outstanding_amount > ZERO:
+                found.setdefault(contract.id, []).append({
+                    "id": f"rent:{contract.id}:{line.period_start.isoformat()}", "due_date": line.due_date.isoformat(),
+                    "description": "Miete", "open": str(money(line.outstanding_amount))})
+    return found
+
+
 def _lines(unit, account, start: date, end: date, today: date) -> list[dict]:
+    """Every contract of the account's portfolio whose tenant pays by direct debit, with the rent and
+    the stored receivables (e.g. a utility statement's back payment) still open in the month."""
     store = unit.store
+    from ..domain.occupancy import NON_BILLABLE_STATUSES
     from .receivable_residuals import ResidualReader
     properties = {item.id: item for item in store.list_properties() if item.portfolio_id == account.portfolio_id}
-    contracts = [item for item in store.list_contracts() if item.property_id in properties]
+    contracts = [item for item in store.list_contracts()
+                 if item.property_id in properties and item.status not in NON_BILLABLE_STATUSES]
     tenants = {item.id: item for item in store.list_tenants()}
     units = {item.id: item for item in store.list_units()}
     portfolio = store.get_portfolio(account.portfolio_id)
     payers = [contract for contract in contracts
               if contract.tenant_id in tenants and tenants[contract.tenant_id].payment_method == "sepa_direct_debit"]
     wanted = {contract.id for contract in payers}
+    rent = _rent_due(store, payers, start, end, today)
     due = [item for item in store.list_receivables() if item.contract_id in wanted and start <= item.due_date < end
            and item.status in UNPAID_RECEIVABLE_STATUSES]
     reader = ResidualReader(store) if due else None
@@ -148,14 +178,15 @@ def _lines(unit, account, start: date, end: date, today: date) -> list[dict]:
     lines = []
     for contract in sorted(payers, key=lambda item: item.contract_number or ""):
         tenant = tenants[contract.tenant_id]
-        open_items = []
+        open_items = list(rent.get(contract.id, []))
         for receivable in sorted((item for item in due if item.contract_id == contract.id), key=lambda item: item.due_date):
             assert reader is not None
             balance = money(reader.balance(receivable, today))
             if balance > ZERO:
                 open_items.append({"id": receivable.id, "due_date": receivable.due_date.isoformat(),
-                                   "description": receivable.description or "Miete", "open": str(balance),
-                                   "earlier": earlier.get(receivable.id, [])})
+                                   "description": receivable.description or "Forderung", "open": str(balance)})
+        for item in open_items:
+            item["earlier"] = earlier.get(item["id"], [])
         total = sum((Decimal(item["open"]) for item in open_items), ZERO)
         problems = [problem for problem in (
             rules.iban_problem(tenant.sepa_iban), rules.bic_problem(tenant.sepa_bic),
@@ -190,7 +221,7 @@ def preview(store, actor_id: str, account_id: str, month: str, collection_date: 
         ready = [line for line in lines if line["ready"]]
         return {"account": {"id": account.id, "name": account.name, "iban": rules.mask_iban(account.iban),
                             "bic": account.bic, "portfolio_id": account.portfolio_id},
-                "creditor": {**_creditor(unit, account), "suggested_name": _suggested_name(unit)}, "month": month, "collection_date": day.isoformat(),
+                "creditor": {**_creditor(unit, account), "suggested_name": _suggested_name(unit, account)}, "month": month, "collection_date": day.isoformat(),
                 "collection_date_problem": rules.collection_date_problem(day, today),
                 "lines": lines, "ready_count": len(ready),
                 "ready_total": str(sum((Decimal(line["amount"]) for line in ready), ZERO)),
