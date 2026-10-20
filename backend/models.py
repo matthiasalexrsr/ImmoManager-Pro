@@ -339,6 +339,10 @@ class DocumentCreate(BaseModel):
     tags: Optional[str] = None
     description: Optional[str] = None
     file_url: str
+    # Expiry with a reminder (migration d8a1c3e5f7b9): energy certificate, insurance policy, smoke
+    # detector inspection, guarantee … The daily job reminds `reminder_days` (default 30) before.
+    valid_until: Optional[date] = None
+    reminder_days: Optional[int] = Field(default=None, ge=0, le=730)
 
 
 class Document(DocumentCreate):
@@ -637,6 +641,8 @@ class DocumentPatch(BaseModel):
     tags: Optional[str] = None
     description: Optional[str] = None
     file_url: Optional[str] = None
+    valid_until: Optional[date] = None
+    reminder_days: Optional[int] = Field(default=None, ge=0, le=730)
 
 
 class TaskPatch(BaseModel):

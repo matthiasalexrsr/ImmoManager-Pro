@@ -17,6 +17,8 @@ from datetime import date, datetime
 
 from ...config import settings
 from .core import JobContext, JobRun, JobRunner, JobStore, MemoryJobStore, SqlJobStore
+from .document_expiry import KIND as DOCUMENT_EXPIRY_KIND
+from .document_expiry import make_handler as make_document_expiry_handler
 from .recurring import KIND as RECURRING_KIND
 from .recurring import make_handler as make_recurring_handler
 from .schedule import DailyAt, MonthlyAt, parse_hh_mm, utcnow
@@ -44,6 +46,7 @@ PERIODIC = (
     Periodic(RECURRING_KIND, DailyAt(5, 0)),
     Periodic(ESCALATION_KIND, DailyAt(6, 15)),
     Periodic(SERVICE_CONTRACT_KIND, DailyAt(6, 30)),
+    Periodic(DOCUMENT_EXPIRY_KIND, DailyAt(6, 40)),
 )
 
 
@@ -117,7 +120,7 @@ def default_handlers() -> dict:
     from .communication import KIND as COMMUNICATION_KIND
     from .communication import handler as communication_handler
     return {ASSISTANT_KIND: assistant_handler, COMMUNICATION_KIND: communication_handler, RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
-            SERVICE_CONTRACT_KIND: make_service_contract_handler(),
+            SERVICE_CONTRACT_KIND: make_service_contract_handler(), DOCUMENT_EXPIRY_KIND: make_document_expiry_handler(),
             BACKUP_KIND: backup_handler, PROBE_KIND: probe_handler}
 
 

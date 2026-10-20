@@ -47,7 +47,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 9: canonical receivable settlement links; private saved reports are full-backup only
 # 10: document recovery/evidence records, joined with the canonical finance contract
 # 11: re-letting projects, applicant details and their documents (likewise)
-SNAPSHOT_FORMAT_VERSION = 11
+# 12: document expiry dates and reminder lead times (likewise)
+SNAPSHOT_FORMAT_VERSION = 12
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}

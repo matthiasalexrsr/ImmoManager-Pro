@@ -40,6 +40,7 @@ const DE = {
   // appointments, notification kinds and other short keys
   viewing: 'Besichtigung', inspection: 'Begehung', meeting: 'Besprechung', deadline: 'Frist', other: 'Sonstiges',
   general: 'Allgemein', overdue_payment: 'Überfällige Zahlung', contract_expiry: 'Vertragsende', task_due: 'Aufgabe fällig',
+  document_expiry: 'Dokument läuft ab',
   escalation: 'Eskalation', dunning_proposal: 'Mahnvorschlag', notify: 'Benachrichtigen', escalate_priority: 'Priorität erhöhen',
   vacancy: 'Leerstand', property: 'Immobilie', unit: 'Einheit', contact: 'Kontakt', document: 'Dokument',
   installation: 'Einbau', replacement: 'Austausch', reading: 'Ablesung', manual: 'Manuell', auto: 'Automatisch',

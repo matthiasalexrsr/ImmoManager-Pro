@@ -1128,3 +1128,33 @@ def test_reletting_projects_applicant_columns_and_the_downgrade(migrate):
         assert conn.execute("SELECT full_name FROM leads").fetchall() == [("Anna Bergmann",)]
     migrate(RELETTING_REVISION)
     assert APPLICANT_COLUMNS <= _schema(db_path)["leads"]
+
+
+DOCUMENT_EXPIRY_REVISION = "d8a1c3e5f7b9"
+
+
+def test_document_expiry_columns_and_the_downgrade(migrate):
+    db_path = migrate(RELETTING_REVISION)
+    _seed_previous_schema(db_path)
+    triggers = _triggers(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("INSERT INTO documents (id, title, file_url, created_at, updated_at) "
+                     "VALUES ('doc-e', 'Energieausweis', '/uploads/documents/ea.pdf', '2026-01-01', '2026-01-01')")
+    migrate(DOCUMENT_EXPIRY_REVISION)
+    assert {"valid_until", "reminder_days"} <= _schema(db_path)["documents"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT valid_until, reminder_days FROM documents WHERE id = 'doc-e'").fetchone() == (None, None)
+        assert "idx_documents_valid_until" in {row[1] for row in conn.execute("PRAGMA index_list(documents)")}
+        conn.execute("UPDATE documents SET valid_until = '2036-01-01' WHERE id = 'doc-e'")
+    with pytest.raises(RuntimeError, match="expiry dates"):
+        migrate.downgrade(RELETTING_REVISION)
+    assert _version(db_path) == DOCUMENT_EXPIRY_REVISION
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE documents SET valid_until = NULL")
+    migrate.downgrade(RELETTING_REVISION)
+    assert not {"valid_until", "reminder_days"} & _schema(db_path)["documents"]
+    assert _triggers(db_path) == triggers
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT title FROM documents WHERE id = 'doc-e'").fetchone() == ("Energieausweis",)
+    migrate(DOCUMENT_EXPIRY_REVISION)
+    assert {"valid_until", "reminder_days"} <= _schema(db_path)["documents"]

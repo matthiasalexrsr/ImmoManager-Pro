@@ -33,7 +33,7 @@ ADOPT_UNVERSIONED_AT = "f6a1b2c3d4e5"
 ORM_ADOPTION_HEAD = "f016a1b2c001"
 ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001",
                                    "f020a1b2c001", "a7d3c5e9f2b1", "f021a1b2c001",
-                                   "b4d6f8a0c2e1", "f022a1b2c001", "c6e8a0b2d4f3"})
+                                   "b4d6f8a0c2e1", "f022a1b2c001", "c6e8a0b2d4f3", "d8a1c3e5f7b9"})
 
 
 def _current_addition_names():
@@ -115,6 +115,10 @@ def _current_additions_are_present(connection) -> bool:
                 ('leads', 'doc_self_disclosure'), ('leads', 'doc_income'), ('leads', 'doc_credit_report'),
                 ('leads', 'doc_landlord_reference'), ('leads', 'doc_id_checked'), ('leads', 'rating'),
                 ('leads', 'decided_at'), ('viewing_appointments', 'rating')}):
+            continue
+        # And the document expiry columns of d8a1c3e5f7b9 (guarded, additive).
+        if action == 'add_column' and (difference[2], difference[3].name) in {
+                ('documents', 'valid_until'), ('documents', 'reminder_days')}:
             continue
         if action == 'add_table' and item.name not in additions:
             continue

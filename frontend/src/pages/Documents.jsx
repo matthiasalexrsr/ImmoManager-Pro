@@ -13,6 +13,8 @@ import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
 import { useCanWrite } from '../contexts/AuthContext';
 import { documentTypeLabel } from '../utils/documentType';
+import { formatDate } from '../utils/format';
+import { expiryState } from '../utils/documentExpiry';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 import KpiAction from '../components/KpiAction';
@@ -184,12 +186,14 @@ function DocumentsWorkspace() {
     if (filter === 'ocr_open') return enriched.filter(d => d.ocr_status === 'processing' || (!d.ocr_status && d.file_url));
     if (filter === 'with_file') return enriched.filter(d => d.file_url);
     if (filter === 'ocr_completed') return enriched.filter(d => d.ocr_status === 'completed');
+    if (filter === 'expiring') return enriched.filter(d => ['expired', 'due'].includes(expiryState(d)));
     return enriched;
   }, [enriched, filter, tenantId]);
 
   // Summary stats
   const withFile = enriched.filter(d => d.file_url).length;
   const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id && !d.tenant_id).length;
+  const expiring = enriched.filter(d => ['expired', 'due'].includes(expiryState(d))).length;
   const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
 
   const columns = [
@@ -200,6 +204,11 @@ function DocumentsWorkspace() {
     { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
     { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
+    { key: 'valid_until', label: 'Gültig bis', type: 'date', filterType: 'dateRange', render: (value, row) => {
+      if (!value) return '—';
+      const state = expiryState(row);
+      return <span className={`document-expiry document-expiry-${state}`}>{formatDate(value)}{state === 'expired' ? ' · abgelaufen' : state === 'due' ? ' · läuft ab' : ''}</span>;
+    } },
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
     { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
       render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
@@ -330,6 +339,9 @@ function DocumentsWorkspace() {
       options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
     { key: 'contract_id', label: t('pages.documents.form.contract') || 'Vertrag', type: 'select',
       options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...(tenantId ? (overview?.contracts || []) : contracts).map(c => ({ value: c.id, label: c.contract_number }))] },
+    { key: 'valid_until', label: 'Gültig bis', type: 'date',
+      hint: 'z. B. Energieausweis 10 Jahre, Rauchmelder- oder Wartungsnachweis 1 Jahr, Police bis zum Ablauf. Das Programm erinnert vorher mit einer Aufgabe.' },
+    { key: 'reminder_days', label: 'Erinnern (Tage vorher)', type: 'number', step: '1', min: 0, max: 730, hint: 'leer: 30 Tage' },
     { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
     { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
@@ -390,6 +402,7 @@ function DocumentsWorkspace() {
         <KpiAction label={`Mit Datei${tenantId ? ' auf dieser Seite' : ''}`} value={withFile} onClick={() => openSources('with_file')} />
         <KpiAction label={`Text erkannt${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
         {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
+        {expiring > 0 && !tenantId && <KpiAction label="Läuft ab oder abgelaufen" value={expiring} color="var(--warning)" onClick={() => openSources('expiring')} />}
       </div>}
 
       {/* Filter tabs */}
@@ -400,6 +413,7 @@ function DocumentsWorkspace() {
           { key: 'ocr_open', label: 'Texterkennung offen' },
           { key: 'with_file', label: 'Mit Datei' },
           { key: 'ocr_completed', label: 'Text erkannt' },
+          { key: 'expiring', label: 'Läuft ab oder abgelaufen' },
         ].map(f => (
           <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
@@ -515,7 +529,7 @@ function DocumentsWorkspace() {
           setDocType(typeof config.column_filters?.document_type === 'string' ? config.column_filters.document_type : '');
           setFilter('all'); setPageSource(null);
           setSkip(0);
-        } : config => setFilter(['all', 'no_assignment', 'ocr_open', 'with_file', 'ocr_completed'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
+        } : config => setFilter(['all', 'no_assignment', 'ocr_open', 'with_file', 'ocr_completed', 'expiring'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
         loadExportData={tenantId ? loadPartyExport : undefined}
         onAdd={() => fileRef.current?.click()}
         onEdit={row => setModal(row)}

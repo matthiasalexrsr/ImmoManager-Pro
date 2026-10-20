@@ -306,6 +306,7 @@ class DocumentORM(Base):
         Index("idx_documents_property", "property_id"),
         Index("idx_documents_contract", "contract_id"),
         Index("idx_documents_tenant", "tenant_id"),
+        Index("idx_documents_valid_until", "valid_until"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
@@ -314,6 +315,8 @@ class DocumentORM(Base):
     contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
     tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    valid_until: Mapped[date | None] = mapped_column(Date)            # expiry (d8a1c3e5f7b9)
+    reminder_days: Mapped[int | None] = mapped_column(Integer)        # reminder lead time in days
     document_type: Mapped[str | None] = mapped_column(Text)
     document_date: Mapped[date | None] = mapped_column(Date)
     tags: Mapped[str | None] = mapped_column(Text)
