@@ -27,7 +27,7 @@ const isBlank = v => v == null || v === '' || Number.isNaN(Number(v));
 export function formatMoney(v, { blank = '—', currency = 'EUR' } = {}) {
   if (isBlank(v)) return blank;
   return formatter(`money:${currency}:${currencyDisplay}`, () => new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay }))
-    .format(Number(v));
+    .format(Number(v) === 0 ? 0 : Number(v));
 }
 
 /** Short amounts for chart axes: 426 €, 45.000 €, 1,5 Mio. € */

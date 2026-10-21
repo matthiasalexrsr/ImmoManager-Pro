@@ -11,6 +11,7 @@ Ausgangspunkt: `b89588fccd53ec04bafdf4c738ed69445afcfab1`, einschließlich Claud
 * Scheiterte eine ältere manuelle Zahlungsaufteilung nach dem ersten Teilbetrag, konnten vorherige Zuordnungen bereits entfernt sein. Der Kompatibilitätspfad schreibt jetzt atomar.
 * Ein bereits belegter Forderungsanteil fehlte im angezeigten Bankbudget und dessen Änderung in der Vorschau-Revision. Beides wird berücksichtigt; veraltete Vorschläge erhalten einen Konflikt.
 * Die Buchungsliste zeigte vollständig für Kaution/Forderung verwendete Beträge als unzugeordnete Miete. Sie rechnet Reservierungen jetzt centgenau ab.
+* Leere Ausgabensummen erschienen teilweise als `−0,00 EUR`. Die gemeinsame Geldformatierung stellt eine tatsächliche Null ohne negatives Vorzeichen dar.
 * Der Aufteilungsdialog lädt eine aktuelle Revision und verwendet den vorhandenen wiederholsicheren Zuordnungsbefehl. Eingaben bleiben nach Fehlern erhalten; erneutes Laden ist ohne Eingabeverlust möglich. Stornos verweisen zur Originalbuchung.
 * Ein verspäteter Bankvorschlag konnte nach Wechsel der Bewegung stehen bleiben. Der Komponentenstatus ist jetzt an die Buchungsidentität gebunden. Namen und Vertragsnummern führen zu Konto und Vertrag; Beträge erscheinen im deutschen Format.
 * Mahnausgang und zu prüfende Antworten zeigten nur 200 Einträge. Alle drei Mahnlisten laden nun weiter, behalten erfolgreiche Seiten bei Fehlern und verwerfen verspätete Antworten nach Filterwechsel. Ein fehlgeschlagener Abruf erscheint nicht als leerer Bestand.
