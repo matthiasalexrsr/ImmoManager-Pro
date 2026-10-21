@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import DocumentDetail from '../pages/DocumentDetail';
 import { shownFilename, uploadNewVersion } from '../features/documentDetail/documentDetailApi';
+import { api } from '../api';
 
-vi.mock('../api', () => ({ api: { get: vi.fn(), captureSession: () => () => {} } }));
+vi.mock('../api', () => ({ api: { get: vi.fn(), list: vi.fn(), captureSession: () => () => {} } }));
 vi.mock('../i18n', () => {
-  const t = key => ({ 'modals.confirmDelete.body': 'wirklich löschen?' })[key] || '';
+  const t = key => ({ 'modals.confirmDelete.body': 'wirklich löschen?', 'ui.buttons.save': 'Speichern',
+    'ui.buttons.cancel': 'Abbrechen' })[key] || '';
   return { useTranslation: () => ({ t, locale: 'de-DE' }) };
 });
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ role: 'verwalter' }), useCanWrite: () => true }));
@@ -47,6 +49,43 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the page of one document', () => {
+  it('shows the links derived from a contract even when the original has no explicit location', async () => {
+    const value = details();
+    value.document.property_id = null;
+    value.context = { property_id: 'p1', unit_id: 'u1', contract_id: 'c1', tenant_id: 't1' };
+    value.places.unit = 'Wohnung 1'; value.places.tenant = 'Partei A';
+    mount(makeService(value));
+    const assignment = await screen.findByRole('region', { name: 'Zuordnung' });
+    expect(within(assignment).getByRole('link', { name: 'Wohnung 1' })).toHaveAttribute('href', '/units/u1');
+    expect(within(assignment).getByText(/Ergänzende Verknüpfungen/)).toBeInTheDocument();
+  });
+
+  it('retries a failed assignment lookup and saves consistent dependent choices', async () => {
+    let fail = true;
+    api.list.mockImplementation(async path => {
+      if (fail) throw new Error('Auswahl unterbrochen');
+      if (path === '/properties') return [{ id: 'p2', name: 'Haus B' }];
+      if (path === '/units') return [{ id: 'u2', label: 'Wohnung 2', property_id: 'p2' }];
+      if (path === '/contracts') return [{ id: 'c2', contract_number: 'MV-2', property_id: 'p2', unit_id: 'u2', tenant_id: 't2' }];
+      return [{ id: 't2', full_name: 'Partei B' }];
+    });
+    const service = makeService(details({ document: { id: 'd1', title: 'Neues Dokument', file_url: '/uploads/test.pdf' },
+      versions: { items: [], next_before: null } }));
+    service.patch.mockResolvedValue({});
+    mount(service);
+    fireEvent.click(await screen.findByRole('button', { name: 'Zuordnung bearbeiten' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Auswahl unterbrochen');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Dokumentzuordnung bearbeiten' });
+    fireEvent.change(within(dialog).getByLabelText('Vertrag'), { target: { value: 'c2' } });
+    expect(within(dialog).getByLabelText('Immobilie')).toHaveValue('p2');
+    expect(within(dialog).getByLabelText('Einheit')).toHaveValue('u2');
+    expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t2');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern', exact: true }));
+    await waitFor(() => expect(service.patch).toHaveBeenCalledWith('d1', { property_id: 'p2', unit_id: 'u2', contract_id: 'c2', tenant_id: 't2' }));
+  });
   it('shows the current version, its facts, places, retention, versions and the text read', async () => {
     const service = makeService(details());
     mount(service);
@@ -115,6 +154,22 @@ describe('the page of one document', () => {
 });
 
 describe('a repeated version upload', () => {
+  it('starts a fresh command after a definitive conflict, and for a different file with the same metadata', async () => {
+    const service = { source: vi.fn().mockResolvedValue({ sha256: 'c'.repeat(64), document_revision: 'r1', version: null }),
+      uploadVersion: vi.fn().mockRejectedValueOnce(Object.assign(new Error('Andere Fassung'), { statusCode: 409 }))
+        .mockResolvedValue({ version: { number: 2 } }) };
+    const attempt = { current: null }, first = new File(['a'], 'scan.pdf', { lastModified: 1 });
+    await expect(uploadNewVersion(service, 'd1', first, '', attempt)).rejects.toThrow('Andere Fassung');
+    await uploadNewVersion(service, 'd1', first, '', attempt);
+    expect(service.source).toHaveBeenCalledTimes(2);
+    expect(service.uploadVersion.mock.calls[0][1].get('command_key')).not.toBe(service.uploadVersion.mock.calls[1][1].get('command_key'));
+    service.uploadVersion.mockRejectedValueOnce(new Error('Antwort verloren'));
+    await expect(uploadNewVersion(service, 'd1', first, '', attempt)).rejects.toThrow();
+    const other = new File(['b'], 'scan.pdf', { lastModified: 1 });
+    await uploadNewVersion(service, 'd1', other, '', attempt);
+    expect(service.source).toHaveBeenCalledTimes(4);
+    expect(service.uploadVersion.mock.calls[2][1].get('command_key')).not.toBe(service.uploadVersion.mock.calls[3][1].get('command_key'));
+  });
   it('reuses the command after a lost answer, and starts fresh for another file', async () => {
     const service = { source: vi.fn().mockResolvedValue({ sha256: 'b'.repeat(64), document_revision: 'r1', version: null }),
       uploadVersion: vi.fn().mockRejectedValueOnce(new Error('Netzwerkfehler')).mockResolvedValue({ version: { number: 2 } }) };

@@ -78,6 +78,7 @@ try {
   const file = await upload.json();
   assert.ok(file.file_url);
   const document = await call('POST', '/documents', { title: 'QA Stromvertrag', document_type: 'service_contract', property_id: north.id, file_url: file.file_url });
+  const contractDocument = await call('POST', '/documents', { title: 'QA Vertragsanlage Nord', contract_id: contract.id, file_url: file.file_url });
   await call('POST', `/service-contracts/${service.id}/documents`, { document_id: document.id });
   const candidates = [];
   for (let index = 1; index <= 201; index++) {
@@ -109,6 +110,67 @@ try {
   await page.waitForURL(url => url.pathname === '/');
   const later = page.getByRole('button', { name: 'Später', exact: true });
   if (await later.isVisible().catch(() => false)) await later.click();
+
+  await step('Property, unit and contract files find indirectly assigned documents and open their exact file', async () => {
+    await page.goto(`${base.origin}/properties/${north.id}?tab=documents`);
+    await page.getByRole('link', { name: contractDocument.title, exact: true }).click();
+    await expect(page.getByRole('heading', { name: contractDocument.title, exact: true })).toBeVisible();
+    const assignment = page.getByRole('region', { name: 'Zuordnung', exact: true });
+    await expect(assignment.getByRole('link', { name: unit.label, exact: true })).toHaveAttribute('href', `/units/${unit.id}`);
+    await expect(assignment).toContainText(tenant.full_name);
+    await assignment.getByRole('link', { name: unit.label, exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Dokumente der Einheit' }).getByRole('link', { name: contractDocument.title })).toBeVisible();
+    await page.getByRole('link', { name: 'Dokumente dieser Einheit', exact: true }).click();
+    await expect(page.getByLabel('Dokumentauswahl')).toContainText(unit.label);
+    await expect(row(contractDocument.title)).toHaveCount(1);
+    await expect(row(document.title)).toHaveCount(0);
+    await shot('unit-documents-context-1440.png');
+  });
+  await step('Document assignments use dependent choices and refresh all links after an actual committed save', async () => {
+    await page.goto(`${base.origin}/documents/${contractDocument.id}`);
+    await page.getByRole('button', { name: 'Zuordnung bearbeiten', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Dokumentzuordnung bearbeiten', exact: true });
+    await dialog.getByLabel('Vertrag', { exact: true }).selectOption(otherContract.id);
+    await expect(dialog.getByLabel('Immobilie', { exact: true })).toHaveValue(south.id);
+    await expect(dialog.getByLabel('Einheit', { exact: true })).toHaveValue(otherUnit.id);
+    await expect(dialog.getByLabel('Mieter / Partei', { exact: true })).toHaveValue(otherTenant.id);
+    const saved = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/documents/${contractDocument.id}` && response.request().method() === 'PATCH' && response.ok());
+    await dialog.getByRole('button', { name: 'Speichern', exact: true }).click(); await saved;
+    await expect(dialog).toHaveCount(0);
+    const assignment = page.getByRole('region', { name: 'Zuordnung', exact: true });
+    await expect(assignment.getByRole('link', { name: south.name, exact: true })).toBeVisible();
+    await expect(assignment.getByRole('link', { name: otherUnit.label, exact: true })).toBeVisible();
+    await shot('document-assignment-saved-1440.png');
+    // Return this owned fixture to its initial, deliberately indirect contract association.
+    await call('PATCH', `/documents/${contractDocument.id}`, { property_id: null, unit_id: null, tenant_id: null, contract_id: contract.id });
+  });
+  await step('Quick views download the current version and preserve the original; mobile dialogs remain usable', async () => {
+    await page.goto(`${base.origin}/documents/${contractDocument.id}`);
+    const form = page.getByRole('form', { name: 'Neue Fassung hochladen' });
+    const changedBytes = Buffer.from('Korrigierte QA Vertragsanlage. Fassung 2 bleibt nachvollziehbar.\n');
+    await form.getByLabel('Datei', { exact: true }).setInputFiles({ name: 'qa-vertragsanlage-v2.txt', mimeType: 'text/plain', buffer: changedBytes });
+    await form.getByRole('button', { name: 'Als neue Fassung speichern', exact: true }).click();
+    await expect(form.getByRole('status')).toContainText('Gespeichert als Fassung 2');
+    const versions = await call('GET', `/documents/${contractDocument.id}/work/versions?limit=10`);
+    assert.deepEqual(versions.items.map(item => item.number), [2, 1]);
+    const original = await api.get(`/api/v1/documents/${contractDocument.id}/work/versions/${versions.items[1].id}/download`);
+    assert.ok(original.ok());
+    assert.equal((await original.body()).toString(), 'Synthetischer QA-Stromvertrag. Keine echten Vertragsdaten.\n');
+    await page.goto(`${base.origin}/documents?contract_id=${contract.id}`);
+    await row(contractDocument.title).getByRole('button', { name: 'Dokument ansehen', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: contractDocument.title, exact: true });
+    await expect(dialog).toContainText('Aktuelle Fassung 2');
+    const downloadEvent = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: 'Aktuelle Fassung herunterladen', exact: true }).click();
+    const downloaded = await downloadEvent;
+    assert.deepEqual(await fs.readFile(await downloaded.path()), changedBytes);
+    for (const width of [320, 360, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await shot(`current-document-version-${width}.png`);
+      assert.ok(await dialog.getByRole('button', { name: 'Schließen', exact: true }).isVisible());
+    }
+    await dialog.getByRole('button', { name: 'Schließen', exact: true }).click();
+  });
 
   await step('Mieterkonto opens precisely its contracts and can remove the inherited context', async () => {
     await page.goto(`${base.origin}/tenants/${tenant.id}/account`);
@@ -303,7 +365,7 @@ try {
   const verifiedBackend = new Set();
   const routes = ['/', ...declared.filter(route => route !== '*' && route !== '/' && route !== '/login' && !route.includes(':')).map(route => '/' + route.replace(/^\//, '')),
     `/properties/${north.id}`, `/units/${unit.id}`, `/tenants/${tenant.id}/account`, `/service-contracts/${service.id}`, `/maintenance/${maintenance.id}`,
-    `/invoice-review/${financialInvoice.id}`];
+    `/invoice-review/${financialInvoice.id}`, `/documents/${contractDocument.id}`];
   for (const width of [320, 360, 1440]) {
     await step(`All ${routes.length} application pages at ${width}px: visible text, navigation targets, errors and overflow`, async () => {
       await page.setViewportSize({ width, height: 1000 });

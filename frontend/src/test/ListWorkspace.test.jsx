@@ -79,7 +79,7 @@ describe('accessible list workspace', () => {
     expect(screen.getByRole('link', { name: /Leeres Haus/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Vermietetes Haus/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Nicht vorhanden' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Ø Vermietungsquote: Quellvorgänge anzeigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vermietungsquote: Quellvorgänge anzeigen' }));
     expect(screen.getByRole('link', { name: /Vermietetes Haus/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Leeres Haus/ })).toBeInTheDocument();
   });

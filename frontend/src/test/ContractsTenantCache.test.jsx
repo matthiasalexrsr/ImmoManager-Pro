@@ -64,6 +64,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('contract tenant cache across page mutations', () => {
+  it('limits units to the selected property and clears the old unit when the property changes', async () => {
+    const previous = api.list.getMockImplementation();
+    api.list.mockImplementation(async path => {
+      if (path === '/properties') return [{ id: 'p1', name: 'Haus A' }, { id: 'p2', name: 'Haus B' }];
+      if (path === '/units') return [{ id: 'u1', label: 'Wohnung', property_id: 'p1' },
+        { id: 'u2', label: 'Wohnung', property_id: 'p2' }, { id: 'u3', label: 'Dachwohnung', property_id: 'p2' }];
+      return previous(path);
+    });
+    render(<Pages />);
+    await screen.findByText('MV-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Neu' }));
+    const property = screen.getByLabelText('Immobilie *'), unit = screen.getByLabelText('Einheit *');
+    fireEvent.change(property, { target: { value: 'p1' } });
+    await waitFor(() => expect(unit).toHaveValue('u1'));
+    expect(within(unit).queryByRole('option', { name: 'Wohnung · Haus B' })).not.toBeInTheDocument();
+    fireEvent.change(property, { target: { value: 'p2' } });
+    expect(unit).toHaveValue('');
+    expect(within(unit).queryByRole('option', { name: 'Wohnung · Haus A' })).not.toBeInTheDocument();
+    fireEvent.change(unit, { target: { value: 'u3' } });
+    expect(property).toHaveValue('p2');
+  });
   it.each(['create', 'rename', 'archive'])('reflects a tenant %s before the cache expires', async mutation => {
     render(<Pages />);
     await screen.findByRole('button', { name: 'Bisherige Partei' });

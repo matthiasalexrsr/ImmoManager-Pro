@@ -97,6 +97,8 @@ beforeEach(() => {
     if (path === '/auth/me') return Promise.resolve({ id: 'reader' });
     if (path.startsWith('/properties/')) return Promise.resolve(properties[path.split('/').pop()]);
     if (path.startsWith('/units/')) return Promise.resolve(Object.values(units).flat().find(unit => unit.id === path.split('/').pop()));
+    if (/^\/documents\/[^/]+\/details$/.test(path)) return Promise.resolve({
+      document: Object.values(documents).flat().find(row => row.id === path.split('/')[2]), versions: { items: [] } });
     if (path.startsWith('/files/ocr-text?')) return Promise.resolve({ has_ocr: false });
     return Promise.reject(new Error(`Unexpected GET ${path}`));
   });
@@ -276,7 +278,7 @@ describe('property page as the place to act on a property', () => {
     const base = api.list.getMockImplementation();
     api.list.mockImplementation(path => {
       if (path.startsWith('/contracts')) return Promise.resolve([contract]);
-      if (path === '/tenants') return Promise.resolve([{ id: 't1', full_name: 'Lena Langzeit' }]);
+      if (path === '/tenants?include_archived=true') return Promise.resolve([{ id: 't1', full_name: 'Lena Langzeit', archived: true }]);
       if (path === '/portfolios') return Promise.resolve([{ id: 'pf1', name: 'Nord' }]);
       return base(path);
     });

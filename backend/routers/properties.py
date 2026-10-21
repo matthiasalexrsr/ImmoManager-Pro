@@ -59,11 +59,16 @@ def update_property(property_id: str, payload: PropertyCreate) -> Property:
 @router.patch("/{property_id}", response_model=Property)
 def patch_property(property_id: str, payload: PropertyPatch) -> Property:
     try:
-        ensure_binding_kept(store, "property", property_id, store.get_property(property_id),
-                            payload.model_dump(exclude_unset=True))
-        return store._patch_entity("property", property_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        current = store.get_property(property_id)
+        merged = PropertyCreate.model_validate({
+            **current.model_dump(include=set(PropertyCreate.model_fields)),
+            **payload.model_dump(exclude_unset=True),
+        })
+        ensure_binding_kept(store, "property", property_id, current, merged.model_dump())
+        return store.update_property(property_id, merged)
+    except (NotFoundError, ValidationError) as exc:
+        code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
 @router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -8,7 +8,7 @@ import { useCanWrite } from '../contexts/AuthContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
-import FileViewer from '../components/FileViewer';
+import CurrentDocumentViewer from '../features/documentDetail/CurrentDocumentViewer';
 import { ArrowRightIcon, EditIcon } from '../components/Icons';
 import NewForMenu from '../components/NewForMenu';
 import MoreMenu from '../components/MoreMenu';
@@ -25,6 +25,7 @@ import { currentContractsOn, localDay, occupancyMapOn } from '../utils/occupancy
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
 import usePhotoNotification from '../hooks/usePhotoNotification';
+import { useDataStore } from '../contexts/DataStoreContext';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -51,11 +52,12 @@ function subtotalLabel(subtotal) {
 function DocumentReference({ document, onOpen }) {
   const hasFile = typeof document.file_url === 'string' && document.file_url.trim();
   if (!resolveFileUrl(document.file_url)) return <span className="dossier-document-reference">
-    <span>{document.title}</span>
+    <Link to={entityHref('document', document.id)}>{document.title}</Link>
     <small className="text-muted">{hasFile ? 'Ungültiger Dateiverweis' : 'Datei fehlt'}</small>
   </span>;
-  return <button type="button" className="dossier-document-link" aria-label={`Dokument ansehen: ${document.title}`}
-    onClick={() => onOpen(document)}>{document.title}</button>;
+  return <span className="dossier-document-reference"><Link to={entityHref('document', document.id)}>{document.title}</Link>
+    <button type="button" className="btn btn-sm btn-secondary" aria-label={`Dokument ansehen: ${document.title}`}
+      onClick={() => onOpen(document)}>Ansehen</button></span>;
 }
 
 export default function PropertyDetail() {
@@ -65,6 +67,7 @@ export default function PropertyDetail() {
 
 function PropertyDossier({ id }) {
   const { t } = useTranslation();
+  const store = useDataStore();
   const [property, setProperty] = useState(null);
   const [unitRows, setUnits] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -126,7 +129,7 @@ function PropertyDossier({ id }) {
       api.list(`/contracts?property_id=${propertyId}`, options),
       api.list(`/documents?property_id=${propertyId}`, options),
       api.list(`/maintenance?property_id=${propertyId}`, options),
-      api.list('/tenants', options).catch(failure => {
+      api.list('/tenants?include_archived=true', options).catch(failure => {
         if (!cancelled) setTenantError(failure.message || 'Parteiennamen konnten nicht geladen werden.');
         return [];
       }),
@@ -229,6 +232,7 @@ function PropertyDossier({ id }) {
   };
   const saveProperty = async data => {
     await api.put(`/properties/${encodeURIComponent(id)}`, data);
+    store?.invalidateRelated('properties', 'units', 'contracts');
     setRevision(value => value + 1);
   };
 
@@ -460,7 +464,8 @@ function PropertyDossier({ id }) {
         )}
 
         {tab === 'documents' && (
-          <DataTable title={docLabel} columns={DOC_COLUMNS} data={documents} />
+          <><Link className="btn btn-secondary" to={`/documents?property_id=${encodeURIComponent(id)}`}>Dokumente verwalten und hinzufügen</Link>
+          <DataTable title={docLabel} columns={DOC_COLUMNS} data={documents} /></>
         )}
 
         {tab === 'maintenance' && (
@@ -475,7 +480,7 @@ function PropertyDossier({ id }) {
       </DossierTabs>
       {editing && <FormModal title="Immobilie bearbeiten" fields={propertyFields(t, editing.portfolios)}
         initial={property} onSave={saveProperty} onClose={() => setEditing(null)} />}
-      {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
+      {viewerFile && <CurrentDocumentViewer key={viewerFile.id} document={viewerFile} onClose={() => setViewerFile(null)} />}
     </div>
   );
 }

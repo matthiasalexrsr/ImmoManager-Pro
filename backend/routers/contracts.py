@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..services.deletion_guard import ensure_deletable
 from ..services.document_versions import ensure_binding_kept
+from ..services.estate_values import validate_initial_rent
 from ..services.payment_allocations import contract_ledger
 from ..services.read_cache import CachedReads
 from ..services.rent_history import charge_for, follow_contract_start, start_rent_history
@@ -48,8 +49,9 @@ def list_contracts(
     sort_order: str = Query("asc"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    unit_id: str | None = None,
 ) -> list[Contract]:
-    filters = {"property_id": property_id, "tenant_id": tenant_id, "status": status_filter}
+    filters = {"property_id": property_id, "tenant_id": tenant_id, "status": status_filter, "unit_id": unit_id}
     return store._list_paginated(
         entity_type="contract",
         skip=skip,
@@ -67,6 +69,7 @@ def list_contracts(
 @router.post("", response_model=Contract, status_code=status.HTTP_201_CREATED)
 def create_contract(payload: ContractCreate) -> Contract:
     try:
+        validate_initial_rent(store, payload.unit_id)
         contract = store.create_contract(payload)
         start_rent_history(store, contract)
         return contract
@@ -101,6 +104,8 @@ def get_contract(contract_id: str) -> Contract:
 @router.put("/{contract_id}", response_model=Contract)
 def update_contract(contract_id: str, payload: ContractCreate) -> Contract:
     try:
+        if not store.list_contract_rent_periods(contract_id):
+            validate_initial_rent(store, payload.unit_id)
         ensure_binding_kept(store, "contract", contract_id, store.get_contract(contract_id), payload.model_dump())
         contract = store.update_contract(contract_id, payload)
         follow_contract_start(store, contract)
@@ -120,6 +125,8 @@ def patch_contract(contract_id: str, payload: ContractPatch) -> Contract:
             **current.model_dump(include=set(ContractCreate.model_fields)),
             **payload.model_dump(exclude_unset=True),
         })
+        if not store.list_contract_rent_periods(contract_id):
+            validate_initial_rent(store, merged.unit_id)
         ensure_binding_kept(store, "contract", contract_id, current, merged.model_dump())
         contract = store.update_contract(contract_id, merged)
         follow_contract_start(store, contract)

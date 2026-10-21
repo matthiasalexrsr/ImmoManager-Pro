@@ -36,6 +36,9 @@
 }
 .document-dossier-danger { margin-top: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
 .document-dossier-danger .btn { display: inline-flex; align-items: center; gap: 6px; }
+.current-document-body { display: flex; flex-direction: column; gap: .75rem; padding: 1rem; overflow: auto; }
+.current-document-body > .pdf-preview { flex: 1 1 360px; min-height: 220px; height: auto; }
+.current-document-body > .btn { align-self: flex-start; white-space: normal; }
 
 @media (max-width: 900px) {
   .document-dossier-grid { grid-template-columns: minmax(0, 1fr); }

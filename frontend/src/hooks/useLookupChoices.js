@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 
-const LABELS = { contacts: 'Kontakte', properties: 'Immobilien', units: 'Einheiten', meters: 'Zähler', portfolios: 'Portfolios' };
+const LABELS = { contacts: 'Kontakte', properties: 'Immobilien', units: 'Einheiten', meters: 'Zähler', portfolios: 'Portfolios',
+  contracts: 'Verträge', tenants: 'Parteien' };
 
 // A failed or unfinished collection never becomes a successful empty choice.
 // Each scope/retry owns its response, even if an aborted transport resolves late.

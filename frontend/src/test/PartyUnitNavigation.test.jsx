@@ -108,10 +108,10 @@ it('does not manufacture a linked contract or tenant account for a vacant unit',
     <Routes><Route path="/units/:id" element={<UnitOverview />} /></Routes>
   </MemoryRouter>);
   await screen.findByRole('heading', { name: 'Leerstand' });
-  // a vacant unit only leads to its re-letting; no contract or tenant account is made up
+  // History and document lists remain useful; no particular tenancy or party is invented.
   const related = screen.getByRole('navigation', { name: 'Verknüpfte Seiten' });
   expect(within(related).getAllByRole('link').map(link => [link.textContent.replace('↗', '').trim(), link.getAttribute('href')]))
-    .toEqual([['Neuvermietung', '/reletting']]);
+    .toEqual([['Verträge dieser Einheit', '/contracts?unit_id=u1'], ['Dokumente dieser Einheit', '/documents?unit_id=u1'], ['Neuvermietung', '/reletting']]);
   expect(screen.queryByRole('link', { name: 'Mietvertrag öffnen' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Mieterkonto öffnen' })).not.toBeInTheDocument();
 });

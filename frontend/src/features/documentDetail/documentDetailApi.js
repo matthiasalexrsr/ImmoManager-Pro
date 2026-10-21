@@ -13,16 +13,15 @@ export const documentDetailService = {
   remove: id => api.del(path(id)),
 };
 
-const fileSignature = file => [file.name, file.size, file.lastModified].join('|');
-
 /** Uploads `file` as the next version. A repeated attempt with the same file and comment (after
  *  a lost answer) reuses the command it was first sent with, so the server answers it as a replay
  *  instead of a conflict. `attempt` is a ref the caller keeps per document. */
 export async function uploadNewVersion(service, id, file, comment, attempt) {
-  const signature = fileSignature(file) + '|' + comment;
-  if (attempt.current?.signature !== signature) {
+  // Two chosen files can share a name, size and modification time but contain different bytes.
+  // A retry keeps the same File object; choosing another file always starts a new command.
+  if (attempt.current?.file !== file || attempt.current?.comment !== comment) {
     const source = await service.source(id);
-    attempt.current = { signature, command: sourceCommand(source) };
+    attempt.current = { file, comment, command: sourceCommand(source) };
   }
   const { command } = attempt.current;
   const form = new FormData();
@@ -32,9 +31,17 @@ export async function uploadNewVersion(service, id, file, comment, attempt) {
   form.append('expected_document_revision', command.expected_document_revision);
   if (command.expected_version) form.append('expected_version', command.expected_version);
   form.append('comment', comment);
-  const result = await service.uploadVersion(id, form);
-  attempt.current = null;
-  return result;
+  try {
+    const result = await service.uploadVersion(id, form);
+    attempt.current = null;
+    return result;
+  } catch (error) {
+    // A rejected source revision has not published a version. After an explicit retry, read
+    // the current source rather than submitting an obsolete command forever. Lost replies
+    // retain their key, allowing the server to replay a possibly committed result.
+    if ([409, 422].includes(error.statusCode)) attempt.current = null;
+    throw error;
+  }
 }
 
 const OPERATIONS = { archive_original: 'Eingangsoriginal', upload: 'Neue Fassung', restore: 'Wiederhergestellt' };

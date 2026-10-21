@@ -5,11 +5,26 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..domain.occupancy import unit_statuses_on
 from ..models import Unit, UnitCreate, UnitPatch
-from ..services.deletion_guard import ensure_deletable
+from ..services.deletion_guard import dependents, ensure_deletable
 from ..services.document_versions import ensure_binding_kept
+from ..services.estate_values import validate_unit
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/units", tags=["Einheiten"])
+
+
+def _keep_location(unit: Unit, payload: UnitCreate) -> None:
+    """Correct an unused unit freely; linked business records retain their property."""
+    try:
+        store.get_property(payload.property_id)
+    except NotFoundError as exc:
+        raise ValidationError("Immobilie existiert nicht") from exc
+    if payload.property_id != unit.property_id:
+        found = dependents(store, "unit", unit.id)
+        if found:
+            references = ", ".join(f"{count} {label}" for label, count in found)
+            raise HTTPException(409, "Die Immobilie dieser Einheit kann nicht geändert werden, weil bereits "
+                                f"Daten zugeordnet sind: {references}. Die bisherigen Zuordnungen bleiben erhalten.")
 
 
 def _current(units: list[Unit]) -> list[Unit]:
@@ -47,6 +62,7 @@ def list_units(
 @router.post("", response_model=Unit, status_code=status.HTTP_201_CREATED)
 def create_unit(payload: UnitCreate) -> Unit:
     try:
+        validate_unit(payload)
         return _current([store.create_unit(payload)])[0]
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -63,7 +79,10 @@ def get_unit(unit_id: str) -> Unit:
 @router.put("/{unit_id}", response_model=Unit)
 def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
     try:
-        ensure_binding_kept(store, "unit", unit_id, store.get_unit(unit_id), payload.model_dump())
+        validate_unit(payload)
+        current = store.get_unit(unit_id)
+        ensure_binding_kept(store, "unit", unit_id, current, payload.model_dump())
+        _keep_location(current, payload)
         return _current([store.update_unit(unit_id, payload)])[0]
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -73,10 +92,16 @@ def update_unit(unit_id: str, payload: UnitCreate) -> Unit:
 @router.patch("/{unit_id}", response_model=Unit)
 def patch_unit(unit_id: str, payload: UnitPatch) -> Unit:
     try:
-        ensure_binding_kept(store, "unit", unit_id, store.get_unit(unit_id), payload.model_dump(exclude_unset=True))
-        return _current([store._patch_entity("unit", unit_id, payload)])[0]
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        current = store.get_unit(unit_id)
+        merged = UnitCreate.model_validate({**current.model_dump(include=set(UnitCreate.model_fields)),
+                                           **payload.model_dump(exclude_unset=True)})
+        validate_unit(merged)
+        ensure_binding_kept(store, "unit", unit_id, current, merged.model_dump())
+        _keep_location(current, merged)
+        return _current([store.update_unit(unit_id, merged)])[0]
+    except (NotFoundError, ValidationError) as exc:
+        code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
 @router.delete("/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)

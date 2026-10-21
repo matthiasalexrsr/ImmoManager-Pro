@@ -169,6 +169,8 @@ jobs:
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label finance-report-release backend/tests/test_finance_report_boundaries.py backend/tests/test_finance_packages_v2.py
       - name: Verify financial workspaces and invoice payment evidence on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label financial-workspace-release backend/tests/test_financial_workspaces.py backend/tests/test_billing_workflow.py backend/tests/test_invoice_review.py
+      - name: Verify property, unit and document workspaces on PostgreSQL
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label estate-workspace-release backend/tests/test_estate_workspaces.py
       - name: Verify private assistant ownership and draft handoff on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py backend/tests/test_assistant_tools.py backend/tests/test_assistant_handoff.py backend/tests/test_assistant_findings.py backend/tests/test_assistant_investigation.py
       - name: Verify scoped history traversal on PostgreSQL

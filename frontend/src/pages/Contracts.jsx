@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -10,7 +10,7 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { RentIcon } from '../components/Icons';
-import { ClipboardCheck, FileCheck, Mail, PiggyBank, Users } from 'lucide-react';
+import { ClipboardCheck, FileCheck, FileText, Mail, PiggyBank, Users } from 'lucide-react';
 import HousingConfirmationDialog from '../features/housingConfirmation/HousingConfirmationDialog';
 import ContractLetterDialog from '../features/letters/ContractLetterDialog';
 import HandoverProtocolsDialog from '../features/handoverProtocol/HandoverProtocolsDialog';
@@ -38,6 +38,7 @@ export default function Contracts() {
   const [filter, setFilter, params] = useListRouteFilter(['all', 'active', 'ending_soon', 'expiring90', 'missing_documents', 'terminated', 'draft', 'no_deposit'], ['focus_id', 'contract_id']);
   const [, setContextParams] = useSearchParams();
   const { t, locale } = useTranslation();
+  const navigate = useNavigate();
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
@@ -184,9 +185,11 @@ export default function Contracts() {
     { key: 'contract_number', label: t('tenantsContracts.contracts.form.contractNumber') || 'Vertragsnr.', required: true, placeholder: 'z.B. MV-2024-001',
       default: nextNumber(contracts.map(c => c.contract_number), 'MV-1') },
     { key: 'property_id', label: t('portfolio.properties.form.name') || 'Immobilie', required: true, type: 'select',
+      clearOnChange: ['unit_id'],
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('units.list.columns.label') || 'Einheit', required: true, type: 'select',
-      options: units.map(u => ({ value: u.id, label: u.label })) },
+      options: values => units.filter(u => !values.property_id || u.property_id === values.property_id)
+        .map(u => ({ value: u.id, label: `${u.label} · ${propMap[u.property_id] || 'Immobilie'}` })) },
     { key: 'tenant_id', label: t('tenantsContracts.tenants.title') || 'Mieter', required: true, type: 'select',
       options: tenants.filter(tn => !tn.archived || (modal !== 'create' && tn.id === modal?.tenant_id))
         .map(tn => ({ value: tn.id, label: `${tn.full_name}${tn.archived ? ' (archiviert)' : ''}` })) },
@@ -338,6 +341,7 @@ export default function Contracts() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={() => [
+          { label: 'Vertragsdokumente öffnen', icon: <FileText size={15} aria-hidden="true" />, onClick: row => navigate(`/documents?contract_id=${encodeURIComponent(row.id)}`) },
           { label: 'Mietverlauf', icon: <RentIcon size={15} />, onClick: openHistory },
           { label: 'Brief schreiben', icon: <Mail size={15} aria-hidden="true" />, onClick: row => setLetter(row.id) },
           { label: 'Wohnungsgeberbestätigung', icon: <FileCheck size={15} aria-hidden="true" />, onClick: row => setHousing(row.id) },
@@ -363,6 +367,7 @@ export default function Contracts() {
         <FormModal
           title={modal === 'create' ? 'Vertrag erstellen' : 'Vertrag bearbeiten'}
           fields={fields}
+          derive={(values, key) => key === 'unit_id' && unitMap[values.unit_id] ? { property_id: unitMap[values.unit_id].property_id } : {}}
           initial={modal === 'create' ? prefill : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}

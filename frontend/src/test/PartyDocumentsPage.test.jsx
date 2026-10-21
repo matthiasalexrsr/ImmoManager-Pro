@@ -72,6 +72,8 @@ beforeEach(() => {
   context.entities = { tenants_all: [anna, ben], properties: [], units: [], contracts: [contract] };
   api.get.mockImplementation(path => {
     const parsed = new URL(path, 'http://example.test');
+    if (/^\/documents\/[^/]+\/details$/.test(parsed.pathname)) return Promise.resolve({
+      document: [direct, legacy].find(row => row.id === parsed.pathname.split('/')[2]), versions: { items: [] } });
     if (parsed.pathname.endsWith('/overview')) return Promise.resolve(overview(parsed.pathname.includes('/t2/') ? ben : anna));
     if (parsed.pathname.endsWith('/documents')) return Promise.resolve(page([direct, legacy]));
     return Promise.reject(new Error(`Unexpected GET ${path}`));

@@ -5,7 +5,7 @@ import { useTranslation } from '../i18n';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatArea, formatDate, formatMoney } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { currentContractsOn, localDay, occupancyOn } from '../utils/occupancy';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
@@ -25,13 +25,18 @@ const NEW_FOR_UNIT = [
 ];
 
 export default function UnitOverview() {
-  const { t } = useTranslation();
   const { id } = useParams();
+  return <UnitDossier key={id} id={id} />;
+}
+
+function UnitDossier({ id }) {
+  const { t } = useTranslation();
   const [unit, setUnit] = useState(null);
   const [property, setProperty] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [tenant, setTenant] = useState(null);
   const [insurances, setInsurances] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
@@ -51,16 +56,17 @@ export default function UnitOverview() {
     setTenant(null);
     (async () => {
       const u = await api.get(`/units/${encodeURIComponent(id)}`, options);
-      const [p, c, ins] = await Promise.all([
+      const [p, c, ins, docs] = await Promise.all([
         u.property_id ? api.get(`/properties/${encodeURIComponent(u.property_id)}`, options) : null,
         api.list(`/contracts?unit_id=${encodeURIComponent(id)}`, options),
         api.list(`/insurances?unit_id=${encodeURIComponent(id)}`, options),
+        api.list(`/documents?unit_id=${encodeURIComponent(id)}&sort_by=document_date&sort_order=desc`, options),
       ]);
       const unitContracts = c.filter(ct => ct.unit_id === id);
       const active = currentContractsOn(unitContracts)[0];
       const person = active?.tenant_id ? await api.get(`/tenants/${encodeURIComponent(active.tenant_id)}`, options) : null;
       if (cancelled) return;
-      setUnit(u); setProperty(p); setContracts(unitContracts); setTenant(person); setInsurances(ins);
+      setUnit(u); setProperty(p); setContracts(unitContracts); setTenant(person); setInsurances(ins); setDocuments(docs);
     })().catch(err => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
@@ -93,6 +99,8 @@ export default function UnitOverview() {
       </div>
 
       <RelatedPageLinks items={[
+        { to: `/contracts?unit_id=${encodeURIComponent(unit.id)}`, label: 'Verträge dieser Einheit' },
+        { to: `/documents?unit_id=${encodeURIComponent(unit.id)}`, label: 'Dokumente dieser Einheit' },
         ...(unit.property_id ? [
           { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=contracts`, label: 'Verträge des Objekts' },
           { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=finance`, label: 'Finanzen des Objekts' },
@@ -121,7 +129,7 @@ export default function UnitOverview() {
               <dt>{t('pages.unitOverview.unitNumber') || 'Einheitsnr.'}</dt><dd>{unit.unit_number || '—'}</dd>
               <dt>{t('pages.unitOverview.type') || 'Typ'}</dt><dd>{codeLabel(unit.unit_type) || '—'}</dd>
               <dt>{t('pages.unitOverview.floor') || 'Etage'}</dt><dd>{unit.floor ?? '—'}</dd>
-              <dt>{t('pages.unitOverview.area') || 'Fläche'}</dt><dd>{unit.area_sqm ? `${unit.area_sqm} m²` : '—'}</dd>
+              <dt>{t('pages.unitOverview.area') || 'Fläche'}</dt><dd>{formatArea(unit.area_sqm)}</dd>
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
@@ -194,6 +202,17 @@ export default function UnitOverview() {
             )}
           </div>
         </div>
+        <section className="panel" aria-label="Dokumente der Einheit">
+          <div className="panel-header">Dokumente ({documents.length})</div>
+          <div className="panel-body">
+            {documents.length === 0 ? <p className="empty-text">Keine Dokumente zugeordnet.</p> : <ul className="overview-list">
+              {documents.slice(0, 5).map(document => <li key={document.id}><Link to={entityHref('document', document.id)}>{document.title}</Link>
+                <span className="text-muted">{formatDate(document.document_date)}</span></li>)}
+            </ul>}
+            {documents.length > 5 && <p className="text-muted">Die fünf neuesten Dokumente. Die vollständige Akte öffnet sich über „Dokumente verwalten“.</p>}
+            <Link className="btn btn-secondary btn-sm" to={`/documents?unit_id=${encodeURIComponent(unit.id)}`}>Dokumente verwalten</Link>
+          </div>
+        </section>
       </div>
     </div>
   );

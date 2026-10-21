@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import FileViewer from '../components/FileViewer';
+import CurrentDocumentViewer from '../features/documentDetail/CurrentDocumentViewer';
 import { PlusIcon } from '../components/Icons';
 import { Eye, FileText, Mail, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -14,6 +14,7 @@ import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWo
 import { useAuth, useCanWrite } from '../contexts/AuthContext';
 import { documentTypeLabel, documentTypeOptions } from '../utils/documentType';
 import { formatDate } from '../utils/format';
+import { entityHref } from '../utils/entityLinks';
 import { expiryState } from '../utils/documentExpiry';
 import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
@@ -23,6 +24,9 @@ import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
 import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
 import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
+import { deriveDocumentAssociations, documentAssociationFields, resolveDocumentContext } from '../features/documentDetail/documentAssociations';
+
+const CONTEXT_KEYS = ['property_id', 'unit_id', 'contract_id'];
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -44,7 +48,7 @@ export default function Documents() {
   const [searchParams] = useSearchParams();
   // A party change starts a new workspace, including forms and in-flight upload UI.
   // Pending requests retain their original party and cannot release a newer upload.
-  return <DocumentsWorkspace key={searchParams.get('tenant_id') || 'all'} />;
+  return <DocumentsWorkspace key={['tenant_id', ...CONTEXT_KEYS].map(key => searchParams.get(key) || '').join('|')} />;
 }
 
 function DocumentsWorkspace() {
@@ -60,6 +64,8 @@ function DocumentsWorkspace() {
   const party = usePartyWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = searchParams.get('tenant_id') || '';
+  const contextQuery = tenantId ? '' : new URLSearchParams(CONTEXT_KEYS.filter(key => searchParams.get(key)).map(key => [key, searchParams.get(key)])).toString();
+  const contextValues = Object.fromEntries(new URLSearchParams(contextQuery));
   const { items: tenants } = useEntities('tenants_all', '/tenants?include_archived=true');
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
@@ -117,7 +123,7 @@ function DocumentsWorkspace() {
     const params = new URLSearchParams({ skip: String(skip), limit: '25', q: search, document_type: docType });
     const request = tenantId
       ? Promise.all([api.get(`/tenants/${encodeURIComponent(tenantId)}/documents?${params}`, options), api.get(`/tenants/${encodeURIComponent(tenantId)}/overview`, options)])
-      : api.list('/documents', options).then(items => [{ items }, null]);
+      : api.list(`/documents${contextQuery ? `?${contextQuery}` : ''}`, options).then(items => [{ items }, null]);
     Promise.resolve().then(() => retentionService.load(options)).then(value => { if (!cancelled) setRetention(value); })
       .catch(() => { if (!cancelled) setRetention(null); });   // the list works without it; deleting still asks the server
     request.then(([page, overview]) => {
@@ -126,7 +132,7 @@ function DocumentsWorkspace() {
     }).catch(err => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [tenantId, skip, search, docType, revision]);
+  }, [tenantId, skip, search, docType, revision, contextQuery]);
 
   // Lookup maps
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -135,18 +141,24 @@ function DocumentsWorkspace() {
   const tenantMap = Object.fromEntries(tenants.map(person => [person.id, person.full_name]));
   if (overview) tenantMap[overview.tenant.id] = overview.tenant.full_name;
   const contractTenantMap = Object.fromEntries(contracts.map(c => [c.id, c.tenant_id]));
+  const unitRecords = useMemo(() => Object.fromEntries(units.map(row => [row.id, row])), [units]);
+  const contractRecords = useMemo(() => Object.fromEntries(contracts.map(row => [row.id, row])), [contracts]);
 
-  const enrichDocument = doc => ({
+  const enrichDocument = doc => {
+    const context = resolveDocumentContext(doc, unitRecords, contractRecords);
+    return {
     ...doc,
-    property_name: propMap[doc.property_id] || '—',
-    unit_label: unitMap[doc.unit_id] || '—',
+    context,
+    property_name: propMap[context.property_id] || '—',
+    unit_label: unitMap[context.unit_id] || '—',
     contract_label: contractMap[doc.contract_id] || '—',
     party_id: doc.tenant_id || contractTenantMap[doc.contract_id] || (tenantId || null),
     party_name: tenantMap[doc.tenant_id || contractTenantMap[doc.contract_id] || tenantId] || '—',
     has_file: !!doc.file_url,
     retention: retention?.items?.[doc.id] || null,
     retention_label: retentionCell(retention?.items?.[doc.id]),
-  });
+    };
+  };
   const enriched = documents.map(enrichDocument);
 
   const loadPartyExport = async () => {
@@ -200,9 +212,11 @@ function DocumentsWorkspace() {
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text', link: 'document' },
     { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
     { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
-    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', render: (value, row) => row.context.property_id
+      ? <Link to={entityHref('property', row.context.property_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Immobilie öffnen' : value}</Link> : value },
+    { key: 'unit_label', label: 'Einheit', filterType: 'text', render: (value, row) => row.context.unit_id
+      ? <Link to={entityHref('unit', row.context.unit_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Einheit öffnen' : value}</Link> : value },
+    { key: 'contract_label', label: 'Vertrag', filterType: 'text', link: 'contract' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
     { key: 'valid_until', label: 'Gültig bis', type: 'date', filterType: 'dateRange', render: (value, row) => {
       if (!value) return '—';
@@ -263,7 +277,7 @@ function DocumentsWorkspace() {
       }
       current();
       if (generation !== uploadGeneration.current) return;
-      setCreateInitial({ title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url,
+      setCreateInitial({ ...Object.fromEntries(new URLSearchParams(contextQuery)), title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url,
         document_type: DOC_TYPES.some(type => type.value === suggestedType) ? suggestedType : 'Sonstiges', tenant_id: tenantId || null });
       setModal('create');
     } catch (err) {
@@ -273,7 +287,7 @@ function DocumentsWorkspace() {
       if (generation === uploadGeneration.current) setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
     }
-  }, [t, canWrite, tenantId, DOC_TYPES]);
+  }, [t, canWrite, tenantId, DOC_TYPES, contextQuery]);
 
   const handleMultiUpload = useCallback(async (files) => {
     if (!canWrite || uploadBusy.current) return;
@@ -297,6 +311,7 @@ function DocumentsWorkspace() {
           body.append('title', file.name.replace(/\.[^.]+$/, ''));
           body.append('document_type', guessDocType(file.name));
           if (tenantId) body.append('tenant_id', tenantId);
+          for (const [key, value] of new URLSearchParams(contextQuery)) body.append(key, value);
           await api.upload('/documents/import', body);
           current();
           if (generation === uploadGeneration.current) setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'done' } : q));
@@ -316,7 +331,7 @@ function DocumentsWorkspace() {
       if (fileRef.current) fileRef.current.value = '';
       if (sessionValid) store?.invalidateRelated('documents');
     }
-  }, [canWrite, tenantId, refreshData, store]);
+  }, [canWrite, tenantId, refreshData, store, contextQuery]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -333,14 +348,7 @@ function DocumentsWorkspace() {
     { key: 'title', label: t('pages.documents.form.title') || 'Titel', required: true },
     { key: 'document_type', label: t('pages.documents.form.docType') || 'Dokumententyp', type: 'select', options: DOC_TYPES },
     { key: 'document_date', label: t('pages.documents.form.date') || 'Datum', type: 'date' },
-    { key: 'tenant_id', label: 'Mieter / Partei', type: 'select', default: tenantId,
-      options: [{ value: '', label: '— Über Vertrag oder ohne Partei —' }, ...tenants.map(person => ({ value: person.id, label: person.full_name }))] },
-    { key: 'property_id', label: t('pages.documents.form.property') || 'Immobilie', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
-    { key: 'unit_id', label: t('pages.documents.form.unit') || 'Einheit', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
-    { key: 'contract_id', label: t('pages.documents.form.contract') || 'Vertrag', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...(tenantId ? (overview?.contracts || []) : contracts).map(c => ({ value: c.id, label: c.contract_number }))] },
+    ...documentAssociationFields({ properties, units, contracts: tenantId ? (overview?.contracts || []) : contracts, tenants, tenantId }),
     { key: 'valid_until', label: 'Gültig bis', type: 'date',
       hint: 'z. B. Energieausweis 10 Jahre, Rauchmelder- oder Wartungsnachweis 1 Jahr, Police bis zum Ablauf. Das Programm erinnert vorher mit einer Aufgabe.' },
     { key: 'reminder_days', label: 'Erinnern (Tage vorher)', type: 'number', step: '1', min: 0, max: 730, hint: 'leer: 30 Tage' },
@@ -387,6 +395,15 @@ function DocumentsWorkspace() {
           ]} />
         </div>
       </div>
+      {contextQuery && <div className="filter-chips" aria-label="Dokumentauswahl">
+        <span>Dokumente für:</span>
+        {contextValues.property_id && <Link to={`/properties/${encodeURIComponent(contextValues.property_id)}?tab=documents`}>{propMap[contextValues.property_id] || 'Immobilie öffnen'}</Link>}
+        {contextValues.unit_id && <Link to={`/units/${encodeURIComponent(contextValues.unit_id)}`}>{unitMap[contextValues.unit_id] || 'Einheit öffnen'}</Link>}
+        {contextValues.contract_id && <Link to={`/contracts?contract_id=${encodeURIComponent(contextValues.contract_id)}`}>{contractMap[contextValues.contract_id] || 'Vertrag öffnen'}</Link>}
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setSearchParams(current => {
+          const next = new URLSearchParams(current); CONTEXT_KEYS.forEach(key => next.delete(key)); return next;
+        })}>Objektfilter aufheben</button>
+      </div>}
       <div className="toolbar">
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>
@@ -567,6 +584,7 @@ function DocumentsWorkspace() {
         <FormModal
           title={modal === 'create' ? 'Dokument erstellen' : 'Dokument bearbeiten'}
           fields={fields}
+          derive={deriveDocumentAssociations(units, tenantId ? (overview?.contracts || []) : contracts)}
           initial={modal === 'create' ? createInitial : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
@@ -575,7 +593,7 @@ function DocumentsWorkspace() {
       {lockTarget?.retention && <RetentionLockDialog document={lockTarget} retention={lockTarget.retention}
         canOverride={canWrite && canOverrideRetention} onClose={() => setLockTarget(null)}
         onDeleted={() => { setLockTarget(null); refreshData(); if (store) store.invalidateRelated('documents'); }} />}
-      {viewerFile && <FileViewer key={viewerFile.id} fileUrl={viewerFile.file_url} title={viewerFile.title} onClose={() => setViewerFile(null)} />}
+      {viewerFile && <CurrentDocumentViewer key={viewerFile.id} document={viewerFile} onClose={() => setViewerFile(null)} />}
       {postDocument && <section className="panel" aria-label="Brief und Frankatur">
         <button type="button" className="btn btn-secondary" onClick={() => setPostDocument(null)}>Briefvorbereitung schließen</button>
         <ChannelPanel key={postDocument.id} sourceId={postDocument.id} mode="post" />

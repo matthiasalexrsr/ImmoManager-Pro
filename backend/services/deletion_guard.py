@@ -36,6 +36,9 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_listings", "unit_id", ("Inserat", "Inserate")),
         ("list_maintenance_cases", "unit_id", ("Instandhaltungsfall", "Instandhaltungsfälle")),
         ("list_documents", "unit_id", ("Dokument", "Dokumente")),
+        ("list_tasks", "unit_id", ("Aufgabe", "Aufgaben")),
+        ("list_calendar_events", "unit_id", ("Termin", "Termine")),
+        ("list_insurances", "unit_id", ("Versicherung", "Versicherungen")),
         # Vacancy rows: the landlord's share of a statement, also of a vacant unit
         ("list_utility_statements", "unit_id", ("Nebenkostenabrechnung", "Nebenkostenabrechnungen")),
         ("list_service_contract_locations", "unit_id", ("Objektvertragsstandort", "Objektvertragsstandorte")),

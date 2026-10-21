@@ -10,7 +10,7 @@ from ..auth import get_current_user
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch, UserRead
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
-from ..services import document_retention, document_text
+from ..services import document_context, document_retention, document_text
 from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
@@ -32,17 +32,10 @@ def list_documents(
     contract_id: str | None = Query(None),
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
+    unit_id: str | None = None,
 ) -> list[Document]:
-    filters = {"property_id": property_id, "contract_id": contract_id}
-    results = store._list_paginated(
-        entity_type="document",
-        skip=skip,
-        limit=limit,
-        filters=filters,
-        order_by=sort_by,
-        order_desc=(sort_order == "desc"),
-    )
-    return results
+    return document_context.page(store, property_id=property_id, unit_id=unit_id, contract_id=contract_id,
+                                 skip=skip, limit=limit, sort_by=sort_by, descending=sort_order == "desc")
 
 
 @router.post("", response_model=Document, status_code=status.HTTP_201_CREATED)
@@ -165,17 +158,7 @@ def document_details(document_id: str, actor: Annotated[UserRead | None, Depends
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    def name(getter, identifier, field):
-        if not identifier:
-            return None
-        try:
-            return getattr(getter(identifier), field)
-        except NotFoundError:
-            return None
-    places = {"property": name(store.get_property, document.property_id, "name"),
-              "unit": name(store.get_unit, document.unit_id, "label"),
-              "contract": name(store.get_contract, document.contract_id, "contract_number"),
-              "tenant": name(store.get_tenant, document.tenant_id, "full_name")}
+    context, places = document_context.context(store, document)
     text = document_text.get(store, document.id)
     versions: dict = {"items": [], "next_before": None, "unavailable": None}
     if actor is not None:
@@ -188,7 +171,7 @@ def document_details(document_id: str, actor: Annotated[UserRead | None, Depends
             if exc.status_code >= 500:
                 raise
             versions["unavailable"] = str(exc.detail)
-    return {"document": document.model_dump(mode="json"), "places": places,
+    return {"document": document.model_dump(mode="json"), "context": context, "places": places,
             "retention": document_retention.assess_all(store, [document])[document.id],
             "text": None if text is None else {"source": text.source, "characters": text.characters,
                                                "indexed_at": text.indexed_at.isoformat(), "excerpt": text.text[:3000],

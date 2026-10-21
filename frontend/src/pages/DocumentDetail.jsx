@@ -7,7 +7,7 @@ import { useDataStore } from '../contexts/DataStoreContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import FormModal from '../components/FormModal';
 import FileViewer from '../components/FileViewer';
-import PdfPreview from '../components/PdfPreview';
+import DocumentPreview from '../features/documentDetail/DocumentPreview';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import ChannelPanel from '../features/channels/ChannelPanel';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
@@ -15,18 +15,18 @@ import { downloadVersion } from '../features/documentWork/documentWorkApi';
 import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
 import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
-import { fileKind, resolveFileUrl } from '../features/partyWorkspace/files';
 import {
-  TEXT_SOURCES, documentDetailService, previewKind, shownFilename, sizeLabel, uploadNewVersion, versionLabel,
+  TEXT_SOURCES, documentDetailService, shownFilename, sizeLabel, uploadNewVersion, versionLabel,
 } from '../features/documentDetail/documentDetailApi';
 import { documentTypeLabel, documentTypeOptions } from '../utils/documentType';
 import { expiryState } from '../utils/documentExpiry';
 import { entityHref } from '../utils/entityLinks';
 import { formatDate, formatDateTime } from '../utils/format';
+import useLookupChoices from '../hooks/useLookupChoices';
+import { deriveDocumentAssociations, documentAssociationFields } from '../features/documentDetail/documentAssociations';
 import '../features/documentDetail/documentDetail.css';
 import './propertyDossier.css';
 
-const PREVIEW_LIMIT = 20 * 1024 * 1024;     // larger versions are downloaded, not drawn on the page
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.tiff,.tif,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv';
 
 export default function DocumentDetail({ service = documentDetailService }) {
@@ -48,6 +48,8 @@ function DocumentPage({ id, service }) {
   const [older, setOlder] = useState({ items: [], next: null, busy: false });
   const [panel, setPanel] = useState(null);         // edit | viewer | tools | post | lock
   const [retentionRules, setRetentionRules] = useState(null);
+  const choices = useLookupChoices({ properties: '/properties', units: '/units', contracts: '/contracts',
+    tenants: '/tenants?include_archived=true' }, panel === 'assignment', id);
   const reload = useCallback(() => setRevision(value => value + 1), []);
 
   useEffect(() => {
@@ -85,6 +87,7 @@ function DocumentPage({ id, service }) {
   if (!details) return <div className="page-loading" role="status">Dokument wird geladen …</div>;
 
   const { document, places, retention, text } = details;
+  const context = details.context || document;
   const versions = [...(details.versions?.items || []), ...older.items];
   const head = versions[0] || null;
   const unbound = details.versions?.unavailable || null;     // versions need a property or contract
@@ -109,9 +112,9 @@ function DocumentPage({ id, service }) {
     navigate('/documents');
   });
   const related = [
-    document.property_id && { to: entityHref('property', document.property_id), label: `Immobilie: ${places.property || 'öffnen'}` },
-    document.unit_id && { to: entityHref('unit', document.unit_id), label: `Einheit: ${places.unit || 'öffnen'}` },
-    document.contract_id && { to: entityHref('contract', document.contract_id), label: `Vertrag: ${places.contract || 'öffnen'}` },
+    context.property_id && { to: entityHref('property', context.property_id), label: `Immobilie: ${places.property || 'öffnen'}` },
+    context.unit_id && { to: entityHref('unit', context.unit_id), label: `Einheit: ${places.unit || 'öffnen'}` },
+    context.contract_id && { to: entityHref('contract', context.contract_id), label: `Vertrag: ${places.contract || 'öffnen'}` },
   ].filter(Boolean);
 
   return (
@@ -157,12 +160,15 @@ function DocumentPage({ id, service }) {
           <section className="panel" aria-label="Zuordnung">
             <div className="panel-header">Zuordnung</div>
             <div className="panel-body">
-              <div className="detail-field"><span>Immobilie:</span> {document.property_id ? <Link to={entityHref('property', document.property_id)}>{places.property || 'Immobilie'}</Link> : '—'}</div>
-              <div className="detail-field"><span>Einheit:</span> {document.unit_id ? <Link to={entityHref('unit', document.unit_id)}>{places.unit || 'Einheit'}</Link> : '—'}</div>
-              <div className="detail-field"><span>Vertrag:</span> {document.contract_id ? <Link to={entityHref('contract', document.contract_id)}>{places.contract || 'Vertrag'}</Link> : '—'}</div>
-              <div className="detail-field"><span>Mieter / Partei:</span> {document.tenant_id ? <PartyLink tenantId={document.tenant_id}>{places.tenant || 'Partei öffnen'}</PartyLink> : '—'}</div>
+              <div className="detail-field"><span>Immobilie:</span> {context.property_id ? <Link to={entityHref('property', context.property_id)}>{places.property || 'Immobilie'}</Link> : '—'}</div>
+              <div className="detail-field"><span>Einheit:</span> {context.unit_id ? <Link to={entityHref('unit', context.unit_id)}>{places.unit || 'Einheit'}</Link> : '—'}</div>
+              <div className="detail-field"><span>Vertrag:</span> {context.contract_id ? <Link to={entityHref('contract', context.contract_id)}>{places.contract || 'Vertrag'}</Link> : '—'}</div>
+              <div className="detail-field"><span>Mieter / Partei:</span> {context.tenant_id ? <PartyLink tenantId={context.tenant_id}>{places.tenant || 'Partei öffnen'}</PartyLink> : '—'}</div>
+              {(context.property_id !== document.property_id || context.unit_id !== document.unit_id || context.tenant_id !== document.tenant_id) &&
+                <p className="text-muted document-dossier-note">Ergänzende Verknüpfungen stammen aus der zugeordneten Einheit oder dem Mietvertrag.</p>}
               {!document.property_id && !document.unit_id && !document.contract_id && !document.tenant_id &&
                 <p className="text-muted document-dossier-note">Noch keiner Immobilie, Einheit, keinem Vertrag und keiner Partei zugeordnet.</p>}
+              {canWrite && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('assignment')}>Zuordnung bearbeiten</button>}
             </div>
           </section>
 
@@ -225,6 +231,20 @@ function DocumentPage({ id, service }) {
           await service.patch(id, { ...payload, title: values.title });
           changed();
         }} />}
+      {panel === 'assignment' && !choices.ready && <section className="panel" aria-label="Dokumentzuordnung">
+        <div className="panel-body">
+          {choices.loading && <p role="status">Zuordnungen werden geladen …</p>}
+          {choices.error && <div role="alert" className="alert alert-error">{choices.error}
+            <button type="button" className="btn btn-secondary" onClick={choices.reload}>Erneut laden</button></div>}
+          <button type="button" className="btn btn-secondary" onClick={() => setPanel(null)}>Schließen</button>
+        </div>
+      </section>}
+      {panel === 'assignment' && choices.ready && <FormModal title="Dokumentzuordnung bearbeiten"
+        fields={documentAssociationFields(choices.data)} initial={document} onClose={() => setPanel(null)}
+        derive={deriveDocumentAssociations(choices.data.units, choices.data.contracts)} onSave={async values => {
+          await service.patch(id, Object.fromEntries(['property_id', 'unit_id', 'contract_id', 'tenant_id'].map(key => [key, values[key] || null])));
+          changed();
+        }} />}
       {panel === 'viewer' && document.file_url && <FileViewer fileUrl={document.file_url} title={document.title} onClose={() => setPanel(null)} />}
       {panel === 'tools' && <DocumentWorkbench documentId={id} onClose={() => { setPanel(null); changed(); }} />}
       {panel === 'post' && <section className="panel" aria-label="Brief und Frankatur">
@@ -236,34 +256,6 @@ function DocumentPage({ id, service }) {
         onDeleted={() => { store?.invalidateRelated?.('documents'); navigate('/documents'); }} />}
     </div>
   );
-}
-
-function DocumentPreview({ id, head, document, service }) {
-  const [state, setState] = useState({ url: null, error: null, wanted: Boolean(head && head.size_bytes <= PREVIEW_LIMIT) });
-  const kind = head ? previewKind(head.media_type, head.filename) : fileKind(document.file_url);
-  const headId = head?.id;
-  useEffect(() => {
-    if (!headId || !state.wanted || kind === 'other') return undefined;
-    const controller = new AbortController();
-    let url = null;
-    service.versionBlob(id, headId, { signal: controller.signal })
-      .then(blob => { if (!controller.signal.aborted) { url = URL.createObjectURL(blob); setState(current => ({ ...current, url, error: null })); } })
-      .catch(failure => { if (!controller.signal.aborted) setState(current => ({ ...current, error: failure.message || 'Die Fassung konnte nicht geladen werden.' })); });
-    return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
-  }, [id, headId, kind, service, state.wanted]);
-
-  if (!head && !document.file_url) return <p className="text-muted">Keine Datei vorhanden.</p>;
-  if (kind === 'other') return <p className="text-muted">Für dieses Dateiformat gibt es keine Vorschau. {head ? 'Die Fassung lässt sich unten herunterladen' : 'Die Datei lässt sich über „Hochgeladene Datei ansehen“ öffnen'}{head?.media_type?.includes('word') || /\.docx?$/i.test(head?.filename || '') ? ' oder in den Dokumentwerkzeugen bearbeiten.' : '.'}</p>;
-  if (!head) {
-    const url = resolveFileUrl(document.file_url);
-    return kind === 'pdf' ? <PdfPreview url={url} title={document.title} />
-      : <p className="text-muted">Bilder öffnen Sie über „Hochgeladene Datei ansehen“.</p>;
-  }
-  if (!state.wanted) return <p className="text-muted">Die Fassung ist {sizeLabel(head.size_bytes)} groß. <button type="button" className="btn btn-sm btn-secondary" onClick={() => setState(current => ({ ...current, wanted: true }))}>Vorschau trotzdem laden</button></p>;
-  if (state.error) return <p role="alert" className="text-red">{state.error}</p>;
-  if (!state.url) return <p role="status" className="text-muted">Vorschau wird geladen …</p>;
-  return kind === 'pdf' ? <PdfPreview url={state.url} title={document.title} />
-    : <img className="document-preview-image" src={state.url} alt={`Fassung ${head.number} von ${document.title}`} />;
 }
 
 function NewVersionForm({ id, service, onUploaded }) {

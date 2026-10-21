@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import useListRouteFilter from '../hooks/useListRouteFilter';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -15,16 +15,20 @@ import KpiAction from '../components/KpiAction';
 import { occupancyMapOn } from '../utils/occupancy';
 
 export default function Units() {
-  const [filter, setFilter] = useListRouteFilter(['all', 'occupied', 'vacant', 'reserved', 'no_contract', 'no_area', 'no_person_count', 'with_rent']);
+  const [filter, setFilter, params] = useListRouteFilter(['all', 'occupied', 'vacant', 'reserved', 'no_contract', 'no_area', 'no_person_count', 'with_rent']);
+  const [, setParams] = useSearchParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const toast = useToast();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
+  const propertyState = useEntities('properties', '/properties');
+  const properties = propertyState.items;
   const contractState = useEntities('contracts', '/contracts');
   const contracts = contractState.items;
-  const { items: tenants } = useEntities('tenants', '/tenants');
+  const tenantState = useEntities('tenants', '/tenants');
+  const tenants = tenantState.items;
+  const relatedSources = [propertyState, contractState, tenantState];
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -35,23 +39,17 @@ export default function Units() {
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
 
-  const refreshData = () => {
-    setLoading(true);
-    setLoadError(null);
-    api.list('/units')
-      .then(data => { if (!Array.isArray(data)) throw new Error('Einheiten konnten nicht gelesen werden.'); setUnits(data); })
-      .catch(error => setLoadError(error.message))
-      .finally(() => setLoading(false));
-  };
+  const refreshData = () => setAttempt(value => value + 1);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true); setLoadError(null);
-    api.list('/units')
+    api.list('/units', { signal: controller.signal })
       .then(data => { if (!Array.isArray(data)) throw new Error('Einheiten konnten nicht gelesen werden.'); if (!cancelled) setUnits(data); })
       .catch(error => { if (!cancelled) setLoadError(error.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [attempt]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -69,7 +67,7 @@ export default function Units() {
     return map;
   }, [contracts]);
 
-  const enriched = units.map(u => {
+  const enriched = units.filter(u => !params.get('property_id') || u.property_id === params.get('property_id')).map(u => {
     const coldRent = Number(u.cold_rent) || 0;
     const serviceCharge = Number(u.service_charge_advance) || 0;
     const heatingAdvance = Number(u.heating_advance) || 0;
@@ -93,7 +91,7 @@ export default function Units() {
     if (filter === 'no_contract') return enriched.filter(u => !unitHasContract[u.id]);
     if (filter === 'no_area') return enriched.filter(u => !u.area_sqm || Number(u.area_sqm) === 0);
     if (filter === 'no_person_count') return enriched.filter(u => !u.person_count || Number(u.person_count) === 0);
-    if (filter === 'with_rent') return enriched.filter(u => u.cold_rent != null && Number(u.cold_rent) > 0);
+    if (filter === 'with_rent') return enriched.filter(u => u.cold_rent != null && Number.isFinite(Number(u.cold_rent)) && Number(u.cold_rent) >= 0);
     return enriched;
   }, [enriched, filter, unitHasContract]);
 
@@ -101,8 +99,8 @@ export default function Units() {
   const totalCount = enriched.length;
   const occupiedCount = enriched.filter(u => u.status === 'occupied').length;
   const vacantCount = enriched.filter(u => u.status === 'vacant').length;
-  const coldRents = enriched.filter(u => u.cold_rent != null && Number(u.cold_rent) > 0).map(u => Number(u.cold_rent));
-  const avgColdRent = coldRents.length > 0 ? coldRents.reduce((s, v) => s + v, 0) / coldRents.length : 0;
+  const coldRents = enriched.filter(u => u.cold_rent != null && Number.isFinite(Number(u.cold_rent)) && Number(u.cold_rent) >= 0).map(u => Number(u.cold_rent));
+  const avgColdRent = coldRents.length > 0 ? coldRents.reduce((s, v) => s + Math.round(v * 100), 0) / coldRents.length / 100 : null;
   const occupancyRate = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
 
   const columns = [
@@ -113,9 +111,9 @@ export default function Units() {
     { key: 'floor', hidden: true, label: t('units.form.floor') || 'Etage' },
     { key: 'area_sqm', label: t('units.list.columns.area') || 'Fläche (m²)', type: 'number', align: 'right', filterType: 'numberRange',
       render: v => formatArea(v) },
-    { key: 'cold_rent', label: t('units.list.columns.coldRent') || 'Kaltmiete (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
+    { key: 'cold_rent', label: 'Plan-Kaltmiete (€)', type: 'number', sum: enriched.every(row => row.cold_rent != null), align: 'right', filterType: 'numberRange',
       render: v => formatMoney(v) },
-    { key: 'warm_rent', hidden: true, label: 'Warmmiete (€)', type: 'number', align: 'right',
+    { key: 'warm_rent', hidden: true, label: 'Plan-Warmmiete (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
     { key: 'person_count', hidden: true, label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
@@ -174,19 +172,26 @@ export default function Units() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form ("Speichern & weiteren")
-  if ((loading && units.length === 0 || contractState.loading) && !modal) return <div className="page-loading">Lade Einheiten...</div>;
-  if ((loadError || contractState.error) && !modal) return <div className="page"><div className="alert alert-error" role="alert">{loadError || contractState.error}<button type="button" className="btn btn-secondary" onClick={() => { setAttempt(value => value + 1); contractState.reload?.(); }}>Erneut laden</button></div></div>;
+  if ((loading && units.length === 0 || relatedSources.some(source => source.loading)) && !modal) return <div className="page-loading">Lade Einheiten...</div>;
+  const sourceError = loadError || relatedSources.find(source => source.error)?.error;
+  if (sourceError && !modal) return <div className="page"><h1 className="page-title">Einheiten</h1><div className="alert alert-error" role="alert">{sourceError}<button type="button" className="btn btn-secondary" onClick={() => { refreshData(); relatedSources.filter(source => source.error).forEach(source => source.reload()); }}>Erneut laden</button></div></div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('units.list.title') || 'Einheiten'}</h1>
+      {params.get('property_id') && <div className="filter-chips" aria-label="Einheitenauswahl">
+        <span>Einheiten für:</span><Link to={`/properties/${encodeURIComponent(params.get('property_id'))}?tab=units`}>{propMap[params.get('property_id')] || 'Immobilie öffnen'}</Link>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('property_id'); return next;
+        })}>Objektfilter aufheben</button>
+      </div>}
 
       {/* Summary cards */}
       <div className="kpi-row">
         <KpiAction label="Gesamt" value={totalCount} onClick={() => openSources('all')} />
         <KpiAction label="Vermietet" value={occupiedCount} onClick={() => openSources('occupied')} />
         <KpiAction label="Leer" value={vacantCount} onClick={() => openSources('vacant')} />
-        <KpiAction label="Ø Kaltmiete" value={formatMoney(avgColdRent)} onClick={() => openSources('with_rent')} />
+        <KpiAction label="Ø Plan-Kaltmiete" value={formatMoney(avgColdRent)} onClick={() => openSources('with_rent')} />
         <KpiAction label="Vermietungsquote" value={formatPercent(occupancyRate)} onClick={() => openSources('occupied')} />
       </div>
 
@@ -215,7 +220,7 @@ export default function Units() {
         drilldownKey={drilldown}
         viewConfig={{ column_filters: { source_filter: filter } }}
         onApplyView={config => setFilter(config.column_filters?.source_filter || 'all')}
-        onAdd={values => { setPrefill(values || null); setModal('create'); }}
+        onAdd={values => { setPrefill({ ...(params.get('property_id') ? { property_id: params.get('property_id') } : {}), ...values }); setModal('create'); }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => navigate(`/units/${row.id}`)}

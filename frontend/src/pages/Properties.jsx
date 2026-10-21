@@ -88,7 +88,8 @@ export default function Properties() {
     const totalUnits = propUnits.length;
     const occupiedUnits = propUnits.filter(u => u.status === 'occupied' || u.status === 'rented').length;
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
-    const totalRent = propUnits.reduce((sum, u) => sum + (Number(u.cold_rent) || 0), 0);
+    const withRent = propUnits.filter(u => u.cold_rent != null && u.cold_rent !== '' && Number.isFinite(Number(u.cold_rent)));
+    const totalRent = withRent.length ? withRent.reduce((sum, u) => sum + Math.round(Number(u.cold_rent) * 100), 0) / 100 : null;
     const openMaint = openMaintenanceByProperty[prop.id] || 0;
     const hasVacancy = totalUnits > 0 && occupiedUnits < totalUnits;
 
@@ -98,6 +99,7 @@ export default function Properties() {
       unit_count: totalUnits,
       occupancy_rate: occupancyRate,
       total_rent: totalRent,
+      missing_rent_count: propUnits.length - withRent.length,
       open_maintenance: openMaint,
       _hasVacancy: hasVacancy,
     };
@@ -117,8 +119,10 @@ export default function Properties() {
   const totalCount = enriched.length;
   const activeCount = enriched.filter(p => p.status === 'active').length;
   const vacancyCount = enriched.filter(p => p._hasVacancy).length;
-  const avgOccupancy = totalCount > 0
-    ? Math.round(enriched.reduce((sum, p) => sum + p.occupancy_rate, 0) / totalCount)
+  const unitCount = enriched.reduce((sum, p) => sum + p.unit_count, 0);
+  const occupiedCount = properties.reduce((sum, p) => sum + (unitsByProperty[p.id] || []).filter(u => ['occupied', 'rented'].includes(u.status)).length, 0);
+  const avgOccupancy = unitCount > 0
+    ? Math.round(occupiedCount / unitCount * 100)
     : 0;
 
   const columns = [
@@ -139,7 +143,7 @@ export default function Properties() {
         return <span className="list-occupancy"><span style={{ color, fontWeight: 600 }}>{v}%</span><span className="list-occupancy-track" aria-hidden="true"><span style={{ width: `${v}%`, background: color }} /></span></span>;
       }},
     { key: 'total_rent', label: 'Plan-Kaltmiete', type: 'number', align: 'right',
-      render: v => formatMoney(v) },
+      render: (v, row) => <span title={row.missing_rent_count ? `Für ${row.missing_rent_count} Einheiten fehlt die Plan-Kaltmiete.` : undefined}>{formatMoney(v)}{row.missing_rent_count && v != null ? ' (unvollständig)' : ''}</span> },
     { key: 'open_maintenance', hidden: true, label: 'Offene Wartung', type: 'number', align: 'right',
       render: v => v > 0 ? <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>{v}</span> : '0' },
     { key: 'year_built', hidden: true, label: t('portfolio.properties.form.yearBuilt') || 'Baujahr', type: 'number' },
@@ -189,7 +193,7 @@ export default function Properties() {
         <KpiAction label="Immobilien gesamt" value={totalCount} onClick={() => openSources('all')} />
         <KpiAction label="Aktiv" value={activeCount} onClick={() => openSources('active')} />
         <KpiAction label="Mit Leerstand" value={vacancyCount} onClick={() => openSources('vacancy')} />
-        <KpiAction label="Ø Vermietungsquote" value={`${avgOccupancy}%`} onClick={() => openSources('all')} />
+        <KpiAction label="Vermietungsquote" value={unitCount ? `${avgOccupancy}%` : '—'} onClick={() => openSources('all')} />
       </div>
 
       {/* Filter tabs */}
