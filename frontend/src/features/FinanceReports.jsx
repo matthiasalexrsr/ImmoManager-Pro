@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { formatMoney } from '../utils/format';
+import { formatDate, formatMoney } from '../utils/format';
 import './financeReports.css';
 import { useAuth, useCanWrite } from '../contexts/AuthContext';
 import { financeCommandKey, forgetFinanceCommand, readFinanceCommand, rememberFinanceCommand } from './financeCommandBuffer';
@@ -220,8 +220,11 @@ function ReportEditor({ standalone = false }) {
         const numeric = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
         const columns = data?.basis === 'liquidity-v2' ? ['income', 'expense', 'balance'] : data?.basis === 'cash-v2' ? ['income', 'expense', 'net'] : ['rent_due', 'other_income', 'costs', 'result'];
         if (!data || data.basis !== definition.kind || typeof data.definition_hash !== 'string' || !data.result_hash || !Array.isArray(data.sources) || !Array.isArray(data.warnings) || !Array.isArray(data.monthly)
+          || (data.basis === 'liquidity-v2' ? !numeric(data.opening_balance) || !numeric(data.closing_balance)
+            : !data.totals || !columns.every(key => numeric(data.totals[key])))
           || !data.monthly.every(row => row && typeof row.month === 'string' && columns.every(key => numeric(row[key])))
           || !data.sources.every(source => source && numeric(source.amount) && (source.url == null || typeof source.url === 'string'))
+          || ['opening_sources', 'baseline_sources'].some(key => data[key] != null && (!Array.isArray(data[key]) || !data[key].every(source => source && numeric(source.amount))))
           || !data.warnings.every(warning => warning && typeof warning.message === 'string')
           || (data.baseline_monthly != null && (!Array.isArray(data.baseline_monthly) || !data.baseline_monthly.every(row => row && typeof row.month === 'string' && numeric(row.balance))))) throw new Error('Die Berichtsantwort ist unvollständig. Bitte erneut berechnen.');
         setResult(data);
@@ -240,32 +243,40 @@ function ReportResult({ result }) {
   const [month, setMonth] = useState('');
   const [contribution, setContribution] = useState('');
   const [page, setPage] = useState(0);
+  const [sourceSet, setSourceSet] = useState('scenario');
   const sourceRef = useRef(null);
   const cash = value => formatMoney(value, { currency: result.currency || 'EUR' });
   const plan = result.basis === 'liquidity-v2', payment = result.basis === 'cash-v2';
   const totals = result.totals || {};
-  const metrics = plan ? [['Anfangssaldo', result.opening_balance], ['Endsaldo Szenario', result.closing_balance], ['Endsaldo Basis', result.baseline_monthly?.at(-1)?.balance]]
+  const metrics = plan ? [['Anfangssaldo', result.opening_balance, 'opening'], ['Endsaldo Szenario', result.closing_balance, 'scenario'], ['Endsaldo Basis', result.baseline_monthly?.at(-1)?.balance, 'baseline']]
     : payment ? [['Einnahmen', totals.income], ['Ausgaben', totals.expense], ['Saldo', totals.net]]
       : [['Sollmiete inkl. Vorauszahlungen', totals.rent_due, 'rent_due'], ['Sonstige Einnahmen', totals.other_income, 'other_income'], ['Kosten', totals.costs, 'costs'], ['Periodenergebnis', totals.result, '']];
-  const reveal = (value, role = contribution) => { setMonth(value); setContribution(role); setPage(0); sourceRef.current?.focus(); sourceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
+  const reveal = (value, role = contribution) => { setMonth(value); if (!value) setSearch(''); if (plan) setSourceSet(role || 'scenario'); else setContribution(role); setPage(0); sourceRef.current?.focus(); sourceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
+  const sourceRows = plan && sourceSet === 'opening' ? result.opening_sources || [] : plan && sourceSet === 'baseline' ? result.baseline_sources || [] : result.sources;
+  const sourceTitle = plan && sourceSet === 'opening' ? 'Quellen des Anfangssaldos' : plan && sourceSet === 'baseline' ? 'Quellen der Basisprognose' : 'Quellen und Zahlungsannahmen';
   const needle = search.toLocaleLowerCase();
-  const sources = result.sources.filter(source => (!month || (source.month || source.day?.slice(0, 7)) === month)
+  const sources = sourceRows.filter(source => (!month || (source.month || source.day?.slice(0, 7)) === month)
     && (!contribution || source.contribution === contribution)
     && (!needle || [source.label, source.basis, source.identity, source.month, source.day, source.amount].some(value => String(value ?? '').toLocaleLowerCase().includes(needle))));
   const pageSize = 50, currentPage = Math.min(page, Math.max(0, Math.ceil(sources.length / pageSize) - 1));
   const query = new URLSearchParams(Object.entries(result.filters || {}).filter(([, value]) => value));
   return <section className="finance-result" aria-label="Berechneter Bericht">
-    <h2>Ergebnis und Quellen</h2><p className="finance-help">{payment ? 'Tatsächliche Zahlungen' : plan ? 'Szenario und Basisprognose' : 'Sollmiete + sonstige Einnahmen − Kosten'} · {result.currency || 'EUR'}</p>
-    <div className="finance-result-metrics">{metrics.map(([label, value, role]) => <div className="finance-result-metric" key={label}><span>{label}</span><strong className={Number(value) < 0 ? 'is-negative' : ''}>{cash(value)}</strong>
-      {payment ? <Link to={`/bookings?${query}${label === 'Einnahmen' ? '&flow=income' : label === 'Ausgaben' ? '&flow=expense' : ''}`}>Buchungen prüfen →</Link> : <button type="button" onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
+    <h2>Ergebnis und Quellen</h2><p className="finance-help">{payment ? 'Tatsächliche Zahlungen' : plan ? 'Szenario und Basisprognose' : 'Sollmiete + sonstige Einnahmen − Kosten'} · {result.currency || 'EUR'}{result.filters?.date_from && ` · ${formatDate(result.filters.date_from)}`}{result.filters?.date_to && ` bis ${formatDate(result.filters.date_to)}`}</p>
+    <div className="finance-result-metrics">{metrics.map(([label, value, role]) => <div className="finance-result-metric" key={label}><span>{label}</span><strong className={Number(value) < 0 ? 'is-negative' : ''}>{value == null ? 'Nicht übermittelt' : cash(value)}</strong>
+      {payment ? <Link to={`/bookings?${query}${label === 'Einnahmen' ? '&flow=income' : label === 'Ausgaben' ? '&flow=expense' : ''}`}>Buchungen prüfen →</Link> : <button type="button" disabled={value == null} onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
     <div className="finance-table-scroll"><table><caption>Monatsverlauf</caption><thead><tr><th scope="col">Monat</th><th scope="col">{plan || payment ? 'Eingänge' : 'Sollmiete'}</th>{!plan && !payment && <th scope="col">Sonstige Einnahmen</th>}<th scope="col">{plan || payment ? 'Ausgänge' : 'Kosten'}</th><th scope="col">{plan ? 'Saldo Szenario' : payment ? 'Saldo' : 'Ergebnis'}</th>{result.baseline_monthly && <th scope="col">Saldo Basis</th>}</tr></thead><tbody>
       {result.monthly.map(row => <tr key={row.month}><th scope="row"><button type="button" onClick={() => reveal(row.month)} aria-label={`Quellen für ${row.month} anzeigen`}>{row.month}</button></th><td>{cash(row.income ?? row.rent_due)}</td>{!plan && !payment && <td>{cash(row.other_income)}</td>}<td>{cash(row.expense ?? row.costs)}</td><td>{cash(row.balance ?? row.net ?? row.result)}</td>{result.baseline_monthly && <td>{cash(result.baseline_monthly.find(baseline => baseline.month === row.month)?.balance)}</td>}</tr>)}
     </tbody></table></div>
-    {result.warnings.length > 0 && <div className="finance-warnings"><h3>Angaben prüfen</h3>{result.warnings.map((warning, index) => <p role="status" key={index}>{warning.message}</p>)}</div>}
-    <section className="finance-sources" tabIndex={-1} ref={sourceRef} aria-label="Quellen und Zahlungsannahmen"><h3>Quellen und Zahlungsannahmen ({result.sources.length})</h3>
-      <div className="finance-filter-grid"><label>Quellen durchsuchen <input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Vorgang, Grundlage, Betrag…" /></label><label>Quellenmonat <select value={month} onChange={event => { setMonth(event.target.value); setPage(0); }}><option value="">Alle Monate</option>{result.monthly.map(row => <option key={row.month} value={row.month}>{row.month}</option>)}</select></label></div>
+    {result.warnings.length > 0 && <div className="finance-warnings"><h3>Angaben prüfen</h3>{result.warnings.map((warning, index) => {
+      const [type, ...id] = (warning.source || '').split(':');
+      const path = { invoice: '/invoice-review/', receivable: '/receivables?focus_id=', booking: '/bookings?booking_id=' }[type];
+      return <p role="status" key={index}>{warning.message}{path && id.length > 0 && <> <Link to={path + encodeURIComponent(id.join(':'))}>Vorgang prüfen →</Link></>}</p>;
+    })}</div>}
+    <section className="finance-sources" tabIndex={-1} ref={sourceRef} aria-label="Quellen und Zahlungsannahmen"><h3>{sourceTitle} ({sourceRows.length})</h3>
+      {plan && <><label>Berechnungsgrundlage <select aria-label="Berechnungsgrundlage" value={sourceSet} onChange={event => { setSourceSet(event.target.value); setMonth(''); setSearch(''); setPage(0); }}><option value="scenario">Szenario: künftige Zahlungen</option><option value="baseline">Basis: künftige Zahlungen</option><option value="opening">Anfangssaldo: Kontovortrag und bisherige Buchungen</option></select></label><p className="finance-help">{sourceSet === 'opening' ? 'Diese Belege ergeben zusammen den Anfangssaldo zum Stichtag.' : 'Der Endsaldo ergibt sich aus dem Anfangssaldo plus den hier aufgeführten künftigen Zahlungen. Basis: voller Mieteingang, keine zusätzliche Einziehung von Rückständen, keine Leerstands- oder Zusatzannahmen.'}</p></>}
+      <div className="finance-filter-grid"><label>Quellen durchsuchen <input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="Vorgang, Grundlage, Betrag…" /></label>{sourceSet !== 'opening' && <label>Quellenmonat <select value={month} onChange={event => { setMonth(event.target.value); setPage(0); }}><option value="">Alle Monate</option>{result.monthly.map(row => <option key={row.month} value={row.month}>{row.month}</option>)}</select></label>}</div>
       {!plan && !payment && <label className="finance-source-type">Quellenart <select aria-label="Quellenart" value={contribution} onChange={event => { setContribution(event.target.value); setPage(0); }}><option value="">Alle Beitragsarten</option><option value="rent_due">Sollmiete</option><option value="other_income">Sonstige Einnahmen</option><option value="costs">Kosten</option></select></label>}
-      {sources.length > 0 ? <div className="finance-table-scroll"><table><caption>Quellbelege und Berechnungsannahmen</caption><thead><tr><th scope="col">Datum / Monat</th><th scope="col">Vorgang / Grundlage</th><th scope="col">Betrag laut Quelle</th></tr></thead><tbody>{sources.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((source, index) => <tr key={`${source.identity}:${index}`}><td>{source.day || source.month}</td><td>{source.url ? <Link to={source.url}>{source.label || source.basis || 'Beleg öffnen'}</Link> : source.label || source.basis || source.identity}</td><td>{cash(source.amount)}</td></tr>)}</tbody></table></div> : <p>{result.sources.length ? 'Keine Quellen entsprechen der Auswahl.' : 'Keine beitragenden Vorgänge in diesem Zeitraum.'}</p>}
+      {sources.length > 0 ? <div className="finance-table-scroll"><table><caption>Quellbelege und Berechnungsannahmen</caption><thead><tr><th scope="col">Datum / Monat</th><th scope="col">Vorgang / Grundlage</th><th scope="col">Betrag laut Quelle</th></tr></thead><tbody>{sources.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((source, index) => <tr key={`${source.identity}:${index}`}><td>{source.day ? formatDate(source.day) : source.month || 'Kontovortrag'}</td><td>{source.url ? <Link to={source.url}>{source.label || source.basis || 'Beleg öffnen'}</Link> : source.label || source.basis || source.identity}</td><td>{cash(source.amount)}</td></tr>)}</tbody></table></div> : <p>{sourceRows.length ? 'Keine Quellen entsprechen der Auswahl.' : 'Keine beitragenden Vorgänge in diesem Zeitraum.'}</p>}
       <div className="finance-source-pagination"><span role="status">{sources.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, sources.length)} von ${sources.length} Quellen` : '0 Quellen'}</span><div className="finance-actions"><button className="btn btn-secondary" type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Vorherige Quellen</button><button className="btn btn-secondary" type="button" disabled={(currentPage + 1) * pageSize >= sources.length} onClick={() => setPage(currentPage + 1)}>Weitere Quellen</button></div></div>
     </section>
     <details className="finance-proof"><summary>Berechnungsnachweis</summary><p>Definition: {result.definition_hash} · Ergebnis: {result.result_hash || 'Nicht übermittelt'}</p><p>Exporte werden vor der Ausgabe erneut mit dem Ergebnisstand abgeglichen. Eine gespeicherte Definition wird beim Öffnen mit aktuellen Daten neu berechnet.</p></details>

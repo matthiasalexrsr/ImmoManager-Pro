@@ -114,3 +114,9 @@
   .dashboard-tile--wide, .dashboard-tile--narrow, .dashboard-tile--third { grid-column: span 12; }
   .dashboard-tiles { gap: 16px; }
 }
+.dashboard-analytic-table { max-height: 340px; overflow: auto; margin-top: 12px; }
+.dashboard-analytic-table table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.dashboard-analytic-table caption { text-align: left; color: var(--color-text-muted); padding-bottom: 10px; }
+.dashboard-analytic-table th, .dashboard-analytic-table td { padding: 10px 6px; text-align: left; border-bottom: 1px solid var(--color-border); }
+.dashboard-analytic-table th:last-child, .dashboard-analytic-table td:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dashboard-analytic-table td:first-child { overflow-wrap: anywhere; }

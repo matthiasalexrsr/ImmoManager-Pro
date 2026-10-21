@@ -19,6 +19,7 @@ from .finance_ledger import (
     add_months,
     booking_side,
     booking_sources,
+    booking_totals,
     month_end,
     month_key,
     month_start,
@@ -116,23 +117,30 @@ def location_amount(store, contract_id, amount, flt, day):
     return sum((part for loc, part in zip(locations, portions) if loc.property_id in visible and dims.matches(loc.property_id, loc.unit_id)), ZERO)
 
 
+def validate_source_currencies(store, definition, currency):
+    """A property selection alone does not constrain the currency of its cash account."""
+    if definition.kind == "cash-v2":
+        period = _filter(definition).with_period(definition.date_from, definition.date_to or definition.as_of)
+    elif definition.kind == "performance-period-v2":
+        period = _filter(definition).with_period(definition.date_from or date(definition.as_of.year, 1, 1),
+                                                 definition.date_to or date(definition.as_of.year, 12, 31))
+    else:
+        period = _filter(definition).with_period(None, month_end(add_months(month_start(definition.as_of), definition.months - 1)))
+    accounts = {account.id: account for account in store.list_accounts()}
+    currencies = {portfolio.id: portfolio.currency for portfolio in store.list_portfolios()}
+    for account_id in {row.account_id for row in booking_totals(store, period, by=("account",))}:
+        account = accounts.get(account_id)
+        source_currency = currencies.get(account.portfolio_id) if account else None
+        if source_currency != currency:
+            raise HTTPException(422, "Die Währung einer Buchungsquelle stimmt nicht mit dem gewählten Bestand überein oder ist nicht prüfbar. Bitte Kontozuordnung und Zugriffsrechte prüfen.")
+
+
 def cash(store, d):
     """The canonical cash calculation, with the exact bookings behind its rows."""
     from .report_service import compute_cashflow
     applied = _filter(d).with_period(d.date_from, d.date_to or d.as_of)
     calculated = compute_cashflow(store, applied, decimal_strings=True)
-    dimensions = Dimensions(store, applied)
     selected = booking_sources(store, applied)
-    selected_property = d.property_id or dimensions.unit_property(d.unit_id)
-    selected_portfolio = d.portfolio_id or dimensions.property_portfolio(selected_property)
-    if selected_portfolio:
-        portfolio_currencies = {portfolio.id: portfolio.currency for portfolio in store.list_portfolios()}
-        expected_currency = portfolio_currencies[selected_portfolio]
-        accounts = {account.id: account for account in store.list_accounts()}
-        for booking in selected:
-            source_currency = portfolio_currencies[accounts[booking.account_id].portfolio_id]
-            if source_currency != expected_currency:
-                raise HTTPException(422, "Die Buchungsquelle hat eine andere Währung als der gewählte Immobilienbestand.")
     categories = {category.id: category.category_type for category in store.list_categories()}
     sources = [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
                 "month": month_key(booking.booking_date), "amount": str(money(booking.amount)),
@@ -193,7 +201,7 @@ def performance(store, d):
                 sources.append({"identity": "rent:" + contract.id + ":" + month_key(line.period_start),
                                 "month": month_key(line.period_start), "amount": str(line.total_amount), "contribution": "rent_due",
                                 "url": "/contracts?contract_id=" + contract.id, "basis": "Sollwarmmiete einschließlich Vorauszahlungen"})
-    invoices = store.list_invoices()
+    invoices = [invoice for invoice in store.list_invoices() if invoice.status != "cancelled"]
     scopes = InvoiceScopes(store, flt, invoices)
     reviewed = flows(rows, invoices)
     links = {link.invoice_id: link for link in rows.find("service_contract_invoices", invoice_id=[i.id for i in invoices])}
@@ -275,6 +283,8 @@ def forecast(store, d):
     warnings = []
 
     def event(identity, day, amount, label, url="", priority=0):
+        if not money(amount):
+            return
         if day <= d.as_of:
             return
         if d.as_of < day <= last and (identity not in events or priority > events[identity]["priority"]):
@@ -285,7 +295,13 @@ def forecast(store, d):
     adjustments = store.list_rent_adjustments()
     from .payment_allocations import contract_ledger, credited_by_tenant
     # every tenant's payments and every rent history read once, not once per contract
-    credited = credited_by_tenant(store, {c.tenant_id for c in contracts if c.tenant_id})
+    bookings = store.list_bookings()
+    # Future booked cash is a known reservation, not another expectation. Use the
+    # same FIFO account as the tenant dossier (including advances and returns).
+    # Only future cash included in this report may replace an expected receipt.
+    credited = credited_by_tenant(store, {c.tenant_id for c in contracts if c.tenant_id},
+        bookings=[b for b in bookings if b.booking_date <= d.as_of or
+                  (b.booking_date <= last and dims.booking_matches(b))], until=last)
     reads = CachedReads(store)
     for c in contracts:
         steps = rent_steps(reads, c)
@@ -296,18 +312,18 @@ def forecast(store, d):
                     steps = [s for s in steps if s.valid_from != a.effective_date] + [RentStep(a.effective_date,
                         ChargeConfig(money(a.new_rent), prior.service_charge_advance, prior.heating_advance))]
         claims, payments = contract_ledger(store, c, last, credited.get(c.tenant_id, []), steps=steps,
-                                           payments_until=d.as_of)
+                                           payments_until=last)
         settled_rent = LeaseEngine.build_settlement_report(claims, payments, today=d.as_of)
         arrears = ZERO
         for line in settled_rent:
             m = month_start(line.period_start)
-            day = max(line.period_start, m.replace(day=min(d.rent_payment_day, month_end(m).day)))
+            day = line.due_date if line.label else max(line.period_start, m.replace(day=min(d.rent_payment_day, month_end(m).day)))
             if day <= d.as_of:
                 arrears += line.outstanding_amount
                 continue
             if c.unit_id in d.vacant_unit_ids:
                 continue
-            event("rent:" + c.id + ":" + month_key(m), day,
+            event("rent:" + c.id + ":" + (line.claim_key or month_key(m)), day,
                   money(line.outstanding_amount * d.rent_collection_percent / 100), "Erwartete Miete " + c.contract_number,
                   "/contracts?contract_id=" + c.id)
         if arrears and d.arrears_collection_percent:
@@ -354,16 +370,13 @@ def forecast(store, d):
             current = money(entry["amount"])
             rest = max(abs(current) - abs(amount), ZERO)
             entry["amount"] = str(rest if current >= 0 else -rest)
-    for b in store.list_bookings():
+    for b in bookings:
         if not d.as_of < b.booking_date <= last or not dims.booking_matches(b):
             continue
         identity = "booking:" + b.id
         # Explicit invoice identity wins; a single cash booking can pay several bills.
         for invoice_id, amount in by_booking.get(b.id, []):
             reduce_expected("invoice:" + invoice_id, amount)
-        pairs = store.list_payment_allocations(booking_id=b.id)
-        for p in pairs:
-            reduce_expected("rent:" + p.contract_id + ":" + month_key(b.booking_date), money(p.amount))
         for p in service_payments:
             if p.booking_id == b.id and not p.service_contract_invoice_id:
                 reduce_expected("service-instalment:" + p.service_contract_id + ":" + month_key(b.booking_date), money(p.amount))
@@ -395,7 +408,17 @@ def forecast(store, d):
         expense = -sum((min(money(e["amount"]), ZERO) for e in selected), ZERO)
         balance += income - expense
         monthly.append({"month": month_key(m), "income": str(income), "expense": str(expense), "balance": str(balance)})
-    return {"opening_balance": str(opening), "closing_balance": str(balance), "monthly": monthly,
+    opening_sources = [{"identity": "account-opening:" + account.id, "amount": str(money(account.opening_balance)),
+                        "label": "Eröffnungssaldo " + account.name, "basis": "Erfasster Kontovortrag",
+                        "url": "/accounts?focus_id=" + account.id}
+                       for account in store.list_accounts() if not flt.below_portfolio and
+                       (not flt.portfolio_id or account.portfolio_id == flt.portfolio_id) and money(account.opening_balance)]
+    opening_sources += [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
+                         "amount": str(money(booking.amount)), "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
+                         "basis": "Buchung bis einschließlich Stichtag", "url": "/bookings?booking_id=" + booking.id}
+                        for booking in booking_sources(store, flt.with_period(None, d.as_of))]
+    return {"opening_balance": str(opening), "opening_sources": opening_sources,
+            "closing_balance": str(balance), "monthly": monthly,
             "sources": sorted(events.values(), key=lambda e: (e["day"], e["identity"])), "warnings": warnings}
 
 
@@ -408,6 +431,7 @@ def compute(store, definition):
                   (not definition.unit_id or dims.property_portfolio(dims.unit_property(definition.unit_id)) == p.id)}
     if len(currencies) > 1:
         raise HTTPException(422, "Mehrere Währungen: bitte ein Portfolio wählen. Eine Währungsumrechnung wird nicht angenommen.")
+    validate_source_currencies(store, definition, next(iter(currencies), "EUR"))
     if definition.kind == "cash-v2":
         data = cash(store, definition)
     elif definition.kind == "performance-period-v2":
@@ -418,8 +442,9 @@ def compute(store, definition):
         baseline = definition.model_copy(update={"rent_collection_percent": Decimal(100), "arrears_collection_percent": Decimal(0),
                                                   "vacant_unit_ids": [], "planned_flows": []})
         # without assumptions the baseline is this very forecast
-        data["baseline_monthly"] = [dict(month) for month in data["monthly"]] if baseline == definition \
-            else forecast(store, baseline)["monthly"]
+        baseline_data = data if baseline == definition else forecast(store, baseline)
+        data["baseline_monthly"] = [dict(month) for month in baseline_data["monthly"]]
+        data["baseline_sources"] = [dict(source) for source in baseline_data["sources"]]
     if definition.kind == "cash-v2":
         period_from, period_to = definition.date_from, definition.date_to or definition.as_of
     elif definition.kind == "performance-period-v2":

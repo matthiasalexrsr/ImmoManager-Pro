@@ -18,7 +18,6 @@ import { DEFAULT_LAYOUT, arrange, tileOf } from '../features/dashboard/dashboard
 import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
 import './dashboard.css';
 
-const CHART_COLORS = ['var(--color-primary)', 'var(--color-success)', 'var(--color-warning)', 'var(--color-danger)', '#8b5cf6', '#0891b2'];
 const PIE_COLORS = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-border)'];
 const FALLBACKS = {
   'pages.dashboard.occupancyChart': 'Belegung',
@@ -247,8 +246,8 @@ export default function Dashboard() {
     { name: t('pages.dashboard.aging90plus'), value: aging.buckets.days90plus },
   ] : [];
 
-  // Maintenance costs by category
-  const maintData = maintCosts?.categories?.slice(0, 8) || [];
+  // Every category stays reachable; the report must not silently drop later rows.
+  const maintData = maintCosts?.categories || [];
 
   // Liquidity forecast line data
   const forecastBalanceLabel = t('pages.dashboard.balance');
@@ -261,11 +260,13 @@ export default function Dashboard() {
     [forecastExpenseLabel]: f.projected_expense,
   })) || [];
 
-  // Finance by category (top 8)
-  const financeData = financeReport?.totalsByCategory?.slice(0, 8).map(c => ({
+  const financeData = financeReport?.totalsByCategory?.map(c => ({
     name: String(c.categoryName || 'Ohne Kategorie'),
-    value: Math.abs(c.total),
+    value: Number(c.total),
+    url: '/bookings?' + new URLSearchParams({ category_id: c.categoryId || '', ...Object.fromEntries(Object.entries(financeReport.filters || {}).filter(([, value]) => value)) }),
   })) || [];
+  if (financeReport?.uncategorizedTotal) financeData.push({ name: 'Ohne Kategorie', value: Number(financeReport.uncategorizedTotal), url: '/bookings?flow=no_category' });
+  financeData.sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
 
 
   return <div className="page dashboard-page">
@@ -346,6 +347,7 @@ export default function Dashboard() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noBookings')}</p>}
+              <Link to={'/bookings?' + new URLSearchParams(Object.entries(cashflow?.filters || {}).filter(([, value]) => value))}>Buchungen dieses Zeitraums prüfen →</Link>
             </ChartPanel>
 
             <ChartPanel title={t('pages.dashboard.receivablesAging')} source={agingSource} label="Forderungsübersicht" singular>
@@ -360,6 +362,7 @@ export default function Dashboard() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noReceivables')}</p>}
+              <Link to="/receivables">Forderungen und Zahlungsnachweise prüfen →</Link>
             </ChartPanel>
           </div>
 
@@ -380,6 +383,8 @@ export default function Dashboard() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noForecast')}</p>}
+              <p className="text-muted">Fortschreibung aus Sollmiete und historischen Durchschnittswerten. Die detaillierte Planung berücksichtigt einzelne Rechnungen, Zahlungen und Szenarien.</p>
+              <Link to="/reports?kind=liquidity-v2">Detaillierte Liquiditätsplanung mit Quellen öffnen →</Link>
             </ChartPanel>
 
             <ChartPanel title={t('pages.dashboard.maintenanceCosts')} source={maintenanceSource} label="Instandhaltungskosten">
@@ -394,22 +399,14 @@ export default function Dashboard() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : <p className="chart-empty">{t('pages.dashboard.noMaintenanceCosts')}</p>}
+              <p className="text-muted">Geschätzte Kosten der erfassten Schäden und Projekte; keine bezahlten Rechnungsbeträge.</p>
+              <Link to="/maintenance">Schäden und Projekte prüfen →</Link>
+              {maintData.length > 0 && <div className="dashboard-analytic-table"><table><caption>Alle Kostenschätzungen nach Kategorie</caption><thead><tr><th>Kategorie</th><th>Geschätzt</th></tr></thead><tbody>{maintData.map(row => <tr key={row.category}><td>{row.category}</td><td>{fmt(row.estimatedCost)}</td></tr>)}</tbody></table></div>}
             </ChartPanel>
 
             <ChartPanel title={t('pages.dashboard.financeByCategory')} source={financeSource} label="Finanzbericht" singular>
               {financeData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={financeData} dataKey="value" nameKey="name"
-                      cx="50%" cy="45%" outerRadius={70}>
-                      {financeData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={v => fmt(v)} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 'var(--text-2xs)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="dashboard-analytic-table"><table><caption>Alle Buchungskategorien mit Vorzeichen</caption><thead><tr><th>Kategorie</th><th>Buchungssaldo</th></tr></thead><tbody>{financeData.map((row, index) => <tr key={`${row.url}:${index}`}><td><Link to={row.url}>{row.name}</Link></td><td className={row.value < 0 ? 'text-red' : ''}>{fmt(row.value)}</td></tr>)}</tbody></table></div>
               ) : <p className="chart-empty">{t('pages.dashboard.noFinanceData')}</p>}
             </ChartPanel>
           </div>

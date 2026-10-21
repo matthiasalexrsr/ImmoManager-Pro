@@ -48,6 +48,21 @@ beforeEach(() => { vi.resetAllMocks(); api.get.mockImplementation(load); });
 afterEach(cleanup);
 
 describe('dashboard working overview', () => {
+  it('keeps signed category amounts, uncategorized cash and categories after position eight reachable', async () => {
+    api.get.mockImplementation(path => path === '/reports/finance' ? Promise.resolve({
+      totalsByCategory: Array.from({ length: 12 }, (_, index) => ({ categoryId: `cat-${index}`, categoryName: `Kostenart ${index}`, total: -100 - index })),
+      uncategorizedTotal: 42,
+    }) : path === '/reports/maintenance-costs' ? Promise.resolve({ categories: Array.from({ length: 12 }, (_, index) => ({ category: `Schadensart ${index}`, estimatedCost: index + 1 })) }) : load(path));
+    show(); await screen.findByText('Heizung prüfen');
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse' }));
+    const categories = await screen.findByRole('table', { name: 'Alle Buchungskategorien mit Vorzeichen' });
+    expect(within(categories).getAllByRole('row')).toHaveLength(14);
+    expect(within(categories).getByRole('link', { name: 'Kostenart 11' })).toHaveAttribute('href', '/bookings?category_id=cat-11');
+    expect(within(categories).getByRole('row', { name: /Kostenart 11/ })).toHaveTextContent('-111,00');
+    expect(within(categories).getByRole('link', { name: 'Ohne Kategorie' })).toHaveAttribute('href', '/bookings?flow=no_category');
+    expect(await screen.findByRole('table', { name: 'Alle Kostenschätzungen nach Kategorie' })).toHaveTextContent('Schadensart 11');
+    expect(screen.getByRole('link', { name: /Detaillierte Liquiditätsplanung/ })).toHaveAttribute('href', '/reports?kind=liquidity-v2');
+  });
   it('presents four real inventory metrics, operational content and supported routes', async () => {
     show();
     await screen.findByText('Heizung prüfen');

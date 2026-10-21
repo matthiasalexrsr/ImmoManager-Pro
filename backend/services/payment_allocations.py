@@ -245,7 +245,7 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
         assert wanted is not None
         bookings, allocations, shares = _tenant_payment_rows(store, wanted, until)
         booking_ids = {b.id for b in bookings}
-    elif wanted is not None and len(wanted) == 1:
+    elif wanted is not None and len(wanted) == 1 and bookings is None:
         # one tenant (account page, settlement): read only their bookings and allocations
         bookings = store.list_bookings(tenant_id=next(iter(wanted)))
         booking_ids = {b.id for b in bookings}

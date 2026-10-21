@@ -14,9 +14,9 @@ from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spac
 from .housing_confirmation_render import _fonts
 
 REPORT_TITLES = {
-    "cash-v2": "Zahlungsübersicht v2",
-    "performance-period-v2": "Leistungsperiodenergebnis v2",
-    "liquidity-v2": "Liquiditätsprognose v2",
+    "cash-v2": "Zahlungsübersicht",
+    "performance-period-v2": "Periodenergebnis",
+    "liquidity-v2": "Liquiditätsplanung",
     "summary": "Bestands- und Finanzübersicht",
     "finance": "Finanzen nach Kategorien",
     "occupancy": "Belegung",
@@ -46,7 +46,7 @@ _COUNTS = {"properties", "units", "contracts", "openCases", "totalUnits", "rente
 _TEXT = {"month", "categoryName", "categoryType"}
 
 
-def _value(key: str, value: Any) -> str:
+def _value(key: str, value: Any, currency: str = "EUR") -> str:
     if value is None:
         return "-"
     if key == "categoryType":
@@ -54,11 +54,11 @@ def _value(key: str, value: Any) -> str:
     if key == "occupancyRate":
         return f"{Decimal(str(value)) * 100:.1f}".replace(".", ",") + " %"
     if key not in _COUNTS | _TEXT and isinstance(value, (int, float, Decimal)):
-        return format(Decimal(str(value)), ",.2f").replace(",", "_").replace(".", ",").replace("_", ".") + " EUR"
+        return format(Decimal(str(value)), ",.2f").replace(",", "_").replace(".", ",").replace("_", ".") + " " + currency
     return str(value)
 
 
-def render_report_pdf(report_name: str, data: dict, *, selection: dict | None = None) -> bytes:
+def render_report_pdf(report_name: str, data: dict, *, selection: dict | None = None, currency: str = "EUR") -> bytes:
     regular, bold = _fonts()
     ink, muted, accent = (colors.HexColor(c) for c in ("#182a30", "#586a70", "#176b63"))
     body = ParagraphStyle("ReportBody", fontName=regular, fontSize=9, leading=13, textColor=ink)
@@ -113,7 +113,7 @@ def render_report_pdf(report_name: str, data: dict, *, selection: dict | None = 
         scalars = [(k, v) for k, v in obj.items() if k not in {"filters", "basis", "categoryId"}
                    and not isinstance(v, (dict, list))]
         if scalars:
-            table([[_LABELS.get(k, k), _value(k, v)] for k, v in scalars], [width * .65, width * .35])
+            table([[_LABELS.get(k, k), _value(k, v, currency)] for k, v in scalars], [width * .65, width * .35])
         for key, value in obj.items():
             if key in {"filters", "basis"} or not isinstance(value, (dict, list)):
                 continue
@@ -124,7 +124,7 @@ def render_report_pdf(report_name: str, data: dict, *, selection: dict | None = 
                 columns = [k for row in value for k in row if k != "categoryId"]
                 columns = list(dict.fromkeys(columns))
                 rows = [[_LABELS.get(k, k) for k in columns]] if columns else []
-                rows.extend([_value(k, row.get(k)) for k in columns] for row in value)
+                rows.extend([_value(k, row.get(k), currency) for k in columns] for row in value)
                 widths = ([width * .6, width * .2, width * .2] if columns == ["categoryName", "categoryType", "total"]
                           else [width / len(columns)] * len(columns) if columns else [])
                 table(rows, widths, header=True)

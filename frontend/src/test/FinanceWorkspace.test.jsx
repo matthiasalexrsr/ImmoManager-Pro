@@ -26,6 +26,43 @@ beforeEach(() => {
 async function ready() { await waitFor(() => expect(screen.getByRole('button', { name: 'Berechnen' })).toBeEnabled()); }
 async function calculate() { fireEvent.click(screen.getByRole('button', { name: 'Berechnen' })); return screen.findByRole('region', { name: 'Berechneter Bericht' }); }
 
+it('opens the actual opening, scenario and basis evidence rather than the same future sources', async () => {
+  api.get.mockResolvedValue(result({ basis: 'liquidity-v2', opening_balance: '1000.00', closing_balance: '1050.00',
+    monthly: [{ month: '2026-02', income: '50.00', expense: '0.00', balance: '1050.00' }],
+    baseline_monthly: [{ month: '2026-02', income: '100.00', expense: '0.00', balance: '1100.00' }],
+    opening_sources: [{ identity: 'account-opening:a', label: 'Bankvortrag', amount: '1000.00', url: '/accounts?focus_id=a' }],
+    baseline_sources: [{ identity: 'rent:c', label: 'Volle Sollmiete', amount: '100.00', day: '2026-02-03', url: '/contracts?contract_id=c' }],
+    sources: [{ identity: 'rent:c', label: 'Szenariomiete', amount: '50.00', day: '2026-02-03' }] }));
+  mount('/reports?kind=liquidity-v2'); await ready(); await calculate();
+  fireEvent.change(screen.getByLabelText('Quellen durchsuchen'), { target: { value: 'kein Treffer' } });
+  const metric = label => screen.getByText(label, { selector: '.finance-result-metric > span' }).parentElement;
+  fireEvent.click(within(metric('Anfangssaldo')).getByRole('button'));
+  expect(screen.getByLabelText('Berechnungsgrundlage')).toHaveValue('opening');
+  expect(screen.getByRole('link', { name: 'Bankvortrag' })).toHaveAttribute('href', '/accounts?focus_id=a');
+  expect(screen.queryByText('Szenariomiete')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Quellen durchsuchen')).toHaveValue('');
+  fireEvent.click(within(metric('Endsaldo Basis')).getByRole('button'));
+  expect(screen.getByRole('link', { name: 'Volle Sollmiete' })).toHaveAttribute('href', '/contracts?contract_id=c');
+  expect(screen.queryByText('Bankvortrag')).not.toBeInTheDocument();
+  fireEvent.click(within(metric('Endsaldo Szenario')).getByRole('button'));
+  expect(screen.getByText('Szenariomiete')).toBeInTheDocument();
+  expect(screen.queryByText('Volle Sollmiete')).not.toBeInTheDocument();
+});
+
+it.each([undefined, { income: null, expense: '25.00', net: '100.00' }])('rejects missing total evidence instead of presenting zero metrics', async totals => {
+  api.get.mockResolvedValue(result({ totals }));
+  mount(); await ready(); fireEvent.click(screen.getByRole('button', { name: 'Berechnen' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Berichtsantwort ist unvollständig');
+  expect(screen.queryByRole('region', { name: 'Berechneter Bericht' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'PDF herunterladen' })).toBeDisabled();
+});
+
+it('opens missing-performance-period warnings directly at their original invoice', async () => {
+  api.get.mockResolvedValue(result({ warnings: [{ source: 'invoice:rechnung-7', message: 'Leistungszeitraum fehlt.' }] }));
+  mount(); await ready(); await calculate();
+  expect(screen.getByRole('link', { name: 'Vorgang prüfen →' })).toHaveAttribute('href', '/invoice-review/rechnung-7');
+});
+
 it('opens exact record context and retains it in calculation, exports and source navigation', async () => {
   mount('/reports?kind=cash-v2&property_id=p1&unit_id=u1&as_of=2026-01-31'); await ready();
   expect(screen.getByLabelText('Immobilie')).toHaveValue('p1'); expect(screen.getByLabelText('Einheit')).toHaveValue('u1');

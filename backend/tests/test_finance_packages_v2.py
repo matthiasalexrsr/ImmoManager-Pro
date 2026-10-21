@@ -190,7 +190,7 @@ def test_saved_definition_owner_isolation_exports_and_replay(estate, tmp_path):
     import pdfplumber
     with pdfplumber.open(BytesIO(pdf.content)) as document:
         text = "\n".join(page.extract_text() or "" for page in document.pages)
-    assert json_report["definition_hash"] in "".join(text.split()) and "1200.00" in text
+    assert json_report["definition_hash"] in "".join(text.split()) and "1.200,00 EUR" in text
     (tmp_path / "finance-v2-sample.pdf").write_bytes(pdf.content)
     other = auth.register_user("finance-other", "other@example.com", "Andere", "Secret123", "eigentuemer")
     assert TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(other.id)}).get(

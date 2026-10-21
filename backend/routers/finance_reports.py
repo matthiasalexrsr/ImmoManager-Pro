@@ -3,6 +3,7 @@ import csv
 import io
 import json
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -34,28 +35,64 @@ def output(data, format):
         writer.writerow(["Definitionshash", data["definition_hash"]])
         writer.writerow(["Währung", data["currency"]])
         writer.writerow(["Ergebnishash", data["result_hash"]])
-        for section in ("monthly", "baseline_monthly", "sources", "warnings"):
+        for key in ("opening_balance", "closing_balance"):
+            if key in data:
+                writer.writerow([key, Decimal(data[key])])
+        if "totals" in data:
+            writer.writerow(["totals"])
+            writer.writerow(data["totals"].keys())
+            writer.writerow([Decimal(value) for value in data["totals"].values()])
+        numeric_columns = {"income", "expense", "net", "balance", "rent_due", "other_income", "costs", "result", "amount"}
+        for section in ("monthly", "baseline_monthly", "opening_sources", "sources", "baseline_sources", "warnings"):
             writer.writerow([section])
             entries = data.get(section, [])
             if entries:
                 columns = list(dict.fromkeys(k for row in entries for k in row))
                 writer.writerow(columns)
-                writer.writerows([spreadsheet_cell(row.get(k, "")) for k in columns] for row in entries)
+                writer.writerows([spreadsheet_cell(Decimal(row[k]) if k in numeric_columns and k in row else row.get(k, ""))
+                                  for k in columns] for row in entries)
         refresh_scope(captured)
         return Response(stream.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="finanzbericht-v2.csv"'})
     from ..services.report_render import render_report_pdf
-    # The same definition, numbers and sources; definition is printable text, not executable configuration.
-    printable = {"Definition": json.dumps(data["definition"], ensure_ascii=False, sort_keys=True),
-                 "filters": data["filters"],
-                 "Definitionshash": data["definition_hash"], "Währung": data["currency"], "Ergebnishash": data["result_hash"], "monthly": data["monthly"],
-                 "Quellen": [{"Quelle": s.get("identity", s.get("source", "")),
-                               "Datum / Monat": s.get("day", s.get("month", "")),
-                               "Betrag": s.get("amount", ""), "Bezug": s.get("url", "")}
-                              for s in data.get("sources", [])], "Hinweise": data.get("warnings", [])}
+    def monthly(rows):
+        return [{key: value if key == "month" else Decimal(value) for key, value in row.items()} for row in rows]
+
+    def sources(rows):
+        return [{"Vorgang": source.get("label") or source.get("basis") or source["identity"],
+                 "Datum / Monat": source.get("day", source.get("month", "–")),
+                 "Betrag": Decimal(source["amount"]), "Grundlage": source.get("basis", ""),
+                 "Bezug": source.get("url", "")} for source in rows]
+
+    printable = {"filters": data["filters"], "Stichtag": data["definition"]["as_of"],
+                 "Währung": data["currency"], "monthly": monthly(data["monthly"])}
+    if "totals" in data:
+        printable["totals"] = {key: Decimal(value) for key, value in data["totals"].items()}
+    for key in ("opening_balance", "closing_balance"):
+        if key in data:
+            printable[key] = Decimal(data[key])
+    if data["basis"] == "liquidity-v2":
+        definition = data["definition"]
+        printable["Planungsannahmen"] = (f"Erwarteter Mieteingang: {definition['rent_collection_percent']} %, "
+            f"Eingang offener Rückstände: {definition['arrears_collection_percent']} %, "
+            f"Mietzahlungstag: {definition['rent_payment_day']}; "
+            f"Einheiten im Leerstandsszenario: {len(definition['vacant_unit_ids'])}. "
+            "Erfasste künftige Zahlungen ersetzen die jeweilige Erwartung; Planwerte sind keine Zahlungsgarantie.")
+        printable["Quellen des Anfangssaldos"] = sources(data.get("opening_sources", []))
+    printable["Quellen"] = sources(data.get("sources", []))
+    printable["Hinweise"] = [{"Hinweis": warning["message"], "Quelle": warning.get("source", "")}
+                             for warning in data.get("warnings", [])]
     if "baseline_monthly" in data:
-        printable["Basisprognose"] = data["baseline_monthly"]
-    content = render_report_pdf(data["basis"], printable)
+        printable["Basisprognose"] = monthly(data["baseline_monthly"])
+        printable["Quellen der Basisprognose"] = sources(data.get("baseline_sources", []))
+    printable["Berechnungsnachweis"] = {"Definitionshash": data["definition_hash"], "Ergebnishash": data["result_hash"]}
+    selection = {}
+    for key, get_record, attribute in (("portfolio_id", store.get_portfolio, "name"),
+                                      ("property_id", store.get_property, "name"),
+                                      ("unit_id", store.get_unit, "label")):
+        if data["filters"].get(key):
+            selection[key] = getattr(get_record(data["filters"][key]), attribute)
+    content = render_report_pdf(data["basis"], printable, selection=selection, currency=data["currency"])
     refresh_scope(captured)
     return Response(content, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="finanzbericht-v2.pdf"'})
