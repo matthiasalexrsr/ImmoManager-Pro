@@ -14,9 +14,22 @@ def _name(spec: str) -> str:
     return re.split(r"[<>=!~\[; ]", spec.strip(), maxsplit=1)[0].lower()
 
 
-def _requirements(path: Path) -> set[str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return {_name(line) for line in lines if line.strip() and not line.startswith(("#", "-"))}
+def _requirements(path: Path, seen: set[Path] | None = None) -> set[str]:
+    """Follow local requirement includes, as pip does; constraints install no packages."""
+    path = path.resolve()
+    seen = set() if seen is None else seen
+    if path in seen:
+        return set()
+    seen.add(path)
+    names = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        include = re.match(r"^(?:-r\s+|--requirement(?:\s+|=))(.+)$", line)
+        if include:
+            names.update(_requirements(path.parent / include.group(1).strip(), seen))
+        elif line and not line.startswith(("#", "-")):
+            names.add(_name(line))
+    return names
 
 
 def test_pyproject_declares_security_dependencies():
