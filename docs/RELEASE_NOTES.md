@@ -118,7 +118,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - noch nicht abgeschlossene Nebenkostenabrechnungen ergeben bei neuer Erzeugung korrekte Beträge.
   - Abgeschlossene Abrechnungen bleiben unverändert.
 - **Datenexport (JSON):** Ein Export dieser Version hat das Format 14 (mit Ablaufdaten, Aufbewahrungsklassen und Lastschriftdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
-- **Mietkonten nach der Rechenprüfung:** Fälligkeiten verschieben sich vom 3. Kalendertag auf den 3. Werktag. Verträge mit einer Mietänderung zur Monatsmitte zeigen für diesen Monat jetzt den tagesgenauen Betrag; Rückstand oder Guthaben dieser Konten können sich dadurch um den Unterschied ändern. Bereits abgeschlossene Mahnschreiben und Abrechnungen bleiben, wie sie sind.
+- **Mietkonten nach der Rechenprüfung:** Fälligkeiten verschieben sich vom 3. Kalendertag auf den 3. Werktag. Verträge mit einer Mietänderung zur Monatsmitte zeigen für diesen Monat jetzt den tagesgenauen Betrag; Rückstand oder Guthaben dieser Konten können sich dadurch um den Unterschied ändern. Bereits abgeschlossene Mahnschreiben und Abrechnungen bleiben, wie sie sind. Bisher unzugeordnete Zahlungen eines Mieters mit nur einem Vertrag, die vor dem Einzug oder nach dem Auszug eingingen, ordnet das Programm beim ersten Start diesem Vertrag zu.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
 
 ## Bekannte Grenzen

@@ -250,7 +250,7 @@ def test_the_agreement_respects_three_net_cold_rents_and_the_instalments(client)
     source = client.get(f"{BASE}/source", params={"contract_id": estate["contract"].id}).json()
     assert source["cap"] == {"cold_rent": 500.0, "cap": 1500.0, "exceeds": False, "excess": 0.0, "known": True}
     assert source["suggested_amount"] == 1500.0
-    assert [i["due_date"] for i in source["schedules"]["3"]] == ["2024-01-01", "2024-02-03", "2024-03-03"]
+    assert [i["due_date"] for i in source["schedules"]["3"]] == ["2024-01-01", "2024-02-05", "2024-03-05"]
     assert {a["name"] for a in source["accounts"]} == {"Kautionskonto", "Mietkonto"}
 
     too_high = _agreement(client, estate, amount=1600)
@@ -261,7 +261,7 @@ def test_the_agreement_respects_three_net_cold_rents_and_the_instalments(client)
 
     detail = _file(client, estate)
     assert [(i["number"], i["due_date"], i["amount"], i["status"]) for i in detail["instalments"]] == [
-        (1, "2024-01-01", 500.0, "overdue"), (2, "2024-02-03", 500.0, "overdue"), (3, "2024-03-03", 500.0, "overdue")]
+        (1, "2024-01-01", 500.0, "overdue"), (2, "2024-02-05", 500.0, "overdue"), (3, "2024-03-05", 500.0, "overdue")]
     assert detail["stage"] == "agreed" and detail["account"]["name"] == "Kautionskonto"
     uneven = _agreement(client, estate, instalment_amounts=[700, 700])
     assert uneven.status_code == 400 and "Raten ergeben" in _message(uneven)
