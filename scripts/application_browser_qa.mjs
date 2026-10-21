@@ -286,8 +286,8 @@ try {
     await expect(row('QA-RE-REST')).toContainText('83,45');
     await expect(row('QA-RE-REST')).toContainText('40,00');
     await page.getByRole('link', { name: 'QA-RE-REST', exact: true }).click();
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Zahlung zuordnen', exact: true }).click();
+    await page.waitForURL(url => url.pathname === `/invoice-review/${financialInvoice.id}`);
+    await page.locator('#ir-payment').getByRole('button', { name: 'Zahlung zuordnen', exact: true }).click();
     const picker = page.getByRole('dialog', { name: 'Zahlung zuordnen' });
     await expect(picker).toBeVisible();
     await picker.getByRole('searchbox').fill('QA RE-REST Auswahl');
