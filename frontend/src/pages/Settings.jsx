@@ -16,7 +16,7 @@ import UsersSection from './settings/UsersSection';
 import LetterheadSection from '../features/letters/LetterheadSection';
 
 export default function Settings() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const auth = useAuth();
   const tutorial = useTutorial();
   const devMode = useDevMode();
@@ -24,9 +24,13 @@ export default function Settings() {
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
-  const [settingsTab, setSettingsTab] = useState(params.get('section') || 'catalogue');
-
-  useEffect(() => { if (params.get('section')) setSettingsTab(params.get('section')); }, [params]);
+  const allowedTabs = ['catalogue', 'letterhead', 'security', 'system', ...(isAdmin ? ['users', 'dev'] : [])];
+  const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
+  const setSettingsTab = section => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (section === 'catalogue') next.delete('section'); else next.set('section', section);
+    return next;
+  });
 
   // Only admins may read /admin/version. Load once: the error toast re-renders the page, and
   // with toast/t as dependencies a refused request turned into an endless request loop.

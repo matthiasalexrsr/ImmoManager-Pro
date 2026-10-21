@@ -9,6 +9,21 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({ 'status.badge.
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 
+it('reloads and displays the changed source before acknowledging a revision conflict', async () => {
+  const value = revision => ({ notice: { revision: 0, content: 'Bitte prüfen' }, source: {
+    kind: 'category', entity_id: 'c1', revision, title: `Quelle ${revision}`, href: '/categories?focus_id=c1', values: {},
+  } });
+  api.get.mockResolvedValueOnce(value('first')).mockResolvedValueOnce(value('second'));
+  api.post.mockRejectedValueOnce(Object.assign(new Error('Quelle wurde geändert'), { statusCode: 409 })).mockResolvedValue({});
+  render(<MemoryRouter initialEntries={['/notifications/open/n1']}><Routes>
+    <Route path="/notifications/open/:id" element={<NotificationLanding />} /></Routes></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'Aktuelle Quelle laden' }));
+  expect(await screen.findByRole('heading', { name: 'Quelle second' })).toBeInTheDocument();
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][1].source_revision).toBe('second');
+  expect(api.post.mock.calls[1][1].idempotency_key).not.toBe(api.post.mock.calls[0][1].idempotency_key);
+});
+
 it('shows the source in words with its actions', async () => {
   api.get.mockResolvedValueOnce({
     notice: { revision: 1, content: 'Zahlungserinnerung über 1.704,00 €' },

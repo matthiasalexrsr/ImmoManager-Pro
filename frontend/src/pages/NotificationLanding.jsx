@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge';
 
 // Rendering the actual authorized source is the landing. The receipt is sent
 // only after that source has mounted; failure/offline keeps a retryable command.
-function SourceLanding({ data, identifier }) {
+function SourceLanding({ data, identifier, onReload }) {
   const { source, notice } = data;
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
@@ -18,7 +18,7 @@ function SourceLanding({ data, identifier }) {
     let live = true; const same = api.captureSession();
     api.post(`/notifications/${encodeURIComponent(identifier)}/receipt`, body.current).then(() => {
       same(); if (live) { setDone(true); setError(null); window.dispatchEvent(new Event('notification-receipt')); }
-    }).catch(failure => { if (live) setError(failure.message); });
+    }).catch(failure => { if (live) setError({ message: failure.message, conflict: (failure.statusCode || failure.status) === 409 }); });
     return () => { live = false; };
   }, [identifier, attempt]);
   const labels = { description: 'Beschreibung', content: 'Inhalt', status: 'Status', due_date: 'Fällig am',
@@ -40,7 +40,9 @@ function SourceLanding({ data, identifier }) {
       </div>
     </div></section>
     {done && <p role="status" className="text-muted">Persönlich gelesen und archiviert.</p>}
-    {error && <div className="alert alert-error" role="alert">Die Lesebestätigung wurde nicht bestätigt: {error} <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button></div>}
+    {error && <div className="alert alert-error" role="alert">Die Lesebestätigung wurde nicht bestätigt: {error.message}{' '}
+      {error.conflict ? <button type="button" className="btn btn-sm btn-secondary" onClick={onReload}>Aktuelle Quelle laden</button>
+        : <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(n => n + 1)}>Erneut bestätigen</button>}</div>}
   </article>;
 }
 
@@ -58,5 +60,5 @@ export default function NotificationLanding() {
   if (error) return <div className="page"><div className="alert alert-error" role="alert">Quelle konnte nicht geöffnet werden: {error}. Der Hinweis bleibt im Eingang.{' '}
     <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(n => n + 1)}>Erneut versuchen</button>{' '}
     <Link to="/notifications">Zum Eingang</Link></div></div>;
-  return data?.identifier === id ? <SourceLanding key={id} data={data.value} identifier={id} /> : <div className="page-loading" role="status">Quelle wird geprüft …</div>;
+  return data?.identifier === id ? <SourceLanding key={`${id}:${attempt}`} data={data.value} identifier={id} onReload={() => { setData(null); setAttempt(n => n + 1); }} /> : <div className="page-loading" role="status">Quelle wird geprüft …</div>;
 }

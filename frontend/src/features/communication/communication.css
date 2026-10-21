@@ -9,6 +9,7 @@
 .communication-center button { margin: .25rem; max-width: 100%; white-space: normal; }
 .communication-center fieldset, .communication-center article { min-width: 0; overflow-wrap: anywhere; }
 .communication-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.communication-context-links { display: flex; gap: .5rem 1rem; flex-wrap: wrap; margin: .5rem 0; overflow-wrap: anywhere; }
 .communication-center .communication-confirm { display: flex; flex-direction: row; align-items: start; }
 .communication-confirm input { width: auto; margin-top: .3rem; }
 .communication-center [role=alert] { padding: .75rem; border: 1px solid #a22; color: var(--color-error, #a22); }

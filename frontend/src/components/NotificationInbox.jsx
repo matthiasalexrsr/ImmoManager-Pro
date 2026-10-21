@@ -8,10 +8,25 @@ import { Bell, Inbox, Archive, ArrowUpRight } from 'lucide-react';
 import './notificationInbox.css';
 
 export default function NotificationInbox({ compact = false }) {
-  const [params] = useSearchParams();
-  const [status, setStatus] = useState(params.get('status') || (params.has('severity') || params.has('focus_id') ? '' : 'unread'));
-  const [severity, setSeverity] = useState(params.get('severity') || '');
-  const [kind, setKind] = useState('');
+  const [params, setParams] = useSearchParams();
+  const status = compact ? 'unread' : params.get('status') ?? (params.has('severity') || params.has('focus_id') ? '' : 'unread');
+  const severity = compact ? '' : params.get('severity') || '';
+  const kind = compact ? '' : params.get('kind') || '';
+  const updateFilter = (key, value) => setParams(current => {
+    const next = new URLSearchParams(current); next.set(key, value);
+    ['focus_id', 'source_id', 'notice_id'].forEach(name => next.delete(name));
+    return next;
+  });
+  // A changed filter owns a fresh cursor/snapshot. Back/forward navigation
+  // therefore restores the visible filter without reusing another page's fence.
+  return <PersonalInbox key={JSON.stringify([compact, status, severity, kind])}
+    compact={compact} status={status} severity={severity} kind={kind} updateFilter={updateFilter} />;
+}
+
+function PersonalInbox({ compact, status, severity, kind, updateFilter }) {
+  const setStatus = value => updateFilter('status', value);
+  const setSeverity = value => updateFilter('severity', value);
+  const setKind = value => updateFilter('kind', value);
   const [cursor, setCursor] = useState(null);
   const [history, setHistory] = useState([]);
   const [snapshot, setSnapshot] = useState(null);
@@ -49,7 +64,7 @@ export default function NotificationInbox({ compact = false }) {
     </select></label>
       <label>Dringlichkeit <select aria-label="Dringlichkeit" value={severity} onChange={e => { setSeverity(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle</option><option value="info">Information</option><option value="warning">Warnung</option><option value="error">Fehler</option><option value="critical">Kritisch</option></select></label>
       <label>Quelle <select aria-label="Quelle" value={kind} onChange={e => { setKind(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle Quellen</option>
-        {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', contract: 'Mietverträge', property: 'Immobilien', tenant: 'Parteien', document: 'Dokumente', service_contract: 'Objektverträge', billing_period: 'Abrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', invoice: 'Rechnungen', contract: 'Mietverträge', property: 'Immobilien', unit: 'Einheiten', tenant: 'Parteien', document: 'Dokumente', maintenance: 'Schäden und Projekte', message_thread: 'Konversationen', message: 'Nachrichten', service_contract: 'Objektverträge', billing_period: 'Abrechnungszeiträume', utility_statement: 'Einzelabrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label></div></>}
     {error && <div className="inbox-error" role="alert"><span>{error}</span> <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setCursor(null); setHistory([]); setSnapshot(null); reload(); }}>Neu laden</button></div>}
     {!page && !error && <p className="inbox-loading" role="status">Hinweise werden geladen …</p>}

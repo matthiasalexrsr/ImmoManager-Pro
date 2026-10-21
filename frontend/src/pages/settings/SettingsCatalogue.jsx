@@ -20,12 +20,14 @@ function SettingField({ item, onSaved }) {
   const [recovery] = useState(() => { try { return JSON.parse(sessionStorage.getItem(storage) || 'null'); } catch { return null; } });
   const [value, setValue] = useState(recovery?.value ?? item.value);
   const expected = useRef(recovery?.base_revision ?? item.revision);
+  const [comparisonRevision, setComparisonRevision] = useState(expected.current);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(Boolean(recovery));
   const dirtyNow = useRef(Boolean(recovery));
   const pending = useRef(recovery?.command || null);
   const mounted = useRef(true);
+  const submitting = useRef(false);
   const prefs = usePreferences();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   // edit()/save() persist at the event boundary. A delayed effect carrying an
@@ -33,7 +35,7 @@ function SettingField({ item, onSaved }) {
   useEffect(() => {
     // Initial/late effects must not replace an edit made before React has
     // rendered the new dirty state. The input event fences them immediately.
-    if (!dirtyNow.current) { setValue(item.value); expected.current = item.revision; }
+    if (!dirtyNow.current) { setValue(item.value); expected.current = item.revision; setComparisonRevision(item.revision); }
   }, [item.value, item.revision, dirty]);
   const edit = next => {
     dirtyNow.current = true;
@@ -41,7 +43,8 @@ function SettingField({ item, onSaved }) {
     try { sessionStorage.setItem(storage, JSON.stringify({ value: next, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
   };
   const save = async (reset = false) => {
-    if (busy) return;
+    if (submitting.current) return;
+    submitting.current = true;
     const chosen = reset ? item.value : value;
     const parsed = typeof item.value === 'boolean' ? chosen === true || chosen === 'true' : typeof item.value === 'number' ? Number(chosen) : chosen;
     if (pending.current?.values[item.key] !== parsed || Boolean(pending.current?.reset) !== reset) pending.current = { values: { [item.key]: parsed }, scope: item.scope,
@@ -60,8 +63,20 @@ function SettingField({ item, onSaved }) {
       } catch { /* optional recovery */ }
       if (!mounted.current) return;
       pending.current = null; dirtyNow.current = false; setDirty(false); onSaved(); prefs?.reload?.();
-    } catch (failure) { if (mounted.current) setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.'); }
-    finally { if (mounted.current) setBusy(false); }
+    } catch (failure) {
+      if (!mounted.current) return;
+      setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.');
+      if ((failure.statusCode || failure.status) === 409) {
+        pending.current = null;
+        try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: null })); } catch { /* optional recovery */ }
+        onSaved();
+      }
+    }
+    finally { submitting.current = false; if (mounted.current) setBusy(false); }
+  };
+  const compareCurrent = () => {
+    expected.current = item.revision; pending.current = null; setComparisonRevision(item.revision); setError(null);
+    try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: item.revision, command: null })); } catch { /* optional recovery */ }
   };
   const choiceLabels = { symbol: 'Währungssymbol (Quellwährung)', code: 'ISO-Währungscode (Quellwährung)', '\t': 'Tabulator', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Übersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persönlicher Eingang' };
   const id = `setting-${item.scope}-${item.key}`;
@@ -76,7 +91,7 @@ function SettingField({ item, onSaved }) {
       {dirty && <small>Ungespeicherte Eingabe (in diesem Tab gesichert)</small>}
     </div> : <p id={id}>{typeof item.value === 'boolean' ? (item.value ? 'Ja' : 'Nein') : String(item.value)}{item.restart_required && ' · Serveränderung erfordert Neustart'}</p>}
     {item.editable && <button className="btn btn-ghost btn-sm setting-reset" disabled={busy} onClick={() => { expected.current = item.revision; pending.current = null; setDirty(true); save(true); }}>Vorgabe übernehmen</button>}
-    {dirty && item.revision !== expected.current && <p role="status">Aktuell gespeichert: {String(item.value)}. Ihre Eingabe: {String(value)}. <button onClick={() => { expected.current = item.revision; pending.current = null; setError(null); }}>Mit aktuellem Stand vergleichen und eigene Eingabe behalten</button></p>}
+    {dirty && item.revision !== comparisonRevision && <p role="status">Aktuell gespeichert: {String(item.value)}. Ihre Eingabe: {String(value)}. <button onClick={compareCurrent}>Mit aktuellem Stand vergleichen und eigene Eingabe behalten</button></p>}
     {error && <p role="alert">{error} Eingabe bleibt erhalten. Bei Konflikt zuerst den aktuellen Stand laden und vergleichen.</p>}
   </article>;
 }
@@ -84,6 +99,8 @@ function SettingField({ item, onSaved }) {
 export default function SettingsCatalogue() {
   const auth = useAuth();
   const [search, setSearch] = useState('');
+  const [scope, setScope] = useState('');
+  const [group, setGroup] = useState('');
   const [property, setProperty] = useState('');
   const [properties, setProperties] = useState([]);
   const [items, setItems] = useState([]);
@@ -113,7 +130,10 @@ export default function SettingsCatalogue() {
   const matches = value => words.every(word => normalize(value).includes(word));
   // A newly selected object must never render writable cards from the prior
   // object's response while its own request is still pending.
-  const found = (loadedProperty === property ? items : []).filter(item => matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
+  const currentItems = loadedProperty === property ? items : [];
+  const found = currentItems.filter(item => (!scope || (scope === 'object' ? item.scope.startsWith('object:') : item.scope === scope))
+    && (!group || item.group === group) && matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
+  const groups = [...new Set(currentItems.map(item => item.group).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
   const links = [
     ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
     ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
@@ -125,10 +145,17 @@ export default function SettingsCatalogue() {
       <div className="settings-catalogue-field"><label htmlFor="settings-object">Objektkontext</label><select id="settings-object" value={property} onChange={e => setProperty(e.target.value)}>
         <option value="">Ohne Objekt</option>{properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select></div>
+      <div className="settings-catalogue-field"><label htmlFor="settings-scope">Geltungsbereich</label><select id="settings-scope" value={scope} onChange={e => setScope(e.target.value)}>
+        <option value="">Alle Geltungsbereiche</option><option value="personal">Nur für mich</option><option value="global">Installationsweite Vorgaben</option><option value="object">Objektvorgaben</option><option value="installation">Serverkonfiguration</option>
+      </select></div>
+      <div className="settings-catalogue-field"><label htmlFor="settings-group">Themenbereich</label><select id="settings-group" value={group} onChange={e => setGroup(e.target.value)}>
+        <option value="">Alle Themenbereiche</option>{groups.map(value => <option key={value} value={value}>{value}</option>)}
+      </select></div>
     </div>
     {propertyError && <p role="alert">Objekte konnten nicht geladen werden: {propertyError} <button onClick={() => setPropertyAttempt(n => n + 1)}>Objekte erneut laden</button></p>}
     <p className="settings-catalogue-intro">Persönliche Werte haben Vorrang vor Objektvorgaben und globalen Standardwerten. Ruhezeiten gelten für persönliche E-Mail-Hinweise in Europe/Berlin, sobald beide Zeiten gesetzt und verschieden sind. Serverparameter stammen aus der bestehenden Serverkonfiguration und werden hier nur angezeigt. Währungen werden nicht umgerechnet; Belege behalten ihre Quellwährung.</p>
     {error && <p role="alert">{error} <button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
+    <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => setAttempt(n => n + 1)}>Aktuelle Werte laden</button>
     <p role="status" className="settings-catalogue-count">{loading || loadedProperty !== property && !error ? 'Einstellungen werden geladen …' : error ? 'Aktuelle Einstellungen konnten nicht geladen werden.' : `${found.length} Einstellungen gefunden`}</p>
     <div className="setting-grid">{found.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div>
     {(!search || /sitz|sicher|anmeld|session/i.test(search)) && <SessionInventory />}

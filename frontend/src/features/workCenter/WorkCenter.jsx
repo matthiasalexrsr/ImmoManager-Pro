@@ -28,7 +28,7 @@ export default function WorkCenter() {
   const auth = useAuth();
   const { prefs, error: settingsError } = useEffectiveSettings(params.get('property_id'));
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
+  const { items: properties, error: propertyError, reload: reloadProperties } = useEntities('properties', '/properties');
   const [change, setChange] = useState(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
   const [conversation, setConversation] = useState(null);
@@ -49,18 +49,19 @@ export default function WorkCenter() {
       {inboxExpanded && <NotificationInbox compact />}
     </details>
     {settingsError && <p role="alert">{settingsError}</p>}
+    {propertyError && <p role="alert">Die Immobilienauswahl konnte nicht geladen werden: {propertyError} <button type="button" className="btn btn-secondary btn-sm" onClick={reloadProperties}>Immobilien erneut laden</button></p>}
     <EntityShelf />
     <WorkSummary query={summaryQuery.toString()} revision={summaryRevision} />
     <section aria-label="Offene Vorgänge">
       <div className="work-center-toolbar">
       <div className="work-center-filters">
-        <label>Bereich<select value={params.get('kind') || ''} onChange={event => filter('kind', event.target.value)}><option value="">Alle Bereiche</option>
+        <label>Bereich<select aria-label="Bereich" value={params.get('kind') || ''} onChange={event => filter('kind', event.target.value)}><option value="">Alle Bereiche</option>
           {Object.entries(LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
         </select></label>
-        <label>Immobilie<select value={params.get('property_id') || ''} onChange={event => filter('property_id', event.target.value)}><option value="">Alle Immobilien</option>
+        <label>Immobilie<select aria-label="Immobilie" value={params.get('property_id') || ''} onChange={event => filter('property_id', event.target.value)}><option value="">Alle Immobilien</option>
           {properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}
         </select></label>
-        <label>Wiedervorlagen<select value={params.get('deferred') || ''} onChange={event => filter('deferred', event.target.value)}>
+        <label>Wiedervorlagen<select aria-label="Wiedervorlagen" value={params.get('deferred') || ''} onChange={event => filter('deferred', event.target.value)}>
           <option value="">Alle Vorgänge</option><option value="due">Wiedervorlage erreicht</option><option value="active">Jetzt bearbeiten (ohne zurückgestellte)</option>
         </select></label>
         <label className="work-center-date">Fällig bis<input type="date" value={params.get('due_before') || ''} onChange={event => filter('due_before', event.target.value)} /></label>
@@ -91,6 +92,12 @@ export default function WorkCenter() {
           {item.kind === 'task' && item.can_edit && auth?.user && mayWrite(auth.write, '/tasks') && <InlineFieldEditor
             record={{ id: item.entity_id, updated_at: item.revision, title: item.title, status: item.status }} field="status" label="Status" canEdit onSaved={changed}
             options={[{ value: 'open', label: 'Offen' }, { value: 'in_progress', label: 'In Arbeit' }, { value: 'completed', label: 'Erledigt' }, { value: 'cancelled', label: 'Abgebrochen' }]}><StatusBadge status={item.status} /></InlineFieldEditor>}
+          {item.kind === 'task' && item.can_edit && auth?.user && mayWrite(auth.write, '/tasks') && <>
+            <InlineFieldEditor record={{ id: item.entity_id, updated_at: item.revision, title: item.title, due_date: item.due_date }}
+              field="due_date" type="date" label="Fälligkeit" canEdit onSaved={changed}>Fälligkeit ändern</InlineFieldEditor>
+            <InlineFieldEditor record={{ id: item.entity_id, updated_at: item.revision, title: item.title, assignee: item.assignee }}
+              field="assignee" label="Zuständigkeit" canEdit onSaved={changed}>Zuständigkeit ändern</InlineFieldEditor>
+          </>}
           <DeferralControl item={item} onChanged={refresh} />
         </div>
       </li>)}</ul>

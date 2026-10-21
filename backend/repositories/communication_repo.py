@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..db.orm_models import (
     CalendarEventORM,
     ContactORM,
+    ContractORM,
     MessageORM,
     MessageThreadORM,
     NotificationORM,
@@ -19,6 +20,7 @@ from ..models import (
     CalendarEventCreate,
     Contact,
     ContactCreate,
+    Contract,
     Message,
     MessageCreate,
     MessageThread,
@@ -214,6 +216,7 @@ class CommunicationRepository:
         return self._message_threads.list_all()
 
     def create_message_thread(self, data: MessageThreadCreate) -> MessageThread:
+        self.validate_message_thread(data)
         result = self._message_threads.create(data)
         self._commit()
         return result
@@ -222,9 +225,22 @@ class CommunicationRepository:
         return self._message_threads.get(thread_id)
 
     def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
+        self.validate_message_thread(data, self.get_message_thread(thread_id))
         result = self._message_threads.update(thread_id, data)
         self._commit()
         return result
+
+    def validate_message_thread(self, data, previous=None):
+        from ..services.message_thread_validation import validate_message_thread
+
+        def resolve(kind, identifier):
+            if kind == 'contact':
+                return self.get_contact(identifier)
+            if kind == 'contract':
+                return BaseRepository(self.db, ContractORM, Contract, 'Mietvertrag nicht gefunden').get(identifier)
+            return getattr(self._portfolio_repo, 'get_' + kind)(identifier)
+
+        validate_message_thread(data, resolve, previous)
 
     def delete_message_thread(self, thread_id: str) -> None:
         self._message_threads.delete(thread_id)

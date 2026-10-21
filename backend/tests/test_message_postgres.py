@@ -34,7 +34,8 @@ def test_complete_message_workflow_on_native_postgres(tmp_path):
         with admin.connect() as connection:
             connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
         created = True
-        tests = [str(root / "backend" / "tests" / item) for item in ("test_message_workflow.py", "test_message_thread_boundary.py")]
+        tests = [str(root / "backend" / "tests" / item) for item in
+                 ("test_message_workflow.py", "test_message_thread_boundary.py", "test_communication_records.py")]
         result = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "--tb=short", f"--junitxml={report}"],
                                 cwd=tmp_path, env=environment, capture_output=True, text=True, encoding="utf-8", timeout=300)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -44,8 +45,11 @@ def test_complete_message_workflow_on_native_postgres(tmp_path):
         required = {"test_more_than_ten_thousand_same_time_messages_use_complete_bounded_keysets",
                     "test_parallel_retries_and_independent_connections_create_exactly_once",
                     "test_hidden_thread_stays_404_before_cursor_validation",
-                    "test_receipt_failure_rolls_back_message_thread_and_command"}
-        assert len(cases) >= 15 and not any(case.find("skipped") is not None for case in cases)
+                    "test_receipt_failure_rolls_back_message_thread_and_command",
+                    "test_thread_location_and_contract_must_describe_the_same_dossier",
+                    "test_empty_subject_is_refused_on_create_and_edit",
+                    "test_renaming_a_conversation_preserves_existing_message_statistics"}
+        assert len(cases) >= 22 and not any(case.find("skipped") is not None for case in cases)
         assert required.issubset(names)
     finally:
         if created:

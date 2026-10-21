@@ -19,6 +19,24 @@ beforeEach(() => {
   api.put.mockResolvedValue({ response: { reminder_days: '14', _revision: 4 } });
 });
 afterEach(cleanup);
+it('loads the current setting after a conflict and preserves the input for comparison and retry', async () => {
+  let current = row;
+  api.get.mockImplementation(path => Promise.resolve({ items: path.endsWith('/sessions') ? [] : [current] }));
+  api.put.mockImplementationOnce(() => {
+    current = { ...row, value: '10', revision: 4 };
+    return Promise.reject(Object.assign(new Error('Zwischenzeitlich geändert'), { statusCode: 409 }));
+  }).mockResolvedValue({ response: { _revision: 5 } });
+  mount(); fireEvent.change(await screen.findByLabelText(row.label), { target: { value: '21' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  expect(await screen.findByText(/Aktuell gespeichert:/)).toHaveTextContent('10');
+  expect(screen.getByLabelText(row.label)).toHaveValue(21);
+  fireEvent.click(screen.getByRole('button', { name: /Mit aktuellem Stand vergleichen/ }));
+  expect(JSON.parse(sessionStorage.getItem('workspace:settings-reader:setting-draft:personal:reminder_days')).base_revision).toBe(4);
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+  expect(api.put.mock.calls[1][1]).toMatchObject({ values: { reminder_days: '21' }, base_revision: 4 });
+  expect(api.put.mock.calls[1][1].idempotency_key).not.toBe(api.put.mock.calls[0][1].idempotency_key);
+});
 it('searches labels and scopes while retaining a private unfinished input', async () => {
   mount(); const field = await screen.findByLabelText(row.label);
   fireEvent.change(field, { target: { value: '14' } });

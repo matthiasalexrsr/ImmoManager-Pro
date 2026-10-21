@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { BellIcon } from './Icons';
 import useNotificationInbox from '../hooks/useNotificationInbox';
 import NotificationInbox from './NotificationInbox';
+import { useLocation } from 'react-router-dom';
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -9,6 +10,8 @@ export default function NotificationBell() {
   const ref = useRef(null);
   const button = useRef(null);
   const { page } = useNotificationInbox('unread', null, 1);
+  const location = useLocation();
+  useEffect(() => { setOpen(false); }, [location.key]);
 
   useEffect(() => {
     // A closed bell must not capture Escape used by forms or confirmations.

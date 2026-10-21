@@ -1581,6 +1581,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             self.validate_document_associations(updated)
         if entity_type == "task":
             self.validate_task(updated, entity_id)
+        if entity_type == "message_thread":
+            self.validate_message_thread(updated, old)
         if entity_type == "utility_statement":
             check_final_statement_change(old, updated)
         if entity_type == "booking":
@@ -2059,6 +2061,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         return list(self.message_threads.values())
 
     def create_message_thread(self, data: MessageThreadCreate) -> MessageThread:
+        self.validate_message_thread(data)
         thread = MessageThread(id=_generate_id(), **data.model_dump())
         self.message_threads[thread.id] = thread
         return thread
@@ -2069,12 +2072,17 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         except KeyError as exc:
             raise NotFoundError("Thread nicht gefunden") from exc
 
+    def validate_message_thread(self, data, previous=None):
+        from .services.message_thread_validation import validate_message_thread
+        validate_message_thread(data, lambda kind, identifier: getattr(self, 'get_' + kind)(identifier), previous)
+
     @atomic_memory_update("message_threads")
     def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
         if thread_id not in self.message_threads:
             raise NotFoundError("Thread nicht gefunden")
         old = self.message_threads[thread_id]
-        thread = MessageThread(id=thread_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
+        self.validate_message_thread(data, old)
+        thread = old.model_copy(update={**data.model_dump(), 'updated_at': next_updated_at(old.updated_at, datetime.now(timezone.utc))})
         self.message_threads[thread_id] = thread
         return thread
 

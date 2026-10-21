@@ -6,15 +6,18 @@ import { useEntities } from '../contexts/DataStoreContext';
 import NotificationInbox from '../components/NotificationInbox';
 import { useTranslation } from '../i18n';
 import FormModal from '../components/FormModal';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import useMessageConversation from '../hooks/useMessageConversation';
 import './messages.css';
 import CommunicationCenter from '../features/communication/CommunicationCenter';
 import InternalReplyComposer from '../features/communication/InternalReplyComposer';
 import { useCanWrite } from '../contexts/AuthContext';
 
+const contactName = contact => contact?.company_name || [contact?.first_name, contact?.last_name].filter(Boolean).join(' ')
+  || contact?.name || contact?.email || 'Kontakt öffnen';
+
 export default function Messages() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [threads, setThreads] = useState([]);
   const [channelThread, setChannelThread] = useState(null);
   const recordThread = useCallback(thread => {
@@ -27,7 +30,15 @@ export default function Messages() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { t } = useTranslation();
-  const [view, setView] = useState(params.get('focus_id') ? 'threads' : 'notifications');
+  const [view, setView] = useState(params.get('view') || (params.get('focus_id') || params.get('thread_id') ? 'threads' : 'notifications'));
+  const selectView = value => {
+    setView(value);
+    setParams(current => { const next = new URLSearchParams(current); next.set('view', value); return next; });
+  };
+  useEffect(() => {
+    const value = params.get('view');
+    if (['notifications', 'threads', 'communication'].includes(value)) setView(value);
+  }, [params]);
   const [attempt, setAttempt] = useState(0);
   const [modal, setModal] = useState(null);
   const setNewMessage = conversation.setDraft;
@@ -76,6 +87,14 @@ export default function Messages() {
   const focusMessage = params.get('notice_id') ? params.get('source_id') : null;
   const [arrivedMessage, setArrivedMessage] = useState(null);
   const loadThreadMessages = conversation.selectThread;
+  const chooseThread = thread => {
+    loadThreadMessages(thread); setView('threads'); setArrivedMessage(null);
+    setParams(current => {
+      const next = new URLSearchParams(current);
+      ['thread_id', 'notice_id', 'source_id'].forEach(key => next.delete(key));
+      next.set('focus_id', thread.id); next.set('view', 'threads'); return next;
+    });
+  };
   useEffect(() => {
     if (!focusThread) return;
     let live = true; const same = api.captureSession(); setArrivedMessage(null);
@@ -92,8 +111,11 @@ export default function Messages() {
   useEffect(() => {
     if (focusThread || !linkedThreadId || selectedThread?.id === linkedThreadId) return;
     const linked = threads.find(item => item.id === linkedThreadId);
-    if (linked) { setView('threads'); loadThreadMessages(linked); }
-  }, [focusThread, linkedThreadId, selectedThread?.id, threads, loadThreadMessages]);
+    if (linked) {
+      if (!params.get('view') || params.get('view') === 'threads') setView('threads');
+      loadThreadMessages(linked);
+    }
+  }, [focusThread, linkedThreadId, selectedThread?.id, threads, loadThreadMessages, params]);
 
 
   const handleCreateThread = async (data) => {
@@ -102,14 +124,13 @@ export default function Messages() {
     sameSession();
     if (!thread?.id) throw new Error('Die neue Konversation wurde nicht bestätigt.');
     setThreads(current => [thread, ...current.filter(item => item.id !== thread.id)]);
-    loadThreadMessages(thread);
-    setView('threads');
+    chooseThread(thread);
   };
 
   const threadFields = [
     { key: 'subject', label: t('pages.messages.subject') || 'Betreff', required: true },
     { key: 'participant_ids', label: t('pages.messages.participants') || 'Teilnehmer', type: 'select',
-      options: contacts.map(c => ({ value: c.id, label: c.name || c.email || c.id })) },
+      options: contacts.map(c => ({ value: c.id, label: contactName(c) })) },
   ];
 
   // Entity lookup maps for references
@@ -143,22 +164,22 @@ export default function Messages() {
       <div className="tab-bar" style={{ marginBottom: '1rem' }}>
         <button
           className={`detail-tab ${view === 'notifications' ? 'active' : ''}`}
-          onClick={() => setView('notifications')}
+          onClick={() => selectView('notifications')}
         >
           {t('pages.messages.notifications') || 'Benachrichtigungen'}
         </button>
         <button
           className={`detail-tab ${view === 'threads' ? 'active' : ''}`}
-          onClick={() => setView('threads')}
+          onClick={() => selectView('threads')}
         >
           {t('pages.messages.conversations') || 'Konversationen'} ({threads.length})
         </button>
-        <button className={`detail-tab ${view === 'communication' ? 'active' : ''}`} onClick={() => setView('communication')}>E-Mail und Empfang</button>
+        <button className={`detail-tab ${view === 'communication' ? 'active' : ''}`} onClick={() => selectView('communication')}>E-Mail und Empfang</button>
       </div>
 
-      {view === 'communication' && <CommunicationCenter threads={threads} onOpenThread={id => {
+      {view === 'communication' && <CommunicationCenter threads={threads} initialThreadId={linkedThreadId || selectedThread?.id || ''} onOpenThread={id => {
         const linked = threads.find(item => item.id === id);
-        if (linked) { setView('threads'); loadThreadMessages(linked); }
+        if (linked) chooseThread(linked);
       }} />}
       {view === 'notifications' && <NotificationInbox />}
 
@@ -179,8 +200,8 @@ export default function Messages() {
                   className={`message-item ${selectedThread?.id === thr.id ? 'active' : ''}`}
                   role="button" tabIndex={0}
                   aria-pressed={selectedThread?.id === thr.id}
-                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); loadThreadMessages(thr); } }}
-                  onClick={() => loadThreadMessages(thr)}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseThread(thr); } }}
+                  onClick={() => chooseThread(thr)}
                 >
                   <div className="message-item-header">
                     <span className="message-item-title">{thr.subject}</span>
@@ -205,6 +226,12 @@ export default function Messages() {
               <>
                 <div className="message-detail-header">
                   <h2>{selectedThread.subject}</h2>
+                  <nav className="communication-context-links" aria-label="Verknüpfte Akten">
+                    {selectedThread.property_id && <Link to={`/properties/${encodeURIComponent(selectedThread.property_id)}`}>{propMap[selectedThread.property_id] || 'Immobilie öffnen'}</Link>}
+                    {selectedThread.unit_id && <Link to={`/units?focus_id=${encodeURIComponent(selectedThread.unit_id)}`}>{unitMap[selectedThread.unit_id] || 'Einheit öffnen'}</Link>}
+                    {selectedThread.contract_id && <Link to={`/contracts?focus_id=${encodeURIComponent(selectedThread.contract_id)}`}>{contractMap[selectedThread.contract_id] || 'Mietvertrag öffnen'}</Link>}
+                    {[...new Set((selectedThread.participant_ids || '').split(',').map(id => id.trim()).filter(Boolean))].map(id => <Link key={id} to={`/contacts?focus_id=${encodeURIComponent(id)}`}>{contactName(contacts.find(contact => contact.id === id))}</Link>)}
+                  </nav>
                   <button type="button" className="btn btn-secondary" aria-expanded={channelThread === selectedThread.id}
                     onClick={() => setChannelThread(previous => previous === selectedThread.id ? null : selectedThread.id)}>WhatsApp-Vorgänge anzeigen</button>
                   {channelThread === selectedThread.id && <ChannelPanel key={selectedThread.id} sourceId={selectedThread.id} mode="whatsapp" />}

@@ -12,10 +12,10 @@ const empty = { to: '', cc: '', bcc: '', subject: '', body: '', attachments: [],
 const addresses = text => text.split(/[;,\n]/).map(value => value.trim()).filter(Boolean);
 const draftFields = ['to', 'cc', 'bcc', 'subject', 'body', 'connection_id', 'template_id', 'reply_to_item_id', 'attachments', 'snippet_ids'].map(key => ({ key }));
 
-export default function CommunicationCenter({ threads = [], onOpenThread }) {
+export default function CommunicationCenter({ threads = [], initialThreadId = '', onOpenThread }) {
   const canWrite = useCanWrite('/messages');
   const [kind, setKind] = useState('outbound');
-  const [threadId, setThreadId] = useState('');
+  const [threadId, setThreadId] = useState(initialThreadId);
   const [rows, setRows] = useState({ items: [], total: null, next_cursor: null });
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(empty);
@@ -26,6 +26,9 @@ export default function CommunicationCenter({ threads = [], onOpenThread }) {
   const [documentId, setDocumentId] = useState('');
   const [versionBefore, setVersionBefore] = useState(null);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [choicesError, setChoicesError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -41,6 +44,7 @@ export default function CommunicationCenter({ threads = [], onOpenThread }) {
   const loadGeneration = useRef(0);
   const versionGeneration = useRef(0);
   const writing = useRef(false);
+  const loadingPage = useRef(false);
   const thread = threads.find(item => item.id === threadId);
   const autosave = useEntityFormDraft({ context: 'email-compose', kind: 'message_thread', id: threadId,
     fields: draftFields, enabled: canWrite && Boolean(threadId) });
@@ -62,31 +66,38 @@ export default function CommunicationCenter({ threads = [], onOpenThread }) {
       do { const page = await api.get(path + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''), options); current(); items.push(...page.items); cursor = page.next_cursor; } while (cursor && !controller.signal.aborted);
       return items;
     };
+    setChoicesError('');
     Promise.all([allPages(`${base}/connections/choices?limit=50`), allPages(`${base}?kind=template`), api.list('/documents', options)])
       .then(([choices, values, files]) => { if (!controller.signal.aborted) { current(); setConnections(choices); setTemplates(values); setDocuments(files); } })
-      .catch(failure => { if (!controller.signal.aborted) setError(failure.message || 'Auswahl konnte nicht geladen werden.'); });
+      .catch(failure => { if (!controller.signal.aborted) setChoicesError(failure.message || 'Auswahl konnte nicht geladen werden.'); });
     return () => controller.abort();
   }, [refresh]);
 
   const load = async (cursor = null, append = false) => {
+    if (append && loadingPage.current) return;
+    loadingPage.current = true; setLoading(true); setLoadError('');
     const attempt = ++loadGeneration.current;
     const identity = epoch.current; const current = api.captureSession();
-    if (!append) setRows({ items: [], total: null, next_cursor: null });
     try {
       const query = new URLSearchParams({ kind, ...(threadId ? { thread_id: threadId } : {}), ...(cursor ? { cursor } : {}) });
       const page = await api.get(`${base}?${query}`);
       if (identity !== epoch.current || attempt !== loadGeneration.current) return;
-      current(); setRows(previous => ({ ...page, items: append ? [...previous.items, ...page.items] : page.items }));
+      current();
+      if (!Array.isArray(page?.items) || !Number.isSafeInteger(page.total) || page.total < 0) throw new Error('Die Kommunikationsliste wurde nicht vollständig geladen. Bitte erneut laden.');
+      setRows(previous => {
+        const known = new Set(previous.items.map(item => item.id));
+        return { ...page, items: append ? [...previous.items, ...page.items.filter(item => !known.has(item.id))] : page.items };
+      });
       setSelected(previous => {
         const fresh = previous && previous.kind !== 'draft' ? page.items.find(item => item.id === previous.id) : null;
         return fresh && (fresh.revision || 0) >= (previous.revision || 0) ? fresh : previous;
       });
-      setError('');
     } catch (failure) { if (identity === epoch.current && attempt === loadGeneration.current) {
-      setRows({ items: [], total: null });
-      if ([401, 403, 404].includes(failure.statusCode)) { setSelected(null); setForm(empty); }
-      setError(failure.message || 'Kommunikation konnte nicht geladen werden.');
-    } }
+      if ([401, 403, 404].includes(failure.statusCode)) { setRows({ items: [], total: null }); setSelected(null); setForm(empty); }
+      setLoadError(failure.message || 'Kommunikation konnte nicht geladen werden.');
+    } } finally {
+      if (identity === epoch.current && attempt === loadGeneration.current) { loadingPage.current = false; setLoading(false); }
+    }
   };
   useEffect(() => { load(); /* Selection has its own generation guard. */
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,18 +199,21 @@ export default function CommunicationCenter({ threads = [], onOpenThread }) {
     <Link to="/dunning">Manuellen Mahn-Postausgang öffnen</Link>
     {!canWrite && <p>Nur Lesen: Entwürfe und Versand können nicht geändert werden.</p>}
     <div className="communication-controls">
-      <label>Konversation<select disabled={cleaning} value={threadId} onChange={event => { selectionEpoch.current++; formVersion.current++; setThreadId(event.target.value); setSelected(null); setForm(empty); }}><option value="">Gesamter Postausgang / ungeklärter Eingang</option>{threads.map(item => <option key={item.id} value={item.id}>{item.subject}</option>)}</select></label>
-      <label>Ansicht<select disabled={cleaning} value={kind} onChange={event => { selectionEpoch.current++; setKind(event.target.value); setSelected(null); }}><option value="outbound">Postausgang</option><option value="manual_dunning">Manueller Mahn-Postausgang</option><option value="inbound">Posteingang</option><option value="draft">Meine Entwürfe</option><option value="template">Vorlagenfassungen</option><option value="mailbox">Abruffortschritt und Eingangsfehler</option></select></label>
+      <label>Konversation<select aria-label="Konversation" disabled={cleaning} value={threadId} onChange={event => { selectionEpoch.current++; formVersion.current++; loadGeneration.current++; setRows({ items: [], total: null }); setThreadId(event.target.value); setSelected(null); setForm(empty); }}><option value="">Gesamter Postausgang / ungeklärter Eingang</option>{threads.map(item => <option key={item.id} value={item.id}>{item.subject}</option>)}</select></label>
+      <label>Ansicht<select aria-label="Ansicht" disabled={cleaning} value={kind} onChange={event => { selectionEpoch.current++; loadGeneration.current++; setRows({ items: [], total: null }); setKind(event.target.value); setSelected(null); }}><option value="outbound">Postausgang</option><option value="manual_dunning">Manueller Mahn-Postausgang</option><option value="inbound">Posteingang</option><option value="draft">Meine Entwürfe</option><option value="template">Vorlagenfassungen</option><option value="mailbox">Abruffortschritt und Eingangsfehler</option></select></label>
       <button className="btn btn-secondary" onClick={refreshAll}>Aktualisieren</button>
       {canWrite && <button className="btn btn-primary" disabled={!threadId || busy || cleaning} onClick={newDraft}>E-Mail entwerfen</button>}
     </div>
     {error && <div role="alert">{error}{pending.current && <button disabled={busy} onClick={retryPending}>Speicherung abgleichen</button>}</div>}
+    {loadError && loadError !== error && <div role="alert">{loadError} <button type="button" onClick={refreshAll}>Liste erneut laden</button></div>}
+    {choicesError && <div role="alert">{choicesError} <button type="button" onClick={() => setRefresh(value => value + 1)}>Auswahl erneut laden</button></div>}
     {notice && <p role="status">{notice}</p>}
     <div className="communication-layout">
       <div><p>{rows.total == null ? 'Bestand nicht geladen' : `${rows.total} Einträge`}</p>
+        {loading && <p role="status">Kommunikation wird geladen …</p>}
         {rows.items.length === 0 && rows.total === 0 && <p>Keine Einträge in dieser Ansicht.</p>}
         <ul className="communication-list">{rows.items.map(row => <li key={row.id}><button disabled={cleaning} aria-pressed={selected?.id === row.id} onClick={() => open(row)}><strong>{row.subject || row.name || 'Ohne Betreff'}</strong><span>{labels[row.state] || row.state}</span><time>{row.created_at?.slice(0, 16).replace('T', ' ')}</time></button></li>)}</ul>
-        {rows.next_cursor && <button onClick={() => load(rows.next_cursor, true)}>Weitere Einträge laden</button>}
+        {rows.next_cursor && <button disabled={loading} onClick={() => load(rows.next_cursor, true)}>Weitere Einträge laden</button>}
       </div>
       <div>
         {canWrite && threadId && (!selected || (selected.kind === 'draft' && selected.state === 'draft')) && <form onSubmit={event => { event.preventDefault(); save(); }}>
@@ -207,7 +221,7 @@ export default function CommunicationCenter({ threads = [], onOpenThread }) {
           <h3>{selected ? 'Entwurf bearbeiten' : 'Neue E-Mail'}</h3>
           {autosave.recovery && <div role="status"><p>Ein privater E-Mail-Arbeitsstand wurde wiedergefunden: {autosave.recovery.values.subject}</p><button type="button" onClick={recoverDraft}>Arbeitsstand übernehmen</button><button type="button" onClick={() => autosave.clear()}>Arbeitsstand verwerfen</button></div>}
           {autosave.error && <div role="alert">{autosave.error}<button type="button" onClick={autosave.retry}>Entwurfssicherung wiederholen</button></div>}
-          <label>E-Mail-Verbindung<select required value={form.connection_id} onChange={event => change('connection_id', event.target.value)}><option value="">Bitte auswählen</option>{connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>E-Mail-Verbindung<select aria-label="E-Mail-Verbindung" required value={form.connection_id} onChange={event => change('connection_id', event.target.value)}><option value="">Bitte auswählen</option>{connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Vorlagenfassung<select value={form.template_id || ''} onChange={event => { const template = templates.find(item => item.id === event.target.value); if (template) updateForm({ ...form, subject: template.subject, body: template.body, template_id: template.id }); }}><option value="">Keine Vorlage</option>{templates.filter(item => item.usage !== 'snippet').map(item => <option key={item.id} value={item.id}>{item.name} · {item.created_at?.slice(0, 16)}</option>)}</select></label>
           <label>Textbaustein einfügen<select value="" onChange={event => { const snippet = templates.find(item => item.id === event.target.value); if (snippet) updateForm({ ...form, body: `${form.body}${form.body ? '\n' : ''}${snippet.body}`, snippet_ids: [...new Set([...(form.snippet_ids || []), snippet.id])] }); }}><option value="">Textbaustein auswählen</option>{templates.filter(item => item.usage === 'snippet').map(item => <option key={item.id} value={item.id}>{item.name} · {item.created_at?.slice(0, 16)}</option>)}</select></label>
           {['to', 'cc', 'bcc'].map(key => <label key={key}>{({ to: 'An', cc: 'Kopie (Cc)', bcc: 'Blindkopie (Bcc)' })[key]}<input value={form[key]} onChange={event => change(key, event.target.value)} placeholder="adresse@example.de; weitere@example.de" /></label>)}

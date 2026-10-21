@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Messages from '../pages/Messages';
@@ -34,6 +34,13 @@ beforeEach(() => {
 afterEach(() => cleanup());
 async function open() { render(<MemoryRouter><Messages /></MemoryRouter>); fireEvent.click(await screen.findByRole('button', { name: /Konversationen/ })); }
 const choose = id => fireEvent.click(screen.getByText(`Vorgang ${id.toUpperCase()}`, { selector: '.message-item-title' }));
+
+it('allows switching conversations after entering through a record link', async () => {
+  render(<MemoryRouter initialEntries={['/messages?focus_id=a']}><Messages /></MemoryRouter>);
+  await screen.findByRole('heading', { name: 'Vorgang A' });
+  choose('b');
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Vorgang B' })).toBeInTheDocument());
+});
 
 it('never displays late A content under B even when transport ignores abort', async () => {
   reads.a = deferred(); reads.b = deferred(); await open(); choose('a'); choose('b');

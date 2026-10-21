@@ -26,6 +26,25 @@ beforeEach(() => {
 afterEach(cleanup);
 const open = () => render(<MemoryRouter><CommunicationCenter threads={threads} /></MemoryRouter>);
 
+it('retains the loaded list when the next page fails and retries the same cursor', async () => {
+  let nextReads = 0;
+  api.get.mockImplementation(path => {
+    if (path.includes('/connections/choices') || path.includes('kind=template')) return Promise.resolve({ items: [] });
+    if (path.includes('cursor=page2')) {
+      if (++nextReads === 1) return Promise.reject(new Error('Nächste Seite offline'));
+      return Promise.resolve({ items: [{ ...row, id: 'second', subject: 'Zweite E-Mail' }], total: 2 });
+    }
+    return Promise.resolve({ items: [row], total: 2, next_cursor: 'page2' });
+  });
+  open(); await screen.findByRole('button', { name: /Ausgewählte E-Mail/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Einträge laden' }));
+  await screen.findByText(/Nächste Seite offline/);
+  expect(screen.getByRole('button', { name: /Ausgewählte E-Mail/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Einträge laden' }));
+  expect(await screen.findByRole('button', { name: /Zweite E-Mail/ })).toBeInTheDocument();
+  expect(nextReads).toBe(2);
+});
+
 it('does not send on preview or selection and requires explicit recipient confirmation', async () => {
   open(); fireEvent.click(await screen.findByRole('button', { name: /Ausgewählte E-Mail/ }));
   expect(api.post).not.toHaveBeenCalled();
@@ -47,6 +66,18 @@ it('retains the exact command after a lost confirmation and never invents a new 
   fireEvent.click(await screen.findByRole('button', { name: 'Speicherung abgleichen' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
   expect(api.post.mock.calls[1]).toEqual(api.post.mock.calls[0]);
+});
+
+it('keeps an unconfirmed command available for reconciliation after refreshing the list', async () => {
+  open(); fireEvent.click(await screen.findByRole('button', { name: /Ausgewählte E-Mail/ }));
+  fireEvent.click(screen.getByRole('checkbox'));
+  api.post.mockRejectedValue(new Error('Antwort verloren'));
+  fireEvent.click(screen.getByRole('button', { name: 'Versand verbindlich freigeben' }));
+  await screen.findByRole('button', { name: 'Speicherung abgleichen' });
+  fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'Speicherung abgleichen' })).toBeInTheDocument();
+  expect(api.post).toHaveBeenCalledTimes(1);
 });
 
 it('shows unknown separately and permits only a documented reconciliation', async () => {

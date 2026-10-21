@@ -13,7 +13,7 @@ export default function useCursorFeed(path, enabled = true, loadPage = api.get) 
     const request = new AbortController();
     session.current = request;
     more.current = null;
-    setState(previous => ({ path, items: previous.path === path ? previous.items : [], loading: true, error: null, next_cursor: null }));
+    setState(previous => ({ path, items: previous.path === path ? previous.items : [], loading: true, loadingMore: false, error: null, next_cursor: null }));
     loadPage(path, { signal: request.signal }).then(page => {
       if (!Array.isArray(page?.items)) throw new Error('Die Liste konnte nicht gelesen werden.');
       if (!request.signal.aborted) setState({ ...page, path, loading: false, loadingMore: false, error: null });

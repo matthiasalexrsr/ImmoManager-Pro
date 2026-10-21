@@ -13,6 +13,15 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
+it('always previews unread notices even while the page is displaying the archive', async () => {
+  render(<MemoryRouter initialEntries={['/notifications?status=archived&severity=critical']}><NotificationBell /></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Benachrichtigungen' }));
+  await screen.findByText('Keine Hinweise in dieser Ansicht.');
+  const previews = api.get.mock.calls.filter(([path]) => path.includes('limit=10'));
+  expect(previews.length).toBeGreaterThan(0);
+  expect(previews.every(([path]) => new URL(path, 'http://local').searchParams.get('status') === 'unread')).toBe(true);
+});
+
 function renderBell() {
   return render(<MemoryRouter>
     <button type="button">Eine andere Aktion</button>
