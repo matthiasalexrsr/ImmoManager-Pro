@@ -20,6 +20,7 @@ from sqlalchemy.pool import NullPool
 
 from . import secret_box
 from .file_storage import validate_key
+from .filesystem_paths import filesystem_path
 
 TABLES = ("assistant_conversations", "assistant_messages", "assistant_runs", "assistant_attachments", "assistant_proposals")
 VAULT_PREFIX = "assistant-private/_vault/"
@@ -72,6 +73,7 @@ def _attachment(data: dict, owner: str) -> str:
 
 
 def _verify_file(uploads: Path, key: str, data: dict) -> None:
+    uploads = filesystem_path(uploads)
     path = uploads / key
     try:
         if path.is_symlink() or not path.resolve().is_relative_to(uploads.resolve()) or not path.is_file():
@@ -113,6 +115,7 @@ def _vault(key: str, raw: bytes, keys: list[secret_box.Key]) -> str:
 
 def capture_vaults(uploads: Path, keys: list[secret_box.Key]) -> tuple[dict[str, bytes], set[str]]:
     """Snapshot the exact encrypted bytes later written to the ZIP, not live paths."""
+    uploads = filesystem_path(uploads)
     root = uploads / "assistant-private" / "_vault"
     captured: dict[str, bytes] = {}
     identifiers: set[str] = set()

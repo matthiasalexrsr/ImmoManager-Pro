@@ -12,6 +12,7 @@ from sqlalchemy import MetaData, Table, create_engine, select, text, update
 
 from backend.services import assistant_backup as proof
 from backend.services import full_backup, secret_box
+from backend.services.filesystem_paths import filesystem_path
 from backend.tests.test_operations_backup import installation as installation
 
 OWNER = "staff"
@@ -19,6 +20,30 @@ IDS = {"assistant_conversations": "conversation-fixture", "assistant_runs": "run
        "assistant_messages": "message-fixture", "assistant_attachments": "attachment-fixture",
        "assistant_proposals": "proposal-fixture"}
 ORIGINAL = b"Synthetic selected document\x00\xff"
+
+
+def test_private_backup_inventory_handles_long_native_restore_paths(tmp_path):
+    uploads = tmp_path / ('restore-' + 'a' * 110) / 'uploads'
+    native = filesystem_path(uploads)
+    owner_hash = hashlib.sha256(OWNER.encode()).hexdigest()
+    key = f'assistant-private/_vault/{owner_hash}/codex.json'
+    box = secret_box.SecretBox(tmp_path / 'long-path-keys.json')
+    payload = {'version': 1, 'files': {'auth.json': base64.b64encode(b'{"synthetic":true}').decode()}, 'public': {}}
+    raw = json.dumps({'version': 1, 'sealed': box.seal(json.dumps(payload), f'assistant-account:v1:{owner_hash}:codex')}).encode()
+    vault = native / key
+    vault.parent.mkdir(parents=True)
+    vault.write_bytes(raw)
+    assert len(str(uploads / key)) > 260
+    captured, key_ids = proof.capture_vaults(uploads, box.keys())
+    assert captured == {key: raw} and key_ids == {secret_box.token_key_id(json.loads(raw)['sealed'])}
+    original_key = f'assistant-private/files/{owner_hash}/' + 'b' * 32
+    original = native / original_key
+    original.parent.mkdir(parents=True)
+    original.write_bytes(ORIGINAL)
+    metadata = {'byte_length': len(ORIGINAL), 'sha256': hashlib.sha256(ORIGINAL).hexdigest()}
+    proof._verify_file(uploads, original_key, metadata)
+    with pytest.raises(proof.AssistantBackupError):
+        proof._verify_file(uploads, original_key, {**metadata, 'sha256': '0' * 64})
 
 
 def seed(connection, box, *, state="running"):

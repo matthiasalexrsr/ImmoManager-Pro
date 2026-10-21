@@ -39,6 +39,12 @@ Bezüge; WISO und TEHA bleiben entsprechend der späteren Priorisierung zurückg
 8. **Gemeinsame Zustände:** Projekt- und Kalenderänderungen aktualisieren auch die
    verknüpften Ansichten. Abgebrochene Anfragen überschreiben keine neuere
    Darstellung. Projektaktionen besitzen einen sofort wirksamen Doppelklickschutz.
+9. **Vollbackup unter Windows:** Die echte Wiederherstellung offenbarte einen
+   fehlenden Einsatz der vorhandenen Behandlung langer Dateipfade in der privaten
+   KI-Dateiprüfung. Inventar und Originalprüfung nutzen jetzt dieselben nativen
+   Pfade wie das Entpacken. Ein Regressionstest prüft unveränderte verschlüsselte
+   Zugangsdaten sowie unveränderte und beschädigte Originale hinter Pfaden mit
+   mehr als 260 Zeichen, ohne eine Windows-Systemeinstellung ändern zu müssen.
 
 ## Bedienwege
 
