@@ -74,3 +74,29 @@ Wiederherstellungsprotokoll liegt unter
 WISO-/TEHA-Schreibübertragungen und echter Nachrichtenversand gehören nicht zu
 dieser Prüfrunde. Bekannte historische Zahlungskennzeichen ohne Beleg werden
 nicht als belegte Zahlung ergänzt.
+
+## Zusätzliche Gegenprüfung datierter Zahlungen
+
+Die abschließende Gegenprobe hielt den Kandidaten `47e28de9` vor der Auslieferung
+zurück: Forderung 100, datierte Teilzahlung 40 und Anfangssaldo 1.000 ergaben
+1.140 statt 1.100. Die Prognose verwendet jetzt den kanonischen Rest zum Ende
+ihres Planungshorizonts. Teilzahlungen, Rückbuchungen, Guthabenverrechnung,
+Lieferantengutschriften und tatsächlich erworbenes Skonto reduzieren genau
+die verbleibende Erwartung; Zahlungen außerhalb des Horizonts bleiben außen vor.
+
+Unverrechnete Vertragsabschläge berücksichtigen den wirksamen Zahlungsanteil
+nach Rückbuchungen, auch bei Vorauszahlung im laufenden Monat. Der Anteil wird
+nach den Vertragsorten verteilt, damit Objektberichte zum Gesamtbestand passen.
+Einzelne Erstattungen ersetzen keine weitere erwartete Abschlagszahlung. Ohne
+Rechnungsperiode gilt der Buchungsmonat; diese Annahme steht im Bericht.
+
+Auch eine ausdrücklich auf null gesetzte Szenarioquelle ersetzt weiterhin die
+automatische Erwartung. Zahlungskennzeichen ohne ausreichenden Nachweis erzeugen
+verlinkte Hinweise. Zunächst werden fünf angezeigt, sämtliche weiteren lassen
+sich aufklappen. Forderungsquellen öffnen die konkrete Forderung.
+
+`test_forecast_payment_horizon.py` hält 22 Fälle für beide lokalen Speicherarten
+und die verpflichtende PostgreSQL-Prüfung fest. Vor der Korrektur schlugen 17
+der ersten 21 Gegenproben fehl; die zugehörigen Belege bleiben im privaten
+Freigabeverzeichnis erhalten. Eine genehmigte Lieferantengutschrift reduziert
+auch eine ältere Rechnung ohne angelegte Prüfakte, in Prognose und Periodenkosten.

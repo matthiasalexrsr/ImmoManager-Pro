@@ -26,6 +26,18 @@ beforeEach(() => {
 async function ready() { await waitFor(() => expect(screen.getByRole('button', { name: 'Berechnen' })).toBeEnabled()); }
 async function calculate() { fireEvent.click(screen.getByRole('button', { name: 'Berechnen' })); return screen.findByRole('region', { name: 'Berechneter Bericht' }); }
 
+it('keeps many financial warnings readable and makes every affected invoice reachable', async () => {
+  api.get.mockResolvedValue(result({ warnings: Array.from({ length: 8 }, (_, index) => ({ source: `invoice:i${index}`, message: `Beleg ${index}: Zahlungsnachweis fehlt.` })) }));
+  mount(); await ready(); await calculate();
+  expect(screen.getByRole('heading', { name: 'Angaben prüfen (8)' })).toBeInTheDocument();
+  expect(screen.queryByText('Beleg 7: Zahlungsnachweis fehlt.')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Alle 8 Hinweise anzeigen' }));
+  const warning = screen.getByText('Beleg 7: Zahlungsnachweis fehlt.');
+  expect(within(warning).getByRole('link', { name: 'Vorgang prüfen →' })).toHaveAttribute('href', '/invoice-review/i7');
+  fireEvent.click(screen.getByRole('button', { name: 'Weniger Hinweise anzeigen' }));
+  expect(screen.queryByText('Beleg 7: Zahlungsnachweis fehlt.')).not.toBeInTheDocument();
+});
+
 it('opens the actual opening, scenario and basis evidence rather than the same future sources', async () => {
   api.get.mockResolvedValue(result({ basis: 'liquidity-v2', opening_balance: '1000.00', closing_balance: '1050.00',
     monthly: [{ month: '2026-02', income: '50.00', expense: '0.00', balance: '1050.00' }],

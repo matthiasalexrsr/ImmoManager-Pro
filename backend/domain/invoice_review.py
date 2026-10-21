@@ -305,7 +305,7 @@ class Settlement:
 
     def flow_amount(self) -> Decimal | None:
         """What the invoice contributes to project figures and contract costs; None: as before (legacy)."""
-        if self.status == "legacy":
+        if self.status == "legacy" and not self.credits:
             return None
         if self.status == "rejected":
             return ZERO
@@ -355,7 +355,8 @@ def settle(*, gross: Any, status: str, approved: Any = None, credits: Any = ZERO
         result.payment_status = "credit_note"
         return result
     if status == "legacy":
-        result.payable = g
+        result.credits = money(credits)
+        result.payable = max(g - result.credits, ZERO)
     elif status in APPROVED:
         a = money(approved if approved is not None else g)
         c = money(credits)

@@ -178,7 +178,7 @@ def _effective_payments(rows: Rows, invoice_ids: list[str], *, as_of: date | Non
     return found
 
 
-def _credit_totals(rows: Rows, invoice_ids: list[str]) -> dict[str, Decimal]:
+def _credit_totals(rows: Rows, invoice_ids: list[str], as_of: date | None = None) -> dict[str, Decimal]:
     """Approved credit notes per invoice they reduce."""
     notes = [r for r in rows.find("invoice_reviews", credit_for_invoice_id=invoice_ids)
              if r.kind == "credit_note" and r.status == "approved"]
@@ -186,7 +186,7 @@ def _credit_totals(rows: Rows, invoice_ids: list[str]) -> dict[str, Decimal]:
     totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for note in notes:
         invoice = invoices.get(note.invoice_id)
-        if invoice is not None:
+        if invoice is not None and (as_of is None or invoice.invoice_date <= as_of):
             totals[note.credit_for_invoice_id] += abs(money(note.approved_amount if note.approved_amount is not None
                                                             else invoice.gross_amount))
     return totals
@@ -199,7 +199,7 @@ def _due_on(invoice: Any, review: Any) -> date | None:
 def _settle(invoice: Any, review: Any, payments: list[rules.Payment], credits: Decimal,
             today: date) -> rules.Settlement:
     if review is None:
-        return rules.settle(gross=invoice.gross_amount, status="legacy", payments=payments,
+        return rules.settle(gross=invoice.gross_amount, status="legacy", payments=payments, credits=credits,
                             due_on=invoice.due_date, today=today)
     return rules.settle(
         gross=invoice.gross_amount, status=review.status, approved=review.approved_amount, credits=credits,
@@ -214,7 +214,7 @@ def settlements(rows: Rows, invoices: Iterable[Any], today: date | None = None) 
     ids = [i.id for i in invoices]
     reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=ids)}
     payments = _effective_payments(rows, ids, as_of=today)
-    credits = _credit_totals(rows, ids)
+    credits = _credit_totals(rows, ids, as_of=today)
     today = today or date.today()
     return {i.id: _settle(i, reviews.get(i.id), payments.get(i.id, []), credits.get(i.id, ZERO), today)
             for i in invoices}
@@ -223,22 +223,23 @@ def settlements(rows: Rows, invoices: Iterable[Any], today: date | None = None) 
 def flows(rows: Rows, invoices: Iterable[Any]) -> dict[str, tuple[str, Decimal]]:
     """What reviewed invoices contribute to other modules: {invoice id: (review status, amount)}.
 
-    Legacy invoices are absent (callers keep using the gross amount). A rejected invoice and
+    Unchanged legacy invoices are absent (callers keep using the gross amount). A rejected invoice and
     a credit note contribute nothing themselves; a credit note reduces its invoice instead.
     """
     invoices = list(invoices)
     reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=[i.id for i in invoices])}
-    reviewed = [i for i in invoices if i.id in reviews]
+    credited = _credit_totals(rows, [i.id for i in invoices])
+    reviewed = [i for i in invoices if i.id in reviews or credited.get(i.id)]
     if not reviewed:
         return {}
     found = {}
     for invoice_id, settlement in settlements(rows, reviewed).items():
-        review = reviews[invoice_id]
-        if review.kind == "credit_note":
+        review = reviews.get(invoice_id)
+        if review and review.kind == "credit_note":
             found[invoice_id] = ("credit_note", ZERO)
         else:
             amount = settlement.flow_amount()
-            found[invoice_id] = (review.status, settlement.gross if amount is None else amount)
+            found[invoice_id] = (review.status if review else "legacy", settlement.gross if amount is None else amount)
     return found
 
 

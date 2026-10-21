@@ -2,7 +2,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException
@@ -283,7 +282,7 @@ def forecast(store, d):
     warnings = []
 
     def event(identity, day, amount, label, url="", priority=0):
-        if not money(amount):
+        if not money(amount) and identity not in events:
             return
         if day <= d.as_of:
             return
@@ -345,7 +344,9 @@ def forecast(store, d):
             amount = location_amount(store, contract.id, instalment.amount, flt, instalment.due_date)
             event("service-instalment:" + contract.id + ":" + month_key(instalment.due_date), instalment.due_date,
                   -amount, "Abschlag " + contract.title, "/service-contracts/" + contract.id)
-    settled = settlements(rows, bills, d.as_of)
+    # Cash through the horizon is already an actual forecast event. The canonical
+    # remainder also includes dated returns, credits and earned discounts, once.
+    settled = settlements(rows, bills, last)
     scopes = InvoiceScopes(store, flt, bills)
     for i in bills:
         s = settled[i.id]
@@ -355,38 +356,42 @@ def forecast(store, d):
             amount = scopes.amount(i, outstanding, i.performance_start or i.invoice_date, i.performance_end or i.invoice_date)
             event("invoice:" + i.id, max(s.due_on or i.due_date or i.invoice_date, d.as_of + timedelta(days=1)), -amount,
                   "Rechnung " + i.supplier, "/invoice-review/" + i.id)
-    allocations = rows.find("invoice_payments")
-    contract_bills = {b.id: b.invoice_id for b in rows.find("service_contract_invoices")}
-    for p in rows.find("service_contract_payments"):
-        if p.service_contract_invoice_id in contract_bills:
-            allocations.append(SimpleNamespace(invoice_id=contract_bills[p.service_contract_invoice_id], booking_id=p.booking_id, amount=p.amount))
-    by_booking = defaultdict(list)
-    service_payments = rows.find("service_contract_payments")
-    for p in allocations:
-        by_booking[p.booking_id].append((p.invoice_id, money(p.amount)))
+            if "invoice:" + i.id in events and (i.status == "paid" or (i.status == "partial" and not s.paid)):
+                warnings.append({"source": "invoice:" + i.id, "message":
+                    f"{i.supplier}, {i.invoice_date:%d.%m.%Y}: Zahlungsstatus ohne ausreichenden Zahlungsnachweis. "
+                    "Der belegte Rest bleibt vorsorglich als Ausgabe eingeplant."})
+
     def reduce_expected(identity, amount):
         entry = events.get(identity)
         if entry:
             current = money(entry["amount"])
             rest = max(abs(current) - abs(amount), ZERO)
             entry["amount"] = str(rest if current >= 0 else -rest)
+
+    # Advances without an invoice period belong to their booking month. Past
+    # cash can prepay a still upcoming instalment in that same month. Refunds
+    # restore the effective outgoing share rather than cancelling another bill.
+    from .booking_payment_capacity import booking_payment_capacity
+    service_payments = [p for p in rows.find("service_contract_payments") if not p.service_contract_invoice_id]
+    booked = {b.id: b for b in bookings}
+    capacity = booking_payment_capacity(rows, {p.booking_id for p in service_payments if p.booking_id in booked}, as_of=last)
+    for p in service_payments:
+        b = booked.get(p.booking_id)
+        effective = capacity.effective.get(("service_contract_payments", p.id), ZERO)
+        if b and effective > ZERO:
+            amount = location_amount(store, p.service_contract_id, effective, flt, b.booking_date)
+            reduce_expected("service-instalment:" + p.service_contract_id + ":" + month_key(b.booking_date), amount)
     for b in bookings:
         if not d.as_of < b.booking_date <= last or not dims.booking_matches(b):
             continue
         identity = "booking:" + b.id
-        # Explicit invoice identity wins; a single cash booking can pay several bills.
-        for invoice_id, amount in by_booking.get(b.id, []):
-            reduce_expected("invoice:" + invoice_id, amount)
-        for p in service_payments:
-            if p.booking_id == b.id and not p.service_contract_invoice_id:
-                reduce_expected("service-instalment:" + p.service_contract_id + ":" + month_key(b.booking_date), money(p.amount))
         event(identity, b.booking_date, money(b.amount), b.payment_text or "Geplante Buchung", "/bookings?booking_id=" + b.id, 2)
     residual_reader = ResidualReader(store)
     for r in store.list_receivables():
         c = next((c for c in contracts if c.id == r.contract_id), None)
-        if not c:
+        if not c or r.due_date > last:
             continue
-        state = residual_reader.read(r, d.as_of)
+        state = residual_reader.read(r, last)
         if state["unresolved_legacy"]:
             warnings.append({"source": "receivable:" + r.id, "message": "Ungeklärter Altbestand wird nicht als Zahlung prognostiziert."})
             continue
@@ -396,7 +401,8 @@ def forecast(store, d):
             due = min(last, add_months(d.as_of, 1))
         else:
             due = r.due_date
-        event("receivable:" + r.id, due, amount, "Forderungsrest", "/receivables?contract_id=" + c.id)
+        event("receivable:" + r.id, due, amount, f"Forderungsrest {c.contract_number}, fällig {r.due_date:%d.%m.%Y}",
+              "/receivables?focus_id=" + r.id + "&contract_id=" + c.id)
     for f in d.planned_flows:
         event(f.identity, f.day, f.amount, f.label, priority=3)
     balance = current_balance(store, flt, d.as_of)
