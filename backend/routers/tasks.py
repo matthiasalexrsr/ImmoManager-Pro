@@ -71,7 +71,7 @@ def _generate_recurring_report(as_of: date) -> RecurrenceReport:
             if task.parent_task_id:
                 children.setdefault(task.parent_task_id, []).append(task)
         for template in all_tasks:
-            if not template.recurrence_rule or template.parent_task_id:
+            if not recurring.is_active_template(template):
                 continue
             try:
                 rrule = _parse_rrule(template.recurrence_rule)
@@ -153,3 +153,5 @@ def delete_task(task_id: str) -> None:
         store.delete_task(task_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

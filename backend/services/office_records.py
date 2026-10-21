@@ -16,10 +16,36 @@ RECORDS: dict[str, tuple[type[CalendarEventCreate] | type[InsuranceCreate],
 }
 
 
+def _project_of_event(unit, event_id):
+    """Use the same case → event lock order as the project workflow."""
+    from . import document_versions as archive
+    from .maintenance_projects import Project
+
+    links = Rows.of(unit).find("maintenance_appointments", calendar_event_id=event_id)
+    if not links:
+        return None
+    case_id = links[0].case_id
+    if unit.user:
+        archive.check_account(unit.user, write_areas=(f"/maintenance/{case_id}/appointments",))
+    project = Project(unit, case_id)
+    project.require_open()
+    return project.case
+
+
+def delete_calendar_record(store, event_id):
+    with record_work(store, "/calendar") as unit:
+        rows = Rows.of(unit)
+        _project_of_event(unit, event_id)
+        if not rows.lock("calendar_events", event_id):
+            raise NotFoundError("Termin nicht gefunden")
+        rows.delete("calendar_events", event_id)
+
+
 def save_record(store, collection: str, payload, record_id: str | None = None, *, partial: bool = False):
     schema, model, area, missing = RECORDS[collection]
     with record_work(store, area) as unit:
         rows = Rows.of(unit)
+        project_case = _project_of_event(unit, record_id) if collection == "calendar_events" and record_id else None
         before = None
         if record_id is not None:
             if not rows.lock(collection, record_id):
@@ -39,6 +65,10 @@ def save_record(store, collection: str, payload, record_id: str | None = None, *
                 raise ValidationError("Die Einheit gehört nicht zur ausgewählten Immobilie.")
             if not data.property_id:
                 data = data.model_copy(update={"property_id": place.property_id})
+        if project_case is not None and (data.property_id, data.unit_id) != (project_case.property_id, project_case.unit_id):
+            from fastapi import HTTPException
+
+            raise HTTPException(409, "Dieser Termin gehört zu einer Projektakte. Bitte die Objektzuordnung in der Projektakte ändern.")
         if data.property_id and not rows.lock("properties", data.property_id):
             raise ValidationError("Immobilie nicht gefunden")
         if data.unit_id:

@@ -45,6 +45,42 @@ def client(task_store):
         yield client
 
 
+@pytest.mark.parametrize("state", ["cancelled", "canceled", "archived"])
+def test_ended_series_creates_no_children_but_completed_series_continues(task_store, client, state):
+    ended = task_store.create_task(TaskCreate(title="Beendete Serie", status=state,
+        due_date=date(2026, 1, 1), recurrence_rule="FREQ=MONTHLY"))
+    active = task_store.create_task(TaskCreate(title="Erledigte Ausgangsaufgabe", status="completed",
+        due_date=date(2026, 1, 1), recurrence_rule="FREQ=MONTHLY"))
+    result = client.post("/tasks/generate-recurring/report?as_of=2026-02-01")
+    assert result.status_code == 200, result.text
+    assert [row["parent_task_id"] for row in result.json()["created"]] == [active.id]
+    assert not [row for row in task_store.list_tasks() if row.parent_task_id == ended.id]
+
+
+def test_task_parent_must_exist_and_cannot_create_a_cycle(task_store, client):
+    assert client.post("/tasks", json={"title": "Ohne Bezug", "parent_task_id": "missing"}).status_code == 400
+    assert client.post("/tasks", json={"title": "   "}).status_code == 400
+    parent = task_store.create_task(TaskCreate(title="Ausgangsaufgabe"))
+    child = task_store.create_task(TaskCreate(title="Folgeaufgabe", parent_task_id=parent.id))
+    for parent_id in (parent.id, child.id):
+        result = client.patch(f"/tasks/{parent.id}", json={"parent_task_id": parent_id})
+        assert result.status_code == 400, result.text
+        assert task_store.get_task(parent.id).parent_task_id is None
+    assert client.patch(f"/tasks/{child.id}", json={"parent_task_id": "missing"}).status_code == 400
+    assert task_store.get_task(child.id).parent_task_id == parent.id
+
+
+def test_deleting_a_series_cannot_orphan_its_existing_children(task_store, client):
+    parent = task_store.create_task(TaskCreate(title="Serie", recurrence_rule="FREQ=MONTHLY"))
+    child = task_store.create_task(TaskCreate(title="Folgeaufgabe", parent_task_id=parent.id))
+    refused = client.delete(f"/tasks/{parent.id}")
+    assert refused.status_code == 409, refused.text
+    assert task_store.get_task(child.id).parent_task_id == parent.id
+    assert client.patch(f"/tasks/{parent.id}", json={"status": "cancelled"}).status_code == 200
+    assert client.delete(f"/tasks/{child.id}").status_code == 204
+    assert client.delete(f"/tasks/{parent.id}").status_code == 204
+
+
 def test_three_occurrences_advance_and_keep_links(task_store, client):
     pf = task_store.create_portfolio(PortfolioCreate(name="Synthetic"))
     prop = task_store.create_property(PropertyCreate(portfolio_id=pf.id, name="A", property_type="residential"))

@@ -60,8 +60,11 @@ class CommunicationRepository:
     def list_tasks(self) -> list[Task]:
         return self._tasks.list_all()
 
-    def validate_task(self, data: TaskCreate) -> None:
+    def validate_task(self, data: TaskCreate, task_id: str | None = None) -> None:
         from ..services.task_recurrence import parse_rrule
+        from ..services.task_validation import validate_task_parent
+
+        validate_task_parent(data, self.get_task, task_id)
 
         pr = self._portfolio_repo
         if data.property_id and pr and not pr._properties.exists(data.property_id):
@@ -88,12 +91,15 @@ class CommunicationRepository:
 
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         self._tasks.get(task_id)
-        self.validate_task(data)
+        self.validate_task(data, task_id)
         result = self._tasks.update(task_id, data)
         self._commit()
         return result
 
     def delete_task(self, task_id: str) -> None:
+        self._tasks.get(task_id)
+        if self._tasks.list_paginated(limit=1, filters={"parent_task_id": task_id}):
+            raise ValidationError("Die Aufgabe hat Folgeaufgaben und bleibt als deren Bezug erhalten. Eine Aufgabenserie lässt sich stattdessen beenden.")
         self._tasks.delete(task_id)
         self._commit()
 

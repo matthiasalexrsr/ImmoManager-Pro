@@ -146,6 +146,100 @@ def _project(client, case_id):
     return _ok(client.get(f"{API}/maintenance/{case_id}/project"))
 
 
+def test_case_rejects_cross_property_unit_without_partial_changes(owner, estate):
+    other = _estate("Süd")
+    original = _case(owner, estate)
+    bad = owner.post(f"{API}/maintenance", json={"title": "Falsch", "property_id": estate["property"].id,
+        "unit_id": other["unit"].id})
+    assert bad.status_code == 400, bad.text
+    before = _project(owner, original["id"])
+    changed = owner.patch(f"{API}/maintenance/{original['id']}", json={"unit_id": other["unit"].id, "status": "in_progress"})
+    assert changed.status_code == 400, changed.text
+    after = _project(owner, original["id"])
+    assert after["case"] == before["case"] and after["history"] == before["history"]
+
+
+def test_case_relocation_moves_linked_calendar_events_atomically(owner, estate):
+    other = _estate("Süd")
+    case = _case(owner, estate)
+    appointment = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
+        "title": "Besichtigung", "event_date": "2026-11-03", "event_time": "14:35", "kind": "inspection"}), 201)
+    moved = _ok(owner.patch(f"{API}/maintenance/{case['id']}", json={
+        "property_id": other["property"].id, "unit_id": other["unit"].id}))
+    event = _ok(owner.get(f"{API}/calendar/{appointment['calendar_event_id']}"))
+    assert (event["property_id"], event["unit_id"]) == (moved["property_id"], moved["unit_id"])
+    assert event["event_time"] == "14:35"
+    assert event["maintenance_case_id"] == case["id"]
+    invalid = owner.patch(f"{API}/calendar/{event['id']}", json={"property_id": estate["property"].id, "unit_id": estate["unit"].id})
+    assert invalid.status_code == 409, invalid.text
+    assert _ok(owner.get(f"{API}/calendar/{event['id']}")) == event
+
+
+def test_closed_project_appointment_cannot_bypass_workflow_through_calendar(owner, estate):
+    case = _case(owner, estate)
+    appointment = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
+        "title": "Abnahme", "event_date": "2026-11-03", "kind": "acceptance"}), 201)
+    _ok(owner.post(f"{API}/maintenance/{case['id']}/transition", json={"status": "completed"}))
+    url = f"{API}/calendar/{appointment['calendar_event_id']}"
+    before = _ok(owner.get(url))
+    for response in (owner.patch(url, json={"title": "Umgangen"}), owner.delete(url)):
+        assert response.status_code == 409, response.text
+    assert _ok(owner.get(url)) == before
+
+
+@pytest.mark.parametrize("status", ["done", "closed"])
+def test_legacy_completion_labels_cannot_bypass_open_work_packages(owner, estate, status):
+    case = _case(owner, estate)
+    _package(owner, case["id"], "Offene Arbeit")
+    changed = owner.patch(f"{API}/maintenance/{case['id']}", json={"status": status})
+    assert changed.status_code == 409, changed.text
+    assert _project(owner, case["id"])["case"]["status"] == "open"
+
+
+def test_calendar_requires_project_permissions_and_keeps_links_on_ordinary_edits(owner, estate):
+    case = _case(owner, estate)
+    link = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
+        "title": "Begehung", "event_date": "2026-11-03", "event_time": "09:30"}), 201)
+    url = f"{API}/calendar/{link['calendar_event_id']}"
+    _ok(owner.patch(url, json={"event_time": "nach Absprache"}))
+    before = _ok(owner.get(url))
+    books = _client(_user("calendar-books", "buchhaltung"))
+    assert books.patch(url, json={"title": "Unzulässig"}).status_code == 403
+    assert books.delete(url).status_code == 403
+    assert _ok(owner.get(url)) == before
+    updated = _ok(owner.patch(url, json={"title": "Begehung Dach", "event_date": "2026-11-04"}))
+    assert updated["maintenance_case_id"] == case["id"]
+    assert updated["event_time"] == "nach Absprache"
+    listed = _ok(owner.get(f"{API}/calendar?maintenance_case_id={case['id']}"))
+    assert listed == [updated]
+    assert _project(owner, case["id"])["appointments"][0]["event"]["title"] == "Begehung Dach"
+
+
+def test_failed_project_move_rolls_back_its_calendar_and_history_together(owner, estate):
+    other = _estate("Süd")
+    case = _case(owner, estate)
+    _package(owner, case["id"], "Offene Arbeit")
+    link = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
+        "title": "Ortstermin", "event_date": "2026-11-03"}), 201)
+    before = _project(owner, case["id"])
+    event_url = f"{API}/calendar/{link['calendar_event_id']}"
+    before_event = _ok(owner.get(event_url))
+    refused = owner.patch(f"{API}/maintenance/{case['id']}", json={
+        "property_id": other["property"].id, "unit_id": other["unit"].id, "status": "completed"})
+    assert refused.status_code == 409, refused.text
+    after = _project(owner, case["id"])
+    assert after["case"] == before["case"] and after["history"] == before["history"]
+    assert _ok(owner.get(event_url)) == before_event
+
+
+def test_deleting_a_calendar_event_removes_its_project_link_on_both_stores(owner, estate):
+    case = _case(owner, estate)
+    link = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
+        "title": "Ortstermin", "event_date": "2026-11-03"}), 201)
+    _ok(owner.delete(f"{API}/calendar/{link['calendar_event_id']}"), 204)
+    assert _project(owner, case["id"])["appointments"] == []
+
+
 def _package(client, case_id, title, **extra):
     return _ok(client.post(f"{API}/maintenance/{case_id}/work-packages", json={"title": title, **extra}), 201)
 

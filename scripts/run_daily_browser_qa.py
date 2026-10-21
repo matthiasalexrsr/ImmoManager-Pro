@@ -56,7 +56,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--playwright', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/daily-browser')
-    parser.add_argument('--suite', choices=('daily', 'qol', 'interfaces', 'application'), default='daily')
+    parser.add_argument('--suite', choices=('daily', 'qol', 'interfaces', 'application', 'operations'), default='daily')
     parser.add_argument('--binary', type=Path, help='Optional built application inside this checkout')
     options = parser.parse_args()
     module = options.playwright.resolve(strict=True)

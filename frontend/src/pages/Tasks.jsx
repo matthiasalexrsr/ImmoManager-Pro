@@ -13,7 +13,10 @@ import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import ObjectScope from '../components/ObjectScope';
+import { scopeDefaults } from '../utils/objectScope';
+import RelatedPageLinks from '../components/RelatedPageLinks';
 import useAssistantHandoff from '../hooks/useAssistantHandoff';
 import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import KpiAction from '../components/KpiAction';
@@ -22,6 +25,8 @@ import UndoNotice from '../features/workCenter/UndoNotice';
 import TaskRecurrenceField from '../features/tasks/TaskRecurrenceField';
 import { recurrenceError, recurrenceSummary } from '../features/tasks/taskRecurrence';
 import '../features/workCenter/workCenter.css';
+
+const isFinished = status => ['completed', 'cancelled', 'canceled', 'closed', 'done', 'archived'].includes(status);
 
 function isOverdue(dueDate, status) {
   if (!dueDate || ['completed', 'cancelled', 'canceled', 'closed', 'done', 'archived'].includes(status)) return false;
@@ -68,6 +73,7 @@ export default function Tasks() {
   const unitState = useEntities('units', '/units');
   const properties = propertyState.items;
   const units = unitState.items;
+  const choicesReady = !propertyState.loading && !unitState.loading && !propertyState.error && !unitState.error;
 
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -126,12 +132,16 @@ export default function Tasks() {
   // Lookup maps
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
+  const unitProperties = Object.fromEntries(units.map(unit => [unit.id, unit.property_id]));
 
   // Enriched data
-  const enriched = tasks.filter(task => (!params.get('property_id') || task.property_id === params.get('property_id'))
-    && (!params.get('unit_id') || task.unit_id === params.get('unit_id'))).map(task => ({
+  const effectiveProperty = task => task.property_id || unitProperties[task.unit_id];
+  const enriched = tasks.filter(task => (!params.get('property_id') || effectiveProperty(task) === params.get('property_id'))
+    && (!params.get('unit_id') || task.unit_id === params.get('unit_id'))
+    && (!params.get('parent_task_id') || task.parent_task_id === params.get('parent_task_id'))).map(task => ({
     ...task,
-    property_name: propertyMap[task.property_id] || '—',
+    property_id: effectiveProperty(task),
+    property_name: propertyMap[effectiveProperty(task)] || '—',
     unit_label: unitMap[task.unit_id] || '—',
     is_overdue: isOverdue(task.due_date, task.status),
     recurrence_label: task.recurrence_rule ? recurrenceSummary(task.recurrence_rule, t) : '—',
@@ -166,7 +176,8 @@ export default function Tasks() {
   const inline = (row, field, label, content, options, type) => <InlineFieldEditor record={row} field={field} label={label}
     options={options} type={type} canEdit={canWrite && !busy.has(row.id)} onSaved={applyQuickChange}>{content}</InlineFieldEditor>;
   const columns = [
-    { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text' },
+    { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text', render: (value, row) =>
+      <Link to={{ search: (() => { const next = new URLSearchParams(params); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> },
     { key: 'property_name', hidden: true, label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text',
@@ -201,7 +212,7 @@ export default function Tasks() {
     { key: 'unit_id', label: t('pages.tasks.form.unit') || 'Einheit', type: 'select',
       options: values => [{ value: '', label: noneOpt }, ...units
         .filter(u => !values.property_id || u.property_id === values.property_id)
-        .map(u => ({ value: u.id, label: u.label }))] },
+        .map(u => ({ value: u.id, label: values.property_id ? u.label : `${propertyMap[u.property_id] || 'Immobilie'} · ${u.label}` }))] },
     { key: 'due_date', label: t('pages.tasks.form.dueDate') || 'Fällig am', type: 'date' },
     { key: 'recurrence_rule', label: t('pages.tasks.form.recurrence') || 'Wiederholung', full: true,
       component: TaskRecurrenceField, validate: value => {
@@ -218,10 +229,12 @@ export default function Tasks() {
       { value: 'open', label: t('pages.tasks.status.open') || 'Offen' },
       { value: 'in_progress', label: t('pages.tasks.status.inProgress') || 'In Bearbeitung' },
       { value: 'completed', label: t('pages.tasks.status.completed') || 'Erledigt' },
+      { value: 'cancelled', label: 'Abgebrochen / Serie beendet' },
     ]},
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Immobilien- und Einheitenauswahl erneut laden.');
     if (modal === 'create' && assistantHandoff.identifier) {
       await assistantHandoff.save(data);
       assistantSaved.current = true;
@@ -276,7 +289,7 @@ export default function Tasks() {
   };
 
   const toggleCompleted = row => runAction(row.id, async () => {
-    const status = row.status === 'completed' ? 'open' : 'completed';
+    const status = isFinished(row.status) ? 'open' : 'completed';
     const saved = await api.patch(`/tasks/${row.id}`, { status, updated_at: row.updated_at });
     setTasks(current => current.map(task => task.id === row.id ? saved : task));
     toast.success(status === 'completed' ? 'Aufgabe erledigt' : 'Aufgabe wieder geöffnet');
@@ -295,6 +308,7 @@ export default function Tasks() {
   });
 
   const lookupErrors = [propertyState.error, unitState.error].filter(Boolean);
+  const selectedTask = enriched.find(row => row.id === params.get('focus_id'));
   const reloadAfterConflict = async () => {
     const conflict = actionError;
     // Refresh only the list; an open form keeps its draft and captured revision.
@@ -313,6 +327,27 @@ export default function Tasks() {
         <h1>{t('pages.tasks.title') || 'Aufgaben'}</h1>
         {canWrite && <button className="btn btn-secondary" onClick={generateRecurring} disabled={busy.has('recurrence')}>Folgeaufgaben erzeugen</button>}
       </div>
+      <ObjectScope params={params} setParams={setParams} properties={properties} units={units} />
+      {params.get('parent_task_id') && <p className="filter-chips">Folgeaufgaben einer Serie{' '}
+        <Link to={`/tasks?focus_id=${encodeURIComponent(params.get('parent_task_id'))}`}>Ausgangsaufgabe öffnen</Link>{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('parent_task_id'); next.delete('focus_id'); return next;
+        })}>Serienfilter aufheben</button></p>}
+      {selectedTask && <section className="card" aria-label="Aufgabendetails" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        <div className="page-header"><h2>{selectedTask.title}</h2>
+          {canWrite && choicesReady && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModal(selectedTask)}>Aufgabe bearbeiten</button>}</div>
+        <p><StatusBadge status={selectedTask.status} /> · Fällig: {formatDate(selectedTask.due_date)} · Zuständig: {selectedTask.assignee || 'Nicht zugewiesen'}</p>
+        {selectedTask.description && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selectedTask.description}</p>}
+        {selectedTask.recurrence_rule && <p>{selectedTask.recurrence_label}{' '}
+          {['cancelled', 'canceled', 'archived'].includes(selectedTask.status) && '– Serie beendet; bestehende Folgeaufgaben bleiben erhalten.'}</p>}
+        <RelatedPageLinks items={[
+          ...(selectedTask.property_id ? [{ to: `/properties/${encodeURIComponent(selectedTask.property_id)}`, label: selectedTask.property_name }] : []),
+          ...(selectedTask.unit_id ? [{ to: `/units/${encodeURIComponent(selectedTask.unit_id)}`, label: selectedTask.unit_label }] : []),
+          ...(selectedTask.parent_task_id ? [{ to: `/tasks?focus_id=${encodeURIComponent(selectedTask.parent_task_id)}`, label: 'Ausgangsaufgabe' }] : []),
+          ...(selectedTask.recurrence_rule && !selectedTask.parent_task_id ? [{ to: `/tasks?parent_task_id=${encodeURIComponent(selectedTask.id)}`, label: 'Alle Folgeaufgaben' }] : []),
+        ]} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); return next; })}>Detailansicht schließen</button>
+      </section>}
       <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
       {quickChange && <UndoNotice key={quickChange.undo_id} change={quickChange} onDismiss={() => setQuickChange(null)} onUndone={applyQuickChange} />}
       {(loadError || lookupErrors.length > 0) && <div className="alert-error" role="alert">
@@ -345,6 +380,7 @@ export default function Tasks() {
           { key: 'open', label: 'Offen' },
           { key: 'in_progress', label: 'In Bearbeitung' },
           { key: 'completed', label: 'Erledigt' },
+          { key: 'cancelled', label: 'Abgebrochen' },
           { key: 'today', label: 'Heute' },
           { key: 'week', label: 'Diese Woche' },
           { key: 'overdue', label: 'Überfällig' },
@@ -362,22 +398,23 @@ export default function Tasks() {
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
+        clearFocusedRow={() => setParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); return next; })}
         drilldownKey={drilldown}
         viewConfig={{ column_filters: { workflow_filter: filter, property_id: params.get('property_id') || '', unit_id: params.get('unit_id') || '' } }}
         onApplyView={config => { const saved = config.column_filters || {}; setFilter(['all', 'open', 'in_progress', 'completed', 'cancelled', 'today', 'week', 'overdue', 'recurring'].includes(saved.workflow_filter) ? saved.workflow_filter : 'all');
           setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'suche'].forEach(key => next.delete(key));
             if (saved.workflow_filter && saved.workflow_filter !== 'all') next.set('filter', saved.workflow_filter);
             ['property_id', 'unit_id'].forEach(key => { if (saved[key]) next.set(key, saved[key]); else next.delete(key); }); return next; }); }}
-        onAdd={values => { setPrefill(values || null); setModal('create'); }}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? values => { setPrefill({ ...scopeDefaults(params, units), ...values }); setModal('create'); } : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
         writeArea="/tasks"
         rowName={row => row.title || row.id}
         bulkActions={[
-          { key: 'complete', label: 'Erledigen', write: true, applies: row => row.status !== 'completed',
+          { key: 'complete', label: 'Erledigen', write: true, applies: row => !isFinished(row.status),
             run: row => api.patch(`/tasks/${row.id}`, { status: 'completed', updated_at: row.updated_at }),
             finished: ({ succeeded }) => { if (succeeded.length) toast.success(`${succeeded.length} ${succeeded.length === 1 ? 'Aufgabe erledigt' : 'Aufgaben erledigt'}`); refreshData(); store?.invalidateRelated('tasks'); } },
-          { key: 'reopen', label: 'Wiederöffnen', write: true, applies: row => row.status === 'completed',
+          { key: 'reopen', label: 'Wiederöffnen', write: true, applies: row => isFinished(row.status),
             run: row => api.patch(`/tasks/${row.id}`, { status: 'open', updated_at: row.updated_at }),
             finished: () => { refreshData(); store?.invalidateRelated('tasks'); } },
           bulkDelete({ one: 'Aufgabe', many: 'Aufgaben', remove: row => api.del(`/tasks/${row.id}`),
@@ -387,10 +424,17 @@ export default function Tasks() {
           label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
           onClick: () => { setPrefill(duplicateOf(row, ['status', 'completed_at', 'generated_from_task_id', 'occurrence_date'])); setModal('create'); },
         }, {
-          label: row.status === 'completed' ? 'Wiederöffnen' : 'Erledigen', write: true,
-          icon: row.status === 'completed' ? <RotateCcw size={15} /> : <Check size={15} />,
+          label: isFinished(row.status) ? 'Wiederöffnen' : 'Erledigen', write: true,
+          icon: isFinished(row.status) ? <RotateCcw size={15} /> : <Check size={15} />,
           onClick: toggleCompleted,
-        }]}
+        }, ...(row.recurrence_rule && !row.parent_task_id && !['cancelled', 'canceled', 'archived'].includes(row.status) ? [{
+          label: 'Serie beenden', write: true, onClick: () => runAction(row.id, async () => {
+            if (!await confirm('Die Serie beenden? Es werden keine neuen Folgeaufgaben erzeugt. Bereits angelegte Aufgaben bleiben erhalten.')) return;
+            const saved = await api.patch(`/tasks/${row.id}`, { status: 'cancelled', updated_at: row.updated_at });
+            setTasks(current => current.map(task => task.id === row.id ? saved : task));
+            refreshData(); store?.invalidateRelated('tasks'); toast.success('Aufgabenserie beendet');
+          }),
+        }] : [])]}
       />
 
       {modal && (

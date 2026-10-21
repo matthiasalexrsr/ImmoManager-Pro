@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { useEntities } from '../contexts/DataStoreContext';
+import { useDataStore, useEntities } from '../contexts/DataStoreContext';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
@@ -9,6 +10,12 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
+import ObjectScope from '../components/ObjectScope';
+import { scopeDefaults } from '../utils/objectScope';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { formatDate } from '../utils/format';
+
+const dayString = value => `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
 const EVENT_TYPES = [
   { value: 'viewing', label: 'Besichtigung' },
@@ -32,6 +39,8 @@ const COLUMNS = [
 ];
 
 export default function Calendar() {
+  const [params, setParams] = useSearchParams();
+  const store = useDataStore();
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [events, setEvents] = useState([]);
@@ -47,13 +56,19 @@ export default function Calendar() {
   const [propertyError, setPropertyError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [revision, setRevision] = useState(0);
+  const projectId = params.get('maintenance_case_id');
+  const filters = new URLSearchParams();
+  ['property_id', 'unit_id', 'maintenance_case_id', 'date_from', 'date_to'].forEach(key => {
+    if (params.get(key)) filters.set(key, params.get(key));
+  });
+  const calendarPath = `/calendar${filters.size ? `?${filters}` : ''}`;
 
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
     const request = new AbortController();
     setLoading(true);
     Promise.allSettled([
-      api.list('/calendar', { signal: request.signal }),
+      api.list(calendarPath, { signal: request.signal }),
       api.list('/properties', { signal: request.signal }),
     ]).then(([calendar, properties]) => {
       if (request.signal.aborted) return;
@@ -66,10 +81,27 @@ export default function Calendar() {
       setLoading(false);
     });
     return () => request.abort();
-  }, [revision]);
+  }, [revision, calendarPath]);
   const choicesReady = !loading && !propertyError && !unitSource.loading && !unitSource.error;
   const propertyNames = new Map(properties.map(property => [property.id, property.name]));
   const unitNames = new Map(units.map(unit => [unit.id, unit.label]));
+  const visibleEvents = events.filter(event => (!params.get('property_id') || event.property_id === params.get('property_id'))
+    && (!params.get('unit_id') || event.unit_id === params.get('unit_id'))
+    && (!projectId || event.maintenance_case_id === projectId)
+    && (!params.get('date_from') || event.event_date >= params.get('date_from'))
+    && (!params.get('date_to') || event.event_date <= params.get('date_to')));
+  const selected = visibleEvents.find(event => event.id === params.get('focus_id'));
+  const changeFilter = (key, value) => setParams(current => {
+    const next = new URLSearchParams(current); next.delete('focus_id');
+    if (value) next.set(key, value); else next.delete(key);
+    return next;
+  });
+  const setPeriod = days => setParams(current => {
+    const next = new URLSearchParams(current); ['date_from', 'date_to', 'focus_id'].forEach(key => next.delete(key));
+    if (days != null) { const end = new Date(); end.setDate(end.getDate() + days); next.set('date_from', dayString(new Date())); next.set('date_to', dayString(end)); }
+    return next;
+  });
+  const invalidate = () => store?.invalidateRelated('calendar', 'maintenance', 'properties', 'units');
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -96,6 +128,7 @@ export default function Calendar() {
       await api.put(`/calendar/${modal.id}`, data);
     }
     refreshData();
+    invalidate();
   };
 
   const handleDelete = async (row) => {
@@ -104,6 +137,7 @@ export default function Calendar() {
     try {
       await api.del(`/calendar/${row.id}`);
       refreshData();
+      invalidate();
     } catch (err) {
       setDeleteError(err.message || 'Löschen fehlgeschlagen');
     }
@@ -115,6 +149,29 @@ export default function Calendar() {
 
   return (
     <div className="page">
+      <h1 className="page-title">Kalender</h1>
+      <ObjectScope params={params} setParams={setParams} properties={properties} units={units} />
+      {projectId && <p className="filter-chips">Termine einer Projektakte{' '}
+        <Link to={`/maintenance/${encodeURIComponent(projectId)}?tab=appointments`}>Projektakte öffnen</Link>{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => changeFilter('maintenance_case_id', '')}>Projektfilter aufheben</button></p>}
+      <div className="filter-chips" aria-label="Terminzeitraum">
+        <label>Von <input type="date" value={params.get('date_from') || ''} onChange={event => changeFilter('date_from', event.target.value)} /></label>
+        <label>Bis <input type="date" value={params.get('date_to') || ''} onChange={event => changeFilter('date_to', event.target.value)} /></label>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPeriod(0)}>Heute</button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPeriod(29)}>Nächste 30 Tage</button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPeriod(null)}>Alle Termine</button>
+      </div>
+      {selected && <section className="card" aria-label="Termindetails" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        <h2>{selected.title}</h2><p>{formatDate(selected.event_date)}{selected.event_time ? ` · ${selected.event_time}` : ''}</p>
+        {selected.location && <p>Ort: {selected.location}</p>}{selected.participants && <p>Teilnehmer: {selected.participants}</p>}
+        {selected.description && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selected.description}</p>}
+        <RelatedPageLinks items={[
+          ...(selected.maintenance_case_id ? [{ to: `/maintenance/${encodeURIComponent(selected.maintenance_case_id)}?tab=appointments`, label: 'Projektakte und Termin bearbeiten' }] : []),
+          ...(selected.property_id ? [{ to: `/properties/${encodeURIComponent(selected.property_id)}`, label: propertyNames.get(selected.property_id) || 'Immobilie öffnen' }] : []),
+          ...(selected.unit_id ? [{ to: `/units/${encodeURIComponent(selected.unit_id)}`, label: unitNames.get(selected.unit_id) || 'Einheit öffnen' }] : []),
+        ]} />
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => changeFilter('focus_id', '')}>Detailansicht schließen</button>
+      </section>}
       {loadError && <p className="alert-error" role="alert">Termine konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
       {propertyError && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyError}{' '}
@@ -129,12 +186,15 @@ export default function Calendar() {
       )}
       <DataTable
         title={t('navigation.main.calendar') || 'Kalender'}
-        columns={COLUMNS}
-        data={events.map(event => ({ ...event, property_name: propertyNames.get(event.property_id) || '—', unit_label: unitNames.get(event.unit_id) || '—' }))}
+        columns={COLUMNS.map(column => column.key === 'title' ? { ...column, render: (value, row) =>
+          <Link to={row.maintenance_case_id ? `/maintenance/${encodeURIComponent(row.maintenance_case_id)}?tab=appointments`
+            : { search: (() => { const next = new URLSearchParams(params); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> } : column)}
+        data={visibleEvents.map(event => ({ ...event, property_name: propertyNames.get(event.property_id) || '—', unit_label: unitNames.get(event.unit_id) || '—' }))}
         rowName={row => row.title || row.id}
+        clearFocusedRow={() => changeFilter('focus_id', '')}
         bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),
-          finished: () => refreshData() })]}
-        onAdd={choicesReady ? () => { setPrefill(null); setModal('create'); } : undefined}
+          finished: () => { refreshData(); invalidate(); } })]}
+        onAdd={choicesReady && !projectId ? () => { setPrefill({ ...scopeDefaults(params, units), event_date: params.get('date_from') || dayString(new Date()) }); setModal('create'); } : undefined}
         onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
         rowActions={row => choicesReady ? [{ label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,

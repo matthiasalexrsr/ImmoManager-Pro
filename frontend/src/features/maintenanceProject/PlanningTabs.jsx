@@ -3,6 +3,7 @@ import { projectApi } from './projectApi';
 import { choices, day, money } from './projectFormat';
 import { Empty, Fact, Pill, Section } from './ProjectUi';
 import { fill } from './text';
+import { formatDateTime } from '../../utils/format';
 
 const WP_TONE = { planned: 'gray', in_progress: 'blue', done: 'green', cancelled: 'gray' };
 
@@ -43,8 +44,8 @@ export function OverviewTab({ ctx }) {
       <Section id="mp-facts" title={tx.facts}
         actions={can.edit_case && <button type="button" className="btn btn-secondary btn-sm" onClick={editCase}>{tx.edit}</button>}>
         <dl className="mp-facts">
-          <Fact label={tx.property}>{record.property_name}</Fact>
-          <Fact label={tx.unit}>{record.unit_label}</Fact>
+          <Fact label={tx.property}>{record.property_id ? <Link to={`/properties/${encodeURIComponent(record.property_id)}`}>{record.property_name || tx.property}</Link> : record.property_name}</Fact>
+          <Fact label={tx.unit}>{record.unit_id ? <Link to={`/units/${encodeURIComponent(record.unit_id)}`}>{record.unit_label || tx.unit}</Link> : record.unit_label}</Fact>
           <Fact label={tx.category}>{record.category}</Fact>
           <Fact label={tx.priority}>{tx[`priority_${record.priority}`] || record.priority}</Fact>
           <Fact label={tx.reportedBy}>{record.reported_by}</Fact>
@@ -52,7 +53,7 @@ export function OverviewTab({ ctx }) {
           <Fact label={tx.dueDate}>{day(record.due_date)}</Fact>
           <Fact label={tx.budget}>{record.estimated_cost == null ? '—' : money(record.estimated_cost)}</Fact>
           {record.contractor && <Fact label={tx.legacyContractor}>{record.contractor}</Fact>}
-          {record.appointment_at && <Fact label={tx.legacyAppointment}>{day(record.appointment_at)}</Fact>}
+          {record.appointment_at && <Fact label={tx.legacyAppointment}>{formatDateTime(record.appointment_at)}</Fact>}
         </dl>
         {record.description && <p className="mp-description">{record.description}</p>}
       </Section>
@@ -64,7 +65,7 @@ export function OverviewTab({ ctx }) {
             {project.participants.map(participant => (
               <li key={participant.id} className="mp-row">
                 <div className="mp-row-main">
-                  <strong>{participant.contact?.name || tx.contactMissing}</strong>
+                  <strong>{participant.contact?.id ? <Link to={`/contacts?focus_id=${encodeURIComponent(participant.contact.id)}`}>{participant.contact.name || tx.contact}</Link> : participant.contact?.name || tx.contactMissing}</strong>
                   <span className="text-muted">
                     {[tx[`role_${participant.role}`], participant.trade, participant.contact?.phone, participant.contact?.email]
                       .filter(Boolean).join(' · ')}
@@ -230,16 +231,21 @@ export function AppointmentsTab({ ctx }) {
   ];
   const add = () => openForm({ title: tx.addAppointment, fields, onSave: values => projectApi.addAppointment(caseId, values) });
   const edit = appointment => openForm({
-    title: tx.editAppointment, fields,
+    title: tx.editAppointment, fields: fields.map(field => field.key === 'event_time' && appointment.event?.event_time
+      && !/^\d{2}:\d{2}(:\d{2})?$/.test(appointment.event.event_time) ? { ...field, type: 'text' } : field),
     initial: { ...appointment.event, kind: appointment.kind, work_package_id: appointment.work_package_id,
                contact_id: appointment.contact_id },
-    onSave: values => projectApi.updateAppointment(caseId, appointment.id, values),
+    onSave: values => {
+      const changes = { ...values };
+      if (changes.event_time === appointment.event?.event_time) delete changes.event_time;
+      return projectApi.updateAppointment(caseId, appointment.id, changes);
+    },
   });
   return (
     <Section id="mp-appointments" title={tx.tabAppointments} actions={(
       <>
         {can.appointments && <button type="button" className="btn btn-primary btn-sm" onClick={add}>{tx.addAppointment}</button>}
-        <Link className="btn btn-secondary btn-sm" to="/calendar">{tx.inCalendar}</Link>
+        <Link className="btn btn-secondary btn-sm" to={`/calendar?maintenance_case_id=${encodeURIComponent(caseId)}`}>{tx.inCalendar}</Link>
       </>
     )}>
       {project.appointments.length === 0 ? <Empty>{tx.noAppointments}</Empty> : (
@@ -247,7 +253,9 @@ export function AppointmentsTab({ ctx }) {
           {project.appointments.map(appointment => (
             <li key={appointment.id} className="mp-row">
               <div className="mp-row-main">
-                <strong>{day(appointment.event?.event_date)}{appointment.event?.event_time ? `, ${appointment.event.event_time}` : ''} · {appointment.event?.title}</strong>
+                <strong>{appointment.event?.id ? <Link to={`/calendar?maintenance_case_id=${encodeURIComponent(caseId)}&focus_id=${encodeURIComponent(appointment.event.id)}`}>
+                  {day(appointment.event.event_date)}{appointment.event.event_time ? `, ${appointment.event.event_time}` : ''} · {appointment.event.title}
+                </Link> : 'Termin nicht verfügbar'}</strong>
                 <span className="text-muted">
                   {[tx[`appt_${appointment.kind}`], appointment.event?.location, appointment.contact?.name,
                     appointment.work_package_title].filter(Boolean).join(' · ')}

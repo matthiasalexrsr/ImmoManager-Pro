@@ -87,3 +87,39 @@ def test_insurance_invalid_date_edit_preserves_original(office):
     response = client.patch(f"/api/v1/insurances/{created['id']}", json={"end_date": "2025-12-31"})
     assert response.status_code == 400, response.text
     assert client.get(f"/api/v1/insurances/{created['id']}").json() == created
+
+
+def test_calendar_context_and_date_filters_precede_pagination_and_have_stable_order(office):
+    from datetime import date
+
+    from backend.models import CalendarEventCreate
+
+    client, ((north, north_unit), (south, south_unit)) = office
+    for day, place, home in ((10, north, north_unit), (4, south, south_unit), (3, north, north_unit), (5, north, north_unit)):
+        store.create_calendar_event(CalendarEventCreate(title=f"Termin {day}", event_type="meeting",
+            event_date=date(2026, 11, day), property_id=place["id"], unit_id=home["id"]))
+    query = f"/api/v1/calendar?unit_id={north_unit['id']}&date_from=2026-11-01&date_to=2026-11-08&limit=1"
+    first = client.get(query).json()
+    second = client.get(query + "&skip=1").json()
+    assert [row["event_date"] for row in first + second] == ["2026-11-03", "2026-11-05"]
+    assert client.get(query + "&skip=2").json() == []
+    assert client.get("/api/v1/calendar?date_from=2026-11-08&date_to=2026-11-01").status_code == 422
+
+
+def test_calendar_filters_find_records_after_more_than_a_thousand_other_events(office):
+    from datetime import date
+
+    from backend.models import CalendarEvent
+    from backend.services.maintenance_projects import work
+    from backend.services.maintenance_rows import Rows
+
+    client, ((north, north_unit), (south, south_unit)) = office
+    with work(store, None, ("/calendar",)) as unit:
+        rows = Rows.of(unit)
+        for index in range(1001):
+            rows.add("calendar_events", CalendarEvent(id=f"calendar-bulk-{index:04}", title="Anderes Objekt",
+                event_type="meeting", event_date=date(2026, 11, 1), property_id=south["id"], unit_id=south_unit["id"]))
+        rows.add("calendar_events", CalendarEvent(id="calendar-last-match", title="Später Treffer", event_type="meeting",
+            event_date=date(2026, 11, 3), property_id=north["id"], unit_id=north_unit["id"]))
+    result = client.get(f"/api/v1/calendar?unit_id={north_unit['id']}&limit=1").json()
+    assert [row["id"] for row in result] == ["calendar-last-match"]

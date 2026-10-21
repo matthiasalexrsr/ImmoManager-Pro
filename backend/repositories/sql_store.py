@@ -218,7 +218,7 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         if entity_type == "document":
             self.document.validate_document_associations(merged)
         if entity_type == "task":
-            self.communication.validate_task(merged)
+            self.communication.validate_task(merged, entity_id)
         if entity_type == "utility_statement":
             check_final_statement_change(current, merged)
         if entity_type == "booking":

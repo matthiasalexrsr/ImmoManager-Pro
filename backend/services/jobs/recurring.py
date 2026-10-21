@@ -30,11 +30,18 @@ KIND = "tasks.recurring"
 CHUNK = 500
 TEMPLATE_PAGE = 100
 MAX_REPORTED_ERRORS = 50
+ENDED_SERIES_STATUSES = frozenset({"cancelled", "canceled", "archived"})
 _PROCESS_LEDGER = MemoryLedger()   # memory business store next to a SQL job store (not configured)
 
 
 def rule_key(template_id: str) -> str:
     return f"task:{template_id}"
+
+
+def is_active_template(template: Any) -> bool:
+    # Completing the original task completes one occurrence, not its series.
+    return bool(template.recurrence_rule and not template.parent_task_id
+                and str(template.status or "").strip().lower() not in ENDED_SERIES_STATUSES)
 
 
 def anchor_of(template: Any) -> date:
@@ -61,10 +68,11 @@ def _is_sql(store: Any) -> bool:
 def templates_after(store: Any, after: str, limit: int) -> list[Any]:
     if _is_sql(store):
         query = (select(TaskORM).where(TaskORM.recurrence_rule.is_not(None), TaskORM.recurrence_rule != "",
-                                       TaskORM.parent_task_id.is_(None), TaskORM.id > after)
+                                       TaskORM.parent_task_id.is_(None), TaskORM.id > after,
+                                       func.lower(func.trim(TaskORM.status)).not_in(ENDED_SERIES_STATUSES))
                  .order_by(TaskORM.id).limit(limit))
         return list(store.db.scalars(query))
-    found = sorted((t for t in store.list_tasks() if t.recurrence_rule and not t.parent_task_id and t.id > after),
+    found = sorted((t for t in store.list_tasks() if is_active_template(t) and t.id > after),
                    key=lambda t: t.id)
     return found[:limit]
 
@@ -124,6 +132,8 @@ def processed_through(store: Any, ledger: Any, template: Any, children: Children
 def catch_up_template(unit: Any, template: Any, as_of: date, mode: str, budget: int,
                       progress: dict) -> tuple[int, bool]:
     """Process up to budget occurrences; returns (used, finished)."""
+    if not is_active_template(template):
+        return 0, True
     try:
         rrule = parse_rrule(template.recurrence_rule)
         version = rule_version(template)

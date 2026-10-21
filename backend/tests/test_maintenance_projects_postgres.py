@@ -40,7 +40,7 @@ from backend.services import maintenance_projects as service
 from backend.services.document_version_validation import verify_document_versions
 from backend.services.file_storage import get_file_storage
 from backend.services.portfolio_scope import AccessScope, scope_context
-from backend.storage import NotFoundError
+from backend.storage import NotFoundError, ValidationError
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "db" / "migrations"
 PREVIOUS = "f3b9c1d7e2a5"
@@ -101,6 +101,31 @@ def _estate(target, name):
 
 def _owner():
     return auth.register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
+
+
+def test_project_location_and_calendar_context_on_independent_postgres_sessions(postgres):
+    from backend.models import CalendarEventPatch
+    from backend.services.calendar_records import list_events
+    from backend.services.office_records import save_record
+
+    engine, _ = postgres
+    target = _store(engine)
+    north, south = _estate(target, "Nord"), _estate(target, "Süd")
+    owner = _owner()
+    case_id = north["case"].id
+    linked = service.add_appointment(target, case_id, mm.AppointmentCreate(
+        title="Ortstermin", event_date=date(2026, 11, 3), event_time="14:35"), owner.id)
+    with pytest.raises(ValidationError):
+        service.update_case(target, case_id, {"unit_id": south["unit"].id}, owner.id)
+    service.update_case(target, case_id, {"property_id": south["property"].id, "unit_id": south["unit"].id}, owner.id)
+    independent = _store(engine)
+    events = list_events(independent, skip=0, limit=1, maintenance_case_id=case_id, unit_id=south["unit"].id)
+    assert len(events) == 1 and events[0].maintenance_case_id == case_id
+    assert events[0].property_id == south["property"].id and events[0].event_time == "14:35"
+    with pytest.raises(HTTPException) as changed:
+        save_record(independent, "calendar_events", CalendarEventPatch(property_id=north["property"].id,
+            unit_id=north["unit"].id), linked["calendar_event_id"], partial=True)
+    assert changed.value.status_code == 409
 
 
 def test_migration_round_trip_on_postgres(postgres):

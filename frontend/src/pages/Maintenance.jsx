@@ -7,7 +7,10 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatDateTime, formatMoney } from '../utils/format';
+import { localDateTimeInput, saveLocalDateTime } from '../utils/dateTimeInput';
+import ObjectScope from '../components/ObjectScope';
+import { scopeDefaults } from '../utils/objectScope';
 import { bulkDelete } from '../utils/bulkActions';
 import KpiAction from '../components/KpiAction';
 
@@ -33,8 +36,11 @@ export default function Maintenance() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const propertySource = useEntities('properties', '/properties');
+  const unitSource = useEntities('units', '/units');
+  const properties = propertySource.items;
+  const units = unitSource.items;
+  const choicesReady = !propertySource.loading && !unitSource.loading && !propertySource.error && !unitSource.error;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -136,7 +142,7 @@ export default function Maintenance() {
         }
         return display;
       }},
-    { key: 'appointment_at', hidden: true, label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange' },
+    { key: 'appointment_at', hidden: true, label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange', render: value => formatDateTime(value) },
     { key: 'age_days', hidden: true, label: 'Alter (Tage)', type: 'number', align: 'right',
       render: v => v != null ? `${v} T` : '—' },
     { key: 'estimated_cost', label: t('pages.maintenance.columns.cost') || 'Kosten (€)', type: 'number', align: 'right',
@@ -146,10 +152,13 @@ export default function Maintenance() {
   ];
 
   const fields = [
-    { key: 'property_id', label: t('pages.maintenance.form.property') || 'Immobilie', required: true, type: 'select',
+    { key: 'property_id', label: t('pages.maintenance.form.property') || 'Immobilie', required: true, type: 'select', clearOnChange: ['unit_id'],
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('pages.maintenance.form.unit') || 'Einheit', type: 'select',
-      options: [{ value: '', label: t('pages.maintenance.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
+      options: values => [{ value: '', label: t('pages.maintenance.form.noneOption') || '— Keine —' }, ...units
+        .filter(unit => unit.property_id === values.property_id).map(unit => ({ value: unit.id, label: unit.label }))],
+      validate: (value, values) => value && units.find(unit => unit.id === value)?.property_id !== values.property_id
+        ? 'Bitte eine Einheit der ausgewählten Immobilie wählen.' : null },
     { key: 'title', label: t('pages.maintenance.form.title') || 'Titel', required: true },
     { key: 'description', label: t('pages.maintenance.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'category', label: t('pages.maintenance.form.category') || 'Kategorie', type: 'select', options: [
@@ -170,8 +179,9 @@ export default function Maintenance() {
     { key: 'assignee', label: t('pages.maintenance.form.assignee') || 'Zuständig' },
     { key: 'contractor', label: t('pages.maintenance.form.contractor') || 'Handwerker' },
     { key: 'due_date', label: t('pages.maintenance.form.dueDate') || 'Fällig am', type: 'date' },
-    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date' },
-    { key: 'estimated_cost', label: t('pages.maintenance.form.estimatedCost') || 'Geschätzte Kosten (€)', type: 'number' },
+    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'datetime-local', step: 1,
+      validate: value => { try { saveLocalDateTime(value, modal?.appointment_at); return null; } catch (failure) { return failure.message; } } },
+    { key: 'estimated_cost', label: t('pages.maintenance.form.estimatedCost') || 'Geschätzte Kosten (€)', type: 'number', min: 0 },
     { key: 'status', label: t('pages.maintenance.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('pages.maintenance.status.open') || 'Offen' },
       { value: 'in_progress', label: t('pages.maintenance.status.inProgress') || 'In Bearbeitung' },
@@ -181,13 +191,15 @@ export default function Maintenance() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Immobilien- und Einheitenauswahl erneut laden.');
+    data = { ...data, appointment_at: saveLocalDateTime(data.appointment_at, modal?.appointment_at) };
     if (modal === 'create') {
       await api.post('/maintenance', data);
     } else {
       await api.put(`/maintenance/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateRelated('maintenance', 'properties', 'units');
+    if (store) store.invalidateRelated('maintenance', 'properties', 'units', 'calendar');
   };
 
   const handleDelete = async (row) => {
@@ -203,6 +215,10 @@ export default function Maintenance() {
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.maintenance.title') || 'Wartung & Instandhaltung'}</h1>
+      <ObjectScope params={params} setParams={setParams} properties={properties} units={units} />
+      {[propertySource, unitSource].filter(source => source.error).map((source, index) => <p className="alert-error" role="alert" key={index}>
+        Die Objektauswahl konnte nicht geladen werden. {source.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={source.reload}>Auswahl erneut laden</button></p>)}
       {error && <p role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
       {filter === 'escalation' && <><p className="text-muted">Fälle mit aktiver Instandhaltungsregel, erreichtem Überfälligkeitsgrenzwert und Status offen, in Bearbeitung, ausstehend oder Prüfung.</p>
         {source.loading && <p role="status">Eskalationsfälle werden geladen…</p>}
@@ -223,6 +239,8 @@ export default function Maintenance() {
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
           { key: 'in_progress', label: 'In Bearbeitung' },
+          { key: 'completed', label: 'Erledigt' },
+          { key: 'cancelled', label: 'Abgebrochen' },
           { key: 'overdue', label: 'Überfällig' },
           { key: 'escalation', label: 'Eskalationsfälle' },
           { key: 'age_basis', label: 'Basis Durchschnittsalter' },
@@ -250,8 +268,8 @@ export default function Maintenance() {
         rowName={row => row.title || row.id}
         bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
           finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}
-        onAdd={values => { setPrefill(values || null); setModal('create'); }}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? values => { setPrefill({ ...scopeDefaults(params, units), ...values }); setModal('create'); } : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
 
@@ -259,7 +277,7 @@ export default function Maintenance() {
         <FormModal
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? prefill : modal}
+          initial={modal === 'create' ? prefill : { ...modal, appointment_at: localDateTimeInput(modal.appointment_at) }}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

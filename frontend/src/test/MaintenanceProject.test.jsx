@@ -163,7 +163,9 @@ describe('maintenance project file', () => {
     show(data.abilities, '/maintenance/c1?tab=not-a-section', data);
     await screen.findByRole('heading', { name: 'Dachschaden nach Sturm' });
     expect(screen.getByRole('tab', { name: de.tabOverview })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.queryByRole('navigation', { name: de.relatedPages })).not.toBeInTheDocument();
+    const links = within(screen.getByRole('navigation', { name: de.relatedPages })).getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/calendar?maintenance_case_id=c1');
     fireEvent.click(screen.getByRole('tab', { name: de.tabCosts }));
     expect(screen.queryByRole('link', { name: de.openInvoiceReview })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: de.openBooking })).not.toBeInTheDocument();

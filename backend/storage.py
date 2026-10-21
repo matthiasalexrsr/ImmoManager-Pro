@@ -930,8 +930,11 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def list_tasks(self) -> List[Task]:
         return list(self.tasks.values())
 
-    def validate_task(self, data: TaskCreate) -> None:
+    def validate_task(self, data: TaskCreate, task_id: str | None = None) -> None:
         from .services.task_recurrence import parse_rrule
+        from .services.task_validation import validate_task_parent
+
+        validate_task_parent(data, self.get_task, task_id)
 
         if data.property_id and data.property_id not in self.properties:
             raise ValidationError("Immobilie existiert nicht")
@@ -963,7 +966,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
-        self.validate_task(data)
+        self.validate_task(data, task_id)
         old = self.tasks[task_id]
         task = Task(id=task_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.tasks[task_id] = task
@@ -972,6 +975,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     def delete_task(self, task_id: str) -> None:
         if task_id not in self.tasks:
             raise NotFoundError("Aufgabe nicht gefunden")
+        if any(task.parent_task_id == task_id for task in self.tasks.values()):
+            raise ValidationError("Die Aufgabe hat Folgeaufgaben und bleibt als deren Bezug erhalten. Eine Aufgabenserie lässt sich stattdessen beenden.")
         del self.tasks[task_id]
 
     def list_calendar_events(self) -> List[CalendarEvent]:
@@ -1575,7 +1580,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if entity_type == "document":
             self.validate_document_associations(updated)
         if entity_type == "task":
-            self.validate_task(updated)
+            self.validate_task(updated, entity_id)
         if entity_type == "utility_statement":
             check_final_statement_change(old, updated)
         if entity_type == "booking":

@@ -111,6 +111,18 @@ def _enqueue(jobs, as_of, mode="all", key=None):
     return jobs.enqueue(recurring.KIND, key or f"{recurring.KIND}@{as_of}", {"as_of": as_of, "mode": mode})
 
 
+@pytest.mark.parametrize("state", ["cancelled", "canceled", "archived"])
+def test_ended_series_is_ignored_by_durable_catch_up(backend, state):
+    ended = backend.template(status=state, due_date=date(2026, 1, 1), recurrence_rule="FREQ=DAILY")
+    completed = backend.template(status="completed", due_date=date(2026, 1, 1), recurrence_rule="FREQ=DAILY")
+    _enqueue(backend.jobs, "2026-01-04")
+    result = backend.runner(chunk=2).run_one()
+    assert result.status == "succeeded"
+    assert backend.children(ended.id) == []
+    assert backend.ledger_rows(ended.id) == {}
+    assert backend.children(completed.id) == [date(2026, 1, day) for day in (2, 3, 4)]
+
+
 # --- restart and leases -----------------------------------------------------------
 
 def test_a_restart_resumes_from_the_checkpoint(backend):

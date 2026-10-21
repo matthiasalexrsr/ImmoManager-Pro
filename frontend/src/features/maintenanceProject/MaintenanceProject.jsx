@@ -1,9 +1,10 @@
 import NotificationArrival from '../../components/NotificationArrival';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import FormModal from '../../components/FormModal';
 import StatusBadge from '../../components/StatusBadge';
 import RelatedPageLinks from '../../components/RelatedPageLinks';
+import { useDataStore } from '../../contexts/DataStoreContext';
 import { entityHref } from '../../utils/entityLinks';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { projectApi } from './projectApi';
@@ -25,6 +26,8 @@ const TAB_KEYS = TABS.map(([key]) => key);
 export default function MaintenanceProject({ caseId }) {
   const { tx } = useProjectText();
   const confirm = useConfirm();
+  const store = useDataStore();
+  const busyRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const requestedTab = new URLSearchParams(location.search).get('tab');
@@ -61,24 +64,27 @@ export default function MaintenanceProject({ caseId }) {
     setError(null);
     projectApi.load(caseId, { signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setProject(data); })
-      .catch(failure => { if (failure?.name !== 'AbortError') setError(failure.message || tx.loadFailed); });
+      .catch(failure => { if (!controller.signal.aborted && failure?.name !== 'AbortError') setError(failure.message || tx.loadFailed); });
     return () => controller.abort();
   }, [caseId, revision, tx.loadFailed]);
 
   useEffect(() => {
     const controller = new AbortController();
     projectApi.contacts({ signal: controller.signal })
-      .then(rows => { if (Array.isArray(rows)) setContacts(rows); })
+      .then(rows => { if (!controller.signal.aborted && Array.isArray(rows)) setContacts(rows); })
       .catch(() => {});      // without the address book the forms still work with free text
     return () => controller.abort();
   }, []);
 
   const act = useCallback(async (operation, success, question) => {
-    if (question && !(await (confirm ? confirm(question) : Promise.resolve(window.confirm(question))))) return false;
-    setBusy(true);
-    setNotice(null);
+    if (busyRef.current) return false;
+    busyRef.current = true;
     try {
+      if (question && !(await (confirm ? confirm(question) : Promise.resolve(window.confirm(question))))) return false;
+      setBusy(true);
+      setNotice(null);
       await operation();
+      store?.invalidateRelated('maintenance', 'calendar', 'properties', 'units', 'invoices', 'documents');
       setNotice({ kind: 'success', text: success || tx.saved });
       reload();
       return true;
@@ -86,9 +92,10 @@ export default function MaintenanceProject({ caseId }) {
       setNotice({ kind: 'error', text: failure.message });
       return false;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
-  }, [confirm, reload, tx.saved]);
+  }, [confirm, reload, tx.saved, store]);
 
   const openForm = useCallback(config => setForm({ ...config, key: Date.now() }), []);
   const contactOptions = useMemo(() => [...contacts]
@@ -117,6 +124,9 @@ export default function MaintenanceProject({ caseId }) {
       { to: `/bookings?property_id=${encodeURIComponent(record.property_id)}`, label: tx.propertyBookings },
     ] : []),
     ...(record.unit_id ? [{ to: entityHref('unit', record.unit_id), label: tx.openUnit }] : []),
+    { to: `/calendar?maintenance_case_id=${encodeURIComponent(caseId)}`, label: tx.inCalendar },
+    ...(record.property_id ? [{ to: `/tasks?property_id=${encodeURIComponent(record.property_id)}${record.unit_id ? `&unit_id=${encodeURIComponent(record.unit_id)}` : ''}`,
+      label: 'Aufgaben zum Objekt' }] : []),
   ];
   const readOnly = !Object.values(can).some(Boolean);
 
@@ -217,6 +227,7 @@ export default function MaintenanceProject({ caseId }) {
           onClose={() => setForm(null)}
           onSave={async values => {
             await form.onSave(values);
+            store?.invalidateRelated('maintenance', 'calendar', 'properties', 'units', 'invoices', 'documents');
             setNotice({ kind: 'success', text: form.success || tx.saved });
             reload();
           }} />

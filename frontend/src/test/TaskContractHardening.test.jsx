@@ -20,7 +20,7 @@ vi.mock('../contexts/DataStoreContext', () => ({
 vi.mock('../features/partyWorkspace/PartyWorkspace', () => ({ PartyLink: ({ tenantId, children }) =>
   <button onClick={() => context.openParty(tenantId)}>{children}</button> }));
 vi.mock('../components/DataTable', () => ({ default: ({ data, columns, onAdd, onEdit, onDelete, rowActions }) => <div>
-  <button onClick={onAdd}>Hinzufügen</button>
+  <button onClick={() => onAdd?.()}>Hinzufügen</button>
   {data.map(row => <div key={row.id} data-testid={row.id}>
     {columns.filter(col => !col.hidden).map(col => <span key={col.key}>{col.render ? col.render(row[col.key], row) : row[col.key]}</span>)}
     <button onClick={() => onEdit(row)}>Bearbeiten</button>
@@ -47,6 +47,31 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('task hardening', () => {
+  it('keeps unit-only tasks in the property scope and prefills new tasks from the origin', async () => {
+    api.list.mockResolvedValue([{ ...task, property_id: null }]);
+    render(<MemoryRouter initialEntries={['/tasks?property_id=p1&unit_id=u1']}><Tasks /></MemoryRouter>);
+    await screen.findByRole('link', { name: 'Serienkind' });
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    expect(screen.getByLabelText('Immobilie')).toHaveValue('p1');
+    expect(screen.getByLabelText('Einheit')).toHaveValue('u1');
+  });
+
+  it('reopens an ended task rather than marking it completed', async () => {
+    api.list.mockResolvedValue([{ ...task, status: 'cancelled' }]);
+    render(<MemoryRouter><Tasks /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Wiederöffnen' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/tasks/child', { status: 'open', updated_at: task.updated_at }));
+  });
+
+  it('opens a readable task file with its description and original series', async () => {
+    api.list.mockResolvedValue([{ ...task, description: 'Den Keller gemeinsam besichtigen.' }]);
+    render(<MemoryRouter initialEntries={['/tasks?focus_id=child']}><Tasks /></MemoryRouter>);
+    const details = await screen.findByRole('region', { name: 'Aufgabendetails' });
+    expect(within(details).getByText('Den Keller gemeinsam besichtigen.')).toBeInTheDocument();
+    expect(within(details).getByRole('link', { name: /Ausgangsaufgabe/ })).toHaveAttribute('href', '/tasks?focus_id=template');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('shows list failure and retries instead of displaying an empty success', async () => {
     api.list.mockRejectedValueOnce(new Error('Aufgaben nicht erreichbar'));
     render(<MemoryRouter><Tasks /></MemoryRouter>);

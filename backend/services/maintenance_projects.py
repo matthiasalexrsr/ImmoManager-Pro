@@ -58,6 +58,7 @@ CASE_MISSING = "Instandhaltungsfall nicht gefunden"
 CASE_STATUSES = ("open", "in_progress", "completed", "cancelled")
 STATUS_LABELS = {"open": "Offen", "in_progress": "In Bearbeitung", "completed": "Erledigt",
                  "cancelled": "Abgebrochen"}
+LEGACY_STATUSES = {"done": "completed", "closed": "completed", "canceled": "cancelled", "archived": "cancelled"}
 TRANSITIONS = {
     "open": ("in_progress", "completed", "cancelled"),
     "in_progress": ("open", "completed", "cancelled"),
@@ -166,7 +167,7 @@ class Project:
         return row
 
     def require_open(self, *, allow_completed: bool = False) -> None:
-        status = self.case.status
+        status = LEGACY_STATUSES.get(self.case.status, self.case.status)
         if status == "cancelled" or (status == "completed" and not allow_completed):
             raise conflict(f"Die Akte ist {STATUS_LABELS[status].lower()}. Für Änderungen zuerst wieder aufnehmen.")
 
@@ -180,6 +181,7 @@ def project(store: Any, actor_id: str | None, case_id: str, *areas: str) -> Iter
 # ─── Status workflow ─────────────────────────────────────────────────────────
 
 def _blockers(rows: Rows, case_id: str, target: str) -> list[str]:
+    target = LEGACY_STATUSES.get(target, target)
     found = []
     if target == "completed":
         open_packages = [wp.title for wp in rows.find("maintenance_work_packages", case_id=case_id)
@@ -247,22 +249,29 @@ def transition(store: Any, case_id: str, payload: mm.StatusTransition, actor_id:
 # ─── The case itself (the existing /maintenance endpoints) ───────────────────
 
 def _check_location(unit: archive.Unit, property_id: str, unit_id: str | None) -> None:
-    store = unit.store
-    try:
-        store.get_property(property_id)
-    except NotFoundError:
-        raise ValidationError("Immobilie existiert nicht") from None
+    rows = Rows.of(unit)
+    if not rows.lock("properties", property_id):
+        raise ValidationError("Immobilie existiert nicht")
     if unit_id:
-        try:
-            store.get_unit(unit_id)
-        except NotFoundError:
-            raise ValidationError("Einheit existiert nicht") from None
+        if not rows.lock("units", unit_id):
+            raise ValidationError("Einheit existiert nicht")
+        place = rows.require("units", unit_id, "Einheit existiert nicht")
+        if place.property_id != property_id:
+            raise ValidationError("Die Einheit gehört nicht zur ausgewählten Immobilie.")
+
+
+def _check_case_values(case: Any) -> None:
+    if not case.title.strip():
+        raise ValidationError("Bitte einen Titel für den Schaden oder das Projekt angeben.")
+    if case.estimated_cost is not None and case.estimated_cost < 0:
+        raise ValidationError("Das geschätzte Budget darf nicht negativ sein.")
 
 
 def create_case(store: Any, payload: Any, actor_id: str | None) -> Any:
     from ..models import MaintenanceCase
 
     with work(store, actor_id, ("/maintenance",)) as unit:
+        _check_case_values(payload)
         _check_location(unit, payload.property_id, payload.unit_id)
         now = datetime.now(timezone.utc)
         case = MaintenanceCase(id=str(uuid4()), created_at=now, updated_at=now, **payload.model_dump())
@@ -281,6 +290,7 @@ def update_case(store: Any, case_id: str, changes: dict, actor_id: str | None) -
             merged = MaintenanceCase.model_validate({**p.case.model_dump(), **changes, "id": case_id})
         except PydanticValidationError as error:
             raise HTTPException(422, error.errors()[0]["msg"]) from None
+        _check_case_values(merged)
         moved = (merged.property_id, merged.unit_id) != (p.case.property_id, p.case.unit_id)
         if moved:
             _check_location(p.unit, merged.property_id, merged.unit_id)
@@ -288,6 +298,13 @@ def update_case(store: Any, case_id: str, changes: dict, actor_id: str | None) -
                     or p.rows.find("maintenance_protocols", case_id=case_id, status="final")):
                 raise conflict("Die Akte hat bereits Rechnungen oder abgeschlossene Protokolle; Objekt und "
                                "Einheit lassen sich nicht mehr ändern.")
+            appointments = p.rows.find("maintenance_appointments", case_id=case_id)
+            if appointments and p.unit.user:
+                archive.check_account(p.unit.user, write_areas=("/calendar",))
+            for appointment in appointments:
+                p.rows.lock("calendar_events", appointment.calendar_event_id)
+                p.rows.update("calendar_events", appointment.calendar_event_id,
+                              property_id=merged.property_id, unit_id=merged.unit_id)
         _change_status(p, merged.status, "Bearbeitet", workflow=False)
         updates = {name: getattr(merged, name) for name in changes
                    if name not in ("id", "created_at", "updated_at") and getattr(p.case, name) != getattr(merged, name)}
@@ -299,7 +316,10 @@ def delete_case(store: Any, case_id: str, actor_id: str | None) -> None:
         if p.rows.find("maintenance_protocols", case_id=case_id, status="final"):
             raise conflict("Die Akte enthält abgeschlossene Protokolle (archivierte Originale) und kann nicht "
                            "gelöscht werden. Stattdessen abbrechen oder abschließen.")
-        for appointment in p.rows.find("maintenance_appointments", case_id=case_id):
+        appointments = p.rows.find("maintenance_appointments", case_id=case_id)
+        if appointments and p.unit.user:
+            archive.check_account(p.unit.user, write_areas=("/calendar",))
+        for appointment in appointments:
             p.rows.delete("calendar_events", appointment.calendar_event_id)
         p.rows.delete("maintenance_cases", case_id)
 
@@ -506,6 +526,7 @@ def update_appointment(store: Any, case_id: str, appointment_id: str, payload: m
 def delete_appointment(store: Any, case_id: str, appointment_id: str, actor_id: str | None) -> None:
     area = f"/maintenance/{case_id}/appointments/{appointment_id}"
     with project(store, actor_id, case_id, area, "/calendar") as p:
+        p.require_open()
         link = p.owned("maintenance_appointments", appointment_id, "Termin nicht gefunden")
         p.rows.delete("calendar_events", link.calendar_event_id)     # the link goes with it
 

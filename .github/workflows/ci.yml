@@ -71,6 +71,7 @@ jobs:
           python scripts/run_daily_browser_qa.py --suite interfaces --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/interfaces-browser
           python scripts/run_daily_browser_qa.py --suite qol --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/qol-browser
           python scripts/run_daily_browser_qa.py --suite application --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/application-browser
+          python scripts/run_daily_browser_qa.py --suite operations --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/operations-browser
           python scripts/run_assistant_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/assistant-browser
           python scripts/run_pdf_toolbar_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/pdf-toolbar-browser
           python scripts/run_pdf_toolbar_browser_qa.py --suite statement-letter --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/statement-letter-browser
@@ -87,6 +88,7 @@ jobs:
             artifacts/interfaces-browser
             artifacts/qol-browser
             artifacts/application-browser
+            artifacts/operations-browser
             artifacts/assistant-browser
             artifacts/pdf-toolbar-browser
             artifacts/statement-letter-browser
