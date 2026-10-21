@@ -26,6 +26,17 @@ def available():
     return importlib.util.find_spec("pymupdf") is not None
 
 
+def _tessdata():
+    """Use an explicitly configured model directory, otherwise our pinned DE/EN models."""
+    configured = os.environ.get("TESSDATA_PREFIX")
+    if configured:
+        return configured
+    bundled = Path(__file__).resolve().parents[1] / "resources" / "tessdata"
+    if all((bundled / name).is_file() for name in ("deu.traineddata", "eng.traineddata")):
+        return str(bundled)
+    return None
+
+
 def worker_command(folder: Path) -> list[str]:
     if getattr(sys, "frozen", False):
         return [sys.executable, "document-pdf-worker", str(folder)]
@@ -342,7 +353,7 @@ def transform(content, operation, options, extra_contents, annotations):
                 # Rebuild a searchable PDF from page pixels using local Tesseract;
                 # unlike an extracted .txt this actually contains a text layer.
                 try:
-                    tessdata = fitz.get_tessdata()
+                    tessdata = fitz.get_tessdata(_tessdata())
                     with fitz.open() as searchable:
                         for page in doc:
                             if page.rect.width * page.rect.height * 4 > 80_000_000:

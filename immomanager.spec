@@ -227,6 +227,11 @@ _EXPLICIT_THIRD_PARTY = [
 # ---------------------------------------------------------------------------
 backend_data = list(collected_datas)
 
+# Public, pinned DE/EN model data; the local PDF worker needs no separate Tesseract installation.
+tessdata_dir = os.path.join(ROOT, 'backend', 'resources', 'tessdata')
+for name in ('deu.traineddata', 'eng.traineddata', 'LICENSE', 'SOURCES.json'):
+    backend_data.append((os.path.join(tessdata_dir, name), 'backend/resources/tessdata'))
+
 # Include i18n locale files
 i18n_dir = os.path.join(ROOT, 'i18n')
 if os.path.isdir(i18n_dir):

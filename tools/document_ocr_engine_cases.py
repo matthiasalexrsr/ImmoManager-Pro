@@ -1,4 +1,4 @@
-"""Explicit local OCR gate. Requires configured German/English traineddata.
+"""Explicit local OCR gate, including the bundled German/English traineddata.
 
 No skip: missing local language data is a failed optional-component proof.
 """
@@ -7,7 +7,10 @@ import hashlib
 from backend.services.document_pdf import engine, isolated
 
 
-def test_pixel_only_scan_gets_a_real_searchable_text_layer_in_isolated_worker():
+def test_pixel_only_scan_gets_a_real_searchable_text_layer_in_isolated_worker(monkeypatch):
+    # Prove the delivered resources work, without relying on the developer's/CI's installation.
+    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    monkeypatch.setenv("PATH", "")
     fitz = engine()
     with fitz.open() as rendered:
         page = rendered.new_page(width=595, height=300)

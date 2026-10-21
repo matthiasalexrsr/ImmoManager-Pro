@@ -31,6 +31,12 @@ Dashboardkacheln bleiben enthalten. Seine PDF-Prüfskriptkorrektur `125c5994` wi
   aktuelle archivierte Fassung statt einer inzwischen überholten Upload-Datei.
   Originale und alle Fassungen bleiben erhalten. Ladefehler haben eine Wiederholung;
   sie führen nicht stillschweigend zu einer alten Datei.
+- Die native Windows-Prüfung deckte fehlende OCR-Sprachdateien auf. Deutsch und Englisch
+  werden deshalb als festgelegte, lizenzierte lokale Ressourcen mitgeliefert. Der PDF-Worker
+  benötigt dafür keine Tesseract-Installation, Anmeldung oder Laufzeitdownloads. Ein
+  ausdrücklich konfigurierter Sprachdatenordner bleibt vorrangig. Die echte Pixel-/Text-Prüfung
+  läuft ohne Tesseract im Suchpfad; Originalbytes bleiben unverändert. Herkunft, Lizenz und
+  Prüfsummen liegen in `backend/resources/tessdata/SOURCES.json`.
 - Ein Konflikt beim Fassungsupload bindet Wiederholungen nicht dauerhaft an einen
   veralteten Bearbeitungsstand. Verlorene Antworten behalten ihren Wiederholungsschlüssel.
   Verschiedene Dateien mit gleichem Namen, gleicher Größe und gleichem Änderungsdatum

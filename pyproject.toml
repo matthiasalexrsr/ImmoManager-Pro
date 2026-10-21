@@ -50,6 +50,9 @@ immomanager = "backend.__main__:main"
 [tool.setuptools.packages.find]
 include = ["backend*"]
 
+[tool.setuptools.package-data]
+backend = ["assets/fonts/*", "resources/tessdata/*"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
