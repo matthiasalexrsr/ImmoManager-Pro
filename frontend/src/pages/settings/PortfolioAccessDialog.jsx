@@ -7,7 +7,7 @@ import { useModalDialog } from '../../features/partyWorkspace/useModalDialog';
  * Which portfolios an account sees and changes. Only owners assign them; the server
  * checks every read and write against this choice, also for tokens already issued.
  */
-export default function PortfolioAccessDialog({ user, portfolios, onSave, onClose }) {
+export default function PortfolioAccessDialog({ user, portfolios, ready = true, loadError, onReload, onSave, onClose }) {
   const { t } = useTranslation();
   const u = (key, params) => t(`pages.settings.users.access.${key}`, params);
   const id = useId();
@@ -16,7 +16,9 @@ export default function PortfolioAccessDialog({ user, portfolios, onSave, onClos
   const [chosen, setChosen] = useState(() => new Set(user.portfolio_ids || []));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  useModalDialog(dialogRef, onClose);
+  const submitting = useRef(false);
+  const close = () => { if (!submitting.current) onClose(); };
+  useModalDialog(dialogRef, close);
 
   const toggle = portfolioId => setChosen(current => {
     const next = new Set(current);
@@ -26,6 +28,8 @@ export default function PortfolioAccessDialog({ user, portfolios, onSave, onClos
 
   const submit = async event => {
     event.preventDefault();
+    if (!ready || submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -36,26 +40,30 @@ export default function PortfolioAccessDialog({ user, portfolios, onSave, onClos
     } catch (err) {
       setError(err.message);
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
 
   const nothing = mode === 'selected' && !portfolios.some(p => chosen.has(p.id));
   return (
-    <div className="modal-overlay" onClick={onClose} role="presentation">
+    <div className="modal-overlay" onClick={close} role="presentation">
       <div className="modal" ref={dialogRef} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true"
         aria-labelledby={`${id}-title`} tabIndex={-1}>
         <div className="modal-header">
           <h3 id={`${id}-title`}>{u('title', { name: user.full_name || user.username })}</h3>
-          <button type="button" onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
+          <button type="button" onClick={close} disabled={saving} className="btn-close" aria-label={t('ui.buttons.close')}>
             <CloseIcon size={18} />
           </button>
         </div>
         <form onSubmit={submit}>
           <div className="modal-body portfolio-access">
             {error && <div className="alert-error" role="alert">{error}</div>}
+            {!ready && (loadError ? <div className="alert-error" role="alert">Portfolioliste: {loadError}{' '}
+              <button type="button" className="btn btn-secondary" onClick={onReload}>Portfolios erneut laden</button></div>
+              : <p role="status">Portfolios werden geladen. Bestehende Zugriffe bleiben erhalten.</p>)}
             <p className="text-muted">{u('explanation')}</p>
-            <fieldset className="form-section">
+            <fieldset className="form-section" disabled={saving || !ready}>
               <legend className="form-section-label">{u('scope')}</legend>
               <label className="portfolio-access-choice">
                 <input type="radio" name={`${id}-mode`} value="all" checked={mode === 'all'} onChange={() => setMode('all')} />
@@ -67,8 +75,8 @@ export default function PortfolioAccessDialog({ user, portfolios, onSave, onClos
                 <span><strong>{u('selected')}</strong><small>{u('selectedHint')}</small></span>
               </label>
             </fieldset>
-            {mode === 'selected' && (
-              <fieldset className="form-section">
+            {ready && mode === 'selected' && (
+              <fieldset className="form-section" disabled={saving}>
                 <legend className="form-section-label">{u('portfolios')}</legend>
                 {portfolios.length === 0 ? <p className="text-muted">{u('noPortfolios')}</p> : (
                   <ul className="portfolio-access-list">
@@ -87,8 +95,8 @@ export default function PortfolioAccessDialog({ user, portfolios, onSave, onClos
             )}
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="button" onClick={close} disabled={saving} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
+            <button type="submit" className="btn btn-primary" disabled={saving || !ready}>
               {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
             </button>
           </div>

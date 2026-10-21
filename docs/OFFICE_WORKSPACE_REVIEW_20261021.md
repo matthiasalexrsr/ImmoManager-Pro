@@ -19,6 +19,7 @@ Dokumentwerkzeuge und bisherigen Fachabläufe bleiben die Grundlage. Diese Runde
 | Hinweisquelle | Nach Änderung einer Quelle scheitert jede Wiederholung der alten Lesebestätigung erneut mit 409. | Konflikte bieten das erneute Laden der Quelle; erst die neu angezeigte Fassung wird bestätigt. Ein verlorener Antwortnachweis verwendet weiterhin denselben Befehl. |
 | Einstellungen | Nach 409 fehlt der aktuelle Wert; der Benutzer kann seine Eingabe nicht gezielt mit dem neuen Stand speichern. | Aktuelle Werte nachladen, eigene Eingabe behalten, Vergleich ausdrücklich übernehmen und neue Revision auch im privaten Entwurf sichern. |
 | Einstellungen und Eingang | Filter und Einstellungsreiter stimmen nach Browser-Zurück nicht mit der URL überein; ein ungültiger Reiter erzeugt eine leere Seite. | Die URL bestimmt Filter und Reiter; ungültige oder nicht erlaubte Reiter zeigen den Einstellungskatalog. Neue Filter besitzen eigene Seitencursor und Schnappschüsse. |
+| Benutzerzugriff | Eine fehlgeschlagene oder noch ausstehende Portfolioliste wird als leer gespeichert und kann vorhandene Zuordnungen entfernen. | Laden, Fehler und echter Leerbestand bleiben getrennt. Der Dialog sperrt Änderungen bis zum vollständigen Laden, erhält die Auswahl beim Wiederholen und schützt vor doppeltem Absenden und Schließen während der Speicherung. |
 
 ## Bedienung und Verlinkung
 
@@ -42,9 +43,9 @@ Die neuen Gegenbeispiele stehen in `test_communication_records.py`,
 PostgreSQL-Nachweis in `test_message_postgres.py`; übersprungene Fälle sind dort nicht zulässig.
 
 `scripts/run_daily_browser_qa.py --suite office` startet ausschließlich einen eigenen
-Testserver mit synthetischen Daten. Neun Prüfabläufe decken Schnelländerung/Rückgängig,
+Testserver mit synthetischen Daten. Zehn Prüfabläufe decken Schnelländerung/Rückgängig,
 Wiedervorlagen, tatsächliches Öffnen und Archivieren, Filter und Browser-Zurück,
-einen echten Einstellungskonflikt, private Gesprächsentwürfe und die E-Mail-Vorschau ab.
+einen echten Einstellungskonflikt, eine ausgefallene Portfolioliste, private Gesprächsentwürfe und die E-Mail-Vorschau ab.
 Zusätzlich werden acht Ansichten bei 320, 360 und 1440 Pixeln geprüft. Externe Browseranfragen
 werden blockiert; der E-Mail-Nachweis endet bei einer unversandten Vorschau.
 Die Suite ist Teil der gemeinsamen CI und lässt sich gegen das gebaute Windows-Paket ausführen.

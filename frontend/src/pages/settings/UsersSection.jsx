@@ -17,6 +17,8 @@ export default function UsersSection({ currentUser }) {
   const [loadError, setLoadError] = useState(false);
   const [modal, setModal] = useState(null); // { kind: 'create' | 'edit' | 'password' | 'access', user? }
   const [portfolios, setPortfolios] = useState(null);
+  const [portfolioError, setPortfolioError] = useState(null);
+  const [portfolioAttempt, setPortfolioAttempt] = useState(0);
 
   const isOwner = currentUser?.role === 'eigentuemer';
   const u = (key, params) => t(`pages.settings.users.${key}`, params);
@@ -24,7 +26,10 @@ export default function UsersSection({ currentUser }) {
 
   const load = useCallback(() => {
     api.list('/auth/users')
-      .then((data) => { setUsers(data); setLoadError(false); })
+      .then((data) => {
+        if (!Array.isArray(data)) throw new Error('Die Benutzerliste ist unvollständig.');
+        setUsers(data); setLoadError(false);
+      })
       .catch(() => setLoadError(true));
   }, []);
 
@@ -32,8 +37,13 @@ export default function UsersSection({ currentUser }) {
   // only owners assign portfolios (and see all of them)
   useEffect(() => {
     if (!isOwner) return;
-    api.list('/portfolios').then(setPortfolios).catch(() => setPortfolios([]));
-  }, [isOwner]);
+    let live = true; setPortfolios(null); setPortfolioError(null);
+    api.list('/portfolios').then(data => {
+      if (!Array.isArray(data)) throw new Error('Die Portfolioliste ist unvollständig.');
+      if (live) setPortfolios(data);
+    }).catch(failure => { if (live) setPortfolioError(failure.message || 'Portfolios konnten nicht geladen werden.'); });
+    return () => { live = false; };
+  }, [isOwner, portfolioAttempt]);
   const access = (key, params) => u(`access.${key}`, params);
 
   // Managers may only administer read-only accounts (enforced by the backend as well).
@@ -127,7 +137,8 @@ export default function UsersSection({ currentUser }) {
       </div>
       <div className="panel-body">
         {!isOwner && <div className="alert-info">{u('managerHint')} {access('managerHint')}</div>}
-        {loadError && <div className="alert-error" role="alert">{u('loadError')}</div>}
+        {loadError && <div className="alert-error" role="alert">{u('loadError')} <button type="button" className="btn btn-secondary btn-sm" onClick={load}>Benutzer erneut laden</button></div>}
+        {portfolioError && <div className="alert-error" role="alert">Portfolioliste: {portfolioError} <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPortfolioAttempt(value => value + 1)}>Portfolios erneut laden</button></div>}
         {users && users.length === 0 && <p className="text-muted">{u('empty')}</p>}
         {users && users.length > 0 && (
           <div className="table-scroll">
@@ -197,7 +208,8 @@ export default function UsersSection({ currentUser }) {
         <FormModal title={u('edit')} fields={editFields} initial={modal.user} onSave={handleEdit} onClose={() => setModal(null)} />
       )}
       {modal?.kind === 'access' && (
-        <PortfolioAccessDialog user={modal.user} portfolios={portfolios || []} onSave={handleAccess} onClose={() => setModal(null)} />
+        <PortfolioAccessDialog user={modal.user} portfolios={portfolios || []} ready={Array.isArray(portfolios) && !portfolioError}
+          loadError={portfolioError} onReload={() => setPortfolioAttempt(value => value + 1)} onSave={handleAccess} onClose={() => setModal(null)} />
       )}
       {modal?.kind === 'password' && (
         <FormModal

@@ -11,10 +11,11 @@ const { chromium, request } = await import(module.href);
 const { expect } = await import(new URL('./test.mjs', module).href);
 const output = process.env.QA_OUTPUT;
 await fs.mkdir(output, { recursive: true });
-const report = { synthetic_only: true, checks: [], pages: [], page_errors: [], server_errors: [], external: [] };
+const report = { synthetic_only: true, checks: [], pages: [], page_errors: [], server_errors: [], external: [], expected_errors: [] };
 const browser = await chromium.launch({ headless: true,
   ...(process.env.QA_CHROMIUM_EXECUTABLE ? { executablePath: process.env.QA_CHROMIUM_EXECUTABLE } : {}) });
 let api, context, page;
+let portfolioFailureExpected = false;
 async function call(method, route, data) {
   const response = await api.fetch('/api/v1' + route, { method, data });
   assert.ok(response.ok(), `${method} ${route}: ${response.status()} ${await response.text()}`);
@@ -56,7 +57,11 @@ try {
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem('immo.tutorial.' + id, JSON.stringify({ offered: true })); }, owner.id);
   page = await context.newPage(); page.setDefaultTimeout(30000);
   page.on('pageerror', error => report.page_errors.push(String(error)));
-  page.on('response', response => { if (response.status() >= 500) report.server_errors.push({ url: new URL(response.url()).pathname, status: response.status() }); });
+  page.on('response', response => {
+    if (response.status() < 500) return;
+    const row = { url: new URL(response.url()).pathname, status: response.status() };
+    (portfolioFailureExpected && row.url === '/api/v1/portfolios' ? report.expected_errors : report.server_errors).push(row);
+  });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (['http:', 'https:'].includes(url.protocol) && url.origin !== base.origin) { report.external.push(url.origin); return route.abort(); }
@@ -67,6 +72,29 @@ try {
   await page.locator('input[type="password"]').fill(process.env.QA_PASSWORD);
   await page.locator('form button[type="submit"]').click();
   await page.waitForURL(url => url.pathname === '/');
+
+  await step('Failed portfolio reads cannot erase account access and can be retried inside the dialog', async () => {
+    const reader = (await call('GET', '/auth/users')).find(user => user.role === 'readonly');
+    assert.ok(reader);
+    await call('PATCH', '/auth/users/' + reader.id, { portfolio_access: 'selected', portfolio_ids: [portfolio.id] });
+    portfolioFailureExpected = true;
+    await page.route('**/api/v1/portfolios*', route => route.fulfill({ status: 503, contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: 'QA Portfolios offline' } }) }));
+    await page.goto(base.origin + '/settings?section=users');
+    const account = page.locator('.data-table tbody tr').filter({ hasText: reader.username });
+    await account.getByRole('button', { name: 'Portfolios', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('button', { name: 'Speichern', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('alert')).toContainText('QA Portfolios offline');
+    assert.deepEqual((await call('GET', '/auth/users')).find(user => user.id === reader.id).portfolio_ids, [portfolio.id]);
+    await page.unroute('**/api/v1/portfolios*');
+    await dialog.getByRole('button', { name: 'Portfolios erneut laden', exact: true }).click();
+    await expect(dialog.getByRole('checkbox', { name: portfolio.name, exact: true })).toBeChecked();
+    await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    portfolioFailureExpected = false;
+    assert.deepEqual((await call('GET', '/auth/users')).find(user => user.id === reader.id).portfolio_ids, [portfolio.id]);
+  });
 
   await step('Work center edits due date and assignee with a durable undo', async () => {
     await page.goto(`${base.origin}/work-center?kind=task&property_id=${property.id}`);

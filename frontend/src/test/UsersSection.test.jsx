@@ -135,4 +135,28 @@ describe('UsersSection', () => {
     fireEvent.submit(form.querySelector('form'));
     expect(await screen.findByText('pages.settings.users.access.title')).toBeInTheDocument();
   });
+
+  it('never converts a pending or failed portfolio read into an empty access assignment', async () => {
+    let rejectRead;
+    const pending = new Promise((_, reject) => { rejectRead = reject; });
+    const limited = { ...reader, portfolio_access: 'selected', portfolio_ids: ['p-nord'] };
+    api.list.mockImplementation(path => path === '/portfolios' ? pending : Promise.resolve([owner, limited]));
+    render(<UsersSection currentUser={owner} />);
+    fireEvent.click(within(await row('reader')).getByText('pages.settings.users.access.button'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'ui.buttons.save' })).toBeDisabled();
+    fireEvent.submit(dialog.querySelector('form'));
+    expect(api.patch).not.toHaveBeenCalled();
+    rejectRead(new Error('Portfolios offline'));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Portfolios offline');
+    fireEvent.submit(dialog.querySelector('form'));
+    expect(api.patch).not.toHaveBeenCalled();
+    api.list.mockImplementation(listing([owner, limited]));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Portfolios erneut laden' }));
+    expect(await within(dialog).findByLabelText('Nord')).toBeChecked();
+    fireEvent.click(within(dialog).getByLabelText('Süd'));
+    fireEvent.submit(dialog.querySelector('form'));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/auth/users/r1',
+      { portfolio_access: 'selected', portfolio_ids: ['p-nord', 'p-sued'] }));
+  });
 });
