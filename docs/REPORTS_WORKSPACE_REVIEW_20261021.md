@@ -17,6 +17,7 @@ in dieser Runde nicht zusammengeführt oder verändert.
 | Unvollständige Gesamtsummen werden wie Nullwerte dargestellt. | Formal vorhandene Monatsliste bei fehlenden oder leeren Gesamtbeträgen. | Fehlende numerische Nachweise erzeugen einen wiederholbaren Ladefehler; kein erfolgreicher Nullbericht und kein Download. |
 | Kategoriestatistik verliert Vorzeichen und Vollständigkeit. | Absolute Kreiswerte; Kategorien und Kostenschätzungen nach Position acht fehlen. | Vollständige Listen mit Vorzeichen und passenden Buchungslinks. Buchungen ohne Kategorie bleiben erreichbar. |
 | Fremdwährung wird in Ergebnis und Planung als Bestandswährung dargestellt. | Eine Buchung vom USD-Konto zu einem EUR-Objekt wird ohne Portfoliowahl in EUR summiert. | Alle drei Berichtsbasisarten prüfen die tatsächlichen Quellkontowährungen; unprüfbare oder gemischte Beträge werden nicht still umgerechnet. |
+| Teilrückbuchungen erzeugen Centbruchteile in den Leistungsquellen. | 30 EUR Auszahlung, davon 10 EUR einer Rechnung zugeordnet, und 1 EUR Rückbuchung: Quellen ergeben 29,333… statt der angezeigten 29,33 EUR. | Die anteilige Zuordnung wird an der Beleggrenze auf Cent gerundet; Quellen, Monatswerte und Gesamtsummen stimmen exakt überein. |
 
 Geld bleibt in den Berechnungen dezimalgenau. Bekannte künftige Buchungen sind
 Reservierungen und werden in der Vorschau nicht als bereits bezahlte Istwerte

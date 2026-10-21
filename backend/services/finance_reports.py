@@ -252,7 +252,7 @@ def performance(store, d):
         if b.reverses_booking_id:
             original = reverses.get(b.reverses_booking_id)
             if original and money(original.amount):
-                identified_amount = -identified.get(original.id, ZERO) * abs(amount / money(original.amount))
+                identified_amount = -money(identified.get(original.id, ZERO) * abs(amount / money(original.amount)))
         # outgoing supplier allocation amounts are positive; cash amounts are negative
         amount += identified_amount
         if not amount:

@@ -11,8 +11,11 @@ from backend import auth
 from backend.app import app
 from backend.dependencies import store
 from backend.finance_models import ReportDefinition
+from backend.maintenance_models import InvoicePayment
 from backend.models import AccountCreate, BookingCreate, InvoiceCreate, PortfolioCreate
 from backend.services import finance_reports
+from backend.services.maintenance_projects import work
+from backend.services.maintenance_rows import Rows
 from backend.services.payment_allocations import auto_allocate
 from backend.tests.test_finance_packages_v2 import clean  # noqa: F401
 from backend.tests.test_finance_packages_v2 import estate as _estate_fixture  # noqa: F401
@@ -110,3 +113,20 @@ def test_csv_negative_money_is_numeric_and_pdf_contains_totals_names_and_sources
                 text = "\n".join(page.extract_text() or "" for page in document.pages)
             assert "Haus" in text and "1.234,56 EUR" in text and "-1.234,56 EUR" in text
             assert "Gesamtwerte" in text and "=1+1" in text
+
+
+@pytest.mark.parametrize("returned,expected", [(1, "29.33"), (3, "28.00"), (29, "10.67")])
+def test_partial_cash_reversal_keeps_source_amounts_and_period_totals_in_exact_cents(estate, returned, expected):
+    invoice = store.create_invoice(InvoiceCreate(property_id=estate[1].id, supplier="Teilzuordnung",
+        invoice_date=date(2026, 1, 1), net_amount=10, gross_amount=10))
+    booking = store.create_booking(BookingCreate(account_id=estate[5].id, property_id=estate[1].id,
+        booking_date=date(2026, 1, 2), amount=-30))
+    store.create_booking(BookingCreate(account_id=estate[5].id, property_id=estate[1].id,
+        booking_date=date(2026, 1, 3), amount=returned, reverses_booking_id=booking.id))
+    with work(store, None, ()) as unit:
+        Rows.of(unit).add("invoice_payments", InvoicePayment(id="fractional-return", invoice_id=invoice.id,
+                                                           booking_id=booking.id, amount=10))
+    result = finance_reports.compute(store, ReportDefinition(kind="performance-period-v2", as_of=date(2026, 1, 31)))
+    sources = [Decimal(source["amount"]) for source in result["sources"] if source.get("contribution") == "costs"]
+    assert sum(sources, Decimal(0)) == Decimal(result["totals"]["costs"]) == Decimal(expected)
+    assert all(value == value.quantize(Decimal("0.01")) for value in sources)
