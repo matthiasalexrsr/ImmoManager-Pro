@@ -1,6 +1,8 @@
 """Property, unit and document files use the same associations as their sources."""
 
 from datetime import date
+from io import BytesIO
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +19,8 @@ from backend.models import (
     TenantCreate,
     UnitCreate,
 )
+from backend.services import document_text
+from backend.services.file_storage import get_file_storage
 
 
 @pytest.fixture
@@ -181,3 +185,44 @@ def test_indirect_documents_do_not_cross_the_viewers_portfolio(estate):
         assert response.status_code in (200, 403, 404)
         assert hidden.id not in response.text and hidden.title not in response.text
     assert client.get(f"/api/v1/documents/{hidden.id}/details").status_code == 404
+
+
+def test_document_content_search_and_index_counts_share_the_file_context_and_all_pages(estate, monkeypatch):
+    client, _, props, units, _, contract = estate
+    from backend.services import file_storage
+    monkeypatch.setattr(file_storage, "_storage", file_storage.LocalStorage())
+    path = f"documents/{uuid4().hex}-wartung.txt"
+    get_file_storage().save(path, BytesIO("Rauchwarnmelder geprüft".encode()), content_type="text/plain")
+
+    def indexed(title, **binding):
+        document = store.create_document(DocumentCreate(title=title, file_url="/uploads/" + path, **binding))
+        document_text.index_document(store, document)
+        return document
+
+    own = [indexed(f"Protokoll {number:02}", contract_id=contract.id) for number in range(31)]
+    other = indexed("Anderes Haus", unit_id=units[1].id)
+    if hasattr(store, "db"):
+        store.db.commit()
+
+    expected = [row.id for row in sorted(own, key=lambda row: (row.created_at, row.id), reverse=True)]
+    for binding in ({"property_id": props[0].id}, {"unit_id": units[0].id}, {"contract_id": contract.id}):
+        assert client.get("/api/v1/documents/text-index", params=binding).json() == {
+            "documents": 31, "indexed": 31, "unreadable": 0}
+        first = client.get("/api/v1/documents/search", params={"q": "RAUCHWARNMELDER", **binding})
+        assert first.status_code == 200, first.text
+        page = first.json()
+        assert page["total"] == page["index"]["documents"] == 31
+        assert page["has_more"] and page["next_skip"] == 25
+        second = client.get("/api/v1/documents/search", params={"q": "RAUCHWARNMELDER", "skip": page["next_skip"], **binding}).json()
+        assert [len(page["items"]), len(second["items"])] == [25, 6]
+        assert [item["id"] for item in page["items"] + second["items"]] == expected
+        assert not second["has_more"] and second["next_skip"] is None
+        assert second["total"] == 31
+
+    foreign = client.get("/api/v1/documents/search", params={"q": "Rauchwarnmelder", "unit_id": units[1].id}).json()
+    assert [row["id"] for row in foreign["items"]] == [other.id]
+    assert foreign["total"] == foreign["index"]["documents"] == 1
+    empty = client.get("/api/v1/documents/search", params={"q": "Rauchwarnmelder", "property_id": props[1].id,
+                                                         "unit_id": units[0].id}).json()
+    assert empty["total"] == empty["index"]["documents"] == 0 and empty["items"] == []
+    assert client.get("/api/v1/documents/search", params={"q": "Rauchwarnmelder", "skip": -1}).status_code == 422

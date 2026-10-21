@@ -25,6 +25,10 @@ Dashboardkacheln bleiben enthalten. Seine PDF-Prüfskriptkorrektur `125c5994` wi
   über Einheit bzw. Mietvertrag. SQL filtert mit Unterabfragen vor der Pagination;
   Original-Metadaten bleiben unverändert und Dokumente werden nicht vervielfältigt.
   Bestehende Portfolio-Berechtigungen gelten auch für die neuen Abfragen.
+- Volltextsuche und Indexanzeige folgen demselben Objekt-, Einheiten- und Vertragskontext
+  wie die Dokumentliste. Weitere Treffer hinter der ersten Seite sind nachladbar;
+  fehlgeschlagene Folgeseiten erhalten die bereits gefundenen Ergebnisse. Beim Wechsel
+  der Akte werden überholte Suchantworten verworfen.
 - Dokumentdetails liefern einen gesonderten aufgelösten Kontext. Immobilie, Einheit,
   Vertrag und Partei werden auch bei indirekter Zuordnung korrekt verlinkt.
 - Die Schnellansichten von Dokumentliste, Immobilienakte und Parteienkarte zeigen die

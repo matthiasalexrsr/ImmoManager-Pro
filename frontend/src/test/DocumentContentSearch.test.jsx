@@ -32,4 +32,55 @@ describe('search in document contents', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Protokoll 2026' }));
     expect(onOpen).toHaveBeenCalledWith(hit);
   });
+
+  it('keeps index, refresh and search in the chosen file context and can reach later results after a retry', async () => {
+    const scope = { unit_id: 'u1' };
+    const older = { ...hit, id: 'd2', title: 'Älteres Protokoll' };
+    const service = {
+      status: vi.fn().mockResolvedValue({ documents: 2, indexed: 1, unreadable: 0 }),
+      refresh: vi.fn().mockResolvedValue({ documents: 2, indexed: 2, unreadable: 0 }),
+      search: vi.fn().mockResolvedValueOnce({ items: [hit], total: 2, has_more: true, next_skip: 1 })
+        .mockRejectedValueOnce(new Error('Verbindung unterbrochen'))
+        .mockResolvedValueOnce({ items: [older], total: 2, has_more: false, next_skip: null }),
+    };
+    const onOpen = vi.fn();
+    render(<DocumentContentSearch scope={scope} service={service} canWrite onOpen={onOpen} />);
+    expect(await screen.findByText(/1 von 2 Dokumenten im Inhalt durchsuchbar/)).toBeInTheDocument();
+    expect(service.status).toHaveBeenCalledWith(expect.objectContaining({ scope }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt lesen' }));
+    await screen.findByText(/2 von 2 Dokumenten im Inhalt durchsuchbar/);
+    expect(service.refresh).toHaveBeenCalledWith(expect.objectContaining({ scope }));
+    fireEvent.change(screen.getByLabelText('Im Dokumentinhalt suchen'), { target: { value: 'Rauchwarnmelder' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Suchen' }));
+    await screen.findByText(/2 Dokumente enthalten „Rauchwarnmelder“ – 1 werden gezeigt/);
+    expect(service.search).toHaveBeenLastCalledWith('Rauchwarnmelder', expect.objectContaining({ scope, skip: 0 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Suchergebnisse laden' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Verbindung unterbrochen');
+    expect(screen.getByRole('button', { name: hit.title })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Suchergebnisse laden' }));
+    await screen.findByRole('button', { name: older.title });
+    expect(screen.queryByRole('button', { name: 'Weitere Suchergebnisse laden' })).not.toBeInTheDocument();
+    expect(service.search).toHaveBeenLastCalledWith('Rauchwarnmelder', expect.objectContaining({ scope, skip: 1 }));
+    fireEvent.click(screen.getByRole('button', { name: older.title }));
+    expect(onOpen).toHaveBeenCalledWith(older);
+  });
+
+  it('clears the old query and aborts late search answers when changing files', async () => {
+    let answer;
+    const service = {
+      status: vi.fn().mockResolvedValue({ documents: 1, indexed: 1, unreadable: 0 }),
+      search: vi.fn().mockImplementation(() => new Promise(resolve => { answer = resolve; })),
+    };
+    const { rerender } = render(<DocumentContentSearch scope={{ property_id: 'p1' }} service={service} />);
+    fireEvent.change(screen.getByLabelText('Im Dokumentinhalt suchen'), { target: { value: 'Rauchwarnmelder' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Suchen' }));
+    const request = service.search.mock.calls[0][1];
+    rerender(<DocumentContentSearch scope={{ property_id: 'p2' }} service={service} />);
+    expect(request.signal.aborted).toBe(true);
+    answer({ items: [hit], total: 1 });
+    await waitFor(() => expect(service.status).toHaveBeenLastCalledWith(expect.objectContaining({ scope: { property_id: 'p2' } })));
+    expect(screen.getByLabelText('Im Dokumentinhalt suchen')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: hit.title })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suchen' })).toBeEnabled();
+  });
 });

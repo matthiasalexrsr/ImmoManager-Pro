@@ -125,22 +125,23 @@ def ocr_analyze_document(payload: DocumentOcrAnalyzeRequest) -> dict:
 
 @router.get("/search")
 def search_documents(q: str = Query(..., min_length=2, max_length=200),
-                     limit: int = Query(25, ge=1, le=100)) -> dict:
+                     limit: Annotated[int, Query(ge=1, le=100)] = 25, skip: Annotated[int, Query(ge=0)] = 0,
+                     property_id: str | None = None, unit_id: str | None = None, contract_id: str | None = None) -> dict:
     """Documents whose text contains `q` (literal, case-insensitive), with a snippet around the hit."""
-    return document_text.search(store, q, limit=limit)
+    return document_text.search(store, q, limit=limit, skip=skip, property_id=property_id, unit_id=unit_id, contract_id=contract_id)
 
 
 @router.get("/text-index")
-def text_index_status() -> dict:
+def text_index_status(property_id: str | None = None, unit_id: str | None = None, contract_id: str | None = None) -> dict:
     """How many of the visible documents are searchable by their content."""
-    return document_text.status(store)
+    return document_text.status(store, property_id=property_id, unit_id=unit_id, contract_id=contract_id)
 
 
 @router.post("/text-index", status_code=status.HTTP_202_ACCEPTED)
-def text_index_now() -> dict:
+def text_index_now(property_id: str | None = None, unit_id: str | None = None, contract_id: str | None = None) -> dict:
     """Index new and changed documents now (in the background)."""
     document_text.schedule("manual:" + uuid.uuid4().hex)
-    return document_text.status(store)
+    return document_text.status(store, property_id=property_id, unit_id=unit_id, contract_id=contract_id)
 
 
 @router.get("/retention")

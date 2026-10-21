@@ -432,7 +432,7 @@ function DocumentsWorkspace() {
         {retentionEnded > 0 && !tenantId && <KpiAction label="Aufbewahrung abgelaufen" value={retentionEnded} onClick={() => openSources('retention_ended')} />}
       </div>}
 
-      {!tenantId && <DocumentContentSearch onOpen={setViewerFile} places={propMap} canWrite={canWrite} />}
+      {!tenantId && <DocumentContentSearch onOpen={setViewerFile} places={propMap} canWrite={canWrite} scope={contextValues} />}
 
       {/* Filter tabs */}
       {!tenantId && <div className="filter-chips">

@@ -124,6 +124,7 @@ try {
     await expect(page.getByLabel('Dokumentauswahl')).toContainText(unit.label);
     await expect(row(contractDocument.title)).toHaveCount(1);
     await expect(row(document.title)).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Volltextsuche in Dokumenten' })).toContainText('0 von 1 Dokumenten im Inhalt durchsuchbar');
     await shot('unit-documents-context-1440.png');
   });
   await step('Document assignments use dependent choices and refresh all links after an actual committed save', async () => {

@@ -28,6 +28,44 @@ def context(store, document):
              "contract": contract.contract_number if contract else None, "tenant": tenant.full_name if tenant else None})
 
 
+def sql_filters(*, property_id=None, unit_id=None, contract_id=None):
+    """Shared location boundaries for lists, search results and index counts."""
+    conditions = []
+    if property_id:
+        via_unit = DocumentORM.unit_id.in_(select(UnitORM.id).where(UnitORM.property_id == property_id))
+        via_contract = DocumentORM.contract_id.in_(select(ContractORM.id).where(ContractORM.property_id == property_id))
+        conditions.append(or_(DocumentORM.property_id == property_id,
+            and_(DocumentORM.property_id.is_(None), or_(via_unit,
+                and_(DocumentORM.unit_id.is_(None), via_contract)))))
+    if unit_id:
+        via_contract = DocumentORM.contract_id.in_(select(ContractORM.id).where(ContractORM.unit_id == unit_id))
+        conditions.append(or_(DocumentORM.unit_id == unit_id, and_(DocumentORM.unit_id.is_(None), via_contract)))
+    if contract_id:
+        conditions.append(DocumentORM.contract_id == contract_id)
+    return conditions
+
+
+def filter_records(store, documents, *, property_id=None, unit_id=None, contract_id=None):
+    if not any((property_id, unit_id, contract_id)):
+        return documents
+    units = {row.id: row for row in store.list_units()}
+    contracts = {row.id: row for row in store.list_contracts()}
+    matching = []
+    for document in documents:
+        contract = contracts.get(document.contract_id)
+        effective_unit = document.unit_id or (contract.unit_id if contract else None)
+        unit = units.get(effective_unit)
+        effective_property = document.property_id or (unit.property_id if unit else None) or (contract.property_id if contract else None)
+        if property_id and effective_property != property_id:
+            continue
+        if unit_id and effective_unit != unit_id:
+            continue
+        if contract_id and document.contract_id != contract_id:
+            continue
+        matching.append(document)
+    return matching
+
+
 def page(store, *, property_id=None, unit_id=None, contract_id=None, skip=0, limit=100, sort_by=None, descending=False):
     """Apply location filters before pagination, including documents attached only via a child.
 
@@ -43,19 +81,7 @@ def page(store, *, property_id=None, unit_id=None, contract_id=None, skip=0, lim
         return store._list_paginated("document", skip=skip, limit=limit, filters={"contract_id": contract_id},
                                      order_by=sort_by, order_desc=descending)
     if hasattr(store, "db"):
-        query = store.db.query(DocumentORM)
-        if property_id:
-            via_unit = DocumentORM.unit_id.in_(select(UnitORM.id).where(UnitORM.property_id == property_id))
-            via_contract = DocumentORM.contract_id.in_(select(ContractORM.id).where(ContractORM.property_id == property_id))
-            query = query.filter(or_(DocumentORM.property_id == property_id,
-                and_(DocumentORM.property_id.is_(None), or_(via_unit,
-                    and_(DocumentORM.unit_id.is_(None), via_contract)))))
-        if unit_id:
-            via_contract = DocumentORM.contract_id.in_(select(ContractORM.id).where(ContractORM.unit_id == unit_id))
-            query = query.filter(or_(DocumentORM.unit_id == unit_id,
-                                    and_(DocumentORM.unit_id.is_(None), via_contract)))
-        if contract_id:
-            query = query.filter(DocumentORM.contract_id == contract_id)
+        query = store.db.query(DocumentORM).filter(*sql_filters(property_id=property_id, unit_id=unit_id, contract_id=contract_id))
         if sort_by in Document.model_fields:
             column = getattr(DocumentORM, sort_by)
             query = query.order_by(column.desc().nullslast() if descending else column.asc().nullsfirst())
@@ -63,21 +89,7 @@ def page(store, *, property_id=None, unit_id=None, contract_id=None, skip=0, lim
         rows = query.order_by(*order).offset(skip).limit(limit)
         return [Document.model_validate(row, from_attributes=True) for row in rows]
 
-    units = {row.id: row for row in store.list_units()}
-    contracts = {row.id: row for row in store.list_contracts()}
-    matching = []
-    for document in store.list_documents():
-        contract = contracts.get(document.contract_id)
-        effective_unit = document.unit_id or (contract.unit_id if contract else None)
-        unit = units.get(effective_unit)
-        effective_property = document.property_id or (unit.property_id if unit else None) or (contract.property_id if contract else None)
-        if property_id and effective_property != property_id:
-            continue
-        if unit_id and effective_unit != unit_id:
-            continue
-        if contract_id and document.contract_id != contract_id:
-            continue
-        matching.append(document)
+    matching = filter_records(store, store.list_documents(), property_id=property_id, unit_id=unit_id, contract_id=contract_id)
     matching.sort(key=lambda row: (row.created_at, row.id), reverse=descending)
     if sort_by in Document.model_fields:
         matching.sort(key=lambda row: (getattr(row, sort_by) is not None, getattr(row, sort_by)), reverse=descending)

@@ -30,6 +30,7 @@ from sqlalchemy import and_, func, literal, or_, select
 from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import DocumentORM, DocumentTextORM
 from ..store_errors import NotFoundError
+from . import document_context
 
 KIND = "documents.text_index"
 CHUNK = 50
@@ -290,43 +291,50 @@ def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def search(store, q: str, *, limit: int = 25) -> dict:
+def search(store, q: str, *, limit: int = 25, skip: int = 0, property_id=None, unit_id=None, contract_id=None) -> dict:
     """Documents whose text contains `q`, newest first, each with a snippet around the first hit."""
     needle = q.strip().lower()
+    scope = {"property_id": property_id, "unit_id": unit_id, "contract_id": contract_id}
     if len(needle) < 2:
-        return {"items": [], "total": 0, "index": status(store)}
+        return {"items": [], "total": 0, "has_more": False, "next_skip": None, "index": status(store, **scope)}
     if hasattr(store, "db"):
+        conditions = document_context.sql_filters(**scope)
         match = DocumentTextORM.search_text.like(f"%{_escape(needle)}%", escape="\\")
         query = (select(DocumentORM, DocumentTextORM.text, DocumentTextORM.source)
-                 .join(DocumentTextORM, DocumentTextORM.document_id == DocumentORM.id).where(match))
+                 .join(DocumentTextORM, DocumentTextORM.document_id == DocumentORM.id).where(match, *conditions))
         total = store.db.scalar(select(func.count()).select_from(DocumentORM)
-                                .join(DocumentTextORM, DocumentTextORM.document_id == DocumentORM.id).where(match))
-        rows = store.db.execute(query.order_by(DocumentORM.created_at.desc(), DocumentORM.id).limit(limit)).all()
+                                .join(DocumentTextORM, DocumentTextORM.document_id == DocumentORM.id).where(match, *conditions))
+        rows = store.db.execute(query.order_by(DocumentORM.created_at.desc(), DocumentORM.id.desc()).offset(skip).limit(limit)).all()
         found = [(store.get_document(row[0].id), row[1], row[2]) for row in rows]
     else:
         texts = memory_rows(store)
-        matches = [(document, texts[document.id].text, texts[document.id].source) for document in store.list_documents()
+        documents = document_context.filter_records(store, store.list_documents(), **scope)
+        matches = [(document, texts[document.id].text, texts[document.id].source) for document in documents
                    if document.id in texts and needle in texts[document.id].search_text]
         matches.sort(key=lambda item: (_naive(item[0].created_at) or now(), item[0].id), reverse=True)
-        total, found = len(matches), matches[:limit]
+        total, found = len(matches), matches[skip:skip + limit]
     items = [{**document.model_dump(mode="json", include={"id", "title", "document_type", "document_date",
                                                           "property_id", "unit_id", "contract_id", "tenant_id",
                                                           "file_url", "valid_until"}),
               "snippet": snippet(text, needle), "text_source": kind} for document, text, kind in found]
-    return {"items": items, "total": total, "index": status(store)}
+    has_more = skip + len(items) < (total or 0)
+    return {"items": items, "total": total or 0, "has_more": has_more,
+            "next_skip": skip + len(items) if has_more else None, "index": status(store, **scope)}
 
 
-def status(store) -> dict:
+def status(store, *, property_id=None, unit_id=None, contract_id=None) -> dict:
     """How many visible documents are indexed, and how many have no readable text."""
     if hasattr(store, "db"):
-        documents = store.db.scalar(select(func.count()).select_from(DocumentORM)) or 0
+        conditions = document_context.sql_filters(property_id=property_id, unit_id=unit_id, contract_id=contract_id)
+        documents = store.db.scalar(select(func.count()).select_from(DocumentORM).where(*conditions)) or 0
         joined = select(func.count()).select_from(DocumentORM).join(DocumentTextORM,
-                                                                    DocumentTextORM.document_id == DocumentORM.id)
+                                                                    DocumentTextORM.document_id == DocumentORM.id).where(*conditions)
         indexed = store.db.scalar(joined) or 0
         unreadable = store.db.scalar(joined.where(DocumentTextORM.source == "none")) or 0
     else:
         rows = memory_rows(store)
-        visible = [document.id for document in store.list_documents()]
+        visible = [document.id for document in document_context.filter_records(store, store.list_documents(),
+                    property_id=property_id, unit_id=unit_id, contract_id=contract_id)]
         documents = len(visible)
         indexed = sum(1 for identifier in visible if identifier in rows)
         unreadable = sum(1 for identifier in visible if identifier in rows and rows[identifier].source == "none")
