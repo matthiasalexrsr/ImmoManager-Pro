@@ -18,6 +18,7 @@ in dieser Runde nicht zusammengeführt oder verändert.
 | Kategoriestatistik verliert Vorzeichen und Vollständigkeit. | Absolute Kreiswerte; Kategorien und Kostenschätzungen nach Position acht fehlen. | Vollständige Listen mit Vorzeichen und passenden Buchungslinks. Buchungen ohne Kategorie bleiben erreichbar. |
 | Fremdwährung wird in Ergebnis und Planung als Bestandswährung dargestellt. | Eine Buchung vom USD-Konto zu einem EUR-Objekt wird ohne Portfoliowahl in EUR summiert. | Alle drei Berichtsbasisarten prüfen die tatsächlichen Quellkontowährungen; unprüfbare oder gemischte Beträge werden nicht still umgerechnet. |
 | Teilrückbuchungen erzeugen Centbruchteile in den Leistungsquellen. | 30 EUR Auszahlung, davon 10 EUR einer Rechnung zugeordnet, und 1 EUR Rückbuchung: Quellen ergeben 29,333… statt der angezeigten 29,33 EUR. | Die anteilige Zuordnung wird an der Beleggrenze auf Cent gerundet; Quellen, Monatswerte und Gesamtsummen stimmen exakt überein. |
+| Die Projektakte überschreitet im Zweibenutzerlauf wiederholt zwei Sekunden. | Profilierung: Statushistorie etwa 425 ms und Fotos etwa 232 ms, weil für einen ausdrücklich gewählten Schaden trotzdem sämtliche polymorphen Objektfamilien in die SQL-Prüfung expandieren. | Historie und Fotos verwenden den bekannten Schadenstyp und eine im selben SELECT enthaltene vollständige Objektberechtigung. Fremde Schäden und andere Typen bleiben ausgeschlossen; unabhängige Rechnungs-/Dokumentquellen behalten ihre eigenen Prüfungen. |
 
 Geld bleibt in den Berechnungen dezimalgenau. Bekannte künftige Buchungen sind
 Reservierungen und werden in der Vorschau nicht als bereits bezahlte Istwerte
@@ -43,6 +44,8 @@ umgebucht. Die Report-Erstellung verändert weder Mietkonten noch Quelldatensät
 ## Abnahme und Auslieferung
 
 Neue numerische Regressionen: `backend/tests/test_report_source_reconciliation.py`.
+`test_project_source_reading.py` prüft die Projektquellen samt Typ-, Eltern- und
+Portfoliogrenze sowie die begrenzte SQL-Abfragekomplexität ohne flüchtige Zeitgrenze.
 Sie gehören zusätzlich zu den vollständigen Backend-Suiten auch zur verpflichtenden
 echten PostgreSQL-Prüfung zusammen mit den bisherigen Finanzgegenbeispielen.
 `FinanceWorkspace.test.jsx` und `DashboardWorkspace.test.jsx` prüfen die Bedienung.

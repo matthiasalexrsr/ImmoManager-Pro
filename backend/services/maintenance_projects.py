@@ -957,7 +957,7 @@ def unlink_document(store: Any, case_id: str, link_id: str, actor_id: str | None
 # ─── Protocols ───────────────────────────────────────────────────────────────
 
 def _case_photos(rows: Rows, case_id: str) -> dict[str, Any]:
-    return {photo.id: photo for photo in rows.find("entity_photos", entity_type="maintenance", entity_id=case_id)}
+    return {photo.id: photo for photo in rows.find_case_entities("entity_photos", case_id)}
 
 
 def _check_protocol_refs(p: Project, values: dict) -> None:
@@ -1363,7 +1363,7 @@ def read_project(store: Any, case_id: str, actor: dict | None) -> dict:
     case_documents = rows.find("maintenance_case_documents", case_id=case_id)
     invoices = {i.id: i for i in rows.find("invoices", id=[link.invoice_id for link in links])}
     events = {e.id: e for e in rows.find("calendar_events", id=[a.calendar_event_id for a in appointments])}
-    history = sorted(rows.find("change_history", entity_type="maintenance", entity_id=case_id, field_name="status"),
+    history = sorted(rows.find_case_entities("change_history", case_id, field_name="status"),
                      key=lambda entry: (str(entry.changed_at), entry.id), reverse=True)
     project_costs, payments, bookings = _costs(rows, case, orders, changes, links, invoices)
 

@@ -183,6 +183,36 @@ class Rows:
                              for k, v in criteria.items())]
         return sorted(result, key=lambda row: (str(getattr(row, "created_at", "")), row.id))
 
+    def find_case_entities(self, table: str, case_id: str, **criteria: Any) -> list[Any]:
+        """History/photos of one readable case, with its authoritative SQL boundary.
+
+        These two tables have exactly one polymorphic parent. The caller already
+        chooses 'maintenance'; expanding every other entity family is unnecessary.
+        Keep the case predicate in the same SELECT, including its current portfolio
+        boundary. Independent invoices, documents and other parents use find().
+        """
+        if table not in {"change_history", "entity_photos"}:
+            raise ValueError("Only case history and photos have this single-parent contract")
+        self.store.get_maintenance_case(case_id)
+        if self.db is None:
+            return self.find(table, entity_type="maintenance", entity_id=case_id, **criteria)
+        from .portfolio_scope import BOUNDED, scoped_clause
+
+        case_orm = registry()["maintenance_cases"][0]
+        parents = select(case_orm.id).where(case_orm.id == case_id)
+        boundary = scoped_clause(case_orm)
+        if boundary is not None:
+            parents = parents.where(boundary)
+        orm = registry()[table][0]
+        query = select(orm).where(orm.entity_type == "maintenance", orm.entity_id == case_id,
+                                  orm.entity_id.in_(parents))
+        for key, value in criteria.items():
+            column = getattr(orm, key)
+            query = query.where(column.is_(None) if value is None else column == value)
+        query = query.execution_options(**{BOUNDED: True})
+        result = [self._model(table, item) for item in self.db.scalars(query)]
+        return sorted(result, key=lambda row: (str(getattr(row, "created_at", "")), row.id))
+
     def lock(self, table: str, key: str) -> bool:
         """Hold the row until the unit ends (PostgreSQL; SQLite and memory hold the whole store)."""
         if self.db is not None:
