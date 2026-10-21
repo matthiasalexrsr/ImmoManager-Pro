@@ -71,7 +71,7 @@ def _generate_recurring_report(as_of: date) -> RecurrenceReport:
             if task.parent_task_id:
                 children.setdefault(task.parent_task_id, []).append(task)
         for template in all_tasks:
-            if not recurring.is_active_template(template):
+            if not template.recurrence_rule or not recurring.is_active_template(template):
                 continue
             try:
                 rrule = _parse_rrule(template.recurrence_rule)
