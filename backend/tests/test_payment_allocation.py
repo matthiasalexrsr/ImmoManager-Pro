@@ -70,6 +70,29 @@ def yilmaz(client):
     return {"tenant": tenant, "account": account, **contracts}
 
 
+def test_failed_manual_split_keeps_every_previous_allocation(client, yilmaz, monkeypatch):
+    from backend.storage import ValidationError
+    booking = client.get('/api/v1/bookings').json()[0]
+    endpoint = f"/api/v1/bookings/{booking['id']}/allocations"
+    previous = client.get(endpoint).json()
+    assert len(previous) == 2
+    original = type(store).create_payment_allocation
+    calls = []
+
+    def fail_second(target, data):
+        if data.source == 'manual':
+            calls.append(data)
+            if len(calls) == 2:
+                raise ValidationError('Gezielter Speicherfehler beim zweiten Teilbetrag')
+        return original(target, data)
+
+    monkeypatch.setattr(type(store), 'create_payment_allocation', fail_second)
+    response = client.put(endpoint, json=[{'contract_id': row['contract_id'], 'amount': row['amount']}
+                                          for row in previous])
+    assert response.status_code == 400, response.text
+    assert client.get(endpoint).json() == previous
+
+
 def test_one_transfer_for_flat_and_garage_is_split(client, yilmaz):
     """Regression: both contracts got all 14,130 €; the garage showed 12,420 € overpaid."""
     account = client.get(f"/api/v1/tenants/{yilmaz['tenant']['id']}/account",

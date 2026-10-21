@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import AppLink from './AppLink';
+import { entityHref } from '../utils/entityLinks';
+import { formatMoney } from '../utils/format';
 
-export default function BankMatch({ bookingId, onAssigned }) {
+export default function BankMatch(props) {
+  return <BankMatchPanel key={props.bookingId} {...props} />;
+}
+
+function BankMatchPanel({ bookingId, onAssigned }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -28,11 +35,12 @@ export default function BankMatch({ bookingId, onAssigned }) {
   });
   return <details><summary>Zahlungszuordnung prüfen</summary><button type="button" disabled={busy} onClick={load}>Aktuelle Vorschläge laden</button>
     {error && <p role="alert">{error}</p>}{busy && <p role="status">Zuordnung wird geprüft …</p>}
-    {data && <div><p>Budget der Originalbewegung: {(data.budget_cents / 100).toFixed(2)} EUR · zugeordnet: {(data.assigned_cents / 100).toFixed(2)} EUR · Rest am Original: {(data.remaining_cents / 100).toFixed(2)} EUR · {data.reversal_count} Stornos</p>
-      {data.reversal_count > 0 && <p>Nach Stornos: Budget {(data.effective_budget_cents / 100).toFixed(2)} EUR · zugeordnet {(data.effective_assigned_cents / 100).toFixed(2)} EUR · verbleibend {(data.effective_remaining_cents / 100).toFixed(2)} EUR. Die gewählten Teilbeträge beziehen sich auf das Original; verknüpfte Stornos folgen der bestehenden Zuordnungsregel.</p>}
+    {data && <div><p>Für Miete verfügbar: {formatMoney(data.budget_cents / 100)} · zugeordnet: {formatMoney(data.assigned_cents / 100)} · Rest am Original: {formatMoney(data.remaining_cents / 100)} · {data.reversal_count} Stornos</p>
+      {Boolean(data.reserved_cents) && <p>Bereits für Kautionen oder Forderungen verwendet: {formatMoney(data.reserved_cents / 100)}. Dieser Anteil wird nicht erneut der Miete zugeordnet.</p>}
+      {data.reversal_count > 0 && <p>Nach Stornos: Budget {formatMoney(data.effective_budget_cents / 100)} · zugeordnet {formatMoney(data.effective_assigned_cents / 100)} · verbleibend {formatMoney(data.effective_remaining_cents / 100)}. Die gewählten Teilbeträge beziehen sich auf das Original; verknüpfte Stornos folgen der bestehenden Zuordnungsregel.</p>}
       {data.warning && <p>{data.warning}</p>}
       <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Ich habe Mieter, Teilbeträge und Rückläufer geprüft.</label>
-      {data.suggestions.map(s => <div key={s.tenant_id}><p>{s.name} · {s.reason}</p><ul>{Object.entries(s.allocations).map(([id, cents]) => <li key={id}>Vertrag {id}: {(cents / 100).toFixed(2)} EUR</li>)}</ul><button type="button" disabled={busy || !confirmed || !Object.keys(s.allocations).length} onClick={() => assign(s)}>Diese Zuordnung ausdrücklich übernehmen</button></div>)}
+      {data.suggestions.map(s => <div key={s.tenant_id}><p><AppLink to={entityHref('tenantAccount', s.tenant_id)}>{s.name}</AppLink> · {s.reason}</p><ul>{Object.entries(s.allocations).map(([id, cents]) => <li key={id}><AppLink to={entityHref('contract', id)}>{data.contracts?.[id]?.number || 'Vertrag öffnen'}</AppLink>: {formatMoney(cents / 100)}</li>)}</ul><button type="button" disabled={busy || !confirmed || !Object.keys(s.allocations).length} onClick={() => assign(s)}>Diese Zuordnung ausdrücklich übernehmen</button></div>)}
       {!data.suggestions.length && <p>Kein eindeutiger Namensvorschlag. Mieter und Teilbeträge in der Buchung manuell prüfen und zuordnen.</p>}
     </div>}
   </details>;

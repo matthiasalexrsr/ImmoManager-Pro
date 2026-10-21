@@ -135,6 +135,27 @@ describe('DepositsDialog', () => {
 describe('DepositFile', () => {
   beforeEach(() => { authState.user = { id: 'u-1', role: 'buchhaltung' }; authState.write = null; });
 
+  it('keeps typed shares while loading further candidates and searches the complete inventory', async () => {
+    const api = service();
+    api.candidates.mockResolvedValueOnce({ items: [{ booking_id: 'older', booking_date: '2024-01-01',
+      amount: 500, free: 500, payment_text: 'Ältere Zahlung' }], total: 2, more: true })
+      .mockResolvedValueOnce({ items: [{ booking_id: 'last', booking_date: '2024-01-01',
+        amount: 700, free: 700, payment_text: 'Letzte Zahlung' }], total: 2, more: false })
+      .mockResolvedValueOnce({ items: [], total: 0, more: false });
+    render(<DepositFile depositId="d-1" service={api} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Zahlung zuordnen' }));
+    const list = await screen.findByRole('list', { name: 'Buchungen des Mieters' });
+    fireEvent.change(within(list).getByRole('spinbutton'), { target: { value: '123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Zahlungen laden' }));
+    await screen.findByText(/Letzte Zahlung/);
+    expect(within(list).getAllByRole('spinbutton')[0]).toHaveValue(123);
+    expect(api.candidates).toHaveBeenLastCalledWith('d-1', { skip: 1, query: '' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Nicht vorhanden' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Zahlungen suchen' }));
+    await waitFor(() => expect(api.candidates).toHaveBeenLastCalledWith('d-1', { skip: 0, query: 'Nicht vorhanden' }));
+    await waitFor(() => expect(screen.queryByText(/Ältere Zahlung/)).not.toBeInTheDocument());
+  });
+
   it('shows figures, instalments and assigns a payment share', async () => {
     const api = service();
     render(<DepositFile depositId="d-1" service={api} onClose={vi.fn()} />);

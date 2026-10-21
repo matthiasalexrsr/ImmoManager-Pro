@@ -87,6 +87,17 @@ def test_invalid_rows_keep_original_and_prevent_all_writes(bank):
     assert service.original(preview['id'], actor) == raw
 
 
+def test_eur_bank_original_cannot_be_booked_as_another_portfolio_currency(bank):
+    service, _, account_id = bank
+    account = service.store.get_account(account_id)
+    portfolio = service.store.get_portfolio(account.portfolio_id)
+    service.store.update_portfolio(portfolio.id, PortfolioCreate(**{**portfolio.model_dump(), 'currency': 'USD'}))
+    with pytest.raises(HTTPException) as exc:
+        stage(bank)
+    assert exc.value.status_code == 409
+    assert service.store.list_bookings() == []
+
+
 def test_invalid_wire_base64_is_rejected_before_storage(bank):
     service, actor, account = bank
     with pytest.raises(HTTPException) as exc:

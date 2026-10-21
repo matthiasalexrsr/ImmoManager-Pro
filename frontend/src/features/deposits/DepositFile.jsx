@@ -20,6 +20,9 @@ import './deposits.css';
 function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, onDirtyChange, onBusyChange }) {
   const id = useId();
   const [candidates, setCandidates] = useState(null);
+  const [candidatePage, setCandidatePage] = useState(null);
+  const [query, setQuery] = useState('');
+  const [loadedQuery, setLoadedQuery] = useState('');
   const [amounts, setAmounts] = useState({});
   const [busy, setBusy] = useState(false);
   const depositId = file.deposit.id;
@@ -29,11 +32,15 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, o
   useEffect(() => { onBusyChange?.('payments', busy); }, [busy, onBusyChange]);
   useEffect(() => () => onBusyChange?.('payments', false), [onBusyChange]);
 
-  const loadCandidates = async () => {
+  const loadCandidates = async (append = false) => {
     setBusy(true);
     onError(null);
     try {
-      setCandidates((await service.candidates(depositId)).items || []);
+      const search = append ? loadedQuery : query;
+      const result = await service.candidates(depositId, { skip: append ? candidates.length : 0, query: search });
+      setCandidates(previous => append ? [...previous, ...(result.items || [])] : result.items || []);
+      setCandidatePage(result);
+      setLoadedQuery(search);
     } catch (failure) {
       onError(failure?.message || say('loadFailed'));
     } finally {
@@ -46,6 +53,7 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, o
     try {
       onFile(await work());
       setCandidates(null);
+      setCandidatePage(null);
       setAmounts({});
     } catch (failure) {
       onError(failure?.message || say('loadFailed'));
@@ -56,6 +64,9 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, o
 
   return <section className="deposit__section" aria-label={say('payments')}>
     <h3>{say('payments')}</h3>
+    {(file.warnings || []).map(warning => <p key={warning.code + warning.booking_id} className="alert alert-warning" role="alert">
+      {warning.message}{' '}{canNavigate && warning.booking_id && <Link to={entityHref('booking', warning.booking_id)}>{say('openBooking')}</Link>}
+    </p>)}
     {file.payments.length === 0 ? <p className="deposit__muted">{say('noPayments')}</p>
       : <div className="deposit__table-wrap"><table className="deposit__table">
         <thead><tr><th scope="col">{say('date')}</th><th scope="col">{say('booking')}</th><th scope="col">{say('kind')}</th>
@@ -75,6 +86,12 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, o
       </table></div>}
     {canEdit && !file.settled && <>
       <p className="deposit__muted">{say('onceHint')}</p>
+      <form className="deposit__form" onSubmit={event => { event.preventDefault(); void loadCandidates(); }}>
+        <label htmlFor={`${id}-candidate-search`}>{say('searchPayments')}
+          <input id={`${id}-candidate-search`} type="search" value={query} maxLength={500}
+            disabled={busy} onChange={event => setQuery(event.target.value)} /></label>
+        <button type="submit" className="btn btn-secondary btn-sm" disabled={busy}>{say('searchPaymentAction')}</button>
+      </form>
       {candidates === null ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
         onClick={() => void loadCandidates()}>{say('addPayment')}</button>
         : candidates.length === 0 ? <p className="deposit__muted">{say('noCandidates')}</p>
@@ -91,6 +108,10 @@ function Payments({ say, file, service, canEdit, onFile, onError, canNavigate, o
                 {say('assign')}</button>
             </li>)}
           </ul>}
+      {candidatePage?.more && <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+        onClick={() => void loadCandidates(true)}>{say('morePayments')}</button>}
+      {candidatePage?.total != null && candidates !== null && <p className="deposit__muted" role="status">
+        {say('paymentCount', { shown: candidates.length, total: candidatePage.total })}</p>}
     </>}
   </section>;
 }

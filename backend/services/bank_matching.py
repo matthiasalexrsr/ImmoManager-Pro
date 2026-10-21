@@ -9,7 +9,7 @@ from ..models import BookingPatch
 from ..storage import ValidationError
 from . import business_qol as commands
 from .bank_imports import BankImports, digest
-from .payment_allocations import deposit_shares, planned_pairs, rent_amount, set_allocations
+from .payment_allocations import non_rent_shares, planned_pairs, rent_amount, set_allocations
 
 
 class BankAssignment(BaseModel):
@@ -28,12 +28,12 @@ class BankMatching(BankImports):
         allocations = sorted([a.model_dump(mode='json') for a in unit.store.list_payment_allocations(booking_id=booking.id)], key=lambda a: a['id'])
         reversals = sorted([r.model_dump(mode='json') for r in unit.store.list_booking_reversals(booking.id)], key=lambda r: r['id'])
         reversal_ids = [row['id'] for row in reversals]
-        shares = deposit_shares(unit.store, [booking.id, *reversal_ids])
+        shares = non_rent_shares(unit.store, [booking.id, *reversal_ids])
         reversed_allocations = sorted([row.model_dump(mode='json') for key in reversal_ids
             for row in unit.store.list_payment_allocations(booking_id=key)], key=lambda row: row['id'])
         revision = digest({'booking': booking.model_dump(mode='json'), 'allocations': allocations,
                            'reversals': reversals, 'reversed_allocations': reversed_allocations,
-                           'deposit_cents': {key: int(value * 100) for key, value in shares.items()}})
+                           'reserved_cents': {key: int(value * 100) for key, value in shares.items()}})
         return booking, allocations, reversals, shares, revision
 
     def proposals(self, booking_id, actor_id):
@@ -54,7 +54,12 @@ class BankMatching(BankImports):
             reversal_budget = sum((money(row['amount']) - shares.get(row['id'], money(0)) for row in reversals), money(0))
             reversal_assigned = sum((money(a.amount) for row in reversals
                 for a in unit.store.list_payment_allocations(booking_id=row['id'])), money(0))
+            contracts = {c.id: {'number': c.contract_number, 'tenant_id': c.tenant_id}
+                         for c in unit.store.list_contracts()
+                         if c.id in {a['contract_id'] for a in allocations}
+                         or any(c.id in s['allocations'] for s in suggestions)}
             return {'booking_id': booking_id, 'expected_revision': revision, 'tenant_id': booking.tenant_id,
+                    'contracts': contracts, 'reserved_cents': int(shares.get(booking.id, money(0)) * 100),
                     'budget_cents': int(budget * 100), 'assigned_cents': int(assigned * 100),
                     'remaining_cents': int((budget - assigned) * 100), 'reversal_count': len(reversals),
                     'effective_budget_cents': int((budget + reversal_budget) * 100),

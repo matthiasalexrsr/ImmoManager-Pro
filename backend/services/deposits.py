@@ -562,30 +562,69 @@ def _reallocate(unit: archive.Unit, booking: Booking) -> None:
         _flush(unit)
 
 
-def _free_amount(unit: archive.Unit, booking: Booking) -> Decimal:
+def _free_amount(unit: archive.Unit, booking: Booking, deposit: Deposit) -> Decimal:
     """What of the booking is neither a deposit share nor allocated to rent by hand."""
     manual = sum((money(a.amount) for a in unit.store.list_payment_allocations(booking_id=booking.id)
                   if a.source == "manual"), ZERO)
-    return rent_amount(booking, non_rent_shares(unit.store, [booking.id])) - manual
+    free = rent_amount(booking, non_rent_shares(unit.store, [booking.id])) - manual
+    if booking.reverses_booking_id and money(booking.amount) < 0:
+        # A return can only undo this file's share of its own original. Other
+        # receipts (or a carried balance) must never subsidise that correction.
+        links = unit.store.list_deposit_payments(deposit.id)
+        original = sum((money(link.amount) for link in links
+                        if link.kind == "receipt" and link.booking_id == booking.reverses_booking_id), ZERO)
+        other_returns = {row.id for row in unit.store.list_booking_reversals(booking.reverses_booking_id)
+                         if row.id != booking.id}
+        corrected = sum((money(link.amount) for link in links
+                         if link.kind == "receipt" and link.booking_id in other_returns), ZERO)
+        free = max(free, -max(original + corrected, ZERO))
+    return free
 
 
-def payment_candidates(store, deposit_id: str, actor_id: str) -> dict[str, Any]:
+def _unresolved_returns(unit: archive.Unit, deposit: Deposit) -> list[dict[str, Any]]:
+    """Do not pay out deposit money that its cash source has already returned."""
+    links = unit.store.list_deposit_payments(deposit.id)
+    found = []
+    for link, booking in _receipts(unit, deposit.id):
+        if booking is None or money(link.amount) <= 0 or booking.reverses_booking_id:
+            continue
+        returns = unit.store.list_booking_reversals(booking.id)
+        if not returns:
+            continue
+        ids = {row.id for row in returns}
+        own = money(link.amount) + sum((money(row.amount) for row in links
+                                        if row.kind == 'receipt' and row.booking_id in ids), ZERO)
+        cash = money(booking.amount) + sum((money(row.amount) for row in returns), ZERO)
+        reserved = sum(non_rent_shares(unit.store, [booking.id, *ids]).values(), ZERO)
+        if own > ZERO and reserved > max(cash, ZERO):
+            found.append({'code': 'unassigned_return', 'blocking': True, 'booking_id': returns[0].id,
+                'message': 'Eine Rückbuchung dieser Kautionszahlung ist noch nicht vollständig zugeordnet. '
+                           'Bitte den Kautionsanteil unter „Zahlung zuordnen“ korrigieren, bevor Sie abrechnen.'})
+    return found
+
+
+def payment_candidates(store, deposit_id: str, actor_id: str, *, skip: int = 0, limit: int = 200,
+                       query: str = "") -> dict[str, Any]:
+    if skip < 0 or not 1 <= limit <= 250:
+        raise HTTPException(422, "Ungültiger Abschnitt der Zahlungszuordnung.")
     with archive.work(store, actor_id) as unit:
         deposit = _deposit(unit, deposit_id)
-        contract, *_ = _parents(unit, deposit.contract_id)
+        contract, prop, *_ = _parents(unit, deposit.contract_id)
+        accounts = {a.id for a in unit.store.list_accounts() if a.portfolio_id == prop.portfolio_id}
         receipts = {link.booking_id: link for link, _ in _receipts(unit, deposit.id)}
         linked = {link.booking_id for link in unit.store.list_deposit_payments(deposit.id)}
         carried = _carried(deposit)
         found = []
         if deposit.form in rules.MONEY_FORMS:
             for booking in unit.store.list_bookings(tenant_id=contract.tenant_id):
-                if booking.id in linked or (deposit.account_id and booking.account_id != deposit.account_id):
+                if (booking.id in linked or booking.account_id not in accounts
+                        or (deposit.account_id and booking.account_id != deposit.account_id)):
                     continue
                 if carried and booking.booking_date < carried[0]:
                     continue
                 if money(booking.amount) < 0 and booking.reverses_booking_id not in receipts:
                     continue
-                free = _free_amount(unit, booking)
+                free = _free_amount(unit, booking, deposit)
                 if not free or (free > 0) != (money(booking.amount) > 0):
                     continue
                 found.append({"booking_id": booking.id, "booking_date": booking.booking_date.isoformat(),
@@ -593,13 +632,18 @@ def payment_candidates(store, deposit_id: str, actor_id: str) -> dict[str, Any]:
                               "account_id": booking.account_id, "payment_text": booking.payment_text,
                               "reverses_booking_id": booking.reverses_booking_id})
         found.sort(key=lambda row: (row["booking_date"], row["booking_id"]), reverse=True)
-        return {"deposit_id": deposit.id, "items": found[:200], "more": len(found) > 200}
+        if query.strip():
+            needle = query.strip().casefold()
+            found = [row for row in found if any(needle in str(row.get(key) or "").casefold()
+                     for key in ("payment_text", "booking_date", "amount"))]
+        return {"deposit_id": deposit.id, "items": found[skip:skip + limit], "total": len(found),
+                "skip": skip, "limit": limit, "more": skip + limit < len(found)}
 
 
 def add_receipt(store, deposit_id: str, payload: ReceiptRequest, actor_id: str) -> dict[str, Any]:
     with archive.work(store, actor_id, write_areas=EDIT_AREAS) as unit:
         deposit = _deposit(unit, deposit_id)
-        contract, *_ = _parents(unit, deposit.contract_id, lock=True, deposit_id=deposit.id)
+        contract, prop, *_ = _parents(unit, deposit.contract_id, lock=True, deposit_id=deposit.id)
         deposit = _deposit(unit, deposit_id)
         _require_open(unit, deposit)
         if deposit.form not in rules.MONEY_FORMS:
@@ -611,6 +655,7 @@ def add_receipt(store, deposit_id: str, payload: ReceiptRequest, actor_id: str) 
             raise _not_found("Buchung") from None
         if booking.tenant_id != contract.tenant_id:
             raise HTTPException(400, "Als Kautionszahlung zählen nur Buchungen des Mieters dieses Vertrags.")
+        _account(unit, booking.account_id, prop)
         if deposit.account_id and booking.account_id != deposit.account_id:
             raise HTTPException(400, "Die Buchung liegt nicht auf dem Konto, auf dem die Kaution geführt wird.")
         if any(link.booking_id == booking.id for link in unit.store.list_deposit_payments(deposit.id)):
@@ -622,7 +667,7 @@ def add_receipt(store, deposit_id: str, payload: ReceiptRequest, actor_id: str) 
         receipts = {link.booking_id: link for link, _ in _receipts(unit, deposit.id)}
         if money(booking.amount) < 0 and booking.reverses_booking_id not in receipts:
             raise HTTPException(400, "Eine Rückbuchung zählt nur als Korrektur einer zugeordneten Kautionszahlung.")
-        free = _free_amount(unit, booking)
+        free = _free_amount(unit, booking, deposit)
         amount = money(payload.amount) if payload.amount is not None else free
         if (not amount or (amount > 0) != (money(booking.amount) > 0) or abs(amount) > abs(free)
                 or (free and (free > 0) != (amount > 0))):
@@ -1033,6 +1078,7 @@ def _evaluate(unit: archive.Unit, deposit: Deposit, settlement: DepositSettlemen
     receipts: list[dict[str, Any]] = []
     carried_interest: Decimal | None = None      # credited before the takeover (final settlement only)
     if settlement.kind == "final":
+        problems.extend(_unresolved_returns(unit, deposit))
         pairs = _receipts(unit, deposit.id)
         if any(booking is None for _, booking in pairs):
             problems.append(_problem("hidden_receipt", "Nicht alle Kautionszahlungen sind für dieses Konto sichtbar."))
@@ -1548,6 +1594,7 @@ def _detail(unit: archive.Unit, deposit: Deposit) -> dict[str, Any]:
                                   if (b := bookings.get(row.booking_id)) is not None else None)}
                      for row in sorted(links, key=lambda r: (
                          bookings[r.booking_id].booking_date if bookings.get(r.booking_id) else date.min, r.id))],
+        "warnings": _unresolved_returns(unit, deposit),
         "interest_rates": [r.model_dump(mode="json") for r in unit.store.list_deposit_interest_rates(deposit.id)],
         "interest": {"until": until.isoformat(), "total": _num(interest.total + (carried[2] if carried else ZERO)),
                      "carried": _num(carried[2]) if carried else None, "years": _interest_json(interest),

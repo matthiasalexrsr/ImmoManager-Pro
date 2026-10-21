@@ -1,6 +1,8 @@
 // Texts of the deposit file (Kautionsakte) in de/en/es; the settlement PDF itself is German.
 export const COPY = {
   'de-DE': {
+    searchPayments: 'Zahlungen suchen (Text, Datum, Betrag)', searchPaymentAction: 'Zahlungen suchen', morePayments: 'Weitere Zahlungen laden',
+    paymentCount: '{{shown}} von {{total}} passenden Zahlungen',
     action: 'Kaution', pageTitle: 'Kautionen', eyebrow: 'Kautionsakte', fileTitle: 'Kautionsakte', listTitle: 'Kautionen des Vertrags',
     relatedPages: 'Verknüpfte Seiten', nextPages: 'Direkt weiter',
     openContract: 'Mietvertrag öffnen', openTenantAccount: 'Mieterkonto öffnen',
@@ -69,6 +71,8 @@ export const COPY = {
     legacyYes: 'Ja, übernehmen', legacyDone: '{{count}} Kautionen übernommen.', heldSince: 'gehalten seit {{date}}',
   },
   'en-US': {
+    searchPayments: 'Search payments (text, date, amount)', searchPaymentAction: 'Search payments', morePayments: 'Load more payments',
+    paymentCount: '{{shown}} of {{total}} matching payments',
     action: 'Deposit', pageTitle: 'Deposits', eyebrow: 'Deposit file', fileTitle: 'Deposit file', listTitle: 'Deposits of the contract',
     relatedPages: 'Related pages', nextPages: 'Go to',
     openContract: 'Open tenancy contract', openTenantAccount: 'Open tenant account',
@@ -137,6 +141,8 @@ export const COPY = {
     legacyYes: 'Yes, take over', legacyDone: '{{count}} deposits taken over.', heldSince: 'held since {{date}}',
   },
   'es-ES': {
+    searchPayments: 'Buscar pagos (texto, fecha, importe)', searchPaymentAction: 'Buscar pagos', morePayments: 'Cargar más pagos',
+    paymentCount: '{{shown}} de {{total}} pagos encontrados',
     action: 'Fianza', pageTitle: 'Fianzas', eyebrow: 'Expediente de fianza', fileTitle: 'Expediente de fianza', listTitle: 'Fianzas del contrato',
     relatedPages: 'Páginas relacionadas', nextPages: 'Ir a',
     openContract: 'Abrir contrato de alquiler', openTenantAccount: 'Abrir cuenta del inquilino',

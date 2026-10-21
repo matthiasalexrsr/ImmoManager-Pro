@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDate, formatMoney } from '../../utils/format';
 import { dunningService, saveBlob } from './dunningApi';
+import usePagedDunning from './usePagedDunning';
+import { localDay } from '../../utils/occupancy';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDay();
 
 export function Problem({ error, onRetry, say }) {
   if (!error) return null;
@@ -30,13 +32,8 @@ function useLoad(load, deps) {
 
 export function CasesTab({ say }) {
   const [status, setStatus] = useState('open');
-  const [items, setItems] = useState([]);
-  const [page, reload] = useLoad(() => dunningService.overview({ status, limit: 50 }), [status]);
-  useEffect(() => { if (page.data) setItems(page.data.items); }, [page.data]);
-  const more = async () => {
-    const next = await dunningService.overview({ status, limit: 50, offset: items.length });
-    setItems(current => [...current, ...next.items]);
-  };
+  const [page, , retry] = usePagedDunning((paging, opts) => dunningService.overview({ status, ...paging }, opts), status);
+  const items = page.data?.items || [];
   const counts = page.data?.counts;
   return (
     <div>
@@ -55,8 +52,8 @@ export function CasesTab({ say }) {
           </select>
         </label>
       </div>
-      <Problem error={page.error} onRetry={reload} say={say} />
-      {page.loading && !items.length ? <p role="status">{say('loading')}</p> : items.length === 0 ? (
+      <Problem error={page.error} onRetry={retry} say={say} />
+      {page.loading ? <p role="status">{say('loading')}</p> : !page.error && items.length === 0 ? (
         <p className="empty-text">{say('noCases')}</p>
       ) : (
         <ul className="dn-list" aria-label={say('tabCases')}>
@@ -82,7 +79,7 @@ export function CasesTab({ say }) {
         </ul>
       )}
       {page.data && items.length < page.data.total && (
-        <p><button type="button" className="btn btn-sm btn-secondary" onClick={more}>{say('more')}</button>{' '}
+        <p><button type="button" className="btn btn-sm btn-secondary" disabled={page.moreLoading} onClick={page.more}>{say('more')}</button>{' '}
           <span className="dn-muted">{say('of', { shown: items.length, total: page.data.total })}</span></p>
       )}
     </div>
@@ -174,7 +171,7 @@ export function RunTab({ say, canWrite, portfolios }) {
 
 export function OutboxTab({ say, canWrite }) {
   const [status, setStatus] = useState('ready');
-  const [page, reload] = useLoad(() => dunningService.outbox({ status, limit: 200 }), [status]);
+  const [page, reload, retry] = usePagedDunning((paging, opts) => dunningService.outbox({ status, ...paging }, opts), status);
   const [sending, setSending] = useState(null);
   const [error, setError] = useState(null);
   const pdf = async entry => {
@@ -204,7 +201,8 @@ export function OutboxTab({ say, canWrite }) {
           </select>
         </label>
       </div>
-      <Problem error={page.error || error} onRetry={reload} say={say} />
+      <Problem error={page.error || error} onRetry={() => { setError(null); retry(); }} say={say} />
+      {page.loading && <p role="status">{say('loading')}</p>}
       {page.data && page.data.items.length === 0 && <p className="empty-text">{say('noOutbox')}</p>}
       <ul className="dn-list" aria-label={say('outbox')}>
         {(page.data?.items || []).map(entry => (
@@ -217,6 +215,7 @@ export function OutboxTab({ say, canWrite }) {
               {entry.channel === 'email' && entry.recipient_email ? ` <${entry.recipient_email}>` : ''}
               {entry.sent_on && ` · ${say('sentOn')} ${formatDate(entry.sent_on)} (${entry.sent_via})`}</div>
             <div className="dn-actions">
+              <Link className="btn btn-sm btn-secondary" to={`/dunning/contracts/${encodeURIComponent(entry.contract_id)}`}>{say('openFile')}</Link>
               <button type="button" className="btn btn-sm btn-secondary" onClick={() => pdf(entry)}>{say('downloadPdf')}</button>
               {entry.channel === 'email' && entry.status !== 'queued' && (
                 <button type="button" className="btn btn-sm btn-secondary" onClick={() => eml(entry)}>{say('eml')}</button>)}
@@ -225,7 +224,7 @@ export function OutboxTab({ say, canWrite }) {
             </div>
             {sending?.id === entry.id && (
               <form className="dn-form" onSubmit={markSent}>
-                <label>{say('sentOn')}<input name="sent_on" type="date" required defaultValue={today()} /></label>
+                <label>{say('sentOn')}<input name="sent_on" type="date" required max={today()} defaultValue={today()} /></label>
                 <label>{say('via')}<input name="via" required maxLength={200} /></label>
                 <label>{say('note')}<input name="note" maxLength={1000} /></label>
                 <button type="submit" className="btn btn-primary">{say('save')}</button>
@@ -234,12 +233,13 @@ export function OutboxTab({ say, canWrite }) {
           </li>
         ))}
       </ul>
+      <MoreEntries page={page} say={say} />
     </div>
   );
 }
 
 export function RepliesTab({ say, canWrite }) {
-  const [page, reload] = useLoad(() => dunningService.replies({ status: 'review', limit: 200 }), []);
+  const [page, reload, retry] = usePagedDunning((paging, opts) => dunningService.replies({ status: 'review', ...paging }, opts), 'review');
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const record = async event => {
@@ -279,7 +279,8 @@ export function RepliesTab({ say, canWrite }) {
           <button type="submit" className="btn btn-primary">{say('recordReply')}</button>
         </form>
       )}
-      <Problem error={page.error || error} onRetry={reload} say={say} />
+      <Problem error={page.error || error} onRetry={() => { setError(null); retry(); }} say={say} />
+      {page.loading && <p role="status">{say('loading')}</p>}
       {notice && <div role="status" className="alert alert-info">{notice}</div>}
       {page.data && page.data.items.length === 0 && <p className="empty-text">{say('noReplies')}</p>}
       <ul className="dn-list" aria-label={say('replies')}>
@@ -292,8 +293,16 @@ export function RepliesTab({ say, canWrite }) {
           </li>
         ))}
       </ul>
+      <MoreEntries page={page} say={say} />
     </div>
   );
+}
+
+function MoreEntries({ page, say }) {
+  if (!page.data) return null;
+  return <p className="dn-actions"><span className="dn-muted">{say('of', { shown: page.data.items.length, total: page.data.total })}</span>
+    {page.data.items.length < page.data.total && <button type="button" className="btn btn-secondary btn-sm"
+      disabled={page.moreLoading} onClick={page.more}>{say('more')}</button>}</p>;
 }
 
 function AssignForm({ reply, say, onAssign, onDismiss }) {

@@ -77,6 +77,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => { setFilter(key); setDrilldown(value => value + 1); };
   const [allocations, setAllocations] = useState([]);
+  const [reservedAmounts, setReservedAmounts] = useState({});
   const [allocationStatus, setAllocationStatus] = useState('loading');
   const [allocationError, setAllocationError] = useState(null);
   const [allocationAttempt, setAllocationAttempt] = useState(0);
@@ -134,11 +135,14 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     const controller = new AbortController();
     setAllocationStatus('loading');
     setAllocationError(null);
-    api.get('/bookings/allocations', { signal: controller.signal })
+    api.get('/bookings/allocations?include_reservations=true', { signal: controller.signal })
       .then(data => {
         if (controller.signal.aborted) return;
-        if (!Array.isArray(data)) throw new Error('Die Zuordnungen konnten nicht gelesen werden.');
-        setAllocations(data);
+        if (!Array.isArray(data?.allocations) || !data.reserved_amounts || Array.isArray(data.reserved_amounts)
+            || typeof data.reserved_amounts !== 'object' || Object.values(data.reserved_amounts).some(v => !Number.isFinite(v)))
+          throw new Error('Die Zuordnungen konnten nicht gelesen werden.');
+        setAllocations(data.allocations);
+        setReservedAmounts(data.reserved_amounts);
         setAllocationStatus('ready');
       })
       .catch(err => {
@@ -189,11 +193,14 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       detail: '', unassigned: null,
     };
     const own = allocationsByBooking[b.id] || [];
-    const rest = Math.round((Number(b.amount) - own.reduce((s, a) => s + Number(a.amount), 0)) * 100) / 100;
+    const reserved = Number(reservedAmounts[b.id] || 0);
+    const rest = (Math.round(Number(b.amount) * 100) - Math.round(reserved * 100)
+      - own.reduce((s, a) => s + Math.round(Number(a.amount) * 100), 0)) / 100;
     const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${formatMoney(a.amount)}`);
+    if (reserved) parts.push(`Kaution / Forderung: ${formatMoney(reserved)}`);
     if (rest) parts.push(`nicht zugeordnet: ${formatMoney(rest)}`);
     return {
-      label: own.map(a => contractNumber[a.contract_id] || '?').join(' + ') || '—',
+      label: own.map(a => contractNumber[a.contract_id] || '?').join(' + ') || (reserved ? 'Kaution / Forderung' : '—'),
       detail: parts.join('\n'),
       unassigned: rest,
     };
@@ -271,7 +278,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
           <span className="cell-inline" title={row.allocation_detail}>
             <span>{v}</span>
             {row.unassigned !== null && row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
-            {canSplit && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
+            {canSplit && !row.reverses_booking_id && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
           </span>
         )
         : v) },
@@ -313,14 +320,37 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     if (mounted.current) refreshData();
   };
 
+  const loadSplit = async (row, session, keepValues = false) => {
+    setSplit(current => ({ ...current, loading: true, revision: null }));
+    setSplitError(null);
+    try {
+      const data = await api.get(`/bank-imports/matching/${encodeURIComponent(row.id)}`);
+      if (!mounted.current || splitSession.current !== session) return;
+      if (!/^[a-f0-9]{64}$/.test(data.expected_revision) || !Array.isArray(data.allocations)
+          || !Number.isFinite(data.budget_cents) || data.tenant_id !== row.tenant_id)
+        throw new Error('Die Buchungszuordnung wurde geändert. Bitte die Buchung neu öffnen.');
+      setSplit(current => ({ ...current, loading: false, revision: data.expected_revision,
+        budget: data.budget_cents / 100, reserved: data.reserved_cents / 100,
+        values: keepValues ? current.values : Object.fromEntries(Object.keys(current.values).map(id => [id,
+          String(data.allocations.filter(a => a.contract_id === id).reduce((sum, a) => sum + Math.round(Number(a.amount) * 100), 0) / 100 || '')])) }));
+    } catch (error) {
+      if (mounted.current && splitSession.current === session) {
+        setSplit(current => ({ ...current, loading: false }));
+        setSplitError(error.message);
+      }
+    }
+  };
+
   const openSplit = (row) => {
     if (!canSplit) return;
-    splitSession.current = {};
+    const session = {};
+    splitSession.current = session;
     setSplitError(null);
     const own = allocationsByBooking[row.id] || [];
     const tenantContracts = contracts.filter(c => c.tenant_id === row.tenant_id);
-    setSplit({ booking: row, values: Object.fromEntries(tenantContracts.map(c => [c.id,
+    setSplit({ booking: row, loading: true, revision: null, values: Object.fromEntries(tenantContracts.map(c => [c.id,
       String(own.find(a => a.contract_id === c.id)?.amount ?? '')])) });
+    void loadSplit(row, session);
   };
 
   const closeSplit = () => {
@@ -329,7 +359,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   };
 
   const saveSplit = async () => {
-    if (!canSplit || splitRequest.current) return;
+    if (!canSplit || splitRequest.current || split.loading || !split.revision) return;
     const request = { session: splitSession.current };
     splitRequest.current = request;
     setSplitSaving(true);
@@ -338,7 +368,17 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       .filter(([, v]) => v !== '' && Number(v) !== 0)
       .map(([contract_id, v]) => ({ contract_id, amount: Number(v) }));
     try {
-      await api.put(`/bookings/${encodeURIComponent(split.booking.id)}/allocations`, items);
+      if (items.some(item => !Number.isFinite(item.amount) || Math.abs(item.amount * 100 - Math.round(item.amount * 100)) > 0.000001))
+        throw new Error('Bitte Teilbeträge mit höchstens zwei Nachkommastellen eingeben.');
+      const payload = { expected_revision: split.revision, tenant_id: split.booking.tenant_id,
+        allocations: Object.fromEntries(items.map(item => [item.contract_id, Math.round(item.amount * 100)])) };
+      const signature = JSON.stringify(payload);
+      if (request.session.signature !== signature) {
+        request.session.signature = signature;
+        request.session.key = crypto.randomUUID();
+      }
+      await api.post(`/bank-imports/matching/${encodeURIComponent(split.booking.id)}`,
+        { ...payload, idempotency_key: request.session.key });
       if (store) store.invalidateRelated('bookings');
       if (!mounted.current) return;
       if (splitSession.current === request.session) closeSplit();
@@ -424,7 +464,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
             {receiptAction(selected)}
             {selected.tenant_id && <Link className="btn btn-sm btn-secondary" to={`/tenants/${encodeURIComponent(selected.tenant_id)}/account?as_of=${encodeURIComponent(selected.booking_date)}`}>Mieterkonto zum Buchungsdatum</Link>}
             {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => openModal(selected)}>Bearbeiten</button>}
-            {selected.tenant_id && canSplit && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
+            {selected.tenant_id && canSplit && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
             {canWrite && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" disabled={reversing}
               onClick={() => reverseBooking(selected)}>Stornieren</button>}
           </div>
@@ -510,19 +550,24 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
             </div>
             <div className="modal-body">
               {splitError && <div className="alert alert-error" role="alert">{splitError}</div>}
+              {split.loading && <p role="status">Aktueller Zuordnungsstand wird geladen …</p>}
+              {!split.loading && split.revision && <p>Für Miete verfügbar: {formatMoney(split.budget)}
+                {Boolean(split.reserved) && ` · Kaution / Forderung: ${formatMoney(split.reserved)}`}</p>}
+              {splitError && <button type="button" className="btn btn-secondary btn-sm" disabled={split.loading || splitSaving}
+                onClick={() => void loadSplit(split.booking, splitSession.current, true)}>Aktuellen Stand laden · Eingaben behalten</button>}
               {Object.keys(split.values).length === 0 && <p className="text-muted">Der Mieter hat keine Verträge.</p>}
               {Object.entries(split.values).map(([contractId, value]) => (
                 <div key={contractId} className="form-group">
                   <label htmlFor={`split-${contractId}`}>Vertrag {contractNumber[contractId]} (€)</label>
                   <input id={`split-${contractId}`} type="number" step="0.01" value={value}
-                    disabled={splitSaving && splitRequest.current?.session === splitSession.current}
+                    disabled={split.loading || (splitSaving && splitRequest.current?.session === splitSession.current)}
                     onChange={e => setSplit(s => ({ ...s, values: { ...s.values, [contractId]: e.target.value } }))} />
                 </div>
               ))}
               <p className="text-muted">Was keinem Vertrag zugeordnet wird, bleibt „nicht zugeordnet“.</p>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={closeSplit}>Abbrechen</button>
-                <button className="btn btn-primary" onClick={saveSplit} disabled={splitSaving || !canSplit}>{splitSaving ? 'Speichert …' : 'Speichern'}</button>
+                <button className="btn btn-primary" onClick={saveSplit} disabled={splitSaving || split.loading || !split.revision || !canSplit}>{splitSaving ? 'Speichert …' : 'Speichern'}</button>
               </div>
             </div>
           </div>

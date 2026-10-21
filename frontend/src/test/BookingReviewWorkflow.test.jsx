@@ -34,6 +34,8 @@ vi.mock('../contexts/DataStoreContext', () => ({
 vi.mock('../components/Toast', () => ({ useToast: () => context.toast }));
 vi.mock('../components/ConfirmDialog', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
 
+
+const matching = { expected_revision: 'a'.repeat(64), tenant_id: 't1', allocations: [], budget_cents: 61200, reserved_cents: 0 };
 const booking = (id, extra = {}) => ({
   id, account_id: 'a1', category_id: null, property_id: 'p1', unit_id: 'u1',
   tenant_id: null, booking_date: '2026-09-03', amount: 612, payment_text: `Überweisung ${id}`,
@@ -74,8 +76,9 @@ beforeEach(() => {
   };
   api.list.mockResolvedValue([first]);
   api.get.mockImplementation(path => {
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
     if (path === '/auth/me') return Promise.resolve({ id: 'reader' });
-    if (path === '/bookings/allocations') return Promise.resolve([]);
+    if (path === '/bookings/allocations?include_reservations=true') return Promise.resolve({ allocations: [], reserved_amounts: {} });
     if (path === '/bookings/target') return Promise.resolve(target);
     if (path === '/bookings/other') return Promise.resolve(booking('other'));
     if (path === '/review') return Promise.resolve({ items: [] });
@@ -103,8 +106,9 @@ describe('Konkreter Buchungsprüffall', () => {
     const review = { items: [{ kind: 'payment_without_tenant', severity: 'info', entity_id: 'target',
       title: 'Zahlungseingang prüfen', detail: '612 Euro ohne Mieter', link: '/bookings?booking_id=target' }] };
     api.get.mockImplementation(path => {
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
       if (path === '/review') return Promise.resolve(review);
-      if (path === '/bookings/allocations') return Promise.resolve([]);
+      if (path === '/bookings/allocations?include_reservations=true') return Promise.resolve({ allocations: [], reserved_amounts: {} });
       if (path.startsWith('/files/ocr-text')) return Promise.resolve({ has_ocr: false });
       return Promise.resolve(target);
     });
@@ -124,7 +128,8 @@ describe('Konkreter Buchungsprüffall', () => {
 
   it('preserves special characters in a selected ID through query and API encoding', async () => {
     api.get.mockImplementation(path => {
-      if (path === '/bookings/allocations') return Promise.resolve([]);
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
+      if (path === '/bookings/allocations?include_reservations=true') return Promise.resolve({ allocations: [], reserved_amounts: {} });
       if (path === '/bookings/bank%20%2B%3F%23%C3%A4') return Promise.resolve(booking('bank +?#ä'));
       return Promise.reject(new Error('Falscher Datensatz'));
     });
@@ -157,8 +162,8 @@ describe('Konkreter Buchungsprüffall', () => {
   });
 
   it('shows a failed exact lookup without substituting the first booking', async () => {
-    api.get.mockImplementation(path => path === '/bookings/allocations'
-      ? Promise.resolve([]) : Promise.reject(new Error('Buchung nicht gefunden')));
+    api.get.mockImplementation(path => path === '/bookings/allocations?include_reservations=true'
+      ? Promise.resolve({ allocations: [], reserved_amounts: {} }) : Promise.reject(new Error('Buchung nicht gefunden')));
     mount('/bookings?booking_id=missing');
     const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
     expect(await within(selected).findByRole('alert')).toHaveTextContent('Buchung nicht gefunden');
@@ -169,7 +174,8 @@ describe('Konkreter Buchungsprüffall', () => {
   it('rejects a response for a different ID and allows retry of the selected ID', async () => {
     let attempts = 0;
     api.get.mockImplementation(path => {
-      if (path === '/bookings/allocations') return Promise.resolve([]);
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
+      if (path === '/bookings/allocations?include_reservations=true') return Promise.resolve({ allocations: [], reserved_amounts: {} });
       if (path === '/bookings/target') return Promise.resolve(attempts++ ? target : first);
       return Promise.reject(new Error(path));
     });
@@ -184,7 +190,8 @@ describe('Konkreter Buchungsprüffall', () => {
   it('does not let a late answer from the previous ID replace the current case', async () => {
     const pending = deferred();
     api.get.mockImplementation(path => {
-      if (path === '/bookings/allocations') return Promise.resolve([]);
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
+      if (path === '/bookings/allocations?include_reservations=true') return Promise.resolve({ allocations: [], reserved_amounts: {} });
       return path === '/bookings/target' ? pending.promise : Promise.resolve(booking('other'));
     });
     mount();
@@ -208,7 +215,7 @@ describe('Konkreter Buchungsprüffall', () => {
 
   it.each([[null, /Kein Beleg/], ['javascript:alert(1)', /Belegadresse.*ungültig/]])(
     'identifies missing or invalid receipt %s instead of opening a preview', async (receipt, message) => {
-      api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : booking('target', { receipt_url: receipt })));
+      api.get.mockImplementation(path => Promise.resolve(path.startsWith('/bank-imports/matching/') ? matching : path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking('target', { receipt_url: receipt })));
       mount();
       const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
       expect(await within(selected).findByText(message)).toBeInTheDocument();
@@ -219,7 +226,7 @@ describe('Konkreter Buchungsprüffall', () => {
 
   it('preserves edits when saving fails and refreshes the selected record after success', async () => {
     let current = target;
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : current));
+    api.get.mockImplementation(path => Promise.resolve(path.startsWith('/bank-imports/matching/') ? matching : path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : current));
     api.put.mockRejectedValueOnce(new Error('Datensatz wurde inzwischen geändert'))
       .mockImplementationOnce(async (_path, payload) => { current = { ...target, ...payload }; return current; });
     mount();
@@ -254,8 +261,9 @@ describe('Buchungs- und Zuordnungsladung', () => {
     const assigned = booking('target', { tenant_id: 't1' });
     let attempts = 0;
     api.get.mockImplementation(path => {
-      if (path === '/bookings/allocations') return attempts++
-        ? Promise.resolve([{ id: 'pa1', booking_id: 'target', contract_id: 'c1', amount: 612, source: 'manual' }])
+    if (path.startsWith('/bank-imports/matching/')) return Promise.resolve(matching);
+      if (path === '/bookings/allocations?include_reservations=true') return attempts++
+        ? Promise.resolve({ allocations: [{ id: 'pa1', booking_id: 'target', contract_id: 'c1', amount: 612, source: 'manual' }], reserved_amounts: {} })
         : Promise.reject(new Error('Zuordnungen offline'));
       return Promise.resolve(assigned);
     });
@@ -272,31 +280,47 @@ describe('Buchungs- und Zuordnungsladung', () => {
   });
 
   it('keeps entered split amounts after an unsuccessful save', async () => {
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : booking('target', { tenant_id: 't1' })));
-    api.put.mockRejectedValue(new Error('Zuordnung derzeit nicht möglich'));
+    api.get.mockImplementation(path => Promise.resolve(path.startsWith('/bank-imports/matching/') ? matching : path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking('target', { tenant_id: 't1' })));
+    api.post.mockRejectedValue(new Error('Zuordnung derzeit nicht möglich'));
     mount();
     const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
     fireEvent.click(await within(selected).findByRole('button', { name: 'Aufteilen' }));
     const form = screen.getByRole('dialog', { name: 'Zahlung aufteilen' });
+    await waitFor(() => expect(within(form).getByLabelText('Vertrag MV-1 (€)')).toBeEnabled());
     fireEvent.change(within(form).getByLabelText('Vertrag MV-1 (€)'), { target: { value: '300' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
     expect(await within(form).findByRole('alert')).toHaveTextContent('Zuordnung derzeit nicht möglich');
     expect(within(form).getByLabelText('Vertrag MV-1 (€)')).toHaveValue(300);
+    fireEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post.mock.calls[0][1]).toEqual(api.post.mock.calls[1][1]);
+  });
+
+  it('does not label a fully reserved deposit receipt as unassigned rent', async () => {
+    api.get.mockImplementation(path => Promise.resolve(path.includes('include_reservations=true')
+      ? { allocations: [], reserved_amounts: { target: 612 } } : booking('target', { tenant_id: 't1' })));
+    mount();
+    const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
+    await within(selected).findByText('Kaution / Forderung');
+    expect(selected).not.toHaveTextContent('nicht zugeordnet: 612');
+    expect(selected).not.toHaveTextContent('offen 612');
   });
 
   it('does not discard a reopened split form when an older save finishes', async () => {
     const pending = deferred();
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : booking('target', { tenant_id: 't1' })));
-    api.put.mockReturnValue(pending.promise);
+    api.get.mockImplementation(path => Promise.resolve(path.startsWith('/bank-imports/matching/') ? matching : path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking('target', { tenant_id: 't1' })));
+    api.post.mockReturnValue(pending.promise);
     mount();
     const selected = await screen.findByRole('region', { name: 'Ausgewählte Buchung' });
     fireEvent.click(await within(selected).findByRole('button', { name: 'Aufteilen' }));
     const oldForm = screen.getByRole('dialog', { name: 'Zahlung aufteilen' });
+    await waitFor(() => expect(within(oldForm).getByLabelText('Vertrag MV-1 (€)')).toBeEnabled());
     fireEvent.change(within(oldForm).getByLabelText('Vertrag MV-1 (€)'), { target: { value: '300' } });
     fireEvent.click(within(oldForm).getByRole('button', { name: 'Speichern' }));
     fireEvent.click(within(oldForm).getByRole('button', { name: 'Abbrechen' }));
     fireEvent.click(within(selected).getByRole('button', { name: 'Aufteilen' }));
     const newForm = screen.getByRole('dialog', { name: 'Zahlung aufteilen' });
+    await waitFor(() => expect(within(newForm).getByLabelText('Vertrag MV-1 (€)')).toBeEnabled());
     fireEvent.change(within(newForm).getByLabelText('Vertrag MV-1 (€)'), { target: { value: '111' } });
     await act(async () => { pending.resolve([]); });
     expect(screen.getByRole('dialog', { name: 'Zahlung aufteilen' })).toBeInTheDocument();

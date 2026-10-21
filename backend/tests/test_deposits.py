@@ -113,6 +113,72 @@ def _book(client, estate, amount, day, account="account", text="Zahlung"):
     return response.json()
 
 
+def test_mixed_payment_return_cannot_take_deposit_money_from_another_receipt(client):
+    estate = _estate()
+    deposit_id = _file(client, estate)["deposit"]["id"]
+    mixed = _book(client, estate, 1200, "2024-01-05", text="700 Miete, 500 Kaution")
+    other = _book(client, estate, 1000, "2024-02-05", text="Restliche Kaution")
+    assert _receive(client, deposit_id, mixed["id"], 500).status_code == 200
+    assert _receive(client, deposit_id, other["id"], 1000).status_code == 200
+    returned = client.post(f"{API}/bookings/{mixed['id']}/reverse", json={
+        "amount": 1200, "booking_date": "2024-03-05"}).json()
+    pending = client.get(f"{BASE}/{deposit_id}/file").json()
+    assert pending['warnings'][0]['code'] == 'unassigned_return'
+    draft = client.post(f"{BASE}/{deposit_id}/settlements", json={"kind": "final"}).json()['settlements'][0]
+    assert any(problem['code'] == 'unassigned_return' and problem['blocking'] for problem in draft['problems'])
+    rejected = _receive(client, deposit_id, returned["id"], -1200)
+    assert rejected.status_code == 400, rejected.text
+    result = _receive(client, deposit_id, returned["id"])
+    assert result.status_code == 200, result.text
+    assert result.json()["received"] == 1000
+    assert result.json()['warnings'] == []
+    pairs = client.get(f"{API}/bookings/{returned['id']}/allocations").json()
+    assert sum(row["amount"] for row in pairs) == -700
+
+
+def test_deposit_candidates_beyond_200_are_reachable_and_searchable(client):
+    estate = _estate()
+    deposit_id = _file(client, estate)["deposit"]["id"]
+    for number in range(203):
+        _book(client, estate, 1, "2024-01-05", text=f"Kautionsbeleg {number:03}")
+    endpoint = f"{BASE}/{deposit_id}/payment-candidates"
+    first = client.get(endpoint, params={"limit": 200}).json()
+    assert first["total"] == 203 and first["more"]
+    rest = client.get(endpoint, params={"skip": 200, "limit": 200}).json()
+    assert len(rest["items"]) == 3 and not rest["more"]
+    assert len({row["booking_id"] for row in first["items"] + rest["items"]}) == 203
+    found = client.get(endpoint, params={"q": "Kautionsbeleg 000"}).json()
+    assert len(found["items"]) == 1
+
+
+def test_return_shares_are_limited_across_multiple_reversals(client):
+    estate = _estate()
+    deposit_id = _file(client, estate)["deposit"]["id"]
+    mixed = _book(client, estate, 1200, "2024-01-05")
+    other = _book(client, estate, 1000, "2024-02-05")
+    assert _receive(client, deposit_id, mixed["id"], 500).status_code == 200
+    assert _receive(client, deposit_id, other["id"], 1000).status_code == 200
+    first = client.post(f"{API}/bookings/{mixed['id']}/reverse", json={
+        "amount": 400, "booking_date": "2024-03-05"}).json()
+    assert _receive(client, deposit_id, first["id"], -400).status_code == 200
+    second = client.post(f"{API}/bookings/{mixed['id']}/reverse", json={
+        "amount": 800, "booking_date": "2024-04-05"}).json()
+    assert _receive(client, deposit_id, second["id"], -200).status_code == 400
+    result = _receive(client, deposit_id, second["id"])
+    assert result.status_code == 200, result.text
+    assert result.json()["received"] == 1000
+
+
+def test_deposit_without_fixed_account_rejects_a_different_portfolio(client):
+    estate = _estate()
+    other = _estate('Süd', 'V-2')
+    deposit_id = _file(client, estate, account_id=None)["deposit"]["id"]
+    booking = _book(client, {**estate, 'account': other['account']}, 500, '2024-01-05')
+    candidates = client.get(f"{BASE}/{deposit_id}/payment-candidates").json()
+    assert booking['id'] not in {row['booking_id'] for row in candidates['items']}
+    assert _receive(client, deposit_id, booking['id'], 500).status_code == 400
+
+
 def _receive(client, deposit_id, booking_id, amount=None):
     body = {"booking_id": booking_id}
     if amount is not None:
@@ -235,6 +301,8 @@ def test_partial_payments_settle_the_instalments_and_count_once(client):
     too_much = _receive(client, deposit_id, combined["id"], 1300)
     assert too_much.status_code == 400
     assert _receive(client, deposit_id, combined["id"], 500).status_code == 200
+    overview = client.get(f"{API}/bookings/allocations", params={"include_reservations": True}).json()
+    assert overview['reserved_amounts'][combined['id']] == 500
     wrong_account = _receive(client, deposit_id, rent_only["id"])
     assert wrong_account.status_code == 400
     result = _receive(client, deposit_id, partial["id"]).json()

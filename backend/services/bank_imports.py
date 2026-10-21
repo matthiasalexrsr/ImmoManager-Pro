@@ -133,6 +133,11 @@ class BankImports:
             account = unit.store.get_account(account_id)
         return account
 
+    def currency(self, unit, account):
+        if unit.store.get_portfolio(account.portfolio_id).currency != 'EUR':
+            raise HTTPException(409, 'Die Bankdatei enthält EUR-Beträge. Das Zielkonto gehört zu einem '
+                                'Portfolio mit anderer Währung; eine Umrechnung wird nicht erfunden')
+
     def source(self, unit, identifier):
         source = records.row(unit, BankImportORM, identifier, lock=bool(getattr(unit, 'bank_writer', False)))
         self.account(unit, source.account_id)
@@ -180,6 +185,7 @@ class BankImports:
                 parsed['errors'].append({'line': 0, 'error': 'Dieselbe eindeutige Bankreferenz kommt im Original mehrfach vor. Bitte die Quelle prüfen', 'raw': reference})
         with self.work(actor_id, True) as unit:
             account = self.account(unit, payload.account_id, True)
+            self.currency(unit, account)
             for statement in parsed['metadata'].get('statements', []):
                 iban = statement.get('iban')
                 if iban and (not account.iban or iban.replace(' ', '').upper() != account.iban.replace(' ', '').upper()):
@@ -284,7 +290,8 @@ class BankImports:
     def confirm(self, identifier, payload: ConfirmImport, actor_id):
         with self.work(actor_id, True) as unit:
             source = self.source(unit, identifier)
-            self.account(unit, source.account_id, True)
+            account = self.account(unit, source.account_id, True)
+            self.currency(unit, account)
             previous = commands.replay(unit, actor_id, "bank-confirm/" + identifier, payload)
             if previous:
                 return previous

@@ -175,6 +175,8 @@ jobs:
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label finance-report-release backend/tests/test_finance_report_boundaries.py backend/tests/test_finance_packages_v2.py backend/tests/test_report_source_reconciliation.py backend/tests/test_project_source_reading.py backend/tests/test_forecast_payment_horizon.py
       - name: Verify financial workspaces and invoice payment evidence on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label financial-workspace-release backend/tests/test_financial_workspaces.py backend/tests/test_billing_workflow.py backend/tests/test_invoice_review.py
+      - name: Verify payment allocation, deposit corrections and dunning on PostgreSQL
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label payment-workflow-release backend/tests/test_payment_allocation.py backend/tests/test_deposits.py backend/tests/test_dunning.py
       - name: Verify property, unit and document workspaces on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label estate-workspace-release backend/tests/test_estate_workspaces.py
       - name: Verify private assistant ownership and draft handoff on PostgreSQL

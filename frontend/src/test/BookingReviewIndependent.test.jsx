@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Bookings from '../pages/Bookings';
@@ -40,6 +40,8 @@ const deferred = () => {
 const mount = () => render(<MemoryRouter initialEntries={['/bookings?booking_id=target']}><Bookings /></MemoryRouter>);
 const selected = () => screen.getByRole('region', { name: 'Ausgewählte Buchung' });
 
+
+const matching = { expected_revision: 'a'.repeat(64), tenant_id: 't1', allocations: [], budget_cents: 61200, reserved_cents: 0 };
 beforeEach(() => {
   vi.resetAllMocks();
   localStorage.clear();
@@ -48,7 +50,7 @@ beforeEach(() => {
   context.contractsError = null;
   context.contractsLoading = false;
   api.list.mockResolvedValue([]);
-  api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : target));
+  api.get.mockImplementation(path => Promise.resolve(path.startsWith('/bank-imports/matching/') ? matching : path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : target));
 });
 afterEach(cleanup);
 
@@ -101,18 +103,20 @@ describe('Independent booking review boundaries', () => {
 
   it('keeps reopened split draft separate from an older failed request and prevents duplicate submission', async () => {
     const pending = deferred();
-    api.put.mockReturnValue(pending.promise);
+    api.post.mockReturnValue(pending.promise);
     mount();
     await screen.findByText('Miete September');
     fireEvent.click(within(selected()).getByRole('button', { name: 'Aufteilen' }));
     const oldForm = screen.getByRole('dialog', { name: 'Zahlung aufteilen' });
+    await waitFor(() => expect(within(oldForm).getByLabelText('Vertrag MV-1 (€)')).toBeEnabled());
     fireEvent.change(within(oldForm).getByLabelText('Vertrag MV-1 (€)'), { target: { value: '300' } });
     fireEvent.click(within(oldForm).getByRole('button', { name: 'Speichern' }));
     fireEvent.click(within(oldForm).getByRole('button', { name: 'Speichert …' }));
-    expect(api.put).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledTimes(1);
     fireEvent.click(within(oldForm).getByRole('button', { name: 'Abbrechen' }));
     fireEvent.click(within(selected()).getByRole('button', { name: 'Aufteilen' }));
     const newForm = screen.getByRole('dialog', { name: 'Zahlung aufteilen' });
+    await waitFor(() => expect(within(newForm).getByLabelText('Vertrag MV-1 (€)')).toBeEnabled());
     fireEvent.change(within(newForm).getByLabelText('Vertrag MV-1 (€)'), { target: { value: '111' } });
     await act(async () => { pending.reject(new Error('Alter fehlgeschlagener Auftrag')); });
     expect(within(newForm).queryByRole('alert')).not.toBeInTheDocument();

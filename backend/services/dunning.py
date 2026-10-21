@@ -1416,12 +1416,18 @@ def outbox(store: Any, actor_id: str, *, status: str | None = None, contract_id:
 def mark_sent(store: Any, entry_id: str, payload: MarkSentRequest, actor_id: str) -> dict:
     with archive.work(store, actor_id, write_areas=WRITE_AREAS) as unit:
         entry = _need(unit, "dunning_outbox", entry_id, "Postausgangseintrag")
+        _lock_contract(unit, entry.contract_id)
+        if unit.db is not None:
+            unit.db.expire_all()
+        entry = _need(unit, "dunning_outbox", entry_id, "Postausgangseintrag")
         if entry.status != "ready":
             raise HTTPException(409, "Nur ein abgeschlossenes, noch nicht versendetes Schreiben lässt sich als "
                                      "versendet vermerken.")
         letter = _need(unit, "dunning_letters", entry.letter_id, "Schreiben")
         if payload.sent_on < letter.letter_date:
             raise HTTPException(422, "Das Versanddatum liegt vor dem Briefdatum.")
+        if payload.sent_on > today():
+            raise HTTPException(422, "Ein erfolgter Versand kann nicht in der Zukunft liegen.")
         entry = _save(unit, "dunning_outbox", entry.model_copy(update={
             "status": "sent", "sent_on": payload.sent_on, "sent_via": payload.via, "sent_note": payload.note,
             "sent_by": actor_id}))

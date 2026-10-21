@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -72,3 +73,24 @@ def test_partial_assignment_and_reversal_explain_effective_remaining_cents(bank)
     assert result['effective_assigned_cents'] == 8101
     assert result['effective_remaining_cents'] == 1899
     assert len(service.store.list_bookings()) == 2
+
+
+def test_claim_share_reduces_bank_rent_budget_and_invalidates_old_proposal(bank):
+    from backend.finance_models import SettlementCommand
+    from backend.models import BookingPatch, ReceivableCreate
+    from backend.services.receivable_residuals import allocate, residual
+    service, actor, tenant, contract, booking = estate(bank)
+    service.store._patch_entity('booking', booking.id, BookingPatch(tenant_id=tenant.id))
+    claim = service.store.create_receivable(ReceivableCreate(contract_id=contract.id,
+        due_date=date(2026, 10, 1), amount_due=23.44, status='open'))
+    proposal = service.proposals(booking.id, actor)
+    allocate(service.store, claim.id, SettlementCommand(expected_revision=residual(service.store, claim)['revision'],
+        idempotency_key=str(uuid4()), booking_id=booking.id, amount=Decimal('23.44'), effective_date=date(2026, 10, 1),
+        reason='Teilzahlung der Nachforderung'), actor)
+    current = service.proposals(booking.id, actor)
+    assert current['budget_cents'] == 10001 and current['reserved_cents'] == 2344
+    assert current['expected_revision'] != proposal['expected_revision']
+    with pytest.raises(HTTPException) as exc:
+        service.assign(booking.id, BankAssignment(idempotency_key=str(uuid4()),
+            expected_revision=proposal['expected_revision'], tenant_id=tenant.id, allocations={contract.id: 12345}), actor)
+    assert exc.value.status_code == 409

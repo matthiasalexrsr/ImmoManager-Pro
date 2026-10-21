@@ -179,8 +179,9 @@ describe('Bankimport', () => {
     api.post.mockResolvedValue({});
     const assigned = vi.fn();
     render(<BankMatch bookingId="booking-1" onAssigned={assigned} />);
+    fireEvent.click(screen.getByText('Zahlungszuordnung prüfen'));
     fireEvent.click(screen.getByText('Aktuelle Vorschläge laden'));
-    await screen.findByText('Mia · Name im Verwendungszweck');
+    await screen.findByRole('link', { name: 'Mia' });
     expect(api.post).not.toHaveBeenCalled();
     expect(assigned).not.toHaveBeenCalled();
     expect(screen.getByText('Diese Zuordnung ausdrücklich übernehmen')).toBeDisabled();
@@ -188,5 +189,18 @@ describe('Bankimport', () => {
     fireEvent.click(screen.getByText('Diese Zuordnung ausdrücklich übernehmen'));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/bank-imports/matching/booking-1', expect.objectContaining({ expected_revision: 'b'.repeat(64), allocations: { contract1: 10001 }, tenant_id: 'tenant-1' })));
     await waitFor(() => expect(assigned).toHaveBeenCalledOnce());
+  });
+
+  it('discards a delayed proposal after changing to a different bank movement', async () => {
+    let finish;
+    api.get.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const view = render(<BankMatch bookingId="old" />);
+    fireEvent.click(screen.getByText('Aktuelle Vorschläge laden'));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/bank-imports/matching/old'));
+    view.rerender(<BankMatch bookingId="new" />);
+    finish({ budget_cents: 100, assigned_cents: 0, remaining_cents: 100, reversal_count: 0,
+      suggestions: [{ tenant_id: 'wrong', name: 'Alte Partei', allocations: {} }] });
+    await waitFor(() => expect(screen.getByText('Aktuelle Vorschläge laden')).toBeEnabled());
+    expect(screen.queryByText('Alte Partei')).not.toBeInTheDocument();
   });
 });

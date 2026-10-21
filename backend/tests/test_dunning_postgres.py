@@ -16,7 +16,7 @@ from test_document_versions_postgres import postgres  # noqa: F401  (fixture: ow
 
 from backend import auth
 from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
-from backend.models_dunning import BaseRateRequest, FinalizeRequest, RunRequest, RunScope
+from backend.models_dunning import BaseRateRequest, FinalizeRequest, MarkSentRequest, RunRequest, RunScope
 from backend.repositories import SQLAlchemyStore
 from backend.services import dunning as service
 from backend.services.jobs.core import JobRunner, SqlJobStore
@@ -130,6 +130,41 @@ def test_concurrent_finalizations_of_one_letter_archive_one_original_on_postgres
         assert sorted(float(v) for v in connection.execute(sa.text(
             "SELECT amount_due FROM receivables")).scalars()) == [2.5, 3.78]
         assert connection.execute(sa.text("SELECT stage FROM dunning_cases")).scalar() == 2
+
+
+def test_two_users_cannot_record_the_same_dispatch_twice(postgres):  # noqa: F811
+    engine, _ = postgres
+    seeded = _seed(engine)
+    second = auth.register_user('second', 'second@example.test', 'Zweite Verwaltung', 'Secret123', 'verwalter')
+    draft = _draft(engine, seeded)
+    target = _store(engine)
+    finalized = service.finalize_letter(target, draft['id'], FinalizeRequest(command_key='prepare-dispatch-once',
+        draft_hash=draft['draft_hash'], confirmed=True), seeded['owner'])
+    target.db.close()
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def record(actor):
+        worker = _store(engine)
+        try:
+            barrier.wait(20)
+            service.mark_sent(worker, finalized['outbox']['id'], MarkSentRequest(
+                sent_on=date(2026, 7, 11), via='Brief (nur synthetischer Nachweis)'), actor)
+            outcomes.append('sent')
+        except HTTPException as exc:
+            outcomes.append(str(exc.status_code))
+        finally:
+            worker.db.close()
+
+    threads = [threading.Thread(target=record, args=(actor,)) for actor in (seeded['owner'], second.id)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    assert not any(thread.is_alive() for thread in threads)
+    assert sorted(outcomes) == ['409', 'sent']
+    with engine.connect() as connection:
+        assert connection.execute(sa.text("SELECT COUNT(*) FROM dunning_events WHERE kind='sent'")).scalar() == 1
 
 
 def test_the_proposal_job_with_three_workers_notifies_once_on_postgres(postgres):  # noqa: F811

@@ -14,6 +14,7 @@ from ..services.maintenance_projects import ensure_booking_unallocated
 from ..services.payment_allocations import (
     allocate_unassigned,
     auto_allocate,
+    non_rent_shares,
     reallocate_reversals,
     set_allocations,
 )
@@ -82,10 +83,22 @@ class ReversalRequest(BaseModel):
     payment_text: str | None = None
 
 
-@router.get("/allocations", response_model=list[PaymentAllocation])
-def list_allocations(contract_id: str | None = Query(None)) -> list[PaymentAllocation]:
+class AllocationOverview(BaseModel):
+    allocations: list[PaymentAllocation]
+    reserved_amounts: dict[str, float]
+
+
+@router.get("/allocations", response_model=list[PaymentAllocation] | AllocationOverview)
+def list_allocations(contract_id: str | None = Query(None), include_reservations: bool = Query(False)):
     """Which contract each payment pays (all bookings, or one contract's)."""
-    return store.list_payment_allocations(contract_id=contract_id)
+    allocations = store.list_payment_allocations(contract_id=contract_id)
+    if not include_reservations:
+        return allocations
+    # Only amounts of already authorized cash sources cross the portfolio fence.
+    # A hidden deposit/claim identity is never part of this response.
+    ids = [row.id for row in store.list_bookings()]
+    return AllocationOverview(allocations=allocations, reserved_amounts={
+        key: float(value) for key, value in non_rent_shares(store, ids).items() if value})
 
 
 @router.post("/allocate-unassigned")
@@ -107,7 +120,8 @@ def get_booking_allocations(booking_id: str) -> list[PaymentAllocation]:
 def put_booking_allocations(booking_id: str, items: list[AllocationItem]) -> list[PaymentAllocation]:
     """Split a payment across the tenant's contracts by hand (an empty list unassigns it)."""
     try:
-        return set_allocations(store, booking_id, [(i.contract_id, i.amount) for i in items])
+        with booking_write(store, booking_id=booking_id) as target:
+            return set_allocations(target, booking_id, [(i.contract_id, i.amount) for i in items])
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValidationError as exc:

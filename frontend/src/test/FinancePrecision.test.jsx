@@ -57,7 +57,7 @@ describe('Booking reversal', () => {
 
   it('books a linked counter-booking after confirmation', async () => {
     api.list.mockResolvedValue([booking]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : booking));
+    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking));
     api.post.mockResolvedValue({ ...booking, id: 'r1', amount: -633.33, reverses_booking_id: 'b1' });
     mount('b1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Miete Februar');
@@ -71,7 +71,7 @@ describe('Booking reversal', () => {
   it('does nothing without confirmation', async () => {
     context.confirm = vi.fn().mockResolvedValue(false);
     api.list.mockResolvedValue([booking]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : booking));
+    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking));
     mount('b1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Miete Februar');
     fireEvent.click(within(selected()).getByRole('button', { name: 'Stornieren' }));
@@ -82,7 +82,7 @@ describe('Booking reversal', () => {
   it('shows a reversal with its original and offers no second reversal', async () => {
     const reversal = { ...booking, id: 'r1', amount: -633.33, payment_text: 'Rücklastschrift', reverses_booking_id: 'b1' };
     api.list.mockResolvedValue([reversal]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations' ? [] : reversal));
+    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : reversal));
     mount('r1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Rücklastschrift');
 

@@ -370,6 +370,8 @@ def test_the_outbox_prepares_letters_and_email_drafts_but_sends_nothing(client, 
     assert eml.status_code == 200 and b"X-Unsent: 1" in eml.content and b"application/pdf" in eml.content
     assert client.post(f"{API}/outbox/{entry['id']}/mark-sent", headers=owner,
                        json={"sent_on": "2026-07-01", "via": "E-Mail"}).status_code == 422
+    assert client.post(f"{API}/outbox/{entry['id']}/mark-sent", headers=owner,
+                       json={"sent_on": "2999-07-11", "via": "E-Mail"}).status_code == 422
     sent = client.post(f"{API}/outbox/{entry['id']}/mark-sent", headers=owner,
                        json={"sent_on": "2026-07-11", "via": "E-Mail aus Outlook"})
     assert sent.status_code == 200 and sent.json()["status"] == "sent"

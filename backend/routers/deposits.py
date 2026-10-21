@@ -99,8 +99,9 @@ def set_takeover(deposit_id: str, payload: TakeoverRequest, actor: Actor):
 
 
 @router.get("/{deposit_id}/payment-candidates")
-def payment_candidates(deposit_id: str, actor: Actor):
-    return _call(service.payment_candidates, store, deposit_id, actor.id)
+def payment_candidates(deposit_id: str, actor: Actor, skip: int = Query(0, ge=0),
+                       limit: int = Query(200, ge=1, le=250), q: str = Query("", max_length=500)):
+    return _call(service.payment_candidates, store, deposit_id, actor.id, skip=skip, limit=limit, query=q)
 
 
 @router.post("/{deposit_id}/payments")

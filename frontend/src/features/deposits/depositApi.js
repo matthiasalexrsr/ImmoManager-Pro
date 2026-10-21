@@ -50,8 +50,10 @@ export const depositService = {
     return fileOrFail(await api.put(`${base(id)}/agreement`, agreement, { signal }));
   },
 
-  candidates(id, { signal } = {}) {
-    return api.get(`${base(id)}/payment-candidates`, { signal });
+  candidates(id, { signal, skip = 0, limit = 200, query = '' } = {}) {
+    const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (query.trim()) params.set('q', query.trim());
+    return api.get(`${base(id)}/payment-candidates?${params}`, { signal });
   },
 
   async addPayment(id, bookingId, amount = null, { signal } = {}) {
