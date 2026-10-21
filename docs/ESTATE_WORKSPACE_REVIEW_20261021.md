@@ -57,6 +57,13 @@ Dashboardkacheln bleiben enthalten. Seine PDF-Prüfskriptkorrektur `125c5994` wi
 
 ## Reproduzierbare Abnahme
 
+Die verpflichtenden Abhängigkeitsprüfungen meldeten beim ersten CI-Lauf zusätzlich
+Sicherheitslücken in Pillow 12.3.0 und dem Entwicklungswerkzeug Vite 8.1.0.
+Die festgelegten Versionen werden auf Pillow 13.0.0 und Vite 8.1.6 aktualisiert;
+Prüfumfang und Fehlerschwellen bleiben erhalten. Grundlagen:
+[Pillow 13](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html) und
+[Vite-/launch-editor-Sicherheitsmeldung](https://github.com/advisories/GHSA-587h-7wmj-h5pm).
+
 `backend/tests/test_estate_workspaces.py` prüft beide Speicherarten, ungültige Eltern,
 verknüpfte und unbenutzte Einheiten, ungültige alte Mietvorgaben, indirekte Dokumente,
 Seiten mit 1.001 Dokumenten und beschränkte Benutzer. Der PostgreSQL-Lauf dieses Moduls
