@@ -49,6 +49,9 @@ Portfoliogrenze sowie die begrenzte SQL-Abfragekomplexität ohne flüchtige Zeit
 Sie gehören zusätzlich zu den vollständigen Backend-Suiten auch zur verpflichtenden
 echten PostgreSQL-Prüfung zusammen mit den bisherigen Finanzgegenbeispielen.
 `FinanceWorkspace.test.jsx` und `DashboardWorkspace.test.jsx` prüfen die Bedienung.
+Die bestehende Zwischenablage-Fehlerprüfung wartet ausdrücklich auf den gestarteten
+Schreibversuch und die asynchrone Fehlermeldung; eine noch ausstehende React-Aktualisierung
+wird nicht mehr als verschwundener Fehler gewertet. Erfolgs- und Fehlerbedingungen bleiben erhalten.
 
 `scripts/run_daily_browser_qa.py --suite reports` prüft ausschließlich auf einem
 eigenen synthetischen Server: Zahlungssummen und übernommene Buchungsfilter,

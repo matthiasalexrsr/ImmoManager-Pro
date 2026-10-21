@@ -219,13 +219,15 @@ describe('party workspace', () => {
 
   it('reports a rejected clipboard write without displaying a copied success', async () => {
     const clipboardWrite = deferred();
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => clipboardWrite.promise) } });
+    const writeText = vi.fn(() => clipboardWrite.promise);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     mount(); fireEvent.click(screen.getByRole('button', { name: 'Anna Müller' }));
     await screen.findByRole('dialog', { name: 'Anna Müller' });
     const copyButton = screen.getByRole('button', { name: 'Kopieren: Adresse' });
     fireEvent.click(copyButton);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('Lindenstraße 8\n10115 Berlin\nDE'));
     await act(async () => { clipboardWrite.reject(new Error('Clipboard permission denied')); await clipboardWrite.promise.catch(() => {}); });
-    expect(screen.getByRole('alert')).toHaveTextContent(/kopier/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/kopier/i);
     expect(copyButton).toHaveAttribute('aria-label', 'Kopieren: Adresse');
   });
 
