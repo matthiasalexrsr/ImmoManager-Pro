@@ -193,15 +193,23 @@ def test_review_list_names_rents_and_payments_to_check(client, yilmaz):
 def test_review_list_flags_histories_the_migration_took_from_an_edited_unit(client, yilmaz):
     from datetime import timedelta
 
-    if not hasattr(store, "contract_rent_periods"):
-        pytest.skip("record timestamps can only be set in the memory store")
     garage = store.get_contract(yilmaz["Garage"]["id"])
     period = store.list_contract_rent_periods(garage.id)[0]
     # Written by the migration long after the contract began; the unit was edited during the tenancy.
-    store.contract_rent_periods[period.id] = period.model_copy(
-        update={"created_at": garage.created_at + timedelta(days=400)})
     unit = store.get_unit(garage.unit_id)
-    store.units[unit.id] = unit.model_copy(update={"updated_at": garage.created_at + timedelta(days=200)})
+    if hasattr(store, "db"):
+        from sqlalchemy import update
+
+        from backend.db.orm_models import ContractRentPeriodORM, UnitORM
+        store.db.execute(update(ContractRentPeriodORM).where(ContractRentPeriodORM.id == period.id)
+                         .values(created_at=garage.created_at + timedelta(days=400)))
+        store.db.execute(update(UnitORM).where(UnitORM.id == unit.id)
+                         .values(updated_at=garage.created_at + timedelta(days=200)))
+        store.db.commit()
+    else:
+        store.contract_rent_periods[period.id] = period.model_copy(
+            update={"created_at": garage.created_at + timedelta(days=400)})
+        store.units[unit.id] = unit.model_copy(update={"updated_at": garage.created_at + timedelta(days=200)})
 
     kinds = [item["kind"] for item in client.get("/api/v1/review").json()["items"]]
 
