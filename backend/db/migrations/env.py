@@ -12,7 +12,7 @@ from logging.config import fileConfig
 from alembic import context
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import Float, Numeric, create_engine, inspect, pool, text
+from sqlalchemy import Float, Numeric, String, Text, create_engine, inspect, pool, text
 
 from backend.db.orm_models import Base
 
@@ -34,7 +34,7 @@ ORM_ADOPTION_HEAD = "f016a1b2c001"
 ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c001",
                                    "f020a1b2c001", "a7d3c5e9f2b1", "f021a1b2c001",
                                    "b4d6f8a0c2e1", "f022a1b2c001", "c6e8a0b2d4f3", "d8a1c3e5f7b9",
-                                   "e2b4d6f8a0c1", "f4c6e8a0b2d3", "a5c7e9b1d3f5"})
+                                   "e2b4d6f8a0c1", "f4c6e8a0b2d3", "a5c7e9b1d3f5", "c7e9a1b3d5f7"})
 
 
 def _current_addition_names():
@@ -80,6 +80,12 @@ def _current_additions_are_present(connection) -> bool:
             return False
 
     def compare_type(context_, reflected, declared, existing_type, declared_type):
+        # The explicit successor widens this exact legacy column, preserving its
+        # occurrence identities instead of replacing or re-creating job history.
+        if (reflected.table.name == "job_occurrences" and reflected.name == "occurrence_key"
+                and isinstance(existing_type, String) and existing_type.length == 64
+                and isinstance(declared_type, Text)):
+            return False
         # d7a2f9c4e681 deliberately retains existing legacy NUMERIC precision
         # and scale. A wider money column must not force re-creation of unrelated
         # PRO tables. New additive-family types still use exact comparison.

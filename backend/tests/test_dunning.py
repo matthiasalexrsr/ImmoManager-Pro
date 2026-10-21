@@ -13,6 +13,7 @@ from datetime import date, datetime
 import pytest
 from archive_helpers import purge_originals
 from fastapi.testclient import TestClient
+from sqlalchemy import text as sql_text
 
 from backend import auth
 from backend.app import app
@@ -633,7 +634,7 @@ def _clear_letterhead():
     if hasattr(store, "db"):
         store.db.rollback()
         with store.db.get_bind().connect() as connection, connection.begin():
-            connection.exec_driver_sql("DELETE FROM daily_setting_rules WHERE key LIKE 'document_%'")
+            connection.execute(sql_text("DELETE FROM daily_setting_rules WHERE key LIKE :prefix"), {"prefix": "document_%"})
     else:
         store.__dict__.pop("_daily_rules", None)
 

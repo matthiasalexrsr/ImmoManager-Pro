@@ -46,7 +46,7 @@ class JobOccurrenceORM(Base):
     __tablename__ = "job_occurrences"
     rule_key: Mapped[str] = mapped_column(String(200), primary_key=True)
     rule_version: Mapped[str] = mapped_column(String(64), primary_key=True)
-    occurrence_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    occurrence_key: Mapped[str] = mapped_column(Text, primary_key=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     run_id: Mapped[str | None] = mapped_column(String(36))   # no FK: finished runs may be pruned
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())

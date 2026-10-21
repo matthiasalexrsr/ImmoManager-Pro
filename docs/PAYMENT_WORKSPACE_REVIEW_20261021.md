@@ -1,6 +1,6 @@
 # Bankimport, Zahlungszuordnung, Mahnwesen und Kautionen – Prüfung 21.10.2026
 
-Ausgangspunkt: `b89588fccd53ec04bafdf4c738ed69445afcfab1`, einschließlich Claudes veröffentlichter Arbeiten bis `ebcd434840b19f9ab7a940eaea02c5a8d40bdacc`. Vorhandene Akten, Dokumentoriginale, Rollen, Formularschutz und Fachabläufe werden weitergeführt. Keine Änderungen an der Datenbankstruktur.
+Ausgangspunkt: `b89588fccd53ec04bafdf4c738ed69445afcfab1`, einschließlich Claudes veröffentlichter Arbeiten bis `ebcd434840b19f9ab7a940eaea02c5a8d40bdacc`. Vorhandene Akten, Dokumentoriginale, Rollen, Formularschutz und Fachabläufe werden weitergeführt.
 
 ## Korrigierte Gegenbeispiele
 
@@ -17,6 +17,7 @@ Ausgangspunkt: `b89588fccd53ec04bafdf4c738ed69445afcfab1`, einschließlich Claud
 * Mahnausgang und zu prüfende Antworten zeigten nur 200 Einträge. Alle drei Mahnlisten laden nun weiter, behalten erfolgreiche Seiten bei Fehlern und verwerfen verspätete Antworten nach Filterwechsel. Ein fehlgeschlagener Abruf erscheint nicht als leerer Bestand.
 * Mahnausgänge verlinken die betroffene Vertrags-Mahnakte. Versandvermerke erlauben kein zukünftiges Ist-Datum und sperren parallele Änderungen am Vertragskontext. Ein PostgreSQL-Test verwendet dafür zwei unterschiedliche Benutzer und unabhängige Verbindungen.
 * Ein EUR-Bankoriginal konnte auf ein Konto eines anders denominierten Portfolios übernommen werden. Vorbereitung und Bestätigung verweigern diese unzulässige Gleichsetzung ohne erfundene Umrechnung.
+* Die zusätzliche PostgreSQL-Matrix fand einen dort tatsächlich abbrechenden Mahnjob: Die vollständige Identität aus Akte, Mahnstufe und vorherigem Brief ist länger als die alte Spalte `job_occurrences.occurrence_key` (64 Zeichen). Migration `c7e9a1b3d5f7` erweitert sie auf Text. Alle bestehenden Schlüssel bleiben identisch; bereits verarbeitete Vorkommen werden nicht erneut vorgeschlagen. Ein verlustreicher Downgrade wird verweigert; der geprüfte Rückweg ist das Vollbackup vor der Migration. Die Testbereinigung von Briefkopfeinstellungen verwendet außerdem gebundene SQL-Parameter und funktioniert damit auch mit dem PostgreSQL-Treiber.
 
 ## Kompatibilität und Prüfung
 
