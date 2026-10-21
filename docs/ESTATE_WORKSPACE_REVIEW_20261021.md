@@ -69,6 +69,9 @@ Die festgelegten Versionen werden auf Pillow 13.0.0 und Vite 8.1.6 aktualisiert;
 Prüfumfang und Fehlerschwellen bleiben erhalten. Grundlagen:
 [Pillow 13](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html) und
 [Vite-/launch-editor-Sicherheitsmeldung](https://github.com/advisories/GHSA-587h-7wmj-h5pm).
+Die bisher doppelte Backend-Paketliste bindet nun die zentrale Liste ein. Damit
+bekommen Entwicklung, PostgreSQL-Prüfung und Dokumentwerkzeuge dieselben Versionen
+einschließlich der PDF-Textsuche; die abweichende alte Pillow-Vorgabe entfällt.
 
 `backend/tests/test_estate_workspaces.py` prüft beide Speicherarten, ungültige Eltern,
 verknüpfte und unbenutzte Einheiten, ungültige alte Mietvorgaben, indirekte Dokumente,
