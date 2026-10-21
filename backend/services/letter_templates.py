@@ -27,6 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
+from ..domain.calendar_days import national_holidays
 from . import daily_state as state
 from . import document_versions as archive
 from . import price_index
@@ -370,27 +371,6 @@ def add_months(value: date, months: int) -> date:
 
 def month_end(value: date) -> date:
     return date(value.year, value.month, calendar.monthrange(value.year, value.month)[1])
-
-
-def easter(year: int) -> date:
-    """Easter Sunday (anonymous Gregorian algorithm)."""
-    a, b, c = year % 19, year // 100, year % 100
-    d, e = b // 4, b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = c // 4, c % 4
-    lead = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * lead) // 451
-    month = (h + lead - 7 * m + 114) // 31
-    return date(year, month, (h + lead - 7 * m + 114) % 31 + 1)
-
-
-def national_holidays(year: int) -> set[date]:
-    sunday = easter(year)
-    return {date(year, 1, 1), date(year, 5, 1), date(year, 10, 3), date(year, 12, 25), date(year, 12, 26),
-            sunday - timedelta(days=2), sunday + timedelta(days=1), sunday + timedelta(days=39),
-            sunday + timedelta(days=50)}
 
 
 def working_day(value: date) -> bool:

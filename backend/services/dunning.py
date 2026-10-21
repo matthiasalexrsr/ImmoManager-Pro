@@ -112,6 +112,7 @@ from .dunning_letter_validation import (
     validate_dunning_letter_snapshot,
 )
 from .dunning_render import eur, plain_text, render_pdf, subject
+from .letter_templates import residential
 from .payment_allocations import contract_ledger
 
 WRITE_AREAS = ("/dunning",)
@@ -530,7 +531,9 @@ def _parties(ctx: Any, contract: Any) -> dict:
         "recipient": {"name": tenant.full_name, "address": tenant_address or property_address,
                       "email": tenant.email},
         "contract": {"id": contract.id, "number": contract.contract_number, "property": prop.name,
-                     "unit": unit_obj.label, "tenant_id": tenant.id},
+                     "unit": unit_obj.label, "tenant_id": tenant.id,
+                     # business premises: the tenant is no consumer (§ 288 II BGB)
+                     "business": residential({"unit_type": unit_obj.unit_type}) is False},
     }
 
 
@@ -560,6 +563,8 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
     """The reviewed content of a letter and, per principal claim, the day interest is charged up to afterwards."""
     rule = {r.stage: r for r in rules}[stage]
     deadline = letter_date + timedelta(days=rule.payment_deadline_days)
+    business = bool(parties["contract"].get("business"))
+    surcharge = rules_.BUSINESS_SURCHARGE if business else rules_.CONSUMER_SURCHARGE
     lines, interest_until, missing = [], {}, None
     total_interest = ZERO
     for item in state.overdue_principal():
@@ -569,7 +574,8 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
         interest = ZERO
         segments: list = []
         if rule.charge_interest and charged is not None and charged < letter_date:
-            result = default_interest(item, charged_until=charged, until=letter_date, rates=rates)
+            result = default_interest(item, charged_until=charged, until=letter_date, rates=rates,
+                                      surcharge=surcharge)
             if result.missing_from is not None:
                 missing = min(missing, result.missing_from) if missing else result.missing_from
             else:
@@ -591,7 +597,11 @@ def letter_content(ctx: Any, state: State, stage: int, letter_date: date, refere
     earlier = sum((money(line["outstanding"]) for line in charges), ZERO)
     fee = money(rule.fee)
     notes = []
-    if total_interest:
+    if total_interest and business:
+        notes.append("Verzugszinsen nach § 288 Abs. 2 BGB (Gewerbemiete, kein Verbraucher beteiligt): Basiszinssatz "
+                     "zuzüglich neun Prozentpunkten jährlich auf die offene Hauptforderung, taggenau (Tage/365), "
+                     "je Forderung auf den Cent gerundet.")
+    elif total_interest:
         notes.append("Verzugszinsen nach § 288 Abs. 1 BGB: Basiszinssatz zuzüglich fünf Prozentpunkten jährlich "
                      "auf die offene Hauptforderung, taggenau (Tage/365), je Forderung auf den Cent gerundet.")
     if missing:

@@ -63,7 +63,7 @@ from ..services.final_statements import (
 )
 from ..services.portfolio_scope import current_scope, refresh_scope, scope_context, scope_from_user
 from ..services.service_contracts import check_cost_item_origin
-from ..services.utility_billing import compute_period_billing
+from ..services.utility_billing import compute_period_billing, late_claim_excluded, statement_deadline
 from ..storage import NotFoundError, ValidationError
 
 # Days a tenant has to settle a back payment after the statement was issued.
@@ -780,11 +780,18 @@ def mark_statement_delivered(
 
 @router.post("/periods/{period_id}/create-receivables")
 @atomic_billing(lambda: store, period_arg="period_id")
-def create_receivables_from_period(period_id: str):
+def create_receivables_from_period(
+    period_id: str,
+    late_not_attributable: bool = Query(False, description="Die Verspätung hat der Vermieter nicht zu vertreten "
+                                                           "(§ 556 Abs. 3 Satz 3 Halbsatz 2 BGB)"),
+):
     """Create receivables/refund bookings from finalized statement balances.
 
     For a correction only the difference to what the corrected versions
-    already billed is booked, so a tenant is never billed twice.
+    already billed is booked, so a tenant is never billed twice. A back payment
+    of a flat whose statement reached (or would reach) the tenant after the
+    deadline is excluded (§ 556 Abs. 3 BGB) unless the landlord is not to blame;
+    refunds are always booked.
     """
     from ..models import ReceivableCreate
 
@@ -810,6 +817,8 @@ def create_receivables_from_period(period_id: str):
     due_date = date.today() + timedelta(days=RECEIVABLE_DUE_DAYS)
     created_count = 0
     skipped_count = 0
+    excluded_late = []
+    units = {u.id: u for u in store.list_units()}
     for stmt in period_statements:
         if stmt.contract_id is None:  # vacancy: the landlord's share, nobody to bill
             continue
@@ -819,6 +828,12 @@ def create_receivables_from_period(period_id: str):
         earlier = billed_before.pop(stmt.contract_id, Decimal("0"))
         amount = (Decimal(str(stmt.balance)) - earlier).quantize(Decimal("0.01"))
         if amount == 0:
+            continue
+        # Not delivered yet: it can reach the tenant today at the earliest.
+        received = stmt.delivered_at.date() if stmt.delivered_at else date.today()
+        if amount > 0 and not late_not_attributable and late_claim_excluded(
+                units.get(stmt.unit_id), period.end_date, received):
+            excluded_late.append({"statement_id": stmt.id, "contract_id": stmt.contract_id, "amount": float(amount)})
             continue
         kind = "Nachzahlung" if amount > 0 else "Guthaben"
         if period.corrects_period_id:
@@ -835,7 +850,8 @@ def create_receivables_from_period(period_id: str):
         )
         created_count += 1
 
-    return {"period_id": period_id, "created_receivables": created_count, "skipped_existing": skipped_count}
+    return {"period_id": period_id, "created_receivables": created_count, "skipped_existing": skipped_count,
+            "excluded_late": excluded_late, "deadline": statement_deadline(period.end_date).isoformat()}
 
 
 def _corrected_versions(period: BillingPeriod) -> list[BillingPeriod]:

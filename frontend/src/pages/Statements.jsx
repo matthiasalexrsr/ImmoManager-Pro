@@ -658,7 +658,10 @@ export default function Statements() {
     try {
       const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
       const skipped = res?.skipped_existing ? ` (${res.skipped_existing} bereits vorhanden)` : '';
-      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}${skipped}`, 'success');
+      const late = res?.excluded_late?.length
+        ? ` · ${res.excluded_late.length} Nachzahlung(en) nicht angelegt: Zugang nach Ablauf der Abrechnungsfrist am ${formatDate(res.deadline)} (§ 556 Abs. 3 BGB)`
+        : '';
+      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}${skipped}${late}`, late ? 'warning' : 'success');
     } catch (err) {
       toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
     } finally {

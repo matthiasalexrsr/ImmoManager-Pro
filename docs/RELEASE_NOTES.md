@@ -102,6 +102,13 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Update-Prüfung** unter Einstellungen → System → Updates, nur auf Klick.
 - **Aktenwerk (Dokumentenverwaltung):** Exportpaket oder direkte Übergabe von Verträgen, Rechnungen und absetzbaren Belegen mit steuerlicher Einordnung.
 
+- **Genauer gerechnet (Prüfung aller Rechenwege, Oktober 2026):**
+  - Die Miete ist am dritten Werktag fällig (§ 556b BGB), Samstage, Sonntage und bundesweite Feiertage zählen nicht; die erste Miete wird nicht vor dem Einzug fällig. Überfälligkeit, Mahnstufen und Verzugszinsen beginnen deshalb nicht mehr zu früh. Kautionsraten 2 und 3 sind mit der Miete fällig.
+  - Eine Mietänderung mitten im Monat gilt tagesgenau ab ihrem Datum und nicht erst ab dem Folgemonat.
+  - Eine Zahlung vor dem Einzug oder nach dem Auszug wird dem einzigen Vertrag des Mieters zugeordnet, statt unzugeordnet liegen zu bleiben.
+  - Nebenkosten: Eine Nachzahlung, deren Abrechnung erst nach Ablauf der Abrechnungsfrist beim Mieter ankommt, wird nicht mehr als Forderung angelegt (§ 556 Abs. 3 BGB); Guthaben schon. Hat der Vermieter die Verspätung nicht zu vertreten, lässt sie sich ausdrücklich doch anlegen. Bei Gewerbe gilt die Frist nicht. Fehlt beim Mieterwechsel nur eine Zwischenablesung, teilen sich die übrigen Zeiträume genau den Rest des Jahresverbrauchs.
+  - Mahnungen für Gewerbeeinheiten berechnen Verzugszinsen mit 9 statt 5 Prozentpunkten über dem Basiszinssatz (§ 288 Abs. 2 BGB).
+
 ## Hinweise zum Update von einer älteren Version
 - Beim ersten Start aktualisiert das Programm die Datenbank. Davor legt es ein Vollbackup an; der Speicherort steht im schwarzen Fenster.
 - **Bestehende Benutzerkonten** sehen weiterhin alles. Neue Konten sehen erst etwas, wenn der Eigentümer ihnen Portfolios zuweist.
@@ -110,14 +117,18 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Prognosen rechnen mit den Vertragsmieten;
   - noch nicht abgeschlossene Nebenkostenabrechnungen ergeben bei neuer Erzeugung korrekte Beträge.
   - Abgeschlossene Abrechnungen bleiben unverändert.
-- **Datenexport (JSON):** Ein Export dieser Version hat das Format 13 (mit Ablaufdaten und Aufbewahrungsklassen). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
+- **Datenexport (JSON):** Ein Export dieser Version hat das Format 14 (mit Ablaufdaten, Aufbewahrungsklassen und Lastschriftdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
+- **Mietkonten nach der Rechenprüfung:** Fälligkeiten verschieben sich vom 3. Kalendertag auf den 3. Werktag. Verträge mit einer Mietänderung zur Monatsmitte zeigen für diesen Monat jetzt den tagesgenauen Betrag; Rückstand oder Guthaben dieser Konten können sich dadurch um den Unterschied ändern. Bereits abgeschlossene Mahnschreiben und Abrechnungen bleiben, wie sie sind.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
 
 ## Bekannte Grenzen
 - **Aufbewahrung:** Die Löschsperre schützt vor versehentlichem Löschen; sie macht das Programm nicht zu einem revisionssicheren Archiv (GoBD), und die Einstufung ersetzt keine steuerliche Beratung.
 - **Volltextsuche bei Scans und Fotos:** Im Windows-Paket ist keine Texterkennung für Bilder enthalten. Gescannte PDFs ohne Textebene und Fotos sind deshalb nicht durchsuchbar; die Suche nennt, wie viele Dokumente das betrifft.
 - **Kündigungsfrist:** Die Briefvorlage berücksichtigt nur bundesweite Feiertage. Serienbriefe an alle Mieter eines Objekts gibt es noch nicht.
-- **Versand:** E-Mails und Mahnbriefe erzeugt das Programm als Entwurf oder PDF und versendet sie nicht. Zahlungsdateien (SEPA) gibt es nicht.
+- **Versand:** E-Mails und Mahnbriefe erzeugt das Programm als Entwurf oder PDF und versendet sie nicht. Die SEPA-Lastschriftdatei lädt man selbst bei der Bank hoch.
+- **Fälligkeit und Feiertage:** Für den dritten Werktag zählen nur die bundesweiten Feiertage; regionale (z. B. Heilige Drei Könige, Fronleichnam) nicht, dort kann eine Miete einen Tag früher als fällig gelten.
+- **Heizkosten nach HeizkostenV:** Die Aufteilung in Grund- und Verbrauchskosten (50–70 % nach Verbrauch) wird nicht selbst gebildet; dafür die Heizkosten als zwei Positionen mit Flächen- und Verbrauchsschlüssel erfassen.
+- **Steuerliche Jahresauswertung:** Sie folgt dem Buchungsdatum; die Zehn-Tage-Regel für regelmäßig wiederkehrende Zahlungen um den Jahreswechsel (§ 11 EStG) wird nicht angewandt.
 - **Vollbackup zurückspielen:** nur über die Kommandozeile (`ImmoManager-Pro.exe ops restore …`), siehe „LIES MICH.txt“.
 - **Signaturen:** keine elektronische Unterschrift auf Übergabeprotokollen.
 - **Windows-Warnung:** Das Windows-Paket ist nicht signiert. Beim ersten Start meldet Windows das; über „Weitere Informationen → Trotzdem ausführen“ geht es weiter.

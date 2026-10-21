@@ -146,9 +146,23 @@ def prepayment_for_month(store: Any, contract: Any, month: date) -> Decimal:
 
 
 def statement_deadline(period_end: date) -> date:
-    """§ 556 Abs. 3 BGB: the statement must reach the tenant by the end of the twelfth month."""
+    """§ 556 Abs. 3 BGB: the statement must reach the tenant by the end of the twelfth month
+    after the period (§§ 187, 188 BGB: a period ending mid-month, on the same day a year later)."""
     year, month = period_end.year + 1, period_end.month
-    return date(year, month, calendar.monthrange(year, month)[1])
+    last = calendar.monthrange(year, month)[1]
+    if period_end.day == calendar.monthrange(period_end.year, month)[1]:
+        return date(year, month, last)
+    return date(year, month, min(period_end.day, last))
+
+
+def late_claim_excluded(unit: Any, period_end: date, received: date) -> bool:
+    """A back payment of a flat's statement received after the deadline is excluded (§ 556 Abs. 3 S. 3 BGB).
+
+    The rule protects tenants of living space; business premises and other units are not covered.
+    """
+    from .letter_templates import residential
+    living = residential({"unit_type": getattr(unit, "unit_type", None)}) if unit is not None else True
+    return living is True and received > statement_deadline(period_end)
 
 
 def _fmt(day: date) -> str:
@@ -562,13 +576,22 @@ def _consumption_shares(result, store, key, units, segments, start, end, period_
         whole = consumption(unit_meters, start, end)
         if whole is not None:
             with_data += 1
+        parts: list[tuple[Segment, Optional[Decimal]]] = []
         for segment in unit_segs:
             used = whole if len(unit_segs) == 1 else consumption(unit_meters, segment.start, segment.end)
             if len(negative) > negative_before:
                 break
-            if used is None and whole is not None:
-                # No reading at move-in/move-out: share the year's consumption by days.
-                used = whole * segment.days / period_days
+            parts.append((segment, used))
+        # No reading at a move-in/move-out: the stretches without one share what the measured
+        # ones leave of the year's consumption, by days (all of it when none is measured), so
+        # the unit's shares add up to what its meters counted.
+        unmeasured_days = sum(segment.days for segment, used in parts if used is None)
+        rest = None
+        if whole is not None and unmeasured_days:
+            rest = max(whole - sum((used for _, used in parts if used is not None), Decimal("0")), Decimal("0"))
+        for segment, used in parts:
+            if used is None and rest is not None:
+                used = rest * segment.days / unmeasured_days
                 boundary = segment.end if segment.end != end else segment.start
                 intermediate.append(f"{label(unit.id)} zum {_fmt(boundary)}")
             if used is None:

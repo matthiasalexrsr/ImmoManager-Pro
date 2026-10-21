@@ -12,6 +12,7 @@ from PIL import Image
 from backend import auth
 from backend.app import app
 from backend.dependencies import store
+from backend.domain.calendar_days import easter
 from backend.models import (
     ContractCreate,
     ContractRentPeriodCreate,
@@ -234,7 +235,7 @@ def test_advance_adjustment_and_appointment_checks(case):
 
 
 def test_termination_confirmation_counts_working_days():
-    assert templates.easter(2026) == date(2026, 4, 5) and templates.easter(2027) == date(2027, 3, 28)
+    assert easter(2026) == date(2026, 4, 5) and easter(2027) == date(2027, 3, 28)
     # 1 October 2026 is a Thursday, 3 October a public holiday: the third working day is Monday 5 October
     assert templates.tenant_notice_end(date(2026, 10, 5)) == date(2026, 12, 31)
     assert templates.tenant_notice_end(date(2026, 10, 6)) == date(2027, 1, 31)

@@ -28,6 +28,11 @@ def _c(contract_id, due, unit="u", start=date(2024, 1, 1), end=None):
     (-1570, None, [_c("flat", 1480, "u1"), _c("garage", 90, "u2")], [("flat", -1480), ("garage", -90)]),
     (500, None, [_c("old", 700, end=date(2024, 12, 31)), _c("new", 800, start=date(2025, 1, 1))], [("new", 500)]),
     (500, None, [], []),
+    # arrears paid after moving out, the first rent paid before moving in: the tenant's only contract
+    (500, None, [_c("ended", 700, end=date(2025, 1, 31))], [("ended", 500)]),
+    (700, None, [_c("future", 700, start=date(2025, 4, 1))], [("future", 700)]),
+    # two contracts, neither running: a person decides
+    (500, None, [_c("a", 700, end=date(2024, 12, 31)), _c("b", 800, start=date(2025, 4, 1))], []),
 ])
 def test_suggestion_rules(amount, unit, candidates, expected):
     pairs = suggest_allocation(D(amount), date(2025, 3, 3), unit, candidates)

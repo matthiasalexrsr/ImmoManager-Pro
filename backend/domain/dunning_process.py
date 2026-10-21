@@ -10,7 +10,7 @@ the same day costs come before interest before the principal (§ 367 I BGB). A c
 is reduced on the day of the payment.
 
 Default interest (§ 288 I BGB, consumer): base rate (§ 247 BGB) + 5 percentage
-points a year, on the outstanding principal of a claim, for every day after the day
+points a year (business premises, no consumer involved: 9 points, § 288 II BGB), on the outstanding principal of a claim, for every day after the day
 interest was last charged up to and including the letter date, never on fees or
 interest (§ 289 BGB). The base rate is taken from periods entered by hand; a day
 without a known base rate earns no interest and is reported as missing, nothing is
@@ -37,6 +37,7 @@ PRINCIPAL_KINDS = frozenset({"rent", "receivable"})
 CHARGE_KINDS = frozenset({"fee", "interest"})
 _KIND_ORDER = {"fee": 0, "interest": 1, "rent": 2, "receivable": 2}
 CONSUMER_SURCHARGE = Decimal("5")     # percentage points above the base rate, § 288 I 2 BGB
+BUSINESS_SURCHARGE = Decimal("9")     # no consumer involved (business premises), § 288 II BGB
 DAYS_PER_YEAR = Decimal("365")
 HUNDRED = Decimal("100")
 

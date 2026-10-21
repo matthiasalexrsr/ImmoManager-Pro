@@ -198,8 +198,9 @@ def test_rules_cap_instalments_interest_and_settlement():
     over = rules.check_cap(Decimal("1500.01"), Decimal("500"))
     assert over.exceeds and over.excess == Decimal("0.01") and over.cap == Decimal("1500.00")
     assert rules.check_cap(Decimal("9999"), None).cap is None          # unknown cold rent: no claim either way
-    assert rules.instalment_due_dates(date(2024, 3, 15), 3) == [date(2024, 3, 15), date(2024, 4, 3), date(2024, 5, 3)]
-    assert rules.instalment_due_dates(date(2024, 12, 1), 3) == [date(2024, 12, 1), date(2025, 1, 3), date(2025, 2, 3)]
+    # with the rent: by the third working day (Easter Monday 1.4.2024, 1 May and New Year are holidays)
+    assert rules.instalment_due_dates(date(2024, 3, 15), 3) == [date(2024, 3, 15), date(2024, 4, 4), date(2024, 5, 6)]
+    assert rules.instalment_due_dates(date(2024, 12, 1), 3) == [date(2024, 12, 1), date(2025, 1, 6), date(2025, 2, 5)]
     assert rules.split_amount(Decimal("1000"), 3) == [Decimal("333.34"), Decimal("333.33"), Decimal("333.33")]
     with pytest.raises(rules.DepositRuleError):
         rules.schedule(Decimal("1000"), date(2024, 1, 1), [Decimal("500"), Decimal("400")])

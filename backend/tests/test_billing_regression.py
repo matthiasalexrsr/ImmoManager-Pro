@@ -246,6 +246,30 @@ def test_b1_replacement_adds_final_and_initial_reading():
     assert rows[(first.id,)].line_items[0]["basis"] == 100.0
 
 
+def test_b2a_stretches_without_reading_share_what_the_measured_ones_leave():
+    """A measured first tenancy, then vacancy and a second tenancy without an intermediate reading.
+
+    Regression: the unmeasured stretches got the year's consumption by days on top of the measured
+    one, so the flat counted 85.34 instead of the 100 m³ its meter showed and paid too little.
+    """
+    prop, first, second = _two_flats()
+    _lease(prop, first, "A", end=date(2025, 3, 31))
+    _lease(prop, first, "B", start=date(2025, 5, 1))
+    _lease(prop, second, "C")
+    _meter(first, "cold_water", [(date(2025, 1, 1), 0), (date(2025, 3, 31), 10), (date(2025, 12, 31), 100)])
+    _meter(second, "cold_water", [(date(2025, 1, 1), 0), (date(2025, 12, 31), 100)])
+    period = _period(prop, [("Wasser", 1000, _key(prop, "consumption", meter_type="cold_water"))])
+
+    rows = _by(billing.generate_utility_statements(period.id), "unit_id", "usage_start")
+
+    # A measured 10 m³; vacancy (30 days) and B (245 days) share the remaining 90 m³ by days
+    assert rows[(first.id, date(2025, 1, 1))].total_cost == 50.0
+    assert rows[(first.id, date(2025, 4, 1))].total_cost == 49.09
+    assert rows[(first.id, date(2025, 5, 1))].total_cost == 400.91
+    assert rows[(second.id, date(2025, 1, 1))].total_cost == 500.0
+    assert "MISSING_INTERMEDIATE_READING" in _issues(period)[1]
+
+
 def test_b2_replacement_and_tenant_change_in_one_year():
     prop, first, second = _two_flats()
     _lease(prop, first, "A", end=date(2025, 6, 30))

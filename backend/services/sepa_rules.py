@@ -15,6 +15,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree import ElementTree as ET
 
+from ..domain.calendar_days import easter as calendar_easter
+
 NAMESPACE = "urn:iso:std:iso:20022:tech:xsd:pain.008.001.08"
 
 # Lengths of the IBAN in SEPA countries (EPC409); others are checked by the checksum only.
@@ -106,22 +108,9 @@ def mask_iban(iban: str | None) -> str:
 
 # ─── TARGET2 business days ───────────────────────────────────────────────────
 
-def _easter(year: int) -> date:
-    a, b, c = year % 19, year // 100, year % 100
-    d, e = divmod(b, 4)
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = divmod(c, 4)
-    m = (32 + 2 * e + 2 * i - h - k) % 7
-    n = (a + 11 * h + 22 * m) // 451
-    month, day = divmod(h + m - 7 * n + 114, 31)
-    return date(year, month, day + 1)
-
-
 def target_holiday(day: date) -> str | None:
     """The TARGET2 closing day, if `day` is one (weekends are checked separately)."""
-    easter = _easter(day.year)
+    easter = calendar_easter(day.year)
     fixed = {(1, 1): "Neujahr", (5, 1): "1. Mai", (12, 25): "1. Weihnachtstag", (12, 26): "2. Weihnachtstag"}
     if (day.month, day.day) in fixed:
         return fixed[(day.month, day.day)]

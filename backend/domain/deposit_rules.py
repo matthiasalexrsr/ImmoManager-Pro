@@ -7,7 +7,7 @@ Pure functions on exact amounts; no storage. Rules (docs/DEPOSITS_20261011.md):
   a refusal, because a higher agreed amount is void only in its excess.
 * Instalments: up to three. The first is due at the start of the tenancy, the
   others together with the two rent payments that follow it (§ 551 II BGB; rent is
-  due on the third day of the month, as LeaseEngine counts it).
+  due by the third working day of the month, as LeaseEngine counts it).
 * Receipts are amounts of allocated bookings; they settle the instalments in due
   order (oldest first), each amount once.
 * Interest (§ 551 III BGB) of a cash deposit: rate periods (annual percent, valid
@@ -35,13 +35,13 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
 
+from .calendar_days import rent_due_date
 from .money import CENT, ZERO, money
 
 MONEY_FORMS = ("cash", "transfer", "deposit_account")
 SECURITY_FORMS = ("guarantee", "pledged_savings")
 FORMS = MONEY_FORMS + SECURITY_FORMS
 MAX_INSTALMENTS = 3
-RENT_DUE_DAY = 3
 CAP_MONTHS = 3
 MAX_RATE = Decimal("25")
 RATE_PLACES = 4
@@ -82,13 +82,13 @@ def _month_after(day: date, months: int) -> date:
 def instalment_due_dates(start: date, count: int) -> list[date]:
     """The first at the start of the tenancy, each further one with the rent of the following month.
 
-    Rent is due on the third day of a month; the rent of the start month counts as
+    Rent is due by the third working day of a month; the rent of the start month counts as
     paid together with the first instalment (§ 551 II BGB: "zusammen mit den
     unmittelbar folgenden Mietzahlungen").
     """
     if not 1 <= count <= MAX_INSTALMENTS:
         raise DepositRuleError(f"Eine Kaution wird in höchstens {MAX_INSTALMENTS} Raten gezahlt.")
-    return [start] + [_month_after(start, months).replace(day=RENT_DUE_DAY) for months in range(1, count)]
+    return [start] + [rent_due_date(_month_after(start, months)) for months in range(1, count)]
 
 
 def split_amount(total: Decimal, count: int) -> list[Decimal]:

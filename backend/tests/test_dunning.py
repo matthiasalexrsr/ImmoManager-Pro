@@ -73,12 +73,12 @@ def _commit():
         store.db.commit()
 
 
-def _lease(name="Nord", number="V-1", end=date(2026, 7, 31), email="max@example.com"):
+def _lease(name="Nord", number="V-1", end=date(2026, 7, 31), email="max@example.com", unit_type="residential"):
     portfolio = store.create_portfolio(PortfolioCreate(name=name, owner_name=f"Hausverwaltung {name}"))
     prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name=f"{name}haus",
                                                 property_type="residential", address_line="Weg 1",
                                                 postal_code="12345", city="Stadt"))
-    unit = store.create_unit(UnitCreate(property_id=prop.id, label="W1", unit_type="residential", area_sqm=50,
+    unit = store.create_unit(UnitCreate(property_id=prop.id, label="W1", unit_type=unit_type, area_sqm=50,
                                         cold_rent=800, service_charge_advance=200))
     tenant = store.create_tenant(TenantCreate(full_name=f"Mieter {name}", email=email))
     contract = store.create_contract(ContractCreate(contract_number=number, property_id=prop.id, unit_id=unit.id,
@@ -179,6 +179,18 @@ def test_stages_follow_their_timing_and_charge_fee_and_interest_from_stage_two(c
     _letter(client, owner, contract, "2026-08-23")
     final = client.get(f"{API}/contracts/{contract}", headers=owner, params={"as_of": "2026-12-01"}).json()
     assert final["next"]["status"] == "final_stage" and final["cases"][0]["stage"] == 4
+
+
+def test_business_premises_owe_nine_points_above_the_base_rate(client, owner):
+    """§ 288 II BGB: no consumer involved (a shop, an office) – base rate + 9 points, not + 5."""
+    lease = _lease(unit_type="Gewerbe")
+    _letter(client, owner, lease["contract"].id, "2026-07-10")
+
+    second = _preview(client, owner, "2026-07-25", contract_id=lease["contract"].id)["entries"][0]["letter"]
+
+    # 1000 × (1.27 + 9) % × 22 days / 365 = 6.190 → 6.19
+    assert second["interest"] == 6.19
+    assert "§ 288 Abs. 2 BGB" in second["interest_note"] and "neun Prozentpunkten" in second["interest_note"]
 
 
 def test_stage_settings_are_configurable_and_installation_wide(client, owner):

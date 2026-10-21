@@ -3,7 +3,9 @@
 1. The booking names a unit and exactly one of the tenant's contracts is for it: that
    contract first; if the payment is more than it owes that month and other contracts
    run, the rest goes to them by rule 3.
-2. Exactly one contract runs on the booking date: all to that one.
+2. Exactly one contract runs on the booking date: all to that one. None runs (the first
+   rent paid before moving in, arrears paid after moving out) and the tenant has only
+   one contract: all to that one.
 3. Several run: the payment is split in proportion to what each owes that month,
    at most the sum of those amounts; the rest stays unassigned.
 4. Otherwise nothing is assigned; a person decides.
@@ -48,6 +50,8 @@ def suggest_allocation(amount: Decimal, booking_date: date, unit_id: Optional[st
             return [(first.contract_id, own)] + _split(amount - own, others)
     if len(running) == 1:
         return [(running[0].contract_id, amount)]
+    if not running and len(candidates) == 1:
+        return [(candidates[0].contract_id, amount)]
     owed = [c for c in running if c.monthly_due > 0]
     if not owed:
         return []
