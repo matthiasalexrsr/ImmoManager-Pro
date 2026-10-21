@@ -194,3 +194,36 @@ it('lädt den persönlichen Eingang erst, wenn die eingeklappte Übersicht geöf
     url.startsWith('/notifications/inbox?'))).toBe(true));
   expect(await screen.findByText('Keine Hinweise in dieser Ansicht.')).toBeInTheDocument();
 });
+
+it('uses committed task revisions for immediate follow-up edits and undo while old feed reads are pending', async () => {
+  const original = { work_item_key: 'task:t1:due', kind: 'task', entity_id: 't1', title: 'Rückruf',
+    href: '/tasks?focus_id=t1', revision: rev1, status: 'open', due_date: '2026-11-01', assignee: null, can_edit: true };
+  const reads = [deferred(), deferred(), deferred(), deferred()]; let request = 0;
+  api.get.mockImplementation(path => path.startsWith('/work-center/items')
+    ? request++ === 0 ? Promise.resolve({ items: [original], next_cursor: null }) : reads[request - 2].promise
+    : Promise.resolve(empty()));
+  const record = { id: 't1', title: 'Rückruf', status: 'open', due_date: '2026-11-06', assignee: null };
+  const rev3 = '2026-10-15T09:02:00Z', rev4 = '2026-10-15T09:03:00Z';
+  api.post.mockResolvedValueOnce({ record: { ...record, updated_at: rev2 }, revision: rev2, undo_id: 'u1' })
+    .mockResolvedValueOnce({ record: { ...record, assignee: 'QA Verwaltung', updated_at: rev3 }, revision: rev3, undo_id: 'u2' })
+    .mockResolvedValueOnce({ record: { ...record, updated_at: rev4 }, revision: rev4, undo_id: 'u3' })
+    .mockResolvedValueOnce({});
+  show(<WorkCenter />, '/work-center?kind=task');
+  fireEvent.click(await screen.findByRole('button', { name: 'Fälligkeit bearbeiten: Rückruf' }));
+  fireEvent.change(screen.getByLabelText('Fälligkeit', { exact: true }), { target: { value: '2026-11-06' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  await screen.findByRole('button', { name: 'Rückgängig', exact: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Zuständigkeit bearbeiten: Rückruf' }));
+  fireEvent.change(screen.getByLabelText('Zuständigkeit', { exact: true }), { target: { value: 'QA Verwaltung' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][1]).toMatchObject({ base_revision: rev2, changes: { assignee: 'QA Verwaltung' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Rückgängig', exact: true }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Rückgängig', exact: true })).not.toBeInTheDocument());
+  await act(async () => reads[0].resolve({ items: [original], next_cursor: null }));
+  fireEvent.click(screen.getByRole('button', { name: 'Status bearbeiten: Rückruf' }));
+  fireEvent.change(screen.getByLabelText('Status', { exact: true }), { target: { value: 'in_progress' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern', exact: true }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(4));
+  expect(api.post.mock.calls[3][1]).toMatchObject({ base_revision: rev4, changes: { status: 'in_progress' } });
+});

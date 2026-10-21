@@ -22,7 +22,15 @@ export default function useCursorFeed(path, enabled = true, loadPage = api.get) 
     });
     return () => { request.abort(); if (session.current === request) session.current = null; more.current?.abort(); };
   }, [path, enabled, attempt, loadPage]);
-  const retry = useCallback(() => setAttempt(value => value + 1), []);
+  const retry = useCallback(updateItem => {
+    // A successful command may supply its authoritative row immediately. Stop
+    // older reads synchronously so they cannot undo that row before the effect
+    // for the fresh request starts. Ordinary retry clicks pass no transformer.
+    session.current?.abort(); more.current?.abort(); more.current = null;
+    setState(previous => ({ ...previous, loading: true, loadingMore: false,
+      items: typeof updateItem === 'function' ? previous.items.map(updateItem) : previous.items }));
+    setAttempt(value => value + 1);
+  }, []);
   const loadMore = useCallback(() => {
     if (!enabled || !state.next_cursor || state.loading || more.current || state.path !== path) return;
     const owner = session.current;

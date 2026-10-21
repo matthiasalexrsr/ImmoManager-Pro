@@ -100,3 +100,19 @@ und die verpflichtende PostgreSQL-Prüfung fest. Vor der Korrektur schlugen 17
 der ersten 21 Gegenproben fehl; die zugehörigen Belege bleiben im privaten
 Freigabeverzeichnis erhalten. Eine genehmigte Lieferantengutschrift reduziert
 auch eine ältere Rechnung ohne angelegte Prüfakte, in Prognose und Periodenkosten.
+
+## Folgebearbeitung während einer laufenden Listenaktualisierung
+
+Die abschließende Büroprüfung zeigte bei zwei unmittelbar aufeinanderfolgenden
+Aufgabenänderungen einen falschen Versionskonflikt. Nach dem ersten Speichern
+verwendete die Arbeitszentrale vorübergehend die alte Listenrevision, obwohl der
+neue Datensatz bereits bestätigt war. Der Server wies den veralteten zweiten
+Aufruf korrekt zurück und erhielt die Eingabe.
+
+Speichern und Rückgängig übernehmen jetzt sofort den bestätigten Datensatz samt
+Revision. Der gemeinsame Listendienst bricht überholte Lesevorgänge unmittelbar
+ab, bevor er die neue Abfrage startet. Eine Regression verzögert diese Abfragen
+absichtlich, bearbeitet mehrere Felder, nimmt eine Änderung zurück und liefert
+danach noch eine alte Antwort aus. Jede Folgeänderung muss die jüngste bestätigte
+Revision verwenden. Die ursprüngliche fehlgeschlagene Windows-Prüfung bleibt
+als Nachweis erhalten; Prüfungen und Konfliktschutz werden nicht abgeschwächt.

@@ -39,8 +39,14 @@ export default function WorkCenter() {
   const feed = useCursorFeed(`/work-center/items?${query}`);
   const summaryQuery = new URLSearchParams(query); summaryQuery.delete('limit');
   const filter = (key, value) => setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); return next; });
-  const refresh = () => { setSummaryRevision(value => value + 1); feed.retry(); };
-  const changed = result => { setChange(result); store?.invalidateRelated('tasks'); refresh(); };
+  const refresh = updateItem => { setSummaryRevision(value => value + 1); feed.retry(updateItem); };
+  const taskChanged = result => {
+    store?.invalidateRelated('tasks');
+    refresh(item => item.kind === 'task' && item.entity_id === result.record?.id
+      ? { ...item, status: result.record.status, due_date: result.record.due_date,
+        assignee: result.record.assignee, revision: result.record.updated_at } : item);
+  };
+  const changed = result => { setChange(result); taskChanged(result); };
   return <div className="page work-center">
     <header className="work-center-header"><div><h1>Arbeitszentrale</h1><p>Offene Vorgänge, persönliche Wiedervorlagen und Ihre zuletzt verwendeten Akten.</p></div>
       <Link className="btn btn-secondary" to="/review">Prüfliste öffnen</Link></header>
@@ -79,7 +85,7 @@ export default function WorkCenter() {
         setParams(next);
       }} />
       </div>
-      {change && <UndoNotice key={change.undo_id} change={change} onDismiss={() => setChange(null)} onUndone={() => { store?.invalidateRelated('tasks'); setChange(null); refresh(); }} />}
+      {change && <UndoNotice key={change.undo_id} change={change} onDismiss={() => setChange(null)} onUndone={result => { setChange(null); taskChanged(result); }} />}
       <ul className="work-item-list">{feed.items.map(item => <li className="work-item" key={item.work_item_key}>
         <div className="work-item-heading"><h3><Link to={item.href}>{item.title}</Link></h3><span className="work-item-context">{LABELS[item.kind] || item.kind}</span></div>
         {item.subtitle && <p>{item.subtitle}</p>}
