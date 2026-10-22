@@ -118,6 +118,15 @@ export default function PropertyOwnership({ propertyId, units }) {
     });
     refresh();
   };
+  const undo = async change => {
+    if (!await confirm(`${change.kind_label} vom ${formatDate(change.effective_date)} rückgängig machen? Die Anteile werden wie vor dem Wechsel; der Wechsel bleibt im Verlauf vermerkt.`)) return;
+    try {
+      await api.post(`/ownership-shares/transfers/${encodeURIComponent(change.id)}/revert`, {});
+      refresh();
+    } catch (error) {
+      setState(current => ({ ...current, error: error.message }));
+    }
+  };
   const remove = async share => {
     if (!await confirm(`Anteil von ${ownerName(share.owner_contact_id)} an „${unitLabel(share.unit_id)}“ löschen?`, { action: 'delete' })) return;
     await api.del(`/ownership-shares/${encodeURIComponent(share.id)}`);
@@ -162,9 +171,11 @@ export default function PropertyOwnership({ propertyId, units }) {
             <table className="simple-table"><caption>{object.label}</caption>
               <thead><tr><th scope="col">Zeitraum</th><th scope="col">Eigentümer</th></tr></thead>
               <tbody>{object.periods.map(row => <tr key={row.from || 'start'}><th scope="row">{period(row)}</th><td>{owned(row.owners)}</td></tr>)}</tbody></table></div>)}
-        {history.transfers.length > 0 && <ul aria-label="Eigentümerwechsel">{history.transfers.map(change => <li key={change.id}>
-          {formatDate(change.effective_date)} · {change.kind_label}: {change.from_name} → {change.receivers.length ? change.receivers.map(r => `${r.name} (${percent(r.percent)})`).join(', ') : 'Dritte'}
-          {' '}({percent(change.fraction_percent)} des Anteils{change.scope === 'all' ? ' am ganzen Bestand im Objekt' : change.unit_label ? ` an ${change.unit_label}` : ' am Objekt'}){change.note ? ` – ${change.note}` : ''}</li>)}</ul>}
+        {history.transfers.length > 0 && <ul aria-label="Eigentümerwechsel">{history.transfers.map(change => <li key={change.id} className={change.reverted_at ? 'text-muted' : undefined}>
+          {change.reverted_at ? <del>{formatDate(change.effective_date)} · {change.kind_label}</del> : <>{formatDate(change.effective_date)} · {change.kind_label}</>}: {change.from_name} → {change.receivers.length ? change.receivers.map(r => `${r.name} (${percent(r.percent)})`).join(', ') : 'Dritte'}
+          {' '}({percent(change.fraction_percent)} des Anteils{change.scope === 'all' ? ' am ganzen Bestand im Objekt' : change.unit_label ? ` an ${change.unit_label}` : ' am Objekt'}){change.note ? ` – ${change.note}` : ''}
+          {change.reverted_at && ` – rückgängig gemacht am ${formatDate(change.reverted_at)}`}
+          {canEdit && change.revertible && <>{' '}<button type="button" className="btn btn-sm btn-ghost" onClick={() => undo(change)}>Rückgängig machen</button></>}</li>)}</ul>}
       </>}
     </div>
     {changing && <FormModal title="Eigentümerwechsel erfassen" fields={changeFields} initial={null} onSave={saveChange}

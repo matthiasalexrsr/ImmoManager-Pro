@@ -450,17 +450,23 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
         involved = {giver.id, *(r.id for r in receivers)}
         kind = TRANSFER_KINDS[data.kind]
         now = stamp("ownership_shares")
+        # what the change does to the shares, kept in the journal so that it can be undone (revert_transfer)
+        changes: dict[str, list] = {"ended": [], "removed": [], "created": []}
 
         def close(share: Any) -> None:
             if (share.valid_from or date.min) < day:
+                changes["ended"].append({"id": share.id, "valid_to": share.valid_to.isoformat() if share.valid_to else None})
                 rows.update("ownership_shares", share.id, valid_to=day - timedelta(days=1))
             else:
+                changes["removed"].append(share.model_dump(mode="json"))
                 rows.delete("ownership_shares", share.id)
 
         def open_share(owner: str, obj: Optional[str], percent: Decimal, note: Optional[str]) -> None:
-            rows.add("ownership_shares", OwnershipShare(
+            created = OwnershipShare(
                 id=str(uuid4()), owner_contact_id=owner, property_id=prop.id, unit_id=obj,
-                share_percent=float(percent), valid_from=day, valid_to=None, note=note, created_at=now, updated_at=now))
+                share_percent=float(percent), valid_from=day, valid_to=None, note=note, created_at=now, updated_at=now)
+            changes["created"].append(created.model_dump(mode="json"))
+            rows.add("ownership_shares", created)
 
         for obj in objects:
             own = [s for s in shares if s.unit_id == obj]
@@ -494,9 +500,60 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
             id=str(uuid4()), property_id=prop.id, unit_id=data.unit_id, scope=data.scope, effective_date=day,
             from_owner_contact_id=giver.id, fraction_percent=data.fraction_percent, kind=data.kind,
             receivers=[{"owner_contact_id": r.owner_contact_id, "percent": r.percent} for r in data.receivers],
-            note=data.note, actor_id=actor_id, created_at=now)
+            note=data.note, actor_id=actor_id, created_at=now, changes=changes)
         rows.add("ownership_transfers", record)
         return record
+
+
+SHARE_FIELDS = ("owner_contact_id", "property_id", "unit_id", "share_percent", "valid_from", "valid_to", "note")
+
+
+def revert_transfer(store: Any, transfer_id: str, actor_id: Optional[str]) -> Any:
+    """Undo the latest owner change of a property: the shares are as before it, the journal keeps it.
+
+    Only the latest change that is not undone yet, and only while the shares it ended and created
+    are as it left them; otherwise the shares are corrected by hand.
+    """
+    from .maintenance_projects import work
+    from .maintenance_rows import stamp
+
+    with work(store, actor_id, AREAS) as unit_of_work:
+        rows = Rows.of(unit_of_work)
+        transfer = rows.require("ownership_transfers", transfer_id, "Eigentümerwechsel nicht gefunden")
+        if transfer.reverted_at:
+            raise HTTPException(409, "Dieser Eigentümerwechsel ist schon rückgängig gemacht.")
+        if not transfer.changes:
+            raise HTTPException(409, "Dieser Eigentümerwechsel wurde vor dieser Version erfasst und lässt sich nicht "
+                                     "automatisch rückgängig machen. Bitte die Anteile von Hand korrigieren.")
+        later = [t for t in rows.find("ownership_transfers", property_id=transfer.property_id)
+                 if not t.reverted_at and t.id != transfer.id and str(t.created_at) > str(transfer.created_at)]
+        if later:
+            raise HTTPException(409, "Nach diesem Wechsel ist am Objekt schon ein weiterer erfasst. Bitte zuerst den "
+                                     "letzten Wechsel rückgängig machen.")
+        day = transfer.effective_date
+        current = {share.id: share for share in rows.find("ownership_shares", property_id=transfer.property_id)}
+
+        def unchanged(snapshot: dict) -> bool:
+            share = current.get(snapshot["id"])
+            if share is None:
+                return False
+            now = share.model_dump(mode="json")
+            return all(now[key] == snapshot[key] for key in SHARE_FIELDS)
+
+        ended_ok = all(entry["id"] in current and current[entry["id"]].valid_to == day - timedelta(days=1)
+                       for entry in transfer.changes["ended"])
+        if not ended_ok or not all(unchanged(snapshot) for snapshot in transfer.changes["created"]):
+            raise HTTPException(409, "Die Anteile wurden seit dem Wechsel von Hand geändert. Bitte die Anteile von Hand "
+                                     "korrigieren.")
+        for snapshot in transfer.changes["created"]:
+            rows.delete("ownership_shares", snapshot["id"])
+        for entry in transfer.changes["ended"]:
+            rows.update("ownership_shares", entry["id"],
+                        valid_to=date.fromisoformat(entry["valid_to"]) if entry["valid_to"] else None)
+        for snapshot in transfer.changes["removed"]:
+            rows.add("ownership_shares", OwnershipShare(**snapshot))
+        return rows.update("ownership_transfers", transfer.id, reverted_at=stamp("ownership_transfers"),
+                           reverted_by=actor_id)
 
 
 def _described(weights: dict[Optional[str], Decimal], names: dict[str, str]) -> list[dict[str, Any]]:
@@ -531,11 +588,15 @@ def history(store: Any, property_id: str) -> dict[str, Any]:
 
     journal = sorted(Rows.reading(store).find("ownership_transfers", property_id=prop.id),
                      key=lambda t: (t.effective_date, str(t.created_at)))
+    in_force = sorted((t for t in journal if not t.reverted_at), key=lambda t: str(t.created_at))
+    latest = in_force[-1].id if in_force else None
     return {
         "property_id": prop.id,
         "objects": [{"unit_id": None, "label": "Ganzes Objekt", "periods": periods(None)},
                     *({"unit_id": u.id, "label": u.label, "periods": periods(u.id)} for u in units)],
-        "transfers": [{**t.model_dump(mode="json"), "kind_label": TRANSFER_KINDS.get(t.kind, t.kind),
+        "transfers": [{**t.model_dump(mode="json", exclude={"changes"}), "kind_label": TRANSFER_KINDS.get(t.kind, t.kind),
+                       # only the latest change still in force can be undone (revert_transfer)
+                       "revertible": t.id == latest and bool(t.changes),
                        "from_name": names.get(t.from_owner_contact_id, "Eigentümer"),
                        "unit_label": next((u.label for u in units if u.id == t.unit_id), None),
                        "receivers": [{**r, "name": names.get(r["owner_contact_id"], "Eigentümer")} for r in t.receivers]}

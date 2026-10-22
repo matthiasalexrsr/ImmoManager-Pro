@@ -24,7 +24,7 @@ const past = { property_id: 'house', objects: [{ unit_id: 'we1', label: 'WE 1', 
   { from: null, to: '2026-07-15', owners: [{ owner_contact_id: 'm', name: 'Matthias', percent: 100 }] },
   { from: '2026-07-16', to: null, owners: [{ owner_contact_id: 'linda', name: 'Linda', percent: 100 }] }] }],
 transfers: [{ id: 't1', effective_date: '2026-07-16', kind_label: 'Kauf', from_name: 'Matthias', fraction_percent: 100, scope: 'object',
-  unit_label: 'WE 1', receivers: [{ owner_contact_id: 'linda', name: 'Linda', percent: 100 }], note: 'Notarvertrag' }] };
+  unit_label: 'WE 1', receivers: [{ owner_contact_id: 'linda', name: 'Linda', percent: 100 }], note: 'Notarvertrag', revertible: true }] };
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -84,5 +84,15 @@ describe('Eigentümer', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/budgets/analysis?owner_contact_id=m'));
     expect(await screen.findByText('Geplant – Anteil Matthias')).toBeInTheDocument();
     expect(screen.getByText(/450,00/)).toBeInTheDocument();
+  });
+
+  it('undoes the latest change from the history', async () => {
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/history') ? past : overview));
+    api.list.mockImplementation(path => Promise.resolve(path.startsWith('/ownership-shares/owners') ? owners : shares));
+    api.post.mockResolvedValue({});
+    render(<MemoryRouter><PropertyOwnership propertyId="house" units={units} /></MemoryRouter>);
+    const journal = await screen.findByRole('list', { name: 'Eigentümerwechsel' });
+    fireEvent.click(within(journal).getByRole('button', { name: 'Rückgängig machen' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ownership-shares/transfers/t1/revert', {}));
   });
 });

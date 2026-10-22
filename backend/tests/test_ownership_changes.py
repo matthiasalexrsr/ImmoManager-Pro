@@ -155,3 +155,47 @@ def test_changes_that_do_not_fit_are_refused(estate):
     transfer("Linda", [], "2026-12-01", "WE 1", kind="sale_external")
     assert owners_on(estate, date(2026, 12, 1), "WE 1") == {"nobody": 100}
     assert "Eigentümerwechsel" in said(estate["call"]("DELETE", f"/contacts/{estate['people']['Linda']}", expected=409))
+
+
+def test_the_latest_change_can_be_undone_while_its_shares_are_untouched(estate):
+    call = estate["call"]
+    estate["share"]("Richard", 50, "WE 3")
+    estate["share"]("Matthias", 50, "WE 3")
+    first = estate["transfer"]("Richard", [("Linda", 50), ("Matthias", 50)], "2026-10-01", "WE 3")
+    second = estate["transfer"]("Linda", [("Sabine", 100)], "2026-11-01", "WE 3")
+    # only the latest change can be undone
+    assert "letzten Wechsel" in said(call("POST", f"/ownership-shares/transfers/{first['id']}/revert", expected=409))
+    history = call("GET", f"/ownership-shares/history?property_id={estate['house']}")
+    assert [(t["id"] == second["id"], t["revertible"]) for t in history["transfers"]] == [(False, False), (True, True)]
+    call("POST", f"/ownership-shares/transfers/{second['id']}/revert")
+    assert held(estate, "WE 3") == [("Linda", 25, "2026-10-01", None), ("Matthias", 50, None, "2026-09-30"),
+                                    ("Matthias", 75, "2026-10-01", None), ("Richard", 50, None, "2026-09-30")]
+    call("POST", f"/ownership-shares/transfers/{first['id']}/revert")
+    assert held(estate, "WE 3") == [("Matthias", 50, None, None), ("Richard", 50, None, None)]
+    assert owners_on(estate, date(2026, 12, 1), "WE 3") == {"Matthias": 50, "Richard": 50}
+    # the journal keeps both, marked as undone
+    journal = call("GET", f"/ownership-shares/history?property_id={estate['house']}")["transfers"]
+    assert all(t["reverted_at"] for t in journal) and not any(t["revertible"] for t in journal)
+    assert "schon rückgängig" in said(call("POST", f"/ownership-shares/transfers/{first['id']}/revert", expected=409))
+
+
+def test_a_change_whose_shares_were_edited_by_hand_is_not_undone(estate):
+    call = estate["call"]
+    estate["share"]("Matthias", 100, "WE 1")
+    sale = estate["transfer"]("Matthias", [("Linda", 100)], "2026-07-16", "WE 1")
+    linda = next(s for s in list_shares(store, property_id=estate["house"]) if s.owner_contact_id == estate["people"]["Linda"])
+    call("PUT", f"/ownership-shares/{linda.id}", {"owner_contact_id": linda.owner_contact_id, "property_id": linda.property_id,
+                                                 "unit_id": linda.unit_id, "share_percent": 90, "valid_from": "2026-07-16"})
+    assert "von Hand" in said(call("POST", f"/ownership-shares/transfers/{sale['id']}/revert", expected=409))
+
+
+def test_two_heirs_on_one_day_are_undone_one_after_the_other(estate):
+    call = estate["call"]
+    estate["share"]("Sabine", 50, "WE 2")
+    estate["share"]("Richard", 50, "WE 2")
+    firsts = [estate["transfer"](heir, [("Linda", 100)], "2026-09-01", "WE 2", kind="inheritance") for heir in ("Sabine", "Richard")]
+    call("POST", f"/ownership-shares/transfers/{firsts[1]['id']}/revert")
+    assert held(estate, "WE 2") == [("Linda", 50, "2026-09-01", None), ("Richard", 50, None, None),
+                                    ("Sabine", 50, None, "2026-08-31")]
+    call("POST", f"/ownership-shares/transfers/{firsts[0]['id']}/revert")
+    assert held(estate, "WE 2") == [("Richard", 50, None, None), ("Sabine", 50, None, None)]

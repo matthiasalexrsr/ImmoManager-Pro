@@ -53,6 +53,15 @@ def record_transfer(payload: OwnershipTransferCreate, actor: Actor):
     return service.record_transfer(store, payload, actor.id)
 
 
+@router.post("/transfers/{transfer_id}/revert", response_model=OwnershipTransfer)
+def revert_transfer(transfer_id: str, actor: Actor):
+    """Undo the latest owner change of a property, while its shares are as it left them."""
+    try:
+        return service.revert_transfer(store, transfer_id, actor.id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
 @router.post("", response_model=OwnershipShare, status_code=status.HTTP_201_CREATED)
 def create_share(payload: OwnershipShareCreate, actor: Actor):
     return service.create_share(store, payload, actor.id)
