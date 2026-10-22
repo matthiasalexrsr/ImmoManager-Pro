@@ -115,3 +115,24 @@ def test_the_finance_reports_carry_the_owners_parts(estate):
     plain = finance_reports.compute(store, ReportDefinition(kind="cash-v2", as_of=date(2026, 3, 31),
                                                             date_from=date(2026, 3, 1)))
     assert "owner_contact_id" not in plain["definition"]
+
+
+def test_budgets_split_by_the_owners_part_of_the_house(estate):
+    from backend.models import BudgetCreate
+    budget = store.create_budget(BudgetCreate(property_id=estate["house"], year=2026, category="maintenance",
+                                              planned_amount=1000, actual_amount=200))
+    whole = estate["get"]("/budgets/analysis?year=2026")
+    mine = estate["get"](f"/budgets/analysis?year=2026&owner_contact_id={estate['m']}")
+    hers = estate["get"](f"/budgets/analysis?year=2026&owner_contact_id={estate['linda']}")
+    # WE 1 (50 m²) Matthias, WE 3 (80 m²) half: 45 % of the house
+    assert (mine["total_planned"], mine["total_actual"]) == (450, 90)
+    assert (hers["total_planned"], hers["total_actual"]) == (550, 110)
+    assert whole["total_planned"] == mine["total_planned"] + hers["total_planned"]
+    assert [row["id"] for row in mine["by_category"]] == [budget.id]
+
+
+def test_the_review_list_names_units_without_an_owner(estate):
+    from backend.models import UnitCreate
+    store.create_unit(UnitCreate(property_id=estate["house"], label="WE 4", unit_type="Wohnung", area_sqm=40))
+    items = [item for item in estate["get"]("/review")["items"] if item["kind"] == "ownership_incomplete"]
+    assert len(items) == 1 and "WE 4: 100 % ohne Eigentümer" in items[0]["detail"]

@@ -129,6 +129,10 @@ class Ownership:
         return self.split(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
                           booking.booking_date, getattr(booking, "owner_contact_id", None))
 
+    def has_shares(self, property_id: str) -> bool:
+        """Whether any share names the property or one of its units."""
+        return any(key[0] == property_id for key in self._shares)
+
     def owns(self, owner: Optional[str], property_id: Optional[str], unit_id: Optional[str], day: date) -> bool:
         return self.weights(property_id, unit_id, day).get(owner, ZERO) > 0
 

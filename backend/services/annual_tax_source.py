@@ -14,7 +14,8 @@ from .tax_support import _memory_lock, _snapshot
 
 BATCH_SIZE = 1000  # A transfer buffer, never a record/export limit.
 FIELDS = ("id", "account_id", "category_id", "property_id", "unit_id", "tenant_id", "booking_date",
-          "amount", "reverses_booking_id", "status", "payment_text", "receipt_url", "updated_at", "tax_year")
+          "amount", "reverses_booking_id", "status", "payment_text", "receipt_url", "updated_at", "tax_year",
+          "owner_contact_id")
 
 
 def in_tax_year(book, year):
@@ -61,8 +62,9 @@ def _query(portfolio_id, year, captured):
 
 def _safe_entry(row):
     result = dict(row)
-    if result.get("tax_year") is None:
-        result.pop("tax_year", None)      # rows without one stay as they were (source hashes)
+    for optional in ("tax_year", "owner_contact_id"):
+        if result.get(optional) is None:
+            result.pop(optional, None)      # rows without one stay as they were (source hashes)
     for key in ("booking_date", "updated_at"):
         if result[key] is not None:
             result[key] = result[key].isoformat()

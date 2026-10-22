@@ -1,14 +1,17 @@
 """Budget planning router (T27)."""
 
+from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..dependencies import store
-from ..domain.money import as_number, money, money_sum
+from ..domain.money import as_number, money_sum
 from ..models import Budget, BudgetCreate, BudgetPatch
 from ..services import budget_actuals
+from ..services.ownership import OwnerView
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/budgets", tags=["Budgetplanung"])
@@ -45,15 +48,30 @@ def create_budget(payload: BudgetCreate):
 def budget_analysis(
     property_id: str | None = Query(None),
     year: int | None = Query(None),
+    owner_contact_id: str | None = Query(None, description="Nur der Anteil dieses Eigentümers (none: ohne Eigentümer)"),
 ):
-    """Budget vs. actual analysis with deviation."""
+    """Budget vs. actual analysis with deviation.
+
+    A budget belongs to its whole property. With an owner, planned and actual amounts count with the
+    owner's part of the property on 1 January of the budget's year (services.ownership: the property's
+    shares, else the units' owners by living area); the owners' parts add up to the budget.
+    """
     results = store.list_budgets()
     if property_id:
         results = [b for b in results if b.property_id == property_id]
     if year:
         results = [b for b in results if b.year == year]
-    total_planned = money_sum(b.planned_amount for b in results)
-    total_actual = money_sum(b.actual_amount for b in results)
+    view = OwnerView(store, SimpleNamespace(owner_contact_id=owner_contact_id or None))
+
+    def owned(budget: Budget, amount: float) -> Decimal:
+        return view.part(amount, budget.property_id, None, date(budget.year, 1, 1))
+
+    if view.active:
+        results = [b for b in results if view.owns(b.property_id, None, date(b.year, 1, 1))]
+    planned = {b.id: owned(b, b.planned_amount) for b in results}
+    actual = {b.id: owned(b, b.actual_amount) for b in results}
+    total_planned = money_sum(planned.values())
+    total_actual = money_sum(actual.values())
 
     def utilization(actual: Decimal, planned: Decimal) -> float:
         return float(actual / planned * 100) if planned else 0
@@ -67,10 +85,10 @@ def budget_analysis(
             {
                 "id": b.id,
                 "category": b.category,
-                "planned": as_number(money(b.planned_amount)),
-                "actual": as_number(money(b.actual_amount)),
-                "deviation": as_number(money(b.actual_amount) - money(b.planned_amount)),
-                "utilization_percent": utilization(money(b.actual_amount), money(b.planned_amount)),
+                "planned": as_number(planned[b.id]),
+                "actual": as_number(actual[b.id]),
+                "deviation": as_number(actual[b.id] - planned[b.id]),
+                "utilization_percent": utilization(actual[b.id], planned[b.id]),
             }
             for b in results
         ],

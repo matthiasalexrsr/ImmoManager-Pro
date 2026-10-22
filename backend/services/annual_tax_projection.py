@@ -6,6 +6,7 @@ from collections import defaultdict
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -155,6 +156,11 @@ def compile_projection(store, profile, command, *, parent=None):
         "tax_rule_source": "user_reviewed_classification", "generated_at": datetime.now(timezone.utc).isoformat()}
     cleanup, digest = ExitStack(), hashlib.sha256()
     seen = set()
+    # each owner's part of every counted amount, by the shares recorded (services.ownership); it adds
+    # up to the groups to the cent and changes nothing of the projection itself
+    from .ownership import Ownership, owner_name
+    ownership = Ownership(store)
+    owner_split: defaultdict[tuple, int] = defaultdict(int)
     try:
         workspace, _ = cleanup.enter_context(private_workspace(parent))
         path = workspace / "sources.jsonl"
@@ -202,6 +208,12 @@ def compile_projection(store, profile, command, *, parent=None):
                         totals["excluded_cash_cents"] += cash
                         continue
                     effective = cash if kind == "income" else -cash
+                    if ownership.recorded or entry.get("owner_contact_id"):
+                        unit = entry.get("unit_id") if part["property_id"] == entry.get("property_id") else None
+                        for owner, share in ownership.split(Decimal(effective) / 100, part["property_id"], unit,
+                                                            date.fromisoformat(entry["booking_date"]),
+                                                            entry.get("owner_contact_id")).items():
+                            owner_split[(owner or "", part["property_id"] or "", kind, part["form_line"] or "")] += int(share * 100)
                     totals[kind + "_cents"] += effective
                     key = (part["property_id"], kind, part["form_line"])
                     group = groups.setdefault(key, {"property_id": part["property_id"], "property_name": part["property_name"],
@@ -235,9 +247,18 @@ def compile_projection(store, profile, command, *, parent=None):
             cash_reconciled=reconciliation and "invalid_cash_amount" not in issue_counts,
             cash_totals_complete="invalid_cash_amount" not in issue_counts, tax_totals_complete=not issue_counts,
             note="Keine automatische AfA, Eigentümerquote oder Steuer-/WISO-Formularprüfung.")
+        hashed = {}
+        if owner_split:
+            names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
+            manifest["owner_split"] = [
+                {"owner_contact_id": owner or None, "owner_name": names.get(owner, "Ohne Eigentümer") if owner else "Ohne Eigentümer",
+                 "property_id": prop or None, "treatment": kind, "form_line": line or None, "amount_cents": str(value)}
+                for (owner, prop, kind, line), value in sorted(owner_split.items())]
+            hashed["owners"] = manifest["owner_split"]
         request = command.model_dump(mode="json", exclude={"preview_hash", "idempotency_key", "previous_projection_id", "revision_reason"})
         manifest["preview_hash"] = fingerprint({"profile": profile["sha256"], "source": manifest["source_sha256"],
-            "request": request, "totals": manifest["totals"], "groups": manifest["groups"], "issues": manifest["blocking_issue_counts"]})
+            "request": request, "totals": manifest["totals"], "groups": manifest["groups"], "issues": manifest["blocking_issue_counts"],
+            **hashed})
         if spec.get("wiso_preparation"):
             from .wiso_preparation import prepare
             manifest["wiso_preparation"] = prepare(profile, manifest)

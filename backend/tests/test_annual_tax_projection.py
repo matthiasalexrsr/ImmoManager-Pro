@@ -331,3 +331,27 @@ def test_another_tax_year_is_only_for_the_ten_days_around_the_turn_of_the_year()
         paid(date(2024, 12, 30), 2023)
     assert paid(date(2024, 12, 22), 2025).tax_year == 2025
     assert paid(date(2025, 1, 10), 2024).tax_year == 2024
+
+
+def test_the_projection_shows_each_owners_part_and_keeps_its_totals(tax_store):
+    from backend.models import ContactCreate
+    from backend.models_ownership import OwnershipShareCreate
+    from backend.services import ownership
+
+    store, _, _, properties, _, _ = tax_store
+    plain = service.preflight(store, preflight_command(service.create_profile(store, profile_command(
+        tax_store, idempotency_key="plain"), "actor")))
+    assert "owner_split" not in plain       # no shares: the projection is what it was
+    anna = store.create_contact(ContactCreate(contact_type="owner", first_name="Anna"))
+    ben = store.create_contact(ContactCreate(contact_type="owner", first_name="Ben"))
+    for owner, percent in ((anna, 60), (ben, 40)):
+        ownership.create_share(store, OwnershipShareCreate(owner_contact_id=owner.id, property_id=properties[0].id,
+                                                           share_percent=percent), None)
+    booking(tax_store, 100.01)
+    booking(tax_store, -30.10, category=1)
+    booking(tax_store, -10, category=1, owner_contact_id=ben.id)     # Ben's own cost
+    version = service.create_profile(store, profile_command(tax_store), "actor")
+    checked = service.preflight(store, preflight_command(version))
+    assert checked["ready"] and checked["totals"]["income_cents"] == "10001" and checked["totals"]["expense_cents"] == "4010"
+    split = {(row["owner_name"], row["treatment"]): int(row["amount_cents"]) for row in checked["owner_split"]}
+    assert split == {("Anna", "income"): 6001, ("Ben", "income"): 4000, ("Anna", "expense"): 1806, ("Ben", "expense"): 2204}

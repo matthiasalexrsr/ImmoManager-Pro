@@ -36,6 +36,11 @@ def _eur(value: Any) -> str:
     return f"{_money(value):,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _percent(value: Decimal) -> str:
+    text = f"{value.quantize(Decimal('0.01'))}".rstrip("0").rstrip(".")
+    return text.replace(".", ",") + " %"
+
+
 def _day(value: date) -> str:
     return value.strftime("%d.%m.%Y")
 
@@ -188,6 +193,32 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "detail": f"IBAN {mask_iban(iban)}: Ein Bankkonto ist mehrfach angelegt, sein Saldo zählt mehrfach. "
                           "Buchungen auf ein Konto umbuchen und die übrigen löschen.",
                 "entity_type": "account", "entity_id": accounts[0].id, "link": "/accounts"})
+
+    # owners: a property with shares whose money partly belongs to nobody recorded (services.ownership)
+    from .ownership import Ownership
+
+    ownership = Ownership(store)
+    if ownership.recorded:
+        units_of: dict[str, list[Any]] = {}
+        for unit in store.list_units():
+            units_of.setdefault(unit.property_id, []).append(unit)
+        for prop in store.list_properties():
+            if not ownership.has_shares(prop.id):
+                continue
+            gaps = [(unit.label, ownership.weights(prop.id, unit.id, today).get(None, Decimal("0")))
+                    for unit in sorted(units_of.get(prop.id, []), key=lambda u: u.label or "")]
+            gaps = [(label, rest) for label, rest in gaps if rest > 0]
+            whole = ownership.weights(prop.id, None, today).get(None, Decimal("0"))
+            if gaps or whole > 0:
+                parts = [f"{label}: {_percent(rest)} ohne Eigentümer" for label, rest in gaps]
+                if whole > 0 and not gaps:
+                    parts.append(f"das Objekt: {_percent(whole)} ohne Eigentümer")
+                items.append({
+                    "kind": "ownership_incomplete", "severity": "warning",
+                    "title": f"Eigentumsanteile von {prop.name} unvollständig",
+                    "detail": "Heute gehören " + "; ".join(parts) + ". Dieser Teil fehlt in den Berichten je "
+                              "Eigentümer und steht dort unter „Ohne Eigentümer“.",
+                    "entity_type": "property", "entity_id": prop.id, "link": f"/properties/{prop.id}"})
 
     bookings = store.list_bookings()
     credited: dict[str, Decimal] = {}
