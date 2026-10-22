@@ -91,6 +91,7 @@
 .dossier-table-scroll {
   max-width: 100%;
   overflow-x: auto;
+  position: relative; /* screen-reader-only headers stay inside the scroll area */
 }
 
 /* The property page as the place to act on a property: edit it and start what belongs to it. */
