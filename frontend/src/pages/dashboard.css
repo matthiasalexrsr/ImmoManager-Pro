@@ -88,6 +88,7 @@
 /* The work view's tiles: order and visibility chosen per person (Kacheln anpassen). */
 .dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .dashboard-toolbar .dashboard-view-switch { margin-bottom: 0; }
+.dashboard-owner { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
 .dashboard-tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 22px 22px; align-items: start; grid-auto-flow: row dense; }
 .dashboard-tile { min-width: 0; grid-column: span 12; }
 .dashboard-tile--wide { grid-column: span 7; }

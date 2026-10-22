@@ -65,6 +65,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const unitSource = useEntities('units', '/units');
   const { items: units } = unitSource;
   const { items: tenants } = useEntities('tenants', '/tenants');
+  const { items: owners } = useEntities('owners', '/ownership-shares/owners');
 
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -303,6 +304,10 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       options: [{ value: '', label: noneOpt }, ...units.map(u => ({ value: u.id, label: u.label }))] },
     { key: 'tenant_id', label: t('tenantsContracts.tenants.title') || 'Mieter', type: 'select',
       options: [{ value: '', label: noneOpt }, ...tenants.map(tn => ({ value: tn.id, label: tn.full_name }))] },
+    // money of one owner alone (a withdrawal, their own cost); otherwise the owners' shares split it
+    ...(owners.length ? [{ key: 'owner_contact_id', label: 'Gehört allein dem Eigentümer', type: 'select',
+      options: [{ value: '', label: 'Nach den Eigentumsanteilen' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))],
+      hint: 'Nur für Geld, das einem Eigentümer allein gehört, z. B. eine Entnahme. Leer: nach den Anteilen an Einheit oder Objekt.' }] : []),
     { key: 'booking_date', label: t('finance.bookings.form.bookingDate') || 'Buchungsdatum', type: 'date', required: true },
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext' },

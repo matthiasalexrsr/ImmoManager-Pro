@@ -8,7 +8,7 @@ import { financeCommandKey, forgetFinanceCommand, readFinanceCommand, rememberFi
 
 const today = () => new Date().toLocaleDateString('sv-SE');
 
-const queryKeys = ['kind', 'as_of', 'date_from', 'date_to', 'portfolio_id', 'property_id', 'unit_id'];
+const queryKeys = ['kind', 'as_of', 'date_from', 'date_to', 'portfolio_id', 'property_id', 'unit_id', 'owner_contact_id'];
 const reportKinds = ['cash-v2', 'performance-period-v2', 'liquidity-v2'];
 const queryDefinition = params => Object.fromEntries(queryKeys.flatMap(key => {
   const value = params.get(key);
@@ -44,6 +44,7 @@ function ReportEditor({ standalone = false }) {
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
   const [portfolios, setPortfolios] = useState([]);
+  const [owners, setOwners] = useState([]);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [referenceError, setReferenceError] = useState('');
   const [referencesReady, setReferencesReady] = useState(false);
@@ -79,10 +80,10 @@ function ReportEditor({ standalone = false }) {
     setReferencesReady(false); setReferenceError('');
     Promise.all([api.list('/reports/v2/saved', { signal: controller.signal }),
       api.list('/properties', { signal: controller.signal }), api.list('/units', { signal: controller.signal }),
-      api.list('/portfolios', { signal: controller.signal })])
-      .then(([reports, props, allUnits, allPortfolios]) => {
+      api.list('/portfolios', { signal: controller.signal }), api.list('/ownership-shares/owners', { signal: controller.signal })])
+      .then(([reports, props, allUnits, allPortfolios, allOwners]) => {
         current(); if (controller.signal.aborted) return;
-        setSaved(reports); setProperties(props); setUnits(allUnits); setPortfolios(allPortfolios); setReferencesReady(true);
+        setSaved(reports); setProperties(props); setUnits(allUnits); setPortfolios(allPortfolios); setOwners(allOwners); setReferencesReady(true);
       })
       .catch(e => { if (!controller.signal.aborted) setReferenceError(e.message); });
     return () => controller.abort();
@@ -183,8 +184,14 @@ function ReportEditor({ standalone = false }) {
       <option value="">Alle Einheiten und Objektkosten</option>{selectedUnits.map(unit => <option key={unit.id} value={unit.id}>{unit.label || unit.unit_number || unit.id}{!definition.property_id ? ` · ${properties.find(property => property.id === unit.property_id)?.name || 'Immobilie'}` : ''}</option>)}
       {definition.unit_id && !selectedUnits.some(unit => unit.id === definition.unit_id) && <option value={definition.unit_id}>Nicht verfügbare Einheit ({definition.unit_id})</option>}
     </select></label>
+    {(owners.length > 0 || definition.owner_contact_id) && <label>Eigentümer <select aria-label="Eigentümer" disabled={!referencesReady} value={definition.owner_contact_id || ''} onChange={e => change('owner_contact_id', e.target.value || null)}>
+      <option value="">Alle Eigentümer (ganzer Bestand)</option>{owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+      <option value="none">Ohne erfassten Eigentümer</option>
+      {definition.owner_contact_id && definition.owner_contact_id !== 'none' && !owners.some(owner => owner.id === definition.owner_contact_id) && <option value={definition.owner_contact_id}>Nicht verfügbarer Eigentümer ({definition.owner_contact_id})</option>}
+    </select></label>}
     </div>
-    {(definition.portfolio_id || definition.property_id || definition.unit_id) && <button className="btn btn-secondary finance-reset-selection" type="button" onClick={() => update({ ...definition, portfolio_id: null, property_id: null, unit_id: null, vacant_unit_ids: [] })}>Objektauswahl zurücksetzen</button>}
+    {definition.owner_contact_id && <p className="finance-help">Jeder Betrag zählt mit dem Anteil des Eigentümers an Einheit oder Objekt am jeweiligen Tag; Kontoeröffnungssalden zählen nicht. Die Eigentümer ergeben zusammen den ganzen Bestand.</p>}
+    {(definition.portfolio_id || definition.property_id || definition.unit_id || definition.owner_contact_id) && <button className="btn btn-secondary finance-reset-selection" type="button" onClick={() => update({ ...definition, portfolio_id: null, property_id: null, unit_id: null, owner_contact_id: null, vacant_unit_ids: [] })}>Objektauswahl zurücksetzen</button>}
     {definition.property_id && <div className="finance-actions"><Link to={`/properties/${encodeURIComponent(definition.property_id)}`}>Immobilienakte öffnen →</Link>{definition.unit_id && <Link to={`/units/${encodeURIComponent(definition.unit_id)}`}>Einheitenakte öffnen →</Link>}</div>}
     {definition.kind !== 'liquidity-v2' ? <>
       <div className="finance-actions" role="group" aria-label="Zeitraum schnell auswählen"><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('year')}>Stichtagsjahr</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('previous')}>Vorjahr</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('twelve')}>Letzte 12 Monate</button><button className="btn btn-secondary" type="button" onClick={() => selectPeriod('reset')}>Zeitraum zurücksetzen</button></div>
@@ -235,6 +242,7 @@ function ReportEditor({ standalone = false }) {
     </fieldset>
     {busy && <p role="status">Bericht wird verarbeitet …</p>}
     {result && <ReportResult key={result.result_hash || result.definition_hash} result={result} />}
+    {definition.kind === 'performance-period-v2' && owners.length > 0 && <OwnerResults definition={definition} onPick={id => change('owner_contact_id', id)} />}
   </div>;
 }
 
@@ -266,7 +274,7 @@ function ReportResult({ result }) {
   return <section className="finance-result" aria-label="Berechneter Bericht">
     <h2>Ergebnis und Quellen</h2><p className="finance-help">{payment ? 'Tatsächliche Zahlungen' : plan ? 'Szenario und Basisprognose' : 'Sollmiete + sonstige Einnahmen − Kosten'} · {result.currency || 'EUR'}{result.filters?.date_from && ` · ${formatDate(result.filters.date_from)}`}{result.filters?.date_to && ` bis ${formatDate(result.filters.date_to)}`}</p>
     <div className="finance-result-metrics">{metrics.map(([label, value, role]) => <div className="finance-result-metric" key={label}><span>{label}</span><strong className={Number(value) < 0 ? 'is-negative' : ''}>{value == null ? 'Nicht übermittelt' : cash(value)}</strong>
-      {payment ? <Link to={`/bookings?${query}${{ Einnahmen: '&flow=income', Ausgaben: '&flow=expense', Entnahmen: '&flow=withdrawal', Einlagen: '&flow=contribution' }[label] || ''}`}>Buchungen prüfen →</Link> : <button type="button" disabled={value == null} onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
+      {payment && !result.filters?.owner_contact_id ? <Link to={`/bookings?${query}${{ Einnahmen: '&flow=income', Ausgaben: '&flow=expense', Entnahmen: '&flow=withdrawal', Einlagen: '&flow=contribution' }[label] || ''}`}>Buchungen prüfen →</Link> : <button type="button" disabled={value == null} onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
     <div className="finance-table-scroll"><table><caption>Monatsverlauf</caption><thead><tr><th scope="col">Monat</th><th scope="col">{plan || payment ? 'Eingänge' : 'Sollmiete'}</th>{!plan && !payment && <th scope="col">Sonstige Einnahmen</th>}<th scope="col">{plan || payment ? 'Ausgänge' : 'Kosten'}</th><th scope="col">{plan ? 'Saldo Szenario' : payment ? 'Saldo' : 'Ergebnis'}</th>{result.baseline_monthly && <th scope="col">Saldo Basis</th>}</tr></thead><tbody>
       {result.monthly.map(row => <tr key={row.month}><th scope="row"><button type="button" onClick={() => reveal(row.month)} aria-label={`Quellen für ${row.month} anzeigen`}>{row.month}</button></th><td>{cash(row.income ?? row.rent_due)}</td>{!plan && !payment && <td>{cash(row.other_income)}</td>}<td>{cash(row.expense ?? row.costs)}</td><td>{cash(row.balance ?? row.net ?? row.result)}</td>{result.baseline_monthly && <td>{cash(result.baseline_monthly.find(baseline => baseline.month === row.month)?.balance)}</td>}</tr>)}
     </tbody></table></div>
@@ -283,5 +291,37 @@ function ReportResult({ result }) {
       <div className="finance-source-pagination"><span role="status">{sources.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, sources.length)} von ${sources.length} Quellen` : '0 Quellen'}</span><div className="finance-actions"><button className="btn btn-secondary" type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Vorherige Quellen</button><button className="btn btn-secondary" type="button" disabled={(currentPage + 1) * pageSize >= sources.length} onClick={() => setPage(currentPage + 1)}>Weitere Quellen</button></div></div>
     </section>
     <details className="finance-proof"><summary>Berechnungsnachweis</summary><p>Definition: {result.definition_hash} · Ergebnis: {result.result_hash || 'Nicht übermittelt'}</p><p>Exporte werden vor der Ausgabe erneut mit dem Ergebnisstand abgeglichen. Eine gespeicherte Definition wird beim Öffnen mit aktuellen Daten neu berechnet.</p></details>
+  </section>;
+}
+
+// The period result and the owners' own money per owner; the rows add up to the whole (reports/owner-results).
+function OwnerResults({ definition, onPick }) {
+  const [state, setState] = useState({ status: 'idle', data: null, error: '', query: '' });
+  const year = (definition.as_of || today()).slice(0, 4);
+  const query = new URLSearchParams(Object.entries({ date_from: definition.date_from || `${year}-01-01`, date_to: definition.date_to || `${year}-12-31`,
+    portfolio_id: definition.portfolio_id, property_id: definition.property_id, unit_id: definition.unit_id }).filter(([, value]) => value)).toString();
+  const load = async () => {
+    const asked = query;
+    setState({ status: 'loading', data: null, error: '', query: asked });
+    // a later calculation (or another selection) wins over an earlier answer
+    const settle = next => setState(current => current.query === asked ? { ...next, query: asked } : current);
+    try { settle({ status: 'ready', data: await api.get(`/reports/owner-results?${asked}`), error: '' }); }
+    catch (e) { settle({ status: 'error', data: null, error: e.message }); }
+  };
+  const current = state.query === query;
+  const shown = current ? state.data : null;
+  const money = value => formatMoney(value);
+  return <section className="finance-result" aria-label="Ergebnis je Eigentümer">
+    <h2>Ergebnis je Eigentümer</h2>
+    <p className="finance-help">Sollmiete, Erträge und Kosten nach den Eigentumsanteilen an Einheiten und Objekten; Entnahmen und Einlagen des jeweiligen Eigentümers daneben. Die Zeilen ergeben zusammen das Ergebnis des ganzen Bestands.</p>
+    <button type="button" className="btn btn-secondary" disabled={state.status === 'loading'} onClick={load}>{shown ? 'Neu berechnen' : 'Ergebnis je Eigentümer berechnen'}</button>
+    {current && state.status === 'loading' && <p role="status">Wird berechnet …</p>}
+    {current && state.status === 'error' && <p role="alert">{state.error}</p>}
+    {shown && <div className="finance-table-scroll"><table><caption>Ergebnis je Eigentümer</caption><thead><tr>
+      <th scope="col">Eigentümer</th><th scope="col">Sollmiete</th><th scope="col">Sonstige Einnahmen</th><th scope="col">Kosten</th><th scope="col">Ergebnis</th><th scope="col">Entnahmen</th><th scope="col">Einlagen</th><th scope="col"><span className="sr-only">Auswahl</span></th>
+    </tr></thead><tbody>
+      {shown.owners.map(row => <tr key={row.owner_contact_id}><th scope="row">{row.name}</th><td>{money(row.rent_due)}</td><td>{money(row.other_income)}</td><td>{money(row.costs)}</td><td>{money(row.result)}</td><td>{money(row.withdrawal)}</td><td>{money(row.contribution)}</td>
+        <td><button type="button" className="btn btn-sm btn-ghost" onClick={() => onPick(row.owner_contact_id)}>Nur diesen Teil auswerten</button></td></tr>)}
+    </tbody><tfoot><tr><th scope="row">Gesamt</th><td>{money(shown.totals.rent_due)}</td><td>{money(shown.totals.other_income)}</td><td>{money(shown.totals.costs)}</td><td>{money(shown.totals.result)}</td><td>{money(shown.totals.withdrawal)}</td><td>{money(shown.totals.contribution)}</td><td /></tr></tfoot></table></div>}
   </section>;
 }

@@ -75,6 +75,9 @@ export default function Budgets() {
   const { items: properties } = useEntities('properties', '/properties');
   const { items: categories } = useEntities('categories', '/categories');
   const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const { items: owners } = useEntities('owners', '/ownership-shares/owners');
+  const [owner, setOwner] = useState('');
+  const [ownerShare, setOwnerShare] = useState({ owner: '', data: null, error: null });
   const [actual, setActual] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +105,18 @@ export default function Budgets() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [attempt]);
+
+  // one owner's part of every budget: plan and actual by their share of the property (budgets/analysis)
+  useEffect(() => {
+    if (!owner) return undefined;
+    let cancelled = false;
+    api.get(`/budgets/analysis?owner_contact_id=${encodeURIComponent(owner)}`)
+      .then(data => { if (!cancelled) setOwnerShare({ owner, data, error: null }); })
+      .catch(e => { if (!cancelled) setOwnerShare({ owner, data: null, error: e.message }); });
+    return () => { cancelled = true; };
+  }, [owner, budgets]);
+  const shared = owner && ownerShare.owner === owner ? ownerShare : null;
+  const ownerName = owner === 'none' ? 'ohne erfassten Eigentümer' : owners.find(o => o.id === owner)?.name || '';
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p]));
   const enriched = budgets.map(b => ({
@@ -174,11 +189,25 @@ export default function Budgets() {
 
   return (
     <div className="page">
+      {owners.length > 0 && <label className="form-inline" style={{ marginBottom: '0.75rem', display: 'inline-flex', gap: '0.5rem', alignItems: 'center' }}>
+        Eigentümer <select aria-label="Eigentümer" value={owner} onChange={e => setOwner(e.target.value)}>
+          <option value="">Alle (ganze Objekte)</option>{owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          <option value="none">Ohne erfassten Eigentümer</option>
+        </select></label>}
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
-        <KpiAction label="Geplant gesamt" value={fmt(totalPlanned)} onClick={showSources} />
-        <KpiAction label="Tatsächlich gesamt" value={fmt(totalActual)} onClick={showSources} />
-        <KpiAction label="Abweichung" value={fmt(totalActual - totalPlanned)} onClick={showSources} />
+        {shared?.data ? <>
+          <KpiAction label={`Geplant – Anteil ${ownerName}`} value={fmt(shared.data.total_planned)} onClick={showSources} />
+          <KpiAction label={`Tatsächlich – Anteil ${ownerName}`} value={fmt(shared.data.total_actual)} onClick={showSources} />
+          <KpiAction label="Abweichung" value={fmt(shared.data.total_deviation)} onClick={showSources} />
+        </> : <>
+          <KpiAction label="Geplant gesamt" value={fmt(totalPlanned)} onClick={showSources} />
+          <KpiAction label="Tatsächlich gesamt" value={fmt(totalActual)} onClick={showSources} />
+          <KpiAction label="Abweichung" value={fmt(totalActual - totalPlanned)} onClick={showSources} />
+        </>}
       </div>
+      {owner && shared?.error && <div className="alert alert-error" role="alert">{shared.error}</div>}
+      {owner && !shared && <p role="status">Anteil wird berechnet …</p>}
+      {shared?.data && <p className="text-muted">Ein Budget gilt für das ganze Objekt. Für „{ownerName}“ zählen Plan und Ist mit dem Anteil am Objekt zum 1. Januar des Budgetjahres (Objektanteile, sonst nach Wohnfläche der Einheiten). Die Liste unten zeigt die ganzen Beträge.</p>}
       <p className="text-muted">Grundlage: die geplanten und erfassten Istbeträge der unten aufgeführten Budgetpositionen. Mit gewählten Buchungskategorien berechnet „Ist aus Buchungen“ den Istbetrag auf Wunsch aus den Ausgaben.</p>
 
       {deleteError && (

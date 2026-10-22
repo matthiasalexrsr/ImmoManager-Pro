@@ -285,6 +285,11 @@ class BookingCreate(BaseModel):
     # owners of its unit or property by their shares (services/ownership.py)
     owner_contact_id: Optional[str] = None
 
+    @field_validator("owner_contact_id", mode="before")
+    @classmethod
+    def no_owner(cls, value: Any) -> Any:
+        return None if value == "" else value     # the form's empty choice: by the shares
+
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:

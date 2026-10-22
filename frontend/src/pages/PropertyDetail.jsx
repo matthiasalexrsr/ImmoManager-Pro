@@ -26,6 +26,7 @@ import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
 import usePhotoNotification from '../hooks/usePhotoNotification';
 import { useDataStore } from '../contexts/DataStoreContext';
+import PropertyOwnership from '../features/ownership/PropertyOwnership';
 import './propertyDossier.css';
 
 // What can be started from a property, each opened prefilled with it.
@@ -33,7 +34,7 @@ const NEW_FOR_PROPERTY = [
   ['/units', 'Einheit'], ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'],
   ['/bookings', 'Buchung'], ['/invoices', 'Rechnung'], ['/tasks', 'Aufgabe'],
 ];
-const TAB_KEYS = ['overview', 'units', 'contracts', 'finance', 'documents', 'maintenance', 'timeline'];
+const TAB_KEYS = ['overview', 'units', 'contracts', 'owners', 'finance', 'documents', 'maintenance', 'timeline'];
 
 const fmt = formatMoney;
 const RENT_FIELDS = ['cold_rent', 'service_charge_advance', 'heating_advance'];
@@ -182,6 +183,7 @@ function PropertyDossier({ id }) {
     { key: 'overview', label: t('pages.propertyOverview.keyData') || 'Übersicht' },
     { key: 'units', label: `${unitLabel} (${units.length})` },
     { key: 'contracts', label: `Mieter & Verträge (${activeContracts})` },
+    { key: 'owners', label: 'Eigentümer' },
     { key: 'finance', label: t('navigation.sections.finance') || 'Finanzen' },
     { key: 'documents', label: `${docLabel} (${documents.length})` },
     { key: 'maintenance', label: `${maintLabel} (${openMaintenance})` },
@@ -393,6 +395,8 @@ function PropertyDossier({ id }) {
             onApplyView={config => setContractView(config.column_filters?.workflow_filter === 'active' ? 'active' : 'all')}
             onAdd={startNew('/contracts')} addLabel="Vertrag anlegen" writeArea="/contracts" /></>
         )}
+
+        {tab === 'owners' && <PropertyOwnership propertyId={id} units={units} />}
 
         {tab === 'finance' && (
           <div className="panel">

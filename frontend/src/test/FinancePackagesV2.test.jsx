@@ -86,3 +86,24 @@ it('recovers the exact uncertain command after a page crash without using a fres
   expect(api.post.mock.calls[1][1]).toEqual(request);
   await waitFor(() => expect(localStorage.getItem('workspace:finance-test-owner:finance-command:r1')).toBeNull());
 });
+
+it('narrows a report to one owner and lists the result per owner', async () => {
+  const owners = [{ id: 'm', name: 'Matthias', shares: 2 }, { id: 'linda', name: 'Linda', shares: 2 }];
+  api.list.mockImplementation(path => Promise.resolve(path.startsWith('/ownership-shares/owners') ? owners : []));
+  api.get.mockResolvedValue({ owners: [
+    { owner_contact_id: 'm', name: 'Matthias', rent_due: 900, other_income: 0, costs: 140, result: 760, unassigned_income: 0, withdrawal: 0, contribution: 0 },
+    { owner_contact_id: 'linda', name: 'Linda', rent_due: 1100, other_income: 0, costs: 160, result: 940, unassigned_income: 0, withdrawal: 1000, contribution: 0 }],
+  totals: { rent_due: 2000, other_income: 0, costs: 300, result: 1700, unassigned_income: 0, withdrawal: 1000, contribution: 0 } });
+  render(<MemoryRouter><FinanceReports standalone /></MemoryRouter>);
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Berichtsart' }), { target: { value: 'performance-period-v2' } });
+  const owner = await screen.findByRole('combobox', { name: 'Eigentümer' });
+  expect([...owner.options].map(option => option.textContent)).toEqual(['Alle Eigentümer (ganzer Bestand)', 'Matthias', 'Linda', 'Ohne erfassten Eigentümer']);
+  fireEvent.click(screen.getByRole('button', { name: 'Ergebnis je Eigentümer berechnen' }));
+  const table = await screen.findByRole('table', { name: 'Ergebnis je Eigentümer' });
+  expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/^\/reports\/owner-results\?date_from=\d{4}-01-01&date_to=\d{4}-12-31$/));
+  expect(table).toHaveTextContent('760,00');
+  expect(table).toHaveTextContent('1.700,00');
+  fireEvent.click(screen.getAllByRole('button', { name: 'Nur diesen Teil auswerten' })[1]);
+  await waitFor(() => expect(owner.value).toBe('linda'));
+  expect(screen.getByText(/Jeder Betrag zählt mit dem Anteil des Eigentümers/)).toBeInTheDocument();
+});

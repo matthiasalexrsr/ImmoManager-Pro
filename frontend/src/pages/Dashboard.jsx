@@ -16,6 +16,7 @@ import { formatDate, formatDateTime, formatMoney, formatMoneyCompact, formatNumb
 import TileSettings from '../features/dashboard/TileSettings';
 import { DEFAULT_LAYOUT, arrange, tileOf } from '../features/dashboard/dashboardTiles';
 import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
+import { useEntities } from '../contexts/DataStoreContext';
 import './dashboard.css';
 
 const PIE_COLORS = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-border)'];
@@ -208,12 +209,17 @@ export default function Dashboard() {
   const inventory = useDashboardSource('/dashboard/stats', validStats);
   const taskSource = useDashboardSource('/tasks?status=open&limit=5', Array.isArray);
   const notificationSource = useDashboardSource('/notifications?status=unread&limit=5', Array.isArray);
-  const cashflowSource = useDashboardSource('/reports/cashflow?months=12', validCashflow);
-  const agingSource = useDashboardSource('/reports/receivables-aging', validAging);
+  // money tiles for one owner's part (reports by owner); counts and tasks stay for the whole inventory
+  const { items: owners } = useEntities('owners', '/ownership-shares/owners');
+  const [owner, setOwner] = useState('');
+  const ownerQuery = owner ? `owner_contact_id=${encodeURIComponent(owner)}` : '';
+  const withOwner = path => (ownerQuery ? `${path}${path.includes('?') ? '&' : '?'}${ownerQuery}` : path);
+  const cashflowSource = useDashboardSource(withOwner('/reports/cashflow?months=12'), validCashflow);
+  const agingSource = useDashboardSource(withOwner('/reports/receivables-aging'), validAging);
   const expiringSource = useDashboardSource('/reports/contracts-expiring?days=90', validContracts);
-  const maintenanceSource = useDashboardSource('/reports/maintenance-costs', validMaintenance, dashView === 'analysis');
-  const forecastSource = useDashboardSource('/reports/liquidity-forecast?months=6', validForecast, dashView === 'analysis');
-  const financeSource = useDashboardSource('/reports/finance', validFinance, dashView === 'analysis');
+  const maintenanceSource = useDashboardSource(withOwner('/reports/maintenance-costs'), validMaintenance, dashView === 'analysis');
+  const forecastSource = useDashboardSource(withOwner('/reports/liquidity-forecast?months=6'), validForecast, dashView === 'analysis');
+  const financeSource = useDashboardSource(withOwner('/reports/finance'), validFinance, dashView === 'analysis');
   const stats = inventory.status === 'success' ? normalizeStats(inventory.data) : {};
   const tasks = asArray(taskSource.data);
   const notifications = asArray(notificationSource.data);
@@ -283,8 +289,12 @@ export default function Dashboard() {
       <button type="button" aria-pressed={dashView === 'work'} onClick={() => setDashView('work')}>Arbeit</button>
       <button type="button" aria-pressed={dashView === 'analysis'} onClick={() => setDashView('analysis')}>Analyse</button>
     </div>
+    {owners.length > 0 && <label className="dashboard-owner">Eigentümer <select aria-label="Eigentümer" value={owner} onChange={e => setOwner(e.target.value)}>
+      <option value="">Alle (ganzer Bestand)</option>{owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+      <option value="none">Ohne erfassten Eigentümer</option></select></label>}
     {dashView === 'work' && <button type="button" className="btn btn-sm btn-secondary dashboard-customize" aria-expanded={customizing}
       onClick={() => setCustomizing(value => !value)}>Kacheln anpassen</button>}</div>
+    {owner && <p className="dashboard-hidden-note">Geldbeträge zeigen den Anteil von „{owner === 'none' ? 'ohne erfassten Eigentümer' : owners.find(o => o.id === owner)?.name}“ nach den Eigentumsanteilen; Zählungen und Aufgaben gelten für den ganzen Bestand.</p>}
     <SetupChecklist stats={stats} ready={inventory.status === 'success'} />
     {dashView === 'work' && <>
       {customizing && <TileSettings layout={tiles} onChange={value => setLayout(arrange(value))} onClose={() => setCustomizing(false)} />}
