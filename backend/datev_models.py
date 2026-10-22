@@ -61,6 +61,8 @@ class DatevPreviewCreate(BaseModel):
     property_ids: list[str] = Field(default_factory=list)
     start_date: date
     end_date: date
+    # one owner's part of every booking ("none": the part no owner is recorded for); services/ownership
+    owner_contact_id: str | None = None
 
     @model_validator(mode="after")
     def datev_dates(self):

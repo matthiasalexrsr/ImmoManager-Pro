@@ -12,7 +12,7 @@ import hmac
 import importlib
 import json
 from contextlib import ExitStack, nullcontext
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timezone
 from itertools import chain, groupby, islice
 from pathlib import Path
@@ -270,6 +270,29 @@ def entries(connection, portfolio_id, command, spec, captured, store=None):
         previous = rows[-1]["booking_date"], rows[-1]["id"]
 
 
+def owner_parts(store, command):
+    """With an owner in the command: their part of each booking in the period (services.ownership)."""
+    if not command.owner_contact_id:
+        return None
+    from .ownership import Ownership, owner_key
+
+    ownership, key = Ownership(store), owner_key(command.owner_contact_id)
+    return {booking.id: ownership.booking_split(booking).get(key) for booking in store.list_bookings()
+            if command.start_date <= booking.booking_date <= command.end_date}
+
+
+def owner_label(store, owner):
+    from .ownership import NOBODY, owner_name
+
+    if owner == NOBODY:
+        return "Ohne Eigentümer"
+    try:
+        contact = store.get_contact(owner)
+    except Exception:  # noqa: BLE001 - the command was validated; a later deletion keeps the id
+        return "Eigentümer"
+    return owner_name(contact)
+
+
 @dataclass
 class CompiledExport:
     path: Path
@@ -293,7 +316,9 @@ def compile_export(store, command, version_id, export_id, generated_at, *, expec
             "profile_version_id": version_id, "profile_sha256": profile.sha256,
             "portfolio_id": portfolio_id, "start_date": command.start_date.isoformat(),
             "end_date": command.end_date.isoformat(), "generated_at": generated_at.isoformat(), "timestamp_timezone": "UTC",
-            "rows": 0, "income": "0.00", "expense": "0.00", "files": [], "samples": []}
+            "rows": 0, "income": "0.00", "expense": "0.00", "files": [], "samples": [],
+            **({"owner_contact_id": command.owner_contact_id, "owner_name": owner_label(store, command.owner_contact_id)}
+               if command.owner_contact_id else {})}
         evidence_path = workspace / "sources.jsonl"
         evidence_output = cleanup.enter_context(evidence_path.open("xb"))
         digest, totals = hashlib.sha256(), {"income": 0, "expense": 0}
@@ -318,8 +343,16 @@ def compile_export(store, command, version_id, export_id, generated_at, *, expec
                 r["bank_gl"], r["counter_gl"], "EUR", r["no_vat_nonautomatic"], r["account_type"], r["counter_kind"])
                 for r in spec["rules"]}
 
+            parts = owner_parts(store, command)
+
             def observe():
                 for entry in entries(connection, portfolio_id, command, spec, captured, store):
+                    if parts is not None:
+                        # one owner's export: their part of the booking, the booking left out without one
+                        part = parts.get(entry.id)
+                        if not part:
+                            continue
+                        entry = replace(entry, amount=format(part, "f"))
                     # The formatter validates this row before asking for the
                     # next one. Do not mask a source error as a filesystem error
                     # or accidentally report the previous booking's identifier.
@@ -437,7 +470,12 @@ def create_preview(store, command: DatevPreviewCreate, actor_id):
     db = database(store)
     profile = profile_row(store, command.profile_version_id)
     key = actor_id + ":" + command.idempotency_key
-    request_json = canonical(command.model_dump(mode="json", exclude={"idempotency_key"})).decode("ascii")
+    if command.owner_contact_id and command.owner_contact_id != "none":
+        from .ownership import require_owner
+        require_owner(store, command.owner_contact_id, "Der Eigentümer des Exports")
+    # without an owner the request reads as before, so earlier repeat keys still match
+    omitted = {"idempotency_key"} | (set() if command.owner_contact_id else {"owner_contact_id"})
+    request_json = canonical(command.model_dump(mode="json", exclude=omitted)).decode("ascii")
 
     def replay(row):
         if row.request_json != request_json:
