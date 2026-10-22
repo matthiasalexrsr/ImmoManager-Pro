@@ -433,6 +433,24 @@ def test_d2_an_advance_change_mid_month_splits_the_month_by_days():
     assert advances[1] == ("16.04.2025 – 31.12.2025", "300,00 € / Monat", "2.550,00 €")
 
 
+def test_d2_advance_sections_round_half_up_and_add_up_to_the_advances():
+    """Regression: the section amounts were rounded half to even (525.105 -> 525.10) while the advances
+    of the statement round half up (3,075.11); the shown sections did not add up."""
+    prop = _property()
+    flat = _unit(prop, "WE 01", 50, (100.03, 50))
+    lease = _lease(prop, flat, "C-1", history=True)
+    store.create_contract_rent_period(ContractRentPeriodCreate(
+        contract_id=lease.id, valid_from=date(2025, 4, 16), cold_rent=500, service_charge_advance=200,
+        heating_advance=100))
+    period = _period(prop, [("Grundsteuer", 100, _key(prop, "area_sqm"))])
+
+    [stmt] = billing.generate_utility_statements(period.id)
+
+    # 3 × 150.03 + 150.03 × 15/30 = 525.105
+    assert [s["amount"] for s in stmt.advance_sections] == [525.11, 2550.0]
+    assert stmt.advance_paid == 3075.11
+
+
 def test_d3_tenant_and_person_changes_are_sections_of_their_own():
     prop, first, second = _two_flats()
     _lease(prop, first, "A", end=date(2025, 5, 31), persons=1)

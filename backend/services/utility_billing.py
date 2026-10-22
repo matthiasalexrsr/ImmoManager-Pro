@@ -29,6 +29,7 @@ from typing import Any, Optional
 
 from ..domain.billing_engine import AdvancePayment, BillingEngine, CostEntry, UnitShare
 from ..domain.lease_engine import charge_on
+from ..domain.money import money
 from ..domain.occupancy import (
     OverlappingTenanciesError,
     Segment,
@@ -778,7 +779,7 @@ def _statements(period, keys, cost_items, shares, basis_units, advances, period_
             sections_of_contract = advances.get(generated.contract_id, ("", Decimal("0"), []))[2]
             advance_sections = [
                 {"start": s["start"].isoformat(), "end": s["end"].isoformat(), "days": s["days"],
-                 "monthly": float(s["monthly"]), "amount": float(round(s["amount"], 2))}
+                 "monthly": float(s["monthly"]), "amount": float(money(s["amount"]))}
                 for s in sections_of_contract
             ]
         statements.append(UtilityStatementCreate(

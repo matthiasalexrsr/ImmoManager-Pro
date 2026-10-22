@@ -316,6 +316,12 @@ def delete_case(store: Any, case_id: str, actor_id: str | None) -> None:
         if p.rows.find("maintenance_protocols", case_id=case_id, status="final"):
             raise conflict("Die Akte enthält abgeschlossene Protokolle (archivierte Originale) und kann nicht "
                            "gelöscht werden. Stattdessen abbrechen oder abschließen.")
+        # A placed order and its invoices are the project's financial record; cancelling such an
+        # order is refused too
+        placed = [order for order in p.rows.find("maintenance_orders", case_id=case_id) if order.status != "cancelled"]
+        if placed or p.rows.find("maintenance_order_invoices", case_id=case_id):
+            raise conflict("Die Akte hat erteilte Aufträge oder zugeordnete Rechnungen und kann nicht gelöscht "
+                           "werden. Stattdessen abbrechen oder abschließen.")
         appointments = p.rows.find("maintenance_appointments", case_id=case_id)
         if appointments and p.unit.user:
             archive.check_account(p.unit.user, write_areas=("/calendar",))

@@ -230,6 +230,27 @@ def test_a_valid_iban_with_spaces_and_a_foreign_postcode_pass(client, world):
         "country": "AT"}).status_code == 201
 
 
+def test_the_same_bank_account_cannot_be_entered_twice(client, world):
+    """Regression: only a new SQL installation refused the same IBAN (with a generic error, and not
+    when written with spaces); the memory store and upgraded databases took it, and the balance of
+    the account counted twice."""
+    owner, pf = world["owner"], world["pf"]["id"]
+    other = client.post("/api/v1/portfolios", headers=owner, json={"name": "Q"}).json()["id"]
+    first = client.post("/api/v1/accounts", headers=owner, json={
+        "portfolio_id": pf, "name": "Hausbank", "account_type": "bank", "iban": "DE89370400440532013000"})
+    assert first.status_code == 201
+    for portfolio, iban in ((pf, "DE89370400440532013000"), (other, "de89 3704 0044 0532 0130 00")):
+        twin = client.post("/api/v1/accounts", headers=owner, json={
+            "portfolio_id": portfolio, "name": "Doppelt", "account_type": "bank", "iban": iban})
+        assert twin.status_code == 400 and "Hausbank" in twin.text, twin.text
+    # the account itself keeps its IBAN when it is saved again
+    saved = client.put(f"/api/v1/accounts/{first.json()['id']}", headers=owner, json={
+        "portfolio_id": pf, "name": "Hausbank Giro", "account_type": "bank", "iban": "DE89 3704 0044 0532 0130 00"})
+    assert saved.status_code == 200, saved.text
+    assert client.post("/api/v1/accounts", headers=owner, json={
+        "portfolio_id": pf, "name": "Kasse", "account_type": "cash"}).status_code == 201
+
+
 def test_a_manual_rent_period_starts_on_the_first(client, world):
     """A change in mid-month would only be charged from the following month."""
     url = f"/api/v1/contracts/{world['contract']['id']}/rent-periods"

@@ -19,6 +19,7 @@ from ..domain.money import money
 from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
 from .record_revisions import ExpectedRevision, collection_table
+from .sepa_rules import compact, iban_problem
 
 PROPERTY_TYPES = {"residential", "commercial", "mixed", "condominium", "single_family", "multi_family", "office",
                   "land", "parking", "other"}
@@ -91,14 +92,6 @@ def _max_length(data: dict, key: str, label: str, limit: int = 200) -> None:
     value = data.get(key)
     if _touched(data, key) and isinstance(value, str) and len(value) > limit:
         raise ValidationError(f"{label} ist zu lang (höchstens {limit} Zeichen)")
-
-
-def iban_valid(iban: str) -> bool:
-    compact = re.sub(r"\s+", "", iban).upper()
-    if not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}", compact):
-        return False
-    digits = "".join(str(int(ch, 36)) for ch in compact[4:] + compact[:4])
-    return int(digits) % 97 == 1
 
 
 def _positive(value: Any) -> bool:
@@ -283,8 +276,18 @@ def meter_reading(data: dict, store: Any) -> None:
 def account(data: dict, store: Any) -> None:
     _text(data, "name", "Der Name", required=True)
     iban = data.get("iban")
-    if _touched(data, "iban") and isinstance(iban, str) and iban.strip() and not iban_valid(iban):
-        raise ValidationError("Die IBAN ist ungültig (Prüfziffer oder Länge stimmt nicht)")
+    if not (_touched(data, "iban") and isinstance(iban, str) and iban.strip()):
+        return
+    problem = iban_problem(iban)
+    if problem:
+        raise ValidationError(problem)
+    # The same bank account twice would count its balance twice; compared without spaces, in
+    # every store (the unique index of the SQL schema compares the text as written).
+    twin = next((other for other in store.list_accounts()
+                 if other.id != data.get("id") and compact(other.iban) == compact(iban)), None)
+    if twin:
+        raise ValidationError(f"Die IBAN gehört schon zum Konto „{twin.name}“. Ein Bankkonto nur einmal anlegen, "
+                              "sonst zählt sein Saldo doppelt.")
 
 
 def rent_period(data: dict, store: Any) -> None:

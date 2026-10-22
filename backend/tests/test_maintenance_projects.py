@@ -431,6 +431,10 @@ def test_quote_order_change_order_invoice_payment_flow_and_costs(owner, estate, 
     assert owner.delete(f"{API}/invoices/{second['id']}").status_code == 409
     assert owner.delete(f"{API}/bookings/{b2.id}").status_code == 409
     assert owner.post(f"{base}/orders/{order['id']}/cancel", json={"note": "x"}).status_code == 409
+    # Regression: the whole case could be deleted and took its order, change orders and invoice links along
+    refused = owner.delete(base)
+    assert refused.status_code == 409 and "Auftr" in refused.json()["error"]["message"]
+    assert _project(owner, case["id"])["orders"][0]["id"] == order["id"]
 
 
 def test_one_booking_paying_two_projects_is_counted_once(owner, estate):
