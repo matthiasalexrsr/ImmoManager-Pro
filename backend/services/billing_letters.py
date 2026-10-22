@@ -6,6 +6,7 @@ cover and annex come from one reviewed snapshot, never from client-side amounts.
 import hashlib
 from contextlib import contextmanager
 from datetime import timezone
+from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
@@ -209,6 +210,13 @@ def context(store, statement_id, actor_id):
         if problem:
             warnings.append(problem)
         from ..routers.billing import _eur
+        open_rent = _open_rent_of_period(unit.store, statement, period)
+        if open_rent > 0:
+            # R12-12: after the statement only its balance can be claimed, no open advances of the period
+            warnings.append(f"Bis zum Ende des Abrechnungszeitraums ist Miete von {_eur(open_rent)} offen. Mit der "
+                            "Abrechnung können offene Vorauszahlungen dieses Zeitraums nicht mehr gesondert verlangt "
+                            "werden, maßgeblich ist der Saldo (BGH, VIII ZR 271/10). Bitte offene Vorauszahlungen im "
+                            "Schreiben benennen und nur Kaltmiete und Saldo weiter fordern.")
         result = (f"Die Abrechnung ergibt eine Nachzahlung von {_eur(statement.balance)}." if statement.balance > 0
                   else f"Die Abrechnung ergibt ein Guthaben von {_eur(abs(statement.balance))}." if statement.balance < 0
                   else "Die Abrechnung ist ausgeglichen.")
@@ -220,6 +228,18 @@ def context(store, statement_id, actor_id):
                     "intro": "anbei erhalten Sie Ihre Betriebskostenabrechnung. " + result,
                     "closing": "Für Rückfragen zu Ihrer Abrechnung stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen",
                     "signature": signature}, "warnings": warnings, "originals": _originals(unit, statement_id)}
+
+
+def _open_rent_of_period(store, statement, period) -> Decimal:
+    """Rent of the contract still open for the months up to the end of the statement's period (as of today)."""
+    if not statement.contract_id:
+        return Decimal("0")
+    from ..domain.lease_engine import LeaseEngine
+    from .payment_allocations import contract_ledger
+    contract = store.get_contract(statement.contract_id)
+    end = statement.usage_end or period.end_date
+    receivables, payments = contract_ledger(store, contract, end, payments_until=local_today())
+    return LeaseEngine.calculate_balance(receivables, payments).outstanding_total
 
 
 def _review(unit, statement_id, payload, *, lock=False):

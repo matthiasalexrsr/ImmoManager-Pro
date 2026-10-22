@@ -93,6 +93,21 @@ def test_context_warns_missing_addresses_and_draft_preview_is_marked_without_wri
     assert not [doc for doc in store.list_documents() if doc.document_type == DOC_TYPE]
 
 
+def test_open_rent_of_the_period_is_named_before_the_statement_goes_out(case):
+    """R12-12: after the statement only its balance can be claimed; open advances of the period end."""
+    from backend.models import ContractRentPeriodCreate
+
+    def hints():
+        context = case["client"].get(base(case) + "/letter-context").json()
+        return [warning for warning in context["warnings"] if "VIII ZR 271/10" in warning]
+
+    assert hints() == []                                   # nothing owed: no hint
+    store.create_contract_rent_period(ContractRentPeriodCreate(
+        contract_id=case["contract"].id, valid_from=date(2024, 1, 1), cold_rent=500, service_charge_advance=100))
+    (hint,) = hints()
+    assert "Miete von 14.400,00 €" in hint                 # 24 months of 600 € up to 31.12.2025
+
+
 def test_default_country_alone_is_not_a_recipient_address(case):
     store.update_tenant(case["tenant"].id, TenantCreate(full_name="Mieter ohne Anschrift", country="Deutschland"))
     context = case["client"].get(base(case) + "/letter-context").json()
