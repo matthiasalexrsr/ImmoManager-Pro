@@ -32,7 +32,7 @@ export default function Bookings() {
   const bookingId = params.get('booking_id');
   // /bookings?konto=<id>: the bookings of one account (from the account list), removable
   const accountId = params.get('konto');
-  const sourceFilters = Object.fromEntries(['date_from', 'date_to', 'property_id', 'unit_id', 'portfolio_id', 'tenant_id', 'category_id', 'status', 'flow'].map(key => [key, params.get(key) || '']));
+  const sourceFilters = Object.fromEntries(['date_from', 'date_to', 'property_id', 'unit_id', 'portfolio_id', 'tenant_id', 'category_id', 'status', 'flow', 'owner_contact_id'].map(key => [key, params.get(key) || '']));
   const clearAccount = () => setParams(current => { const next = new URLSearchParams(current); next.delete('konto'); return next; });
   const applySourceFilters = config => setParams(current => {
     const next = new URLSearchParams(current);
@@ -43,12 +43,19 @@ export default function Bookings() {
     if (config.column_filters?.account_id) next.set('konto', config.column_filters.account_id); else next.delete('konto');
     return next;
   });
+  // ?owner_contact_id=<id|none>: the bookings an owner has a part of, with that part
+  const chooseOwner = value => setParams(current => {
+    const next = new URLSearchParams(current);
+    if (value) next.set('owner_contact_id', value); else next.delete('owner_contact_id');
+    return next;
+  });
   // A navigation starts a new editing/viewing session; old requests cannot own it.
   return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId}
-    accountId={accountId} sourceFilters={sourceFilters} onApplySourceFilters={applySourceFilters} onClearAccount={clearAccount} />;
+    accountId={accountId} sourceFilters={sourceFilters} onApplySourceFilters={applySourceFilters} onClearAccount={clearAccount}
+    onOwner={chooseOwner} />;
 }
 
-function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters, onApplySourceFilters }) {
+function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters, onApplySourceFilters, onOwner }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -69,6 +76,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const owner = sourceFilters.owner_contact_id;
+  // the chosen owner's part of each of their bookings (services/ownership.py on the server)
+  const [ownerParts, setOwnerParts] = useState({ owner: '', parts: null, error: null });
   const [loadError, setLoadError] = useState(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
@@ -131,6 +141,22 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [refreshVersion]);
+
+  useEffect(() => {
+    if (!owner) return undefined;
+    const controller = new AbortController();
+    api.list(`/bookings?owner_contact_id=${encodeURIComponent(owner)}`, { signal: controller.signal })
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(data)) throw new Error('Die Anteile des Eigentümers konnten nicht gelesen werden.');
+        setOwnerParts({ owner, parts: new Map(data.map(row => [row.id, Number(row.owner_part)])), error: null });
+      })
+      .catch(err => { if (!controller.signal.aborted) setOwnerParts({ owner, parts: null, error: err.message || 'Die Anteile des Eigentümers konnten nicht geladen werden.' }); });
+    return () => controller.abort();
+  }, [owner, refreshVersion]);
+  const parts = owner && ownerParts.owner === owner ? ownerParts.parts : null;
+  const ownerLoading = Boolean(owner) && (ownerParts.owner !== owner || (!ownerParts.parts && !ownerParts.error));
+  const ownerError = owner && ownerParts.owner === owner ? ownerParts.error : null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -217,7 +243,10 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     unit_label: unitMap[b.unit_id] || '—',
     tenant_name: tenantMap[b.tenant_id] || '—',
     has_receipt: hasReceipt(b.receipt_url) ? 'Vorhanden' : b.receipt_url?.trim() ? 'Ungültig' : 'Fehlt',
+    ...(parts ? { owner_part: parts.get(b.id) ?? 0 } : {}),
   }));
+  // with an owner chosen, every figure is their part
+  const amountOf = b => Math.round(Number(parts ? b.owner_part : b.amount) * 100);
 
   // Filtered data
   const basis = enriched.filter(row => (!accountId || row.account_id === accountId)
@@ -228,7 +257,8 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     && (!sourceFilters.tenant_id || row.tenant_id === sourceFilters.tenant_id)
     && (!sourceFilters.category_id || row.category_id === sourceFilters.category_id)
     && (!sourceFilters.status || row.status === sourceFilters.status)
-    && (!sourceFilters.portfolio_id || accountPortfolios.get(row.account_id) === sourceFilters.portfolio_id));
+    && (!sourceFilters.portfolio_id || accountPortfolios.get(row.account_id) === sourceFilters.portfolio_id)
+    && (!owner || Boolean(parts?.has(row.id))));
   const filtered = useMemo(() => {
     const rows = basis;
     switch (filter) {
@@ -246,11 +276,11 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   // Summary stats
   const totalCount = basis.length;
-  const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
-  const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + amountOf(b), 0) / 100;
+  const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + amountOf(b), 0) / 100;
   // the owners' own money (category type "private"): neither income nor expense
-  const totalWithdrawn = -basis.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
-  const totalContributed = basis.filter(b => cashflowSide(b, categoryTypes) === 'contribution').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  const totalWithdrawn = -basis.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal').reduce((s, b) => s + amountOf(b), 0) / 100;
+  const totalContributed = basis.filter(b => cashflowSide(b, categoryTypes) === 'contribution').reduce((s, b) => s + amountOf(b), 0) / 100;
   const noCategory = basis.filter(b => !b.category_id).length;
   const noReceipt = basis.filter(b => !hasReceipt(b.receipt_url)).length;
 
@@ -272,6 +302,8 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         return <span className="cell-inline"><span className={cls}>{formatMoney(n)}</span>
           {row.reverses_booking_id && <span className="badge badge-gray" title="Storno: zählt mit der stornierten Buchung zusammen">Storno</span>}</span>;
       }},
+    ...(parts ? [{ key: 'owner_part', label: 'Anteil des Eigentümers (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
+      render: v => <span className={Number(v) < 0 ? 'text-red' : 'text-green'}>{formatMoney(Number(v))}</span> }] : []),
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true, link: 'unit' },
@@ -498,8 +530,13 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
       </div>}
 
-      {!loading && !loadError && <>
-      {Object.values(sourceFilters).some(Boolean) && <p role="status" className="draft-status">Quellenauswahl: {sourceFilters.date_from && `ab ${formatDate(sourceFilters.date_from)} `}{sourceFilters.date_to && `bis ${formatDate(sourceFilters.date_to)} `}{(sourceFilters.property_id || sourceFilters.unit_id || sourceFilters.portfolio_id || sourceFilters.tenant_id || sourceFilters.category_id || sourceFilters.status) && 'mit übernommener Objekt- und Vorgangsauswahl'}</p>}
+      {ownerError && <div className="alert alert-error booking-load-error" role="alert">
+        <p>Die Anteile des Eigentümers konnten nicht geladen werden.</p><p>{ownerError}</p>
+        <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
+      </div>}
+      {!loading && !loadError && ownerLoading && <p role="status">Anteile des Eigentümers werden geladen …</p>}
+      {!loading && !loadError && !ownerLoading && !ownerError && <>
+      {Object.entries(sourceFilters).some(([key, value]) => value && key !== 'owner_contact_id') && <p role="status" className="draft-status">Quellenauswahl: {sourceFilters.date_from && `ab ${formatDate(sourceFilters.date_from)} `}{sourceFilters.date_to && `bis ${formatDate(sourceFilters.date_to)} `}{(sourceFilters.property_id || sourceFilters.unit_id || sourceFilters.portfolio_id || sourceFilters.tenant_id || sourceFilters.category_id || sourceFilters.status) && 'mit übernommener Objekt- und Vorgangsauswahl'}</p>}
       {/* Summary cards */}
       {basisLoading && <p role="status">Finanzgrundlage wird geladen …</p>}
       {basisError && <p role="alert">Die Finanzgrundlage konnte nicht vollständig geladen werden. Bitte die Ansicht erneut laden.</p>}
@@ -533,6 +570,12 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
             disabled={f.key === 'unassigned' && !allocationReady}
           >{f.label}</button>
         ))}
+        {(owners.length > 0 || owner) && <label className="booking-owner-filter">Eigentümer{' '}
+          <select value={owner} onChange={event => onOwner(event.target.value)}>
+            <option value="">Alle (ganze Beträge)</option>
+            {owners.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            <option value="none">Ohne Eigentümer</option>
+          </select></label>}
         {accountId && (
           <span className="filter-chip-active" role="status">
             Konto: {accountMap[accountId] || 'unbekannt'}

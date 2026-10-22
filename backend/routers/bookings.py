@@ -1,18 +1,19 @@
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
 from ..domain.clock import local_today
-from ..domain.money import money, money_sum
+from ..domain.money import as_number, money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
 from ..services.bank_imports import protect_bank_booking
 from ..services.booking_writes import booking_write
 from ..services.deletion_guard import ensure_deletable
 from ..services.deposits import _booking_linked, ensure_booking_unchanged
 from ..services.maintenance_projects import ensure_booking_unallocated
-from ..services.ownership import require_owner
+from ..services.ownership import NOBODY, Ownership, owner_key, require_owner
 from ..services.payment_allocations import (
     allocate_unassigned,
     auto_allocate,
@@ -46,20 +47,31 @@ def list_bookings(
     sort_order: str = Query("asc"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
-) -> list[Booking]:
+    owner_contact_id: str | None = Query(None, description="Nur Buchungen mit einem Anteil dieses Eigentümers "
+                                                           "(none: ohne Eigentümer), mit dem Anteil als owner_part"),
+):
     filters = {"account_id": account_id, "tenant_id": tenant_id, "status": status_filter}
-    return store._list_paginated(
-        entity_type="booking",
-        skip=skip,
-        limit=limit,
-        filters=filters,
-        order_by=sort_by,
-        order_desc=(sort_order == "desc"),
-        range_filters={"booking_date": (
-            date_from if isinstance(date_from, date) else None,
-            date_to if isinstance(date_to, date) else None,
-        )},
-    )
+    owner = owner_contact_id if isinstance(owner_contact_id, str) and owner_contact_id else None
+    listing = dict(entity_type="booking", filters=filters, order_by=sort_by, order_desc=(sort_order == "desc"),
+                   range_filters={"booking_date": (
+                       date_from if isinstance(date_from, date) else None,
+                       date_to if isinstance(date_to, date) else None,
+                   )})
+    if owner is None:
+        return store._list_paginated(skip=skip, limit=limit, **listing)
+    # the owner's bookings: those with a part for them (services.ownership), each with that part
+    if owner != NOBODY:
+        try:
+            store.get_contact(owner)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=422, detail="Der Eigentümer ist nicht im Adressbuch.") from exc
+    ownership, key = Ownership(store), owner_key(owner)
+    owned = []
+    for booking in store._list_paginated(skip=0, limit=10**9, **listing):
+        part = ownership.booking_split(booking).get(key)
+        if part:
+            owned.append(booking.model_dump(mode="json") | {"owner_part": as_number(part)})
+    return JSONResponse(owned[skip:skip + limit])
 
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)

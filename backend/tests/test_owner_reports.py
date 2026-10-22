@@ -148,3 +148,17 @@ def test_the_review_list_names_units_without_an_owner(estate):
     store.create_unit(UnitCreate(property_id=estate["house"], label="WE 4", unit_type="Wohnung", area_sqm=40))
     items = [item for item in estate["get"]("/review")["items"] if item["kind"] == "ownership_incomplete"]
     assert len(items) == 1 and "WE 4: 100 % ohne Eigentümer" in items[0]["detail"]
+
+
+def test_the_bookings_list_shows_an_owners_bookings_with_their_part(estate):
+    parts = lambda owner: sorted((b["payment_text"], b["owner_part"]) for b in estate["get"](f"/bookings?owner_contact_id={owner}"))  # noqa: E731
+    assert parts(estate["linda"]) == [("Entnahme Linda", -1000), ("Gebäudeversicherung", -110), ("Reparatur WE 3", -50)]
+    assert parts(estate["m"]) == [("Gebäudeversicherung", -90), ("Reparatur WE 3", -50)]
+    assert parts("none") == [("Kontoführung", -10)]
+    # every booking's parts add up to the booking
+    everything = {b["id"]: b["amount"] for b in estate["get"]("/bookings")}
+    added: dict[str, float] = {}
+    for owner in (estate["linda"], estate["m"], "none"):
+        for b in estate["get"](f"/bookings?owner_contact_id={owner}"):
+            added[b["id"]] = round(added.get(b["id"], 0) + b["owner_part"], 2)
+    assert added == everything
