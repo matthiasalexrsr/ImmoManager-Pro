@@ -40,6 +40,7 @@ export default function TaxExports() {
   const [start, setStart] = useState('2026-01-01');
   const [end, setEnd] = useState('2026-12-31');
   const [propertyIds, setPropertyIds] = useState([]);
+  const [exportOwner, setExportOwner] = useState('');
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
   const [pendingReason, setPendingReason] = useState('');
   const [emptyReason, setEmptyReason] = useState('');
@@ -107,7 +108,7 @@ export default function TaxExports() {
   }, [portfolio, base, annual, profileOffset, historyOffset]);
 
   function resetContext() {
-    epoch.current += 1; setSelected(''); setPrevious(null); setPreview(null); setRevision(null); setPropertyIds([]);
+    epoch.current += 1; setSelected(''); setPrevious(null); setPreview(null); setRevision(null); setPropertyIds([]); setExportOwner('');
     setSavedPreparation(null); setWisoEvidence(null);
     setDraft(old => ({ ...old, wiso_preparation: null }));
     setRules([emptyRule()]); setOverrides([]); setConfirmed(false); setProfiles({ items: [], total: 0 });
@@ -175,7 +176,8 @@ export default function TaxExports() {
     pending_review_reason: pendingReason || null, empty_cash_review_reason: emptyReason || null });
   async function check() {
     const result = await action(() => annual ? api.post(`${base}/preflight`, preflightBody()) :
-      post(`${base}/preview`, { profile_version_id: selected, start_date: start, end_date: end, property_ids: propertyIds }));
+      post(`${base}/preview`, { profile_version_id: selected, start_date: start, end_date: end, property_ids: propertyIds,
+        ...(exportOwner ? { owner_contact_id: exportOwner } : {}) }));
     if (result) { setPreview(result); setSourcePage(null); setSourceOffset(0); }
   }
   async function loadSourcePage(offset) {
@@ -223,6 +225,13 @@ export default function TaxExports() {
         {row.object_number ? `Objekt ${row.object_number}` : 'Objektzuordnung fehlt'} · {row.target_object_label || row.property_name} · {row.target_label || 'Zielbezeichnung fehlt'} · {money(row.amount_cents)}</summary>
         <p>Quelle: {row.property_name} · {labels[row.treatment]} · {row.form_line} · {row.source_parts} Quellanteile</p><p>{row.review_reason}</p>
       </details>)}
+      {report.owners?.length > 0 && <div className="tax-owner-split"><h4>Je Eigentümer</h4><p>{report.owners[0].note}</p>
+        {report.owners.map(sheet => <table key={sheet.owner_contact_id || 'none'}><caption>{sheet.owner_name} · Einnahmen {money(sheet.totals.income_cents)} · Ausgaben {money(sheet.totals.expense_cents)}</caption>
+          <thead><tr><th scope="col">Objekt</th><th scope="col">Zielbezeichnung</th><th scope="col">Behandlung</th><th scope="col">Anteil</th></tr></thead>
+          <tbody>{sheet.rows.map(row => <tr key={JSON.stringify([row.property_id, row.treatment, row.form_line])}>
+            <th scope="row">{row.object_number ? `Objekt ${row.object_number}` : 'Objektzuordnung fehlt'} · {row.target_object_label || row.property_name}</th>
+            <td>{row.target_label || 'Zielbezeichnung fehlt'}</td><td>{labels[row.treatment] || row.treatment}</td><td>{money(row.amount_cents)}</td></tr>)}</tbody></table>)}
+        <p>Im Download: manual-transfer-worksheet-by-owner.csv mit allen Eigentümern.</p></div>}
       {(report.unused_object_ids.length > 0 || report.unused_line_mappings.length > 0) && <p>In dieser Fassung unbenutzte Zuordnungen: {report.unused_object_ids.length} Objekte und {report.unused_line_mappings.length} Formularzeilen. Es werden dafür keine zusätzlichen Geldbeträge erzeugt.</p>}
       <p>Profilfassung: {report.profile_version_id} · Quellenhash: {report.source_sha256}</p>
     </div>;
@@ -301,8 +310,12 @@ export default function TaxExports() {
         {annual ? <><label>Zahlungsstichtag<input type="date" value={asOf} onChange={e => { setAsOf(e.target.value); setPreview(null); }} /></label>
           <label>Begründung für offene Buchungen<textarea value={pendingReason} onChange={e => { setPendingReason(e.target.value); setPreview(null); }} /></label>
           <label>Begründung bei leerer Zahlungsbasis<textarea value={emptyReason} onChange={e => { setEmptyReason(e.target.value); setPreview(null); }} /></label></> : <>
-          <label>Von<input type="date" value={start} onChange={e => { setStart(e.target.value); setPreview(null); }} /></label><label>Bis<input type="date" value={end} onChange={e => { setEnd(e.target.value); setPreview(null); }} /></label></>}
+          <label>Von<input type="date" value={start} onChange={e => { setStart(e.target.value); setPreview(null); }} /></label><label>Bis<input type="date" value={end} onChange={e => { setEnd(e.target.value); setPreview(null); }} /></label>
+          {options.owners?.length > 0 && <label>Eigentümer<select value={exportOwner} onChange={e => { setExportOwner(e.target.value); setPreview(null); }}>
+            <option value="">Alle (ganze Beträge)</option>{options.owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+            <option value="none">Ohne Eigentümer</option></select></label>}</>}
       </div><button disabled={!selected} onClick={check}>Vollständige Quellen prüfen</button></fieldset>
+      {!annual && exportOwner && <p>Jede Buchung wird mit dem Anteil dieses Eigentümers nach den Eigentumsanteilen am Buchungstag exportiert; Buchungen ohne seinen Anteil entfallen.</p>}
       {!annual && <fieldset disabled={busy}><legend>Objektfilter (leer: alle berechtigten Objekte)</legend>{options.properties?.map(p => <label className="tax-check" key={p.id}><input type="checkbox" checked={propertyIds.includes(p.id)} onChange={e => { setPropertyIds(old => e.target.checked ? [...old, p.id] : old.filter(id => id !== p.id)); setPreview(null); }} />{p.name}</label>)}</fieldset>}
       {preview && <><p role="status">{annual ? preview.ready ? 'Zur Bestätigung bereit' : 'Bitte fehlende Angaben bearbeiten' : 'Vollständig geprüfter Export gespeichert'} · {annual ? preview.source_rows : preview.rows} Buchungsquellen</p>
         {annual && preview.wiso_preparation && preparationView(preview.wiso_preparation)}
@@ -321,7 +334,7 @@ export default function TaxExports() {
           </details>)}
           <nav aria-label="Buchungsquellenseiten"><button disabled={busy || sourceOffset === 0} onClick={() => loadSourcePage(Math.max(0, sourceOffset - 20))}>Vorherige Quellen</button><span>{preview.source_rows ? sourceOffset + 1 : 0} bis {Math.min(sourceOffset + 20, preview.source_rows)} von {preview.source_rows}</span><button disabled={busy || sourceOffset + 20 >= preview.source_rows} onClick={() => loadSourcePage(sourceOffset + 20)}>Weitere Quellen</button></nav>
           {revision && <label>Begründung der Jahresrevision<input value={revisionReason} onChange={e => setRevisionReason(e.target.value)} /></label>}
-          <button disabled={!canWrite || busy || !preview.ready || (revision && !revisionReason.trim())} onClick={saveProjection}>Geprüfte Jahresfassung unveränderlich speichern</button></> : <><p>Eingänge: {preview.income} EUR · Ausgänge: {preview.expense} EUR</p><button onClick={() => download(preview)} disabled={busy}>DATEV-Dateien herunterladen</button></>}
+          <button disabled={!canWrite || busy || !preview.ready || (revision && !revisionReason.trim())} onClick={saveProjection}>Geprüfte Jahresfassung unveränderlich speichern</button></> : <><p>{preview.owner_name ? `Anteil von ${preview.owner_name} · ` : ''}Eingänge: {preview.income} EUR · Ausgänge: {preview.expense} EUR</p><button onClick={() => download(preview)} disabled={busy}>DATEV-Dateien herunterladen</button></>}
       </>}
       {overrides.map((override, index) => <fieldset key={override.booking_id} disabled={busy || !canWrite}><legend>Aufteilung {override.booking_id}</legend>
         <label>Begründung<input required value={override.reason} onChange={e => { setOverrides(old => old.map((o, i) => i === index ? { ...o, reason: e.target.value } : o)); setPreview(null); }} /></label>
@@ -336,7 +349,7 @@ export default function TaxExports() {
       </fieldset>)}
       </section>
       <section><h2>Gesicherte Historie</h2>{history.items.length === 0 && <p>Für dieses Portfolio ist noch keine Fassung gespeichert.</p>}
-        {history.items.map(item => <article key={item.id}><p>{item.tax_year || `${item.start_date} bis ${item.end_date}`} · {item.created_at || item.generated_at} · {item.id}</p>
+        {history.items.map(item => <article key={item.id}><p>{item.tax_year || `${item.start_date} bis ${item.end_date}`}{item.owner_name ? ` · Anteil von ${item.owner_name}` : ''} · {item.created_at || item.generated_at} · {item.id}</p>
           <button disabled={busy} onClick={() => download(item)}>{annual ? item.wiso_preparation ? 'Neutrale Quellen und manuellen Übertragungsbogen' : 'Neutrale Quellen und Steuerzeilen' : 'Originale DATEV-Exportdateien'} herunterladen</button>
           {annual && item.wiso_preparation && <button disabled={busy} onClick={() => viewSavedPreparation(item)}>Gesicherten Übertragungsbogen prüfen</button>}
           {annual && canWrite && <button disabled={busy} onClick={() => { setRevision(item.id); setRevisionReason(''); setSelected(item.profile_version_id); setAsOf(item.review_request.as_of); setOverrides(item.review_request.overrides || []); setPendingReason(item.review_request.pending_review_reason || ''); setEmptyReason(item.review_request.empty_cash_review_reason || ''); setPreview(null); }}>Als neue Jahresrevision prüfen</button>}</article>)}

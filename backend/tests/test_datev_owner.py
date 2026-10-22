@@ -39,6 +39,7 @@ def test_an_owners_export_carries_their_part_and_the_owners_add_up_to_the_whole(
     booking(tax_store, -10, day=date(2024, 6, 3), owner_contact_id=ben.id)        # Ben's own cost
     booking(tax_store, 50, prop=1, day=date(2024, 6, 4))                           # no shares on property 1
     version = datev.create_profile(store, datev_profile(tax_store), "actor")
+    assert [owner["name"] for owner in datev.options(store, version["portfolio_id"])["owners"]] == ["Anna", "Ben"]
     whole = datev.create_preview(store, datev_request(version), "actor")
     assert (whole["rows"], whole["income"], whole["expense"]) == (5, "180.11", "40.10")
     assert "owner_contact_id" not in whole

@@ -38,3 +38,9 @@
 .tax-exports :focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
 .tax-preparation { margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-sm); min-width: 0; }
 .tax-preparation details { padding: var(--space-2) 0; }
+/* each owner's part: tables scroll inside their panel on narrow screens */
+.tax-owner-split { overflow-x: auto; min-width: 0; }
+.tax-owner-split table { width: 100%; margin: 0 0 var(--space-4); border-collapse: collapse; }
+.tax-owner-split caption { caption-side: top; text-align: left; font-weight: 600; padding: var(--space-2) 0; }
+.tax-owner-split :is(th, td) { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--color-border-light); text-align: left; }
+.tax-owner-split :is(th, td):last-child { text-align: right; white-space: nowrap; }

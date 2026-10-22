@@ -112,13 +112,17 @@ def list_profiles(store, portfolio_id, offset=0, limit=100):
 
 
 def options(store, portfolio_id):
+    from .ownership import owners
+
     store.get_portfolio(portfolio_id)
     db, captured = database(store), scope_helpers().current_scope()
+    # the owners an export can be made for (create_preview: owner_contact_id)
+    choices = {"owners": [{"id": owner["id"], "name": owner["name"]} for owner in owners(store)]}
     if db is None:
         return {"accounts": [{"id": row.id, "name": row.name, "account_type": row.account_type} for row in store.list_accounts() if row.portfolio_id == portfolio_id],
             "categories": [{"id": row.id, "name": row.name, "category_type": row.category_type} for row in store.list_categories() if row.portfolio_id == portfolio_id],
-            "properties": [{"id": row.id, "name": row.name} for row in store.list_properties() if row.portfolio_id == portfolio_id]}
-    result = {}
+            "properties": [{"id": row.id, "name": row.name} for row in store.list_properties() if row.portfolio_id == portfolio_id]} | choices
+    result = choices
     for key, model, columns in (
         ("accounts", AccountORM, (AccountORM.id, AccountORM.name, AccountORM.account_type)),
         ("categories", CategoryORM, (CategoryORM.id, CategoryORM.name, CategoryORM.category_type)),
