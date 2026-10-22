@@ -493,7 +493,10 @@ def compute_owner_results(store: Any, flt: FinanceFilter | None = None, today: d
         return values
 
     whole = figures(None)
-    owners = sorted((c for c in store.list_contacts() if c.contact_type == "owner"),
+    # also a contact named by a share or booking whose type was changed since: its money has a row
+    named = {s.owner_contact_id for s in store.list_ownership_shares()}
+    named |= {b.owner_contact_id for b in store.list_bookings() if getattr(b, "owner_contact_id", None)}
+    owners = sorted((c for c in store.list_contacts() if c.contact_type == "owner" or c.id in named),
                     key=lambda c: (owner_name(c).lower(), c.id))
     rows, added = [], {key: ZERO for key in whole}
     for owner, name in [(c.id, owner_name(c)) for c in owners] + [(NOBODY, "Ohne Eigentümer")]:

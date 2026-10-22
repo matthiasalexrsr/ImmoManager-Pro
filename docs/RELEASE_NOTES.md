@@ -45,6 +45,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Rechnungsprüfung:** sachlich und rechnerisch prüfen, freigeben (auf Wunsch mit vier Augen), Skonto, Reklamation. Ist eine ältere Rechnung als bezahlt markiert, aber keine Zahlung zugeordnet, zeigt die Übersicht „Ungeklärt“ statt einen Nachweis vorzutäuschen.
 - **Kaution** vom Vereinbaren bis zur Abrechnung beim Auszug.
 - **Entnahmen, Ausschüttungen und Einlagen:** Eine Kategorie „Privat (Entnahme/Einlage)“ für das eigene Geld der Eigentümer. Der Kontostand stimmt, Ergebnis, Kosten und Budgets bleiben davon frei. Zahlungsübersicht, Buchungen und Startseite zeigen Entnahmen und Einlagen getrennt.
+- **Eigentümer und Eigentumsanteile:** Im Objekt-Reiter „Eigentümer“ lässt sich erfassen, wem das Objekt oder eine Einheit gehört, auch mehreren zu Anteilen (eine Wohnung Matthias, zwei Linda, eine beiden je zur Hälfte). Berichte, Budgets, die Startseite und die Steuerauswertung lassen sich nach Eigentümer filtern; „Ergebnis je Eigentümer“ zeigt Miete, Kosten, Ergebnis, Entnahmen und Einlagen je Eigentümer. Die Teile aller Eigentümer ergeben auf den Cent das Ganze. Eine Buchung kann einem Eigentümer allein gehören.
+- **Eigentümerwechsel:** Verkauf, Schenkung, Erbschaft und Teilung zu einem Stichtag in einem Schritt. Danach rechnet alles tagesgenau: Wechselt eine Wohnung am 16. Juli, bekommt jeder Eigentümer seine Tage der Julimiete. „Stand am“ und „Verlauf“ zeigen, wem was wann gehörte.
 - **Budget-Ist aus den Buchungen auf Knopfdruck:** Im Budget die Buchungskategorien wählen, dann „Ist aus Buchungen“: Das Programm zeigt Betrag und Buchungen und übernimmt erst auf Bestätigung.
 - **Mieterkonto mit allen Forderungen:** Nachzahlungen, Guthaben und Gebühren stehen mit im Gesamtsaldo. Wurde eine Zahlung auf eine Nachzahlung als Miete gutgeschrieben, schlägt das Konto den Ausgleich vor („Ausgleich buchen“).
 - **Steuerjahr zum Jahreswechsel:** Die Januarmiete vom 29.12. lässt sich dem neuen Jahr zuordnen (§ 11 EStG); die Prüfliste fragt danach.
@@ -135,11 +137,12 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Prognosen rechnen mit den Vertragsmieten;
   - noch nicht abgeschlossene Nebenkostenabrechnungen ergeben bei neuer Erzeugung korrekte Beträge.
   - Abgeschlossene Abrechnungen bleiben unverändert.
-- **Datenexport (JSON):** Ein Export dieser Version hat das Format 14 (mit Ablaufdaten, Aufbewahrungsklassen und Lastschriftdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
+- **Datenexport (JSON):** Ein Export dieser Version hat das Format 15 (mit Ablaufdaten, Aufbewahrungsklassen, Lastschriftdaten und Eigentumsanteilen). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
 - **Mietkonten nach der Rechenprüfung:** Fälligkeiten verschieben sich vom 3. Kalendertag auf den 3. Werktag. Verträge mit einer Mietänderung zur Monatsmitte zeigen für diesen Monat jetzt den tagesgenauen Betrag; Rückstand oder Guthaben dieser Konten können sich dadurch um den Unterschied ändern. Bereits abgeschlossene Mahnschreiben und Abrechnungen bleiben, wie sie sind. Bisher unzugeordnete Zahlungen eines Mieters mit nur einem Vertrag, die vor dem Einzug oder nach dem Auszug eingingen, ordnet das Programm beim ersten Start diesem Vertrag zu.
 - **Konten mit gleicher IBAN** aus früheren Versionen bleiben erhalten; neue lassen sich nicht mehr anlegen. Die Prüfliste nennt sie; bitte doppelt angelegte Konten zusammenführen.
 - **Nachzahlungen aus Nebenkostenabrechnungen** sind 30 Tage nach dem Zustellvermerk fällig. Ohne Vermerk legt „Forderungen erzeugen“ sie erst nach einer Rückfrage an.
 - **Mahngebühren:** Ohne eigene Einstellung sind es jetzt 2,50 € je Mahnung (vorher 2,50 / 5,00 / 5,00 €). Eigene Einstellungen und abgeschlossene Schreiben bleiben.
+- **Eigentümer:** Solange keine Eigentumsanteile erfasst sind, ändert sich keine Zahl. Eigentümer sind Kontakte vom Typ „Eigentümer“ im Adressbuch.
 - **Entnahmen** ohne Kategorie zählen weiter als Ausgabe. Erst mit einer Kategorie „Privat (Entnahme/Einlage)“ fallen sie aus Ergebnis und Kosten.
 - **„Heute“ ist überall das Datum in Deutschland:** Im Docker-Betrieb galt bisher bis 1 bzw. 2 Uhr nachts noch der Vortag.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
@@ -152,6 +155,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Fälligkeit und Feiertage:** Für den dritten Werktag zählen nur die bundesweiten Feiertage; regionale (z. B. Heilige Drei Könige, Fronleichnam) nicht, dort kann eine Miete einen Tag früher als fällig gelten.
 - **Heizkosten nach HeizkostenV:** Die Aufteilung in Grund- und Verbrauchskosten (50–70 % nach Verbrauch) wird nicht selbst gebildet; dafür die Heizkosten als zwei Positionen mit Flächen- und Verbrauchsschlüssel erfassen.
 - **Steuerliche Jahresauswertung:** Sie folgt dem Buchungsdatum; die Zehn-Tage-Regel für regelmäßig wiederkehrende Zahlungen um den Jahreswechsel (§ 11 EStG) wird nicht angewandt.
+- **Eigentümer:** Die Buchungsliste hat keinen Eigentümerfilter. WISO-Vorbereitung und DATEV-Export gelten für den ganzen Bestand; für die Erklärung einzelner Eigentümer ist die Tabelle „Anteile je Eigentümer“ der Steuerauswertung die Grundlage. Kontostände werden nicht nach Eigentümern geteilt.
 - **Vollbackup zurückspielen:** nur über die Kommandozeile (`ImmoManager-Pro.exe ops restore …`), siehe „LIES MICH.txt“.
 - **Signaturen:** keine elektronische Unterschrift auf Übergabeprotokollen.
 - **Windows-Warnung:** Das Windows-Paket ist nicht signiert. Beim ersten Start meldet Windows das; über „Weitere Informationen → Trotzdem ausführen“ geht es weiter.

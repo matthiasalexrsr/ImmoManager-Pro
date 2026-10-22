@@ -19,6 +19,7 @@ Maßgeblich ist immer der Code. Die Dokumente hier beschreiben ihn; ältere Plä
 | Dokument | Inhalt |
 | --- | --- |
 | [FINANCE_PRECISION_20261008.md](FINANCE_PRECISION_20261008.md) | Cent-genaue Finanzen, Stornos, Berichtsfilter |
+| [OWNERSHIP_20261022.md](OWNERSHIP_20261022.md) | Eigentümer, Eigentumsanteile, Eigentümerwechsel, Berichte je Eigentümer |
 | [RENT_PAYMENTS_20261013.md](RENT_PAYMENTS_20261013.md) | Mietzahlungen und Vertragszuordnung |
 | [BILLING_REGRESSION_20261008.md](BILLING_REGRESSION_20261008.md) | Nebenkostenabrechnung: Zähler, Personen, Korrekturen |
 | [DEPOSITS_20261011.md](DEPOSITS_20261011.md) | Kaution |

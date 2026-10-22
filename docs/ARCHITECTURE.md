@@ -76,6 +76,14 @@ Beide Speicher sind gleichwertig: Jeder Backend-Test läuft in CI mit `TEST_STOR
 - **Zahlungen:** `contract_payments(...)` (`services/payment_allocations.py`).
 - Beide berücksichtigen Übernahmetag, Saldo, Stornos und Kautionsanteile. Nie selbst ab Vertragsbeginn rechnen. Ausnahme sind Berichte über die Soll-Miete je Monat (`report_service.rent_due_by_month`).
 
+### Ein Bericht, der Geld zusammenzählt
+- **Eigentümerfilter:** `FinanceFilter.owner_contact_id` (auch `none` für den Teil ohne Eigentümer). Eine `OwnerView(store, flt)` je Berechnung anlegen und jeden Betrag damit nehmen:
+  - `view.booking(b)` für eine Buchung;
+  - `view.part(betrag, objekt, einheit, tag)` für einen Betrag eines Tages;
+  - `view.period(...)` bzw. `view.contract_period(...)` für einen Betrag eines Zeitraums.
+- Ohne Eigentümer liefert sie den ganzen Betrag. Nie selbst nach Anteilen rechnen; `services/ownership.py` regelt Vorrang (Einheit vor Objekt, Fläche), Wechsel und Cent-Rest.
+- Ein Test sollte zeigen, dass die Eigentümer zusammen den Bericht ohne Filter ergeben (Vorbild: `test_owner_reports.py`).
+
 ## Oberflächen-Bausteine
 
 **`DataTable`**

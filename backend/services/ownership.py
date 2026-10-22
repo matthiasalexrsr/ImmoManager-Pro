@@ -343,12 +343,12 @@ def owner_name(contact: Any) -> str:
 
 
 def owners(store: Any) -> list[dict[str, Any]]:
-    """Every contact of type owner, with the number of shares recorded for them."""
+    """Every contact of type owner (or holding a share), with the number of shares recorded for them."""
     counts: dict[str, int] = defaultdict(int)
     for share in list_shares(store):
         counts[share.owner_contact_id] += 1
     found = [{"id": contact.id, "name": owner_name(contact), "shares": counts.get(contact.id, 0)}
-             for contact in store.list_contacts() if contact.contact_type == "owner"]
+             for contact in store.list_contacts() if contact.contact_type == "owner" or contact.id in counts]
     return sorted(found, key=lambda owner: (owner["name"].lower(), owner["id"]))
 
 

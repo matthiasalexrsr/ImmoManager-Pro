@@ -35,6 +35,11 @@ def estate():
         assert response.status_code == 200, response.text
         return response.json()
 
+    def patch(path, body):
+        response = client.patch(API + path, headers=headers, json=body)
+        assert response.status_code == 200, response.text
+        return response.json()
+
     pf = post("/portfolios", {"name": "P"})["id"]
     house = post("/properties", {"portfolio_id": pf, "name": "Haus", "property_type": "residential"})["id"]
     people = {name: post("/contacts", {"contact_type": "owner", "first_name": name})["id"]
@@ -63,7 +68,7 @@ def estate():
     book(-100, category_id=costs, property_id=house, unit_id=units[2], payment_text="Reparatur WE 3")
     book(-10, category_id=costs, payment_text="Kontoführung")                               # nobody recorded
     book(-1000, category_id=private, property_id=house, owner_contact_id=linda, payment_text="Entnahme Linda")
-    yield {"get": get, "house": house, "m": m, "linda": linda, "units": units}
+    yield {"get": get, "patch": patch, "house": house, "m": m, "linda": linda, "units": units}
     clear_users()
     clear_business_data(store)
 
@@ -77,6 +82,13 @@ def test_the_result_per_owner_adds_up_to_the_result_of_the_house(estate):
     assert (rows["Ohne Eigentümer"]["costs"], rows["Ohne Eigentümer"]["result"]) == (10, -10)
     assert (rows["Linda"]["withdrawal"], rows["Matthias"]["withdrawal"]) == (1000, 0)
     assert data["totals"]["result"] == 1690 == sum(row["result"] for row in rows.values())
+
+
+def test_an_owner_whose_contact_type_changed_keeps_their_row(estate):
+    estate["patch"](f"/contacts/{estate['linda']}", {"contact_type": "supplier"})
+    rows = {row["name"]: row for row in estate["get"](f"/reports/owner-results?{MARCH}")["owners"]}
+    assert (rows["Linda"]["result"], rows["Linda"]["withdrawal"]) == (940, 1000)
+    assert "Linda" in {owner["name"] for owner in estate["get"]("/ownership-shares/owners")}
 
 
 def test_every_report_takes_the_owner_filter(estate):
