@@ -1,4 +1,8 @@
-"""Version 2 performance and forecast reports; one definition for every output."""
+"""Version 2 performance and forecast reports; one definition for every output.
+
+With an owner in the definition every amount counts with that owner's part of it on its day
+(services.ownership.OwnerView); the sources carry those parts.
+"""
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -28,6 +32,7 @@ from .finance_ledger import (
 )
 from .maintenance_projects import work
 from .maintenance_rows import Rows
+from .ownership import OwnerView
 from .read_cache import CachedReads
 from .receivable_residuals import ResidualReader, digest
 from .rent_history import rent_steps
@@ -56,7 +61,8 @@ def validate_scope(store, definition):
 
 
 def _filter(d):
-    return FinanceFilter(portfolio_id=d.portfolio_id, property_id=d.property_id, unit_id=d.unit_id)
+    return FinanceFilter(portfolio_id=d.portfolio_id, property_id=d.property_id, unit_id=d.unit_id,
+                         owner_contact_id=d.owner_contact_id)
 
 
 class InvoiceScopes:
@@ -83,12 +89,18 @@ class InvoiceScopes:
                 self.locations[location.service_contract_id].append(location)
         self._visible: set[str] | None = None
 
-    def amount(self, invoice, amount, period_start, period_end):
-        """One invoice identity, projected through its project or weighted contract locations."""
+    def amount(self, invoice, amount, period_start, period_end, view=None):
+        """One invoice identity, projected through its project or weighted contract locations.
+
+        With an owner view: that owner's part of each place on the period's first day.
+        """
+        def owned(part, property_id, unit_id):
+            return view.part(part, property_id, unit_id, period_start) if view is not None else part
+
         project = self.projects.get(invoice.id)
         if project:
             case = self.cases.get(project[0].case_id)
-            return amount if case and self.dims.matches(case.property_id, case.unit_id) else ZERO
+            return owned(amount, case.property_id, case.unit_id) if case and self.dims.matches(case.property_id, case.unit_id) else ZERO
         linked = self.contracts.get(invoice.id)
         if linked:
             from ..domain.service_contract_finance import active_in
@@ -98,15 +110,16 @@ class InvoiceScopes:
                 portions = allocate_cents(amount, [Decimal(str(loc.share_weight)) for loc in locations])
                 if self._visible is None:
                     self._visible = {p.id for p in self.store.list_properties()}
-                return sum((part for loc, part in zip(locations, portions)
+                return sum((owned(part, loc.property_id, loc.unit_id) for loc, part in zip(locations, portions)
                             if loc.property_id in self._visible and self.dims.matches(loc.property_id, loc.unit_id)), ZERO)
-        return amount if not self.flt.unit_id and self.dims.matches(invoice.property_id) else ZERO
+        return owned(amount, invoice.property_id, None) if not self.flt.unit_id and self.dims.matches(invoice.property_id) else ZERO
 
 
-def location_amount(store, contract_id, amount, flt, day):
+def location_amount(store, contract_id, amount, flt, day, view=None):
     from ..domain.service_contract_finance import active_in
     from .portfolio_scope import scope_context
     rows, dims = Rows.reading(store), Dimensions(store, flt)
+    view = view or OwnerView(store, flt)
     with scope_context(None):
         locations = rows.find("service_contract_locations", service_contract_id=contract_id)
     locations = sorted([loc for loc in locations if active_in(loc, day, day)], key=lambda loc: loc.id)
@@ -114,7 +127,8 @@ def location_amount(store, contract_id, amount, flt, day):
         return ZERO
     portions = allocate_cents(amount, [Decimal(str(loc.share_weight)) for loc in locations])
     visible = {p.id for p in store.list_properties()}
-    return sum((part for loc, part in zip(locations, portions) if loc.property_id in visible and dims.matches(loc.property_id, loc.unit_id)), ZERO)
+    return sum((view.part(part, loc.property_id, loc.unit_id, day) for loc, part in zip(locations, portions)
+                if loc.property_id in visible and dims.matches(loc.property_id, loc.unit_id)), ZERO)
 
 
 def validate_source_currencies(store, definition, currency):
@@ -143,10 +157,12 @@ def cash(store, d):
     from .report_service import compute_cashflow
     applied = _filter(d).with_period(d.date_from, d.date_to or d.as_of)
     calculated = compute_cashflow(store, applied, decimal_strings=True)
-    selected = booking_sources(store, applied)
+    view = OwnerView(store, applied)
+    parts = {booking.id: view.booking(booking) for booking in booking_sources(store, applied)}
+    selected = [booking for booking in booking_sources(store, applied) if parts[booking.id]]
     categories = {category.id: category.category_type for category in store.list_categories()}
     sources = [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
-                "month": month_key(booking.booking_date), "amount": str(money(booking.amount)),
+                "month": month_key(booking.booking_date), "amount": str(parts[booking.id]),
                 "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
                 "side": booking_side(categories.get(booking.category_id), booking),
                 "url": "/bookings?booking_id=" + booking.id, "basis": "Buchungsdatum"}
@@ -167,7 +183,7 @@ def performance(store, d):
     last = d.date_to or date(d.as_of.year, 12, 31)
     months = months_between(first, last)
     applied = flt.with_period(first, last)
-    dims, rows = Dimensions(store, flt), Rows.reading(store)
+    dims, rows, view = Dimensions(store, flt), Rows.reading(store), OwnerView(store, flt)
     rent = rent_due_by_month(store, flt, first, last)
     values = {month_key(m): {"rent_due": rent.get(month_key(m), ZERO), "other_income": ZERO, "costs": ZERO} for m in months}
     sources, warnings = [], []
@@ -187,7 +203,8 @@ def performance(store, d):
         shares = allocate_cents(money(statement.balance), [Decimal((min(month_end(m), end) - max(m, start)).days + 1) for m in span])
         for m, share in zip(span, shares):
             key = month_key(m)
-            if key in values:
+            share = view.contract(contract, share, m)
+            if key in values and (share or not view.active):
                 values[key]["other_income"] += share
                 sources.append({"identity": "utility-statement:" + statement.id, "month": key, "amount": str(share), "contribution": "other_income",
                                 "url": "/statements?period_id=" + period.id, "basis": "Finale Abrechnungsdifferenz zu Sollvorauszahlungen"})
@@ -200,9 +217,10 @@ def performance(store, d):
             continue
         for line in LeaseEngine.build_monthly_receivables(contract_start=max(first, contract.start_date),
                 contract_end=contract.end_date, rent_steps=rent_steps(reads, contract), until_including=last):
-            if month_key(line.period_start) in values:
+            due = view.contract(contract, line.total_amount, line.period_start)
+            if month_key(line.period_start) in values and (due or not view.active):
                 sources.append({"identity": "rent:" + contract.id + ":" + month_key(line.period_start),
-                                "month": month_key(line.period_start), "amount": str(line.total_amount), "contribution": "rent_due",
+                                "month": month_key(line.period_start), "amount": str(due), "contribution": "rent_due",
                                 "url": "/contracts?contract_id=" + contract.id, "basis": "Sollwarmmiete einschließlich Vorauszahlungen"})
     invoices = [invoice for invoice in store.list_invoices() if invoice.status != "cancelled"]
     scopes = InvoiceScopes(store, flt, invoices)
@@ -224,7 +242,7 @@ def performance(store, d):
         start = invoice.performance_start or (link.period_start if link else invoice.invoice_date)
         end = invoice.performance_end or (link.period_end if link else invoice.invoice_date)
         amount = reviewed.get(invoice.id, ("legacy", money(invoice.gross_amount)))[1]
-        amount = scopes.amount(invoice, amount, start, end)
+        amount = scopes.amount(invoice, amount, start, end, view if view.active else None)
         if not amount:
             continue
         if bool(invoice.performance_start) != bool(invoice.performance_end) or end < start:
@@ -245,10 +263,11 @@ def performance(store, d):
     from .report_service import _receivables
     for receivable in _receivables(store, applied):
         key = month_key(receivable.due_date)
-        if receivable.kind == "other" and key in values:      # R12-15, as in compute_period_result
-            values[key]["other_income"] += money(receivable.amount_due)
+        claim = view.contract(contracts[receivable.contract_id], receivable.amount_due, receivable.due_date)
+        if receivable.kind == "other" and key in values and (claim or not view.active):  # R12-15, as in the period result
+            values[key]["other_income"] += claim
             sources.append({"identity": "receivable:" + receivable.id, "month": key,
-                            "amount": str(money(receivable.amount_due)), "contribution": "other_income",
+                            "amount": str(claim), "contribution": "other_income",
                             "url": "/receivables",
                             "basis": "Sonstige Forderung (Fälligkeit)"})
     categories = {c.id: c.category_type for c in store.list_categories()}
@@ -266,7 +285,7 @@ def performance(store, d):
             if original and money(original.amount):
                 identified_amount = -money(identified.get(original.id, ZERO) * abs(amount / money(original.amount)))
         # outgoing supplier allocation amounts are positive; cash amounts are negative
-        amount += identified_amount
+        amount = view.booking(b, amount + identified_amount)
         if not amount:
             continue
         side = booking_side(categories.get(b.category_id), b)
@@ -291,7 +310,7 @@ def forecast(store, d):
     from .invoice_review import settlements
     from .report_service import current_balance
     flt, rows = _filter(d), Rows.reading(store)
-    dims = Dimensions(store, flt)
+    dims, view = Dimensions(store, flt), OwnerView(store, flt)
     first, last = month_start(d.as_of), month_end(add_months(month_start(d.as_of), d.months - 1))
     events: dict[str, dict[str, Any]] = {}
     warnings = []
@@ -338,10 +357,12 @@ def forecast(store, d):
             if c.unit_id in d.vacant_unit_ids:
                 continue
             event("rent:" + c.id + ":" + (line.claim_key or month_key(m)), day,
-                  money(line.outstanding_amount * d.rent_collection_percent / 100), "Erwartete Miete " + c.contract_number,
+                  view.contract(c, money(line.outstanding_amount * d.rent_collection_percent / 100), day),
+                  "Erwartete Miete " + c.contract_number,
                   "/contracts?contract_id=" + c.id)
         if arrears and d.arrears_collection_percent:
-            event("rent-arrears:" + c.id, add_months(d.as_of, 1), money(arrears * d.arrears_collection_percent / 100),
+            event("rent-arrears:" + c.id, add_months(d.as_of, 1),
+                  view.contract(c, money(arrears * d.arrears_collection_percent / 100), add_months(d.as_of, 1)),
                   "Erwarteter Eingang Mietrückstand " + c.contract_number, "/contracts?contract_id=" + c.id)
     # Future bookings have higher priority than an expectation of the same identified event.
     bills = store.list_invoices()
@@ -356,7 +377,7 @@ def forecast(store, d):
             if any(link.service_contract_id == contract.id and link.kind == "regular" and
                    link.period_start <= instalment.due_date <= link.period_end for link in service_bills):
                 continue
-            amount = location_amount(store, contract.id, instalment.amount, flt, instalment.due_date)
+            amount = location_amount(store, contract.id, instalment.amount, flt, instalment.due_date, view)
             event("service-instalment:" + contract.id + ":" + month_key(instalment.due_date), instalment.due_date,
                   -amount, "Abschlag " + contract.title, "/service-contracts/" + contract.id)
     # Cash through the horizon is already an actual forecast event. The canonical
@@ -368,7 +389,8 @@ def forecast(store, d):
         if s.open > 0 and i.status not in ("cancelled", "rejected"):
             link = next((link for link in service_bills if link.invoice_id == i.id), None)
             outstanding = s.open - (money(link.advances_credited) if link else ZERO)
-            amount = scopes.amount(i, outstanding, i.performance_start or i.invoice_date, i.performance_end or i.invoice_date)
+            amount = scopes.amount(i, outstanding, i.performance_start or i.invoice_date, i.performance_end or i.invoice_date,
+                                   view if view.active else None)
             event("invoice:" + i.id, max(s.due_on or i.due_date or i.invoice_date, d.as_of + timedelta(days=1)), -amount,
                   "Rechnung " + i.supplier, "/invoice-review/" + i.id)
             if "invoice:" + i.id in events and (i.status == "paid" or (i.status == "partial" and not s.paid)):
@@ -394,13 +416,13 @@ def forecast(store, d):
         b = booked.get(p.booking_id)
         effective = capacity.effective.get(("service_contract_payments", p.id), ZERO)
         if b and effective > ZERO:
-            amount = location_amount(store, p.service_contract_id, effective, flt, b.booking_date)
+            amount = location_amount(store, p.service_contract_id, effective, flt, b.booking_date, view)
             reduce_expected("service-instalment:" + p.service_contract_id + ":" + month_key(b.booking_date), amount)
     for b in bookings:
         if not d.as_of < b.booking_date <= last or not dims.booking_matches(b):
             continue
         identity = "booking:" + b.id
-        event(identity, b.booking_date, money(b.amount), b.payment_text or "Geplante Buchung", "/bookings?booking_id=" + b.id, 2)
+        event(identity, b.booking_date, view.booking(b), b.payment_text or "Geplante Buchung", "/bookings?booking_id=" + b.id, 2)
     residual_reader = ResidualReader(store)
     for r in store.list_receivables():
         c = next((c for c in contracts if c.id == r.contract_id), None)
@@ -410,7 +432,7 @@ def forecast(store, d):
         if state["unresolved_legacy"]:
             warnings.append({"source": "receivable:" + r.id, "message": "Ungeklärter Altbestand wird nicht als Zahlung prognostiziert."})
             continue
-        amount = money(state["residual"])
+        amount = view.contract(c, state["residual"], r.due_date)
         if r.due_date <= d.as_of:
             amount = money(amount * d.arrears_collection_percent / 100)
             due = min(last, add_months(d.as_of, 1))
@@ -435,9 +457,9 @@ def forecast(store, d):
                        for account in store.list_accounts() if not flt.below_portfolio and
                        (not flt.portfolio_id or account.portfolio_id == flt.portfolio_id) and money(account.opening_balance)]
     opening_sources += [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
-                         "amount": str(money(booking.amount)), "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
+                         "amount": str(view.booking(booking)), "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
                          "basis": "Buchung bis einschließlich Stichtag", "url": "/bookings?booking_id=" + booking.id}
-                        for booking in booking_sources(store, flt.with_period(None, d.as_of))]
+                        for booking in booking_sources(store, flt.with_period(None, d.as_of)) if view.booking(booking)]
     return {"opening_balance": str(opening), "opening_sources": opening_sources,
             "closing_balance": str(balance), "monthly": monthly,
             "sources": sorted(events.values(), key=lambda e: (e["day"], e["identity"])), "warnings": warnings}

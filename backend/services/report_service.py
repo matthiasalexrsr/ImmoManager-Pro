@@ -12,12 +12,14 @@ routers, scheduled jobs and export pipelines. Three views of money stay apart
   average other income and costs of the last complete months (months without bookings count).
 
 Amounts are Decimal cents throughout (domain.money); responses carry them as JSON numbers.
-Every report takes the same filter (services.finance_ledger.FinanceFilter).
+Every report takes the same filter (services.finance_ledger.FinanceFilter). With an owner in the
+filter every amount counts with that owner's part on its day (services.ownership.OwnerView).
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -39,6 +41,7 @@ from .finance_ledger import (
     month_start,
     months_between,
 )
+from .ownership import OwnerView
 from .read_cache import CachedReads
 from .rent_history import rent_steps
 
@@ -96,9 +99,11 @@ def other_claims_by_month(store: Any, flt: FinanceFilter) -> dict[str, Decimal]:
     monthly rent and never count.
     """
     claims: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    view, contracts = OwnerView(store, flt), _contracts_by_id(store)
     for receivable in _receivables(store, flt):
         if receivable.kind == "other":
-            claims[month_key(receivable.due_date)] += money(receivable.amount_due)
+            claims[month_key(receivable.due_date)] += view.contract(
+                contracts[receivable.contract_id], receivable.amount_due, receivable.due_date)
     return claims
 
 
@@ -113,7 +118,7 @@ def rent_due_by_month(store: Any, flt: FinanceFilter, first: date, last: date) -
     """Rent the contracts owe in each month from *first* to *last* (their rent history, warm,
     move-in and move-out months by days); drafts owe nothing."""
     reads = CachedReads(store)
-    dims = Dimensions(reads, flt)
+    dims, view = Dimensions(reads, flt), OwnerView(store, flt)
     first, last_day = month_start(first), month_end(last)
     due: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for contract in reads.list_contracts():
@@ -129,7 +134,7 @@ def rent_due_by_month(store: Any, flt: FinanceFilter, first: date, last: date) -
                 contract_start=start, contract_end=contract.end_date,
                 rent_steps=rent_steps(reads, contract), until_including=last_day):
             if line.period_start >= first:
-                due[month_key(line.period_start)] += line.total_amount
+                due[month_key(line.period_start)] += view.contract(contract, line.total_amount, line.period_start)
     return due
 
 
@@ -157,11 +162,14 @@ def _receivables(store: Any, flt: FinanceFilter) -> list:
 def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | None = None) -> dict[str, Any]:
     flt = flt or FinanceFilter()
     today = today or local_today()
-    dims = Dimensions(store, flt)
+    dims, view = Dimensions(store, flt), OwnerView(store, flt)
+    contracts = _contracts_by_id(store)
     receivables = _receivables(store, flt)
     from .receivable_residuals import ResidualReader
     residual_reader = ResidualReader(store)
-    balances = {r.id: residual_reader.balance(r, today) for r in receivables}
+    # an owner's part of what is open, on the day each claim is due
+    balances = {r.id: view.contract(contracts[r.contract_id], residual_reader.balance(r, today), r.due_date)
+                for r in receivables}
     open_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables)
     overdue_receivables = money_sum(max(balances[r.id], ZERO) for r in receivables if r.due_date < today or r.status == "overdue")
     open_credits = -money_sum(min(balances[r.id], ZERO) for r in receivables)
@@ -169,16 +177,22 @@ def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | 
     # invoices name a property (or nothing), never a unit
     invoices = [inv for inv in store.list_invoices()
                 if not flt.unit_id and dims.matches(inv.property_id) and flt.in_period(inv.invoice_date)]
-    maintenance = [c for c in store.list_maintenance_cases() if dims.matches(c.property_id, c.unit_id)]
+    invoices_total = money_sum(view.part(inv.gross_amount, inv.property_id, None, inv.invoice_date) for inv in invoices)
+    maintenance = [c for c in store.list_maintenance_cases()
+                   if dims.matches(c.property_id, c.unit_id) and view.owns(c.property_id, c.unit_id, today)]
     return {
         "totals": {
-            "properties": sum(1 for p in store.list_properties() if dims.property_record_matches(p)),
-            "units": sum(1 for u in store.list_units() if dims.unit_record_matches(u)),
-            "contracts": sum(1 for c in store.list_contracts() if dims.contract_matches(c)),
+            # with an owner: what they hold a part of today
+            "properties": sum(1 for p in store.list_properties()
+                              if dims.property_record_matches(p) and view.owns(p.id, None, today)),
+            "units": sum(1 for u in store.list_units()
+                         if dims.unit_record_matches(u) and view.owns(u.property_id, u.id, today)),
+            "contracts": sum(1 for c in contracts.values()
+                             if dims.contract_matches(c) and view.owns(c.property_id, c.unit_id, today)),
         },
         "finance": {
             "bookingsTotal": as_number(total_bookings),
-            "invoicesTotal": as_number(money_sum(inv.gross_amount for inv in invoices)),
+            "invoicesTotal": as_number(invoices_total),
             "openReceivables": as_number(open_receivables),
             "overdueReceivables": as_number(overdue_receivables),
             "openCredits": as_number(open_credits),
@@ -236,16 +250,21 @@ def compute_receivables_aging(store: Any, flt: FinanceFilter | None = None,
     buckets = {"current": ZERO, "days1to30": ZERO, "days31to60": ZERO, "days61to90": ZERO, "days90plus": ZERO}
     from .receivable_residuals import ResidualReader
     residual_reader = ResidualReader(store)
+    view, contracts = OwnerView(store, flt), _contracts_by_id(store)
+    if view.active:     # only the claims the owner has a part of, each with that part
+        receivables = [r for r in receivables if view.owns(contracts[r.contract_id].property_id,
+                                                           contracts[r.contract_id].unit_id, r.due_date)]
     states = {r.id: residual_reader.read(r, today) for r in receivables}
+    parts = {r.id: view.contract(contracts[r.contract_id], states[r.id]["residual"], r.due_date) for r in receivables}
     for r in receivables:
-        amount = money(states[r.id]["residual"])
+        amount = parts[r.id]
         if amount <= 0:
             continue
         days = (today - r.due_date).days
         bucket = ("current" if days <= 0 else "days1to30" if days <= 30 else "days31to60" if days <= 60
                   else "days61to90" if days <= 90 else "days90plus")
         buckets[bucket] += amount
-    open_credits = -money_sum(min(money(state["residual"]), ZERO) for state in states.values())
+    open_credits = -money_sum(min(part, ZERO) for part in parts.values())
     return {
         "openTotal": as_number(sum(buckets.values(), ZERO)),
         "buckets": {key: as_number(value) for key, value in buckets.items()},
@@ -365,11 +384,12 @@ def compute_contracts_expiring(
 
 def compute_maintenance_costs(store: Any, flt: FinanceFilter | None = None) -> dict[str, Any]:
     flt = flt or FinanceFilter()
-    dims = Dimensions(store, flt)
-    cases = [c for c in store.list_maintenance_cases() if dims.matches(c.property_id, c.unit_id)]
+    dims, view, today = Dimensions(store, flt), OwnerView(store, flt), local_today()
+    cases = [c for c in store.list_maintenance_cases()
+             if dims.matches(c.property_id, c.unit_id) and view.owns(c.property_id, c.unit_id, today)]
     by_cat: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for c in cases:
-        by_cat[c.category or "Unkategorisiert"] += money(c.estimated_cost)
+        by_cat[c.category or "Unkategorisiert"] += view.part(c.estimated_cost, c.property_id, c.unit_id, today)
     return {
         "openCases": sum(1 for c in cases if c.status in {"open", "in_progress"}),
         "totalEstimatedCost": as_number(sum(by_cat.values(), ZERO)),
@@ -446,3 +466,42 @@ def compute_liquidity_forecast(store: Any, flt: FinanceFilter | None = None, *, 
         "basis": "forecast",
         "filters": flt.echo(),
     }
+
+
+def compute_owner_results(store: Any, flt: FinanceFilter | None = None, today: date | None = None) -> dict[str, Any]:
+    """Period result and owners' money per owner; the rows add up to the result of all owners.
+
+    One row per owner (a contact of type owner) with a part in the period, and one for the part
+    no owner is recorded for (services.ownership.NOBODY) when there is any.
+    """
+    from .ownership import NOBODY, owner_name
+
+    flt = (flt or FinanceFilter()).without_owner()
+    today = today or local_today()
+    keys = ("rent_due", "other_income", "costs", "result", "unassigned_income")
+
+    def figures(owner: str | None) -> dict[str, Decimal]:
+        selected = replace(flt, owner_contact_id=owner)
+        result = compute_period_result(store, selected, today)
+        applied = selected.with_period(date.fromisoformat(result["filters"]["date_from"]),
+                                       date.fromisoformat(result["filters"]["date_to"]))
+        rows = booking_totals(store, applied)
+        values = {key: money(result["totals"][key]) for key in keys}
+        values["withdrawal"], values["contribution"] = _withdrawn(rows), _contributed(rows)
+        return values
+
+    whole = figures(None)
+    owners = sorted((c for c in store.list_contacts() if c.contact_type == "owner"),
+                    key=lambda c: (owner_name(c).lower(), c.id))
+    rows, added = [], {key: ZERO for key in whole}
+    for owner, name in [(c.id, owner_name(c)) for c in owners] + [(NOBODY, "Ohne Eigentümer")]:
+        values = figures(owner)
+        if not any(values.values()):
+            continue
+        for key, value in values.items():
+            added[key] += value
+        rows.append({"owner_contact_id": owner, "name": name, **{key: as_number(v) for key, v in values.items()}})
+    if added != whole:      # every amount is split to the cent among all owners: this never happens
+        raise RuntimeError("Die Ergebnisse je Eigentümer ergeben nicht das Gesamtergebnis.")
+    return {"owners": rows, "totals": {key: as_number(value) for key, value in whole.items()},
+            "basis": "accrual", "filters": compute_period_result(store, flt, today)["filters"]}

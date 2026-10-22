@@ -19,6 +19,7 @@ from ..services import report_service
 from ..services.bank_imports import BankImports, StageImport
 from ..services.csv_export import spreadsheet_cell
 from ..services.finance_ledger import Dimensions, FinanceFilter, add_months, month_start
+from ..services.ownership import OwnerView
 from ..services.read_cache import CachedReads
 
 router = APIRouter(prefix="/reports", tags=["Berichte"])
@@ -31,14 +32,17 @@ DateTo = Annotated[date | None, Query(description="Zeitraum bis zu diesem Tag (e
 PortfolioId = Annotated[str | None, Query(description="Nur dieses Portfolio")]
 PropertyId = Annotated[str | None, Query(description="Nur dieses Objekt")]
 UnitId = Annotated[str | None, Query(description="Nur diese Einheit")]
+OwnerId = Annotated[str | None, Query(description="Nur der Anteil dieses Eigentümers (none: ohne Eigentümer)")]
 
 
 def _filter(date_from: date | None = None, date_to: date | None = None, portfolio_id: str | None = None,
-            property_id: str | None = None, unit_id: str | None = None) -> FinanceFilter:
+            property_id: str | None = None, unit_id: str | None = None,
+            owner_contact_id: str | None = None) -> FinanceFilter:
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="Der Zeitraum beginnt nach seinem Ende")
     return FinanceFilter(date_from=date_from, date_to=date_to, portfolio_id=portfolio_id or None,
-                         property_id=property_id or None, unit_id=unit_id or None)
+                         property_id=property_id or None, unit_id=unit_id or None,
+                         owner_contact_id=owner_contact_id or None)
 
 
 def _all_bookings() -> list:
@@ -65,8 +69,8 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 @router.get("/summary")
 @one_at_a_time
 def get_summary(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
-                portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, as_of: date | None = None):
-    data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id), today=as_of)
+                portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None, as_of: date | None = None):
+    data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id), today=as_of)
 
     if format == "csv":
         f = data["finance"]
@@ -89,9 +93,9 @@ def get_summary(format: Format = None, date_from: DateFrom = None, date_to: Date
 @router.get("/finance")
 @one_at_a_time
 def get_finance_report(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
-                       portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+                       portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None):
     """Bookings per category; a reversal nets the booking it cancels."""
-    data = report_service.compute_finance(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+    data = report_service.compute_finance(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id))
 
     if format == "csv":
         rows = [
@@ -108,11 +112,12 @@ def get_finance_report(format: Format = None, date_from: DateFrom = None, date_t
 @router.get("/occupancy")
 @one_at_a_time
 def get_occupancy_report(format: Format = None, portfolio_id: PortfolioId = None,
-                         property_id: PropertyId = None, unit_id: UnitId = None):
-    flt = _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id)
-    dims = Dimensions(store, flt)
+                         property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None):
+    flt = _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id, owner_contact_id=owner_contact_id)
+    dims, view, today = Dimensions(store, flt), OwnerView(store, flt), local_today()
     data = report_service.compute_occupancy(
-        units=[u for u in store.list_units() if dims.unit_record_matches(u)],
+        # with an owner: the units they hold a part of today
+        units=[u for u in store.list_units() if dims.unit_record_matches(u) and view.owns(u.property_id, u.id, today)],
         contracts=[c for c in store.list_contracts() if dims.contract_matches(c)],
     )
     data["filters"] = flt.echo()
@@ -134,10 +139,10 @@ def get_occupancy_report(format: Format = None, portfolio_id: PortfolioId = None
 @one_at_a_time
 def get_receivables_aging(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
                           portfolio_id: PortfolioId = None, property_id: PropertyId = None,
-                          unit_id: UnitId = None, as_of: date | None = None):
+                          unit_id: UnitId = None, owner_contact_id: OwnerId = None, as_of: date | None = None):
     """Unpaid receivables (due in the period, if given) by days past due; credits apart."""
     data = report_service.compute_receivables_aging(
-        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id), today=as_of)
+        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id), today=as_of)
 
     if format == "csv":
         b = data["buckets"]
@@ -160,7 +165,7 @@ def get_receivables_aging(format: Format = None, date_from: DateFrom = None, dat
 def get_cashflow_report(format: Format = None,
                         months: Annotated[int | None, Query(ge=1, le=120)] = None,
                         date_from: DateFrom = None, date_to: DateTo = None, portfolio_id: PortfolioId = None,
-                        property_id: PropertyId = None, unit_id: UnitId = None):
+                        property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None):
     """Cash view: payments in and out, in total and per month (months without bookings as zero rows).
 
     The period is `date_from`/`date_to`, or the last `months` calendar months (this one included,
@@ -169,7 +174,7 @@ def get_cashflow_report(format: Format = None,
     if months and not (date_from or date_to):
         today = local_today()
         date_from, date_to = add_months(month_start(today), -(months - 1)), today
-    data = report_service.compute_cashflow(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+    data = report_service.compute_cashflow(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id))
 
     if format == "csv":
         rows = [{
@@ -185,13 +190,13 @@ def get_cashflow_report(format: Format = None,
 @router.get("/period-result")
 @one_at_a_time
 def get_period_result(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
-                      portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+                      portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None):
     """Period result in whole calendar months: rent due + other income - costs (default: last 12 months).
 
     Tenants' payments settle the rent due and are not counted again; the cash view shows them.
     """
     data = report_service.compute_period_result(
-        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+        store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id))
 
     if format == "csv":
         rows = [{
@@ -204,6 +209,20 @@ def get_period_result(format: Format = None, date_from: DateFrom = None, date_to
         } for m in data["monthly"]]
         return _csv_response(rows, "periodenergebnis.csv")
 
+    return data
+
+
+@router.get("/owner-results")
+@one_at_a_time
+def get_owner_results(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
+                      portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None):
+    """Period result, withdrawals and contributions per owner; the rows add up to the whole."""
+    data = report_service.compute_owner_results(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
+    if format == "csv":
+        rows = [{"Eigentümer": row["name"], "Sollmiete": row["rent_due"], "Sonstige Erträge": row["other_income"],
+                 "Kosten": row["costs"], "Ergebnis": row["result"], "Nicht zugeordnete Einnahmen": row["unassigned_income"],
+                 "Entnahmen": row["withdrawal"], "Einlagen": row["contribution"]} for row in data["owners"]]
+        return _csv_response(rows, "ergebnis-je-eigentuemer.csv")
     return data
 
 
@@ -237,9 +256,10 @@ def get_contracts_expiring_report(
 
 @router.get("/maintenance-costs")
 def get_maintenance_costs_report(format: Format = None, portfolio_id: PortfolioId = None,
-                                 property_id: PropertyId = None, unit_id: UnitId = None):
+                                 property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None):
     data = report_service.compute_maintenance_costs(
-        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id))
+        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id,
+                       owner_contact_id=owner_contact_id))
 
     if format == "csv":
         rows = [
@@ -368,7 +388,7 @@ def liquidity_forecast(
     months: Annotated[int, Query(ge=1, le=60)] = 12,
     property_id: PropertyId = None,
     portfolio_id: PortfolioId = None,
-    unit_id: UnitId = None,
+    unit_id: UnitId = None, owner_contact_id: OwnerId = None,
 ):
     """T28: Liquidity forecast for the next months: the rent the contracts will owe, plus the
     average other income and costs of the last complete months (months without bookings count).
@@ -377,14 +397,15 @@ def liquidity_forecast(
     one property or unit starts from its bookings alone.
     """
     return report_service.compute_liquidity_forecast(
-        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id), months=months)
+        store, _filter(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id,
+                       owner_contact_id=owner_contact_id), months=months)
 
 
 @router.get("/pdf/{report_name}", response_model=None)
 @one_at_a_time
 def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: DateTo = None,
                       portfolio_id: PortfolioId = None, property_id: PropertyId = None,
-                      unit_id: UnitId = None,
+                      unit_id: UnitId = None, owner_contact_id: OwnerId = None,
                       months: Annotated[int | None, Query(ge=1, le=120)] = None, as_of: date | None = None):
     """Export the same filtered figures as JSON, with complete, wrapping PDF content."""
     from ..services.report_render import REPORT_TITLES, render_report_pdf
@@ -394,16 +415,18 @@ def export_report_pdf(report_name: str, date_from: DateFrom = None, date_to: Dat
         raise HTTPException(400, f"Unbekannter Bericht. Möglich: {', '.join(sorted(allowed))}. Periodenergebnis und Liquiditätsplanung werden über die Finanzberichte exportiert.")
     if as_of is not None and report_name not in ("summary", "receivables-aging"):
         raise HTTPException(422, "Der Stichtag gilt hier nur für Forderungsreste und die Zusammenfassung.")
-    flt = _filter(date_from, date_to, portfolio_id, property_id, unit_id)
+    flt = _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id)
     if months is not None and report_name != "cashflow":
         raise HTTPException(422, "Monatsanzahl gilt nur für die Zahlungsübersicht")
     if report_name == "occupancy":
         if date_from or date_to:
             raise HTTPException(422, "Die Belegungsübersicht zeigt den heutigen Stand; kein Zeitraum möglich")
-        data = get_occupancy_report(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id)
+        data = get_occupancy_report(portfolio_id=portfolio_id, property_id=property_id, unit_id=unit_id,
+                                    owner_contact_id=owner_contact_id)
     elif report_name == "cashflow":
         data = get_cashflow_report(date_from=date_from, date_to=date_to, portfolio_id=portfolio_id,
-                                   property_id=property_id, unit_id=unit_id, months=months)
+                                   property_id=property_id, unit_id=unit_id, owner_contact_id=owner_contact_id,
+                                   months=months)
     else:
         compute = {
             "summary": report_service.compute_summary,

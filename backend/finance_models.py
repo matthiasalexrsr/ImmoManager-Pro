@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class SettlementCommand(BaseModel):
@@ -81,6 +81,16 @@ class ReportDefinition(BaseModel):
     arrears_collection_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, decimal_places=2)
     vacant_unit_ids: list[str] = Field(default_factory=list)
     planned_flows: list[PlannedFlow] = Field(default_factory=list)
+    # one owner's part (services/ownership.py; "none": the part no owner is recorded for)
+    owner_contact_id: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_owner(self, handler):
+        # a definition without an owner keeps the shape (and the hashes) it had before owners
+        data = handler(self)
+        if isinstance(data, dict) and data.get("owner_contact_id") is None:
+            data.pop("owner_contact_id", None)
+        return data
 
 
 class SaveReport(BaseModel):

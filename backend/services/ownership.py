@@ -129,8 +129,41 @@ class Ownership:
         return self.split(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
                           booking.booking_date, getattr(booking, "owner_contact_id", None))
 
-    def owns(self, owner: Optional[str], property_id: str, unit_id: Optional[str], day: date) -> bool:
+    def owns(self, owner: Optional[str], property_id: Optional[str], unit_id: Optional[str], day: date) -> bool:
         return self.weights(property_id, unit_id, day).get(owner, ZERO) > 0
+
+
+class OwnerView:
+    """The filter's owner: their part of an amount; without an owner in the filter the whole amount.
+
+    One instance per calculation reads the shares once; a report applies it to every amount it
+    adds (rent due, bookings, claims, invoices, …) on the amount's own day.
+    """
+
+    def __init__(self, store: Any, flt: Any) -> None:
+        owner = getattr(flt, "owner_contact_id", None)
+        self.active = bool(owner)
+        self.owner = owner_key(owner)
+        self.ownership = Ownership(store) if self.active else None
+
+    def part(self, amount: Any, property_id: Optional[str], unit_id: Optional[str], day: date,
+             booking_owner: Optional[str] = None) -> Decimal:
+        if self.ownership is None:
+            return money(amount)
+        return self.ownership.part(self.owner, amount, property_id, unit_id, day, booking_owner)
+
+    def booking(self, booking: Any, amount: Any = None) -> Decimal:
+        return self.part(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
+                         booking.booking_date, getattr(booking, "owner_contact_id", None))
+
+    def contract(self, contract: Any, amount: Any, day: date) -> Decimal:
+        return self.part(amount, contract.property_id, contract.unit_id, day)
+
+    def owns(self, property_id: Optional[str], unit_id: Optional[str], day: date) -> bool:
+        """Whether the owner has a part of the property or unit (always without an owner filter)."""
+        if self.ownership is None:
+            return True
+        return self.ownership.owns(self.owner, property_id, unit_id, day)
 
 
 # ---------------------------------------------------------------------------

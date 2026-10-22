@@ -11,11 +11,13 @@ distribution) or put in from private means (contribution). Such a booking moves 
 balance but is neither income nor expense: its side is "withdrawal" or "contribution" by its sign
 (a reversal again on the side of the booking it cancels), and no result, cost or tax figure counts it.
 
-Filter (FinanceFilter): period by date (inclusive), portfolio, property, unit. A booking belongs
-to the portfolio of its account and to the property it names, or else to the property of its
-unit; other records (contracts, receivables, invoices) belong to the property they name and to
+Filter (FinanceFilter): period by date (inclusive), portfolio, property, unit, owner. A booking
+belongs to the portfolio of its account and to the property it names, or else to the property of
+its unit; other records (contracts, receivables, invoices) belong to the property they name and to
 its portfolio. The request's portfolio boundary applies on top (services.portfolio_scope): SQL
-sums run through the request's session, memory sums over its scoped collections.
+sums run through the request's session, memory sums over its scoped collections. With an owner,
+every amount counts with that owner's part of it (services.ownership, OwnerView): the parts of all
+owners and of the part nobody is recorded for add up to the whole report.
 
 Sums: SQL stores add integer cents in the database (exact on SQLite and PostgreSQL), the memory
 store adds Decimal cents (domain.money). Both give the same result for the same data.
@@ -86,14 +88,18 @@ class FinanceFilter:
     portfolio_id: Optional[str] = None
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
+    owner_contact_id: Optional[str] = None     # services.ownership.NOBODY: the part no owner is recorded for
 
     def with_period(self, date_from: Optional[date], date_to: Optional[date]) -> "FinanceFilter":
         return replace(self, date_from=date_from, date_to=date_to)
 
+    def without_owner(self) -> "FinanceFilter":
+        return replace(self, owner_contact_id=None)
+
     @property
     def below_portfolio(self) -> bool:
-        """Narrowed to a property or unit: account opening balances do not belong to it."""
-        return bool(self.property_id or self.unit_id)
+        """Narrowed to a property, unit or owner: account opening balances do not belong to it."""
+        return bool(self.property_id or self.unit_id or self.owner_contact_id)
 
     def in_period(self, day: Optional[date]) -> bool:
         if day is None:
@@ -108,6 +114,7 @@ class FinanceFilter:
             "portfolio_id": self.portfolio_id,
             "property_id": self.property_id,
             "unit_id": self.unit_id,
+            **({"owner_contact_id": self.owner_contact_id} if self.owner_contact_id else {}),
         }
 
 
@@ -120,6 +127,8 @@ def validate_filter(store: Any, flt: FinanceFilter, *, require_visible: bool = F
     if flt.date_from and flt.date_to and flt.date_from > flt.date_to:
         raise HTTPException(422, "Der Berichtszeitraum beginnt nach seinem Ende.")
     try:
+        if flt.owner_contact_id and flt.owner_contact_id != "none":
+            store.get_contact(flt.owner_contact_id)
         if flt.portfolio_id:
             store.get_portfolio(flt.portfolio_id)
         prop = store.get_property(flt.property_id) if flt.property_id else None
@@ -237,13 +246,19 @@ def booking_totals(store: Any, flt: FinanceFilter, *, by: Iterable[str] = ()) ->
     if groups - GROUPS:
         raise ValueError(f"unknown groups: {sorted(groups - GROUPS)}")
     validate_filter(store, flt)
+    if flt.owner_contact_id:
+        return _owner_totals(store, flt, groups)
     if hasattr(store, "db"):
         return _sql_totals(store.db, flt, groups)
     return _memory_totals(store, flt, groups)
 
 
 def booking_sources(store: Any, flt: FinanceFilter) -> list[Any]:
-    """The scoped rows behind the same aggregate, filtered in SQL before loading."""
+    """The scoped rows behind the same aggregate, filtered in SQL before loading.
+
+    The owner of the filter does not narrow the rows: OwnerView gives each one's part.
+    """
+    flt = flt.without_owner()
     validate_filter(store, flt)
     if hasattr(store, "db"):
         from sqlalchemy import select
@@ -259,8 +274,8 @@ def booking_sources(store: Any, flt: FinanceFilter) -> list[Any]:
 
 
 def first_booking_date(store: Any, flt: FinanceFilter) -> Optional[date]:
-    """The earliest booking date within the filter (its period ignored)."""
-    unbounded = flt.with_period(None, None)
+    """The earliest booking date within the filter (its period and owner ignored)."""
+    unbounded = flt.with_period(None, None).without_owner()
     validate_filter(store, unbounded)
     if hasattr(store, "db"):
         from sqlalchemy import func, select
@@ -287,6 +302,29 @@ def _memory_totals(store: Any, flt: FinanceFilter, groups: frozenset[str]) -> li
                booking.category_id if "category" in groups else None,
                booking.account_id if "account" in groups else None)
         sums[key] += money(booking.amount)
+    return [BookingTotal(side=key[0], tenant=key[1], classified=key[2], unit=key[3], amount=amount,
+                         month=key[4], category_id=key[5], account_id=key[6])
+            for key, amount in sums.items()]
+
+
+def _owner_totals(store: Any, flt: FinanceFilter, groups: frozenset[str]) -> list[BookingTotal]:
+    """Like _memory_totals, each booking counting with the owner's part of it."""
+    from .ownership import OwnerView
+
+    view = OwnerView(store, flt)
+    types = {c.id: c.category_type for c in store.list_categories()}
+    sums: dict[tuple, Decimal] = defaultdict(lambda: ZERO)
+    for booking in booking_sources(store, flt):
+        part = view.booking(booking)
+        if not part:
+            continue
+        category_type = types.get(booking.category_id) if booking.category_id else None
+        key = (booking_side(category_type, booking), bool(booking.tenant_id), category_type in SIDES,
+               bool(booking.unit_id),
+               month_key(booking.booking_date) if "month" in groups else None,
+               booking.category_id if "category" in groups else None,
+               booking.account_id if "account" in groups else None)
+        sums[key] += part
     return [BookingTotal(side=key[0], tenant=key[1], classified=key[2], unit=key[3], amount=amount,
                          month=key[4], category_id=key[5], account_id=key[6])
             for key, amount in sums.items()]
