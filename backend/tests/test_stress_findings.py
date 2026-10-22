@@ -251,6 +251,21 @@ def test_the_same_bank_account_cannot_be_entered_twice(client, world):
         "portfolio_id": pf, "name": "Kasse", "account_type": "cash"}).status_code == 201
 
 
+def test_accounts_that_already_share_an_iban_are_on_the_review_list(client, world):
+    """Twins from before the IBAN check stay (the upgrade keeps them); the review list names them."""
+    from backend.models import AccountCreate
+    owner, pf = world["owner"], world["pf"]["id"]
+    for name, iban in (("Hausbank", "DE89370400440532013000"), ("Hausbank alt", "de89 3704 0044 0532 0130 00"),
+                       ("Tagesgeld", "DE02120300000000202051")):
+        store.create_account(AccountCreate(portfolio_id=pf, name=name, account_type="bank", iban=iban))
+
+    items = client.get("/api/v1/review", headers=owner).json()["items"]
+
+    (twins,) = [item for item in items if item["kind"] == "duplicate_iban"]
+    assert "„Hausbank“" in twins["title"] and "„Hausbank alt“" in twins["title"] and "Tagesgeld" not in twins["title"]
+    assert twins["link"] == "/accounts" and "3000" in twins["detail"] and "0532" not in twins["detail"]
+
+
 def test_a_manual_rent_period_starts_on_the_first(client, world):
     """A change in mid-month would only be charged from the following month."""
     url = f"/api/v1/contracts/{world['contract']['id']}/rent-periods"

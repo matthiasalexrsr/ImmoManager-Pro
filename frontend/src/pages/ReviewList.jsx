@@ -15,6 +15,7 @@ const KIND_LABELS = {
   invoice_due_before_date: 'Fälligkeit vor Datum',
   rent_decrease: 'Mietsenkung',
   invoice_negative: 'Negativer Rechnungsbetrag',
+  duplicate_iban: 'IBAN doppelt',
 };
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */

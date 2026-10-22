@@ -13,6 +13,7 @@
   an adjustment not taking effect on the 1st, a statement period over twelve months
   (§ 556 Abs. 3 BGB), an invoice due before its date, an adjustment lowering the rent,
   an open invoice with a negative amount.
+- Bank accounts sharing an IBAN (entered before that was refused): their balances count twice.
 """
 
 from datetime import date, timedelta
@@ -25,6 +26,7 @@ from ..domain.money import money as _money
 from .payment_allocations import credited_by_tenant, non_rent_shares
 from .read_cache import CachedReads
 from .rent_history import charge_for, rent_steps
+from .sepa_rules import compact, mask_iban
 
 
 def _eur(value: Any) -> str:
@@ -145,6 +147,20 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "detail": f"Wirksam seit {_day(adjustment.effective_date)}: {_eur(adjustment.previous_rent)} → "
                           f"{_eur(adjustment.new_rent)}.",
                 "entity_type": "rent_adjustment", "entity_id": adjustment.id, "link": "/rent-adjustments"})
+
+    same_iban: dict[str, list[Any]] = {}
+    for account in store.list_accounts():
+        if compact(account.iban):
+            same_iban.setdefault(compact(account.iban), []).append(account)
+    for iban, accounts in same_iban.items():
+        if len(accounts) > 1:
+            names = ", ".join(f"„{a.name}“" for a in accounts)
+            items.append({
+                "kind": "duplicate_iban", "severity": "warning",
+                "title": f"{len(accounts)} Konten mit derselben IBAN: {names}",
+                "detail": f"IBAN {mask_iban(iban)}: Ein Bankkonto ist mehrfach angelegt, sein Saldo zählt mehrfach. "
+                          "Buchungen auf ein Konto umbuchen und die übrigen löschen.",
+                "entity_type": "account", "entity_id": accounts[0].id, "link": "/accounts"})
 
     bookings = store.list_bookings()
     credited: dict[str, Decimal] = {}
