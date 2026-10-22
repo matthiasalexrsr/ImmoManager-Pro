@@ -79,7 +79,8 @@ def test_the_test_version_builds_a_consistent_history(client):
     assert len(get("/properties?limit=1000")) == 15
     units = get("/units?limit=1000")
     assert Counter(u["status"] for u in units) == {"occupied": 91, "vacant": 2}
-    review = Counter(item["kind"] for item in get("/review")["items"])
+    # on the data set's day: with the real date, every rent step of the data reached later changed the list
+    review = Counter(item["kind"] for item in get(f"/review?as_of={TODAY.isoformat()}")["items"])
     assert review == {"payment_without_tenant": 2, "adjustment_not_applied": 1}
     periods = Counter((p["label"], p["status"]) for p in get("/billing/periods?limit=1000"))
     assert periods[("Betriebskosten 2025", "draft")] == 2 and periods[("Betriebskosten 2024", "finalized")] == 10
