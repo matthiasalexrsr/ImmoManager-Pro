@@ -116,9 +116,11 @@ def test_cash_v2_reuses_cash_totals_and_dated_booking_sources_including_returns(
     result = finance_reports.compute(store, definition)
     legacy = report_service.compute_cashflow(store, FinanceFilter(date_from=date(2026, 1, 1), date_to=date(2026, 3, 31),
                                                                  property_id=estate[1].id))
-    assert result["totals"] == {"income": "60.20", "expense": "0.00", "net": "60.20"}
+    assert result["totals"] == {"income": "60.20", "expense": "0.00", "net": "60.20", "withdrawal": "0.00",
+                                "contribution": "0.00"}
     assert Decimal(result["totals"]["net"]) == Decimal(str(legacy["netTotal"]))
-    assert result["monthly"][1] == {"month": "2026-02", "income": "0.00", "expense": "0.00", "net": "0.00"}
+    assert result["monthly"][1] == {"month": "2026-02", "income": "0.00", "expense": "0.00", "net": "0.00",
+                                    "withdrawal": "0.00", "contribution": "0.00"}
     assert sum(Decimal(source["amount"]) for source in result["sources"]) == Decimal(result["totals"]["net"])
     assert all(source["url"].startswith("/bookings?booking_id=") for source in result["sources"])
     assert all(source["label"] == "Buchung " + source["day"] for source in result["sources"])

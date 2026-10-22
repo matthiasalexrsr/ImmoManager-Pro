@@ -87,8 +87,9 @@ export default function Receivables() {
         </span> : value || '—' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
-    { key: 'statement_id', label: 'Herkunft', render: value => value
-      ? <Link to={`/statements?${new URLSearchParams({ statement_id: value })}`}>Einzelabrechnung öffnen</Link> : 'Direkte Forderung' },
+    { key: 'statement_id', label: 'Herkunft', render: (value, row) => value
+      ? <Link to={`/statements?${new URLSearchParams({ statement_id: value })}`}>Einzelabrechnung öffnen</Link>
+      : row.kind === 'other' ? 'Sonstige Forderung' : 'Direkte Forderung' },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
@@ -108,6 +109,10 @@ export default function Receivables() {
       { value: 'overdue', label: t('status.payment.overdue') },
       { value: 'cancelled', label: t('status.payment.cancelled') },
     ]},
+    { key: 'kind', label: 'Art', type: 'select', options: [
+      { value: '', label: 'Miete oder Nachforderung (kein eigener Ertrag)' },
+      { value: 'other', label: 'Sonstige Forderung (Schaden, Schlüssel …)' },
+    ], hint: 'Eine sonstige Forderung zählt im Periodenergebnis als Ertrag. Rückstände der Miete stecken dort schon im Mietsoll.' },
     { key: 'description', label: t('ui.form.description'), type: 'textarea' },
   ];
 

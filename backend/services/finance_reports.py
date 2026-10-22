@@ -242,6 +242,15 @@ def performance(store, d):
                 values[key]["costs"] += share
                 sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(share), "contribution": "costs",
                                 "url": "/invoice-review/" + invoice.id, "basis": "Leistung"})
+    from .report_service import _receivables
+    for receivable in _receivables(store, applied):
+        key = month_key(receivable.due_date)
+        if receivable.kind == "other" and key in values:      # R12-15, as in compute_period_result
+            values[key]["other_income"] += money(receivable.amount_due)
+            sources.append({"identity": "receivable:" + receivable.id, "month": key,
+                            "amount": str(money(receivable.amount_due)), "contribution": "other_income",
+                            "url": "/receivables",
+                            "basis": "Sonstige Forderung (Fälligkeit)"})
     categories = {c.id: c.category_type for c in store.list_categories()}
     # Unlinked cash remains an explicitly labelled fallback. Never add invoice-paid cash twice.
     bookings = store.list_bookings()

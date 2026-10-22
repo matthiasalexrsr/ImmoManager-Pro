@@ -35,7 +35,7 @@ ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c0
                                    "f020a1b2c001", "a7d3c5e9f2b1", "f021a1b2c001",
                                    "b4d6f8a0c2e1", "f022a1b2c001", "c6e8a0b2d4f3", "d8a1c3e5f7b9",
                                    "e2b4d6f8a0c1", "f4c6e8a0b2d3", "a5c7e9b1d3f5", "c7e9a1b3d5f7",
-                                   "d1f3a5c7e9b2", "e4b6d8f0a2c3"})
+                                   "d1f3a5c7e9b2", "e4b6d8f0a2c3", "f5c7e9a1b3d4"})
 
 
 def _current_addition_names():

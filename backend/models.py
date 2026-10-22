@@ -304,6 +304,9 @@ class ReceivableCreate(BaseModel):
     status: str = "open"
     statement_id: Optional[str] = None  # link back to source UtilityStatement
     description: Optional[str] = None
+    # "other": a claim of its own (damage, keys, …) that counts as income in the period result
+    # (R12-15); unmarked receivables may repeat a monthly rent and never count there
+    kind: Optional[Literal["other"]] = None
 
 
 class Receivable(ReceivableCreate):
@@ -656,6 +659,7 @@ class ReceivablePatch(BaseModel):
     dunning_level: Optional[str] = None
     status: Optional[str] = None
     statement_id: Optional[str] = None
+    kind: Optional[Literal["other"]] = None
 
 
 class InvoicePatch(BaseModel):

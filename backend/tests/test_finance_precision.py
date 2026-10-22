@@ -172,7 +172,9 @@ def test_cash_view_nets_the_returned_debit_and_lists_every_month(estate):
     cash = reports.get_cashflow_report(date_from=date(2026, 1, 1), date_to=date(2026, 5, 31))
     # Jan: 633.33 + 700.00 in, 0.10 + 0.20 out | Feb: 633.33 - 633.33 (returned) + 633.33 + 500.00
     # Mar: 300.00 + 333.33 in, 3 x 33.33 out   | Apr: 12.34 interest + 633.33 unassigned | May: nothing
-    assert cash["monthly"] == [
+    # no owner money in this estate (test_private_money.py)
+    assert {(m["withdrawal"], m["contribution"]) for m in cash["monthly"]} == {(0.0, 0.0)}
+    assert [{key: m[key] for key in ("month", "income", "expense", "net")} for m in cash["monthly"]] == [
         {"month": "2026-01", "income": 1333.33, "expense": 0.3, "net": 1333.03},
         {"month": "2026-02", "income": 1133.33, "expense": 0.0, "net": 1133.33},
         {"month": "2026-03", "income": 633.33, "expense": 99.99, "net": 533.34},

@@ -88,6 +88,20 @@ def _other_flows(rows: list[BookingTotal]) -> tuple[Decimal, Decimal, Decimal]:
     return other, costs, unassigned
 
 
+def other_claims_by_month(store: Any, flt: FinanceFilter) -> dict[str, Decimal]:
+    """Claims of their own (receivable kind "other": damage, keys, …) per month of their due date.
+
+    They are income the rent does not hold (R12-15). Their payments come from the tenant and are
+    left out of the bookings' income, so nothing counts twice. Unmarked receivables may repeat a
+    monthly rent and never count.
+    """
+    claims: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    for receivable in _receivables(store, flt):
+        if receivable.kind == "other":
+            claims[month_key(receivable.due_date)] += money(receivable.amount_due)
+    return claims
+
+
 def _by_month(rows: list[BookingTotal]) -> dict[str, list[BookingTotal]]:
     grouped: dict[str, list[BookingTotal]] = defaultdict(list)
     for row in rows:
@@ -303,11 +317,13 @@ def compute_period_result(store: Any, flt: FinanceFilter | None = None,
     applied = flt.with_period(first, month_end(last))
     rent = rent_due_by_month(store, applied, first, last)
     by_month = _by_month(booking_totals(store, applied, by=("month",)))
+    claims = other_claims_by_month(store, applied)
     monthly = []
     totals = {"rent_due": ZERO, "other_income": ZERO, "costs": ZERO, "result": ZERO, "unassigned_income": ZERO}
     for month in months:
         key = month_key(month)
         other, costs, unassigned = _other_flows(by_month.get(key, []))
+        other += claims.get(key, ZERO)
         values = {"rent_due": rent.get(key, ZERO), "other_income": other, "costs": costs,
                   "result": rent.get(key, ZERO) + other - costs, "unassigned_income": unassigned}
         for name, value in values.items():

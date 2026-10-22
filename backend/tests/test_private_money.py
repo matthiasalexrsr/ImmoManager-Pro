@@ -5,6 +5,7 @@ result, cost or budget counts it, the cash view reports it beside income and exp
 """
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -85,6 +86,9 @@ def test_the_result_and_the_reports_leave_owner_money_out(estate):
                                                            date_from=date(2026, 1, 1)))
     assert cash["totals"] == {"income": "1200.00", "expense": "200.00", "net": "1000.00",
                               "withdrawal": "500.00", "contribution": "300.00"}
+    # the sources are every booking: they add up to the balance change, owner money included
+    assert sum(Decimal(source["amount"]) for source in cash["sources"]) == Decimal("1000.00") - 500 + 300
+    assert {s["side"] for s in cash["sources"]} == {"income", "expense", "withdrawal", "contribution"}
 
 
 def test_owner_money_is_no_budget_spending(estate):
