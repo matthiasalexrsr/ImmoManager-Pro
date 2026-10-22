@@ -11,6 +11,20 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-22 Round 17: owners wired through
+
+The gaps left by round 16 are closed: [docs/OWNERSHIP_20261022.md](docs/OWNERSHIP_20261022.md). One migration adds four optional columns (`e1a3c5e7f9b2`: `accounts.owner_contact_id`; `ownership_transfers.changes`, `reverted_at`, `reverted_by`).
+
+- **Bookings by owner:** the bookings page has an owner choice; it lists the bookings with the owner's part, a column with that part and its sum, and the figures of that part (`GET /bookings?owner_contact_id=`, field `owner_part`).
+- **Accounts by owner:** an account can belong to one owner alone ("Kontoinhaber"); its opening balance is then theirs in the reports by owner. "Kontostand je Eigentümer" splits the balances by the bookings' parts (`/accounts/owner-balances`); the result per owner names the balance at the period's end. An account holder must be an owner.
+- **DATEV by owner:** an optional owner in the export: every booking with that owner's part, bookings without one left out; the manifest and the history name the owner. Requests without an owner read as before, so repeat keys still match.
+- **WISO by owner:** a retained preparation shows each owner's sheet (their part of every row, checked to add up to the row to the cent) and the download carries `manual-transfer-worksheet-by-owner.csv`.
+- **Undo an owner change:** the latest change of a property can be reverted (`POST /ownership-shares/transfers/{id}/revert`); it is refused for an earlier change, after a hand edit of its shares, or twice. The journal keeps it marked as undone.
+- **Housing confirmation and letters:** the owner suggestion names the dwelling's owners on the contract start; letters get `{{eigentuemer.namen}}`, the owners on the letter date.
+- **Lists and pages:** a column "Eigentümer" in the property and unit lists, the owners on the unit page, an owner's shares on their contact with links (`/ownership-shares/current`, `/ownership-shares/holdings`).
+- **Contact type and DSGVO:** an owner named by shares, own bookings, changes or accounts stays of type owner; data access and anonymization now cover address book contacts (`/admin/dsgvo/contact/{id}/export`, `/anonymize`).
+- **Fixed:** a saved annual tax projection with shares failed its integrity check on reading; with no shares but one booking owner the tax split left out the unowned rest; the owner table of the tax page overflowed on phones.
+
 ## Unreleased — 2026-10-22 Round 16: owners and their shares
 
 Properties and units can belong to different owners, several of them by shares, and the owners can change over time: [docs/OWNERSHIP_20261022.md](docs/OWNERSHIP_20261022.md). Two migrations add two tables and a column (`c9a1b3d5e7f9`, `d0b2c4e6f8a1`); without recorded shares no figure changes.

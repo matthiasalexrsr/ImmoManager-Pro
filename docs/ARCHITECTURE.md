@@ -83,6 +83,8 @@ Beide Speicher sind gleichwertig: Jeder Backend-Test läuft in CI mit `TEST_STOR
   - `view.period(...)` bzw. `view.contract_period(...)` für einen Betrag eines Zeitraums.
 - Ohne Eigentümer liefert sie den ganzen Betrag. Nie selbst nach Anteilen rechnen; `services/ownership.py` regelt Vorrang (Einheit vor Objekt, Fläche), Wechsel und Cent-Rest.
 - Ein Test sollte zeigen, dass die Eigentümer zusammen den Bericht ohne Filter ergeben (Vorbild: `test_owner_reports.py`).
+- Eröffnungssalden über `flt.opening_accounts(store)`: mit Eigentümer die Konten mit diesem Kontoinhaber, mit `none` die ohne.
+- Eine eingefrorene Quelle (Brief, Export) nimmt die Eigentümer nur auf, wenn welche erfasst sind (`ownership.timeline`), damit ältere Quellen und Prüfsummen gleich bleiben.
 
 ## Oberflächen-Bausteine
 

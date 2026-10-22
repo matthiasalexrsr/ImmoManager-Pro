@@ -1,4 +1,4 @@
-# Eigentümer und Eigentumsanteile (Runde 16, 22.10.2026)
+# Eigentümer und Eigentumsanteile (Runden 16 und 17, 22.10.2026)
 
 Objekte und Einheiten können verschiedenen Eigentümern gehören, auch mehreren zu Anteilen. Diese Anteile können sich mit der Zeit ändern, etwa durch Verkauf, Schenkung, Erbschaft oder Teilung. Berichte, Budgets, Startseite, Steuerauswertung und Prüfliste rechnen jeden Betrag mit den Anteilen der Eigentümer **an dem Tag, zu dem er gehört**. Die Teile aller Eigentümer ergeben dabei immer auf den Cent das Ganze.
 
@@ -65,7 +65,13 @@ Abgelehnt wird mit einem Satz:
 - ein beteiligter Anteil mit festem Ende;
 - Empfänger, die nicht zusammen 100 % ergeben, oder der Abgebende als Empfänger.
 
-Ein falsch erfasster Wechsel lässt sich über die Anteile korrigieren (Bearbeiten/Löschen). Das Journal bleibt als Protokoll stehen.
+**Rückgängig machen** (Runde 17): Der jeweils letzte Wechsel eines Objekts lässt sich im Journal zurücknehmen. Seine neuen Anteile werden gelöscht, beendete Anteile laufen wieder offen weiter, zusammengefasste Anteile kommen zurück. Das Journal behält den Wechsel durchgestrichen mit „rückgängig gemacht am …“. Abgelehnt wird:
+
+- ein früherer Wechsel, solange ein späterer gilt („Bitte zuerst den letzten Wechsel rückgängig machen“);
+- ein Wechsel, dessen Anteile seitdem von Hand geändert wurden. Dann bleibt die Korrektur über die Anteile (Bearbeiten/Löschen);
+- ein schon zurückgenommener Wechsel.
+
+Wechsel aus der Zeit vor Runde 17 haben keinen Änderungssatz und lassen sich nur über die Anteile korrigieren.
 
 **Stand am** zeigt die Eigentümer an einem beliebigen Tag. **Verlauf** zeigt je Objekt und Einheit die Zeitabschnitte zwischen den Wechseln und darunter das Journal.
 
@@ -89,21 +95,34 @@ Ein falsch erfasster Wechsel lässt sich über die Anteile korrigieren (Bearbeit
 | **Startseite** | Auswahl „Eigentümer“ für die Geldkacheln |
 | **Steuer** (Jahresauswertung) | Tabelle „Anteile je Eigentümer“: die Beträge je Eigentümer, Objekt und Zeile der Anlage V (`owner_split`); nur mit erfassten Anteilen |
 | **Prüfliste** | „Eigentumsanteile von … unvollständig“, z. B. „WE 4: 100 % ohne Eigentümer“, sobald an einem Objekt Anteile erfasst sind |
-| **Buchungen** | Feld „Eigentümer“ (gehört allein ihm); ein Storno übernimmt es |
+| **Buchungen** | Feld „Eigentümer“ (gehört allein ihm); ein Storno übernimmt es. Die Buchungsliste hat die Auswahl „Eigentümer“: nur Buchungen mit seinem Anteil, Spalte „Anteil des Eigentümers“ mit Summe, die Kennzahlen mit seinem Teil (`/bookings?owner_contact_id=`) |
+| **Konten** | Feld „Kontoinhaber (Eigentümer)“: Ein Konto, das einem Eigentümer allein gehört, bringt seinen Eröffnungssaldo diesem Eigentümer. „Kontostand je Eigentümer“ teilt die Kontostände nach den Buchungsanteilen (`/accounts/owner-balances`); „Ergebnis je Eigentümer“ nennt den Kontostand zum Periodenende |
+| **DATEV-Export** | Auswahl „Eigentümer“: jede Buchung mit dem Anteil dieses Eigentümers, Buchungen ohne seinen Anteil entfallen; Stornos werden gegen den Originalbeleg geprüft. Ohne Auswahl bleiben Export und Wiederholungsschlüssel wie bisher |
+| **WISO-Vorbereitung** | der gesicherte Übertragungsbogen zeigt „Je Eigentümer“ die Zeilen mit seinem Anteil; der Download enthält `manual-transfer-worksheet-by-owner.csv`. Die Anteile einer Zeile ergeben centgenau ihren Betrag, sonst gilt die Fassung als beschädigt |
+| **Wohnungsgeberbestätigung** | schlägt als Eigentümer die Eigentümer der Wohnung am Vertragsbeginn vor (größter Anteil zuerst), sonst den Eigentümer des Portfolios |
+| **Briefe** | Platzhalter `{{eigentuemer.namen}}`: die Eigentümer der Einheit zum Briefdatum, sonst der Eigentümer des Portfolios |
+| **Listen und Seiten** | Spalte „Eigentümer“ in den Objekt- und Einheitenlisten (sobald Anteile erfasst sind), Eigentümer auf der Einheitenseite, „Anteile anzeigen“ beim Kontakt mit Links zu Objekt, Einheit und seinen Buchungen |
+| **Kontakttyp** | Ein Eigentümer, den Anteile, eigene Buchungen, Wechsel oder Konten nennen, bleibt vom Typ „Eigentümer“; die Meldung nennt, was ihn nennt |
+| **DSGVO** | Auskunft und Anonymisierung auch für Kontakte (`/admin/dsgvo/contact/{id}/export` und `/anonymize`): Anteile, Wechsel, Buchungen, Konten, Objektverträge. Die Anteile bleiben (Aufbewahrung) und zählen für den Platzhalternamen |
 | **Löschen** | Objekt, Einheit und Kontakt mit Anteilen, Wechseln oder Buchungen mit Eigentümer lassen sich nicht löschen; die Meldung nennt den Grund |
-| **Datenexport** | Format 15 mit Anteilen, Wechseln und dem Eigentümer der Buchung |
+| **Datenexport** | Format 15 mit Anteilen, Wechseln (mit Änderungssatz und Rücknahme), dem Eigentümer der Buchung und dem Kontoinhaber |
 
-Ohne Eigentümerfilter rechnet jeder Bericht genau wie bisher. Kontoeröffnungssalden gehören keinem Eigentümer. Mit einem Eigentümer, einem Objekt oder einer Einheit im Filter bleiben sie deshalb weg.
+Ohne Eigentümerfilter rechnet jeder Bericht genau wie bisher. Der Eröffnungssaldo eines Kontos ohne Kontoinhaber gehört keinem Eigentümer; mit einem Eigentümer im Filter zählt nur der Eröffnungssaldo seiner eigenen Konten, mit „Ohne Eigentümer“ der der Konten ohne Inhaber. Mit einem Objekt oder einer Einheit im Filter bleiben Eröffnungssalden weg.
 
 ## Update
 
-- Zwei Migrationen: `c9a1b3d5e7f9` (Tabelle `ownership_shares`, Spalte `bookings.owner_contact_id`) und `d0b2c4e6f8a1` (Tabelle `ownership_transfers`). Beide legen nur neu an und prüfen vorher, ob es die Tabelle oder Spalte schon gibt. Ein Downgrade wird abgelehnt, solange Anteile, Buchungseigentümer oder Wechsel erfasst sind.
+- Drei Migrationen: `c9a1b3d5e7f9` (Tabelle `ownership_shares`, Spalte `bookings.owner_contact_id`), `d0b2c4e6f8a1` (Tabelle `ownership_transfers`) und `e1a3c5e7f9b2` (Runde 17: `accounts.owner_contact_id`; `ownership_transfers.changes`, `reverted_at`, `reverted_by`). Alle legen nur neu an und prüfen vorher, ob es die Tabelle oder Spalte schon gibt. Ein Downgrade wird abgelehnt, solange Anteile, Buchungseigentümer, Wechsel, Kontoinhaber oder zurückgenommene Wechsel erfasst sind.
 - Ohne erfasste Anteile ändert sich keine Zahl. Gespeicherte Berichtsdefinitionen ohne Eigentümer behalten ihren Prüfwert; Steuerauswertungen ohne Anteile ebenso.
 - Exporte haben das Format 15; ältere Versionen lehnen sie ab, ältere Exporte lassen sich weiter einlesen.
 
+## Korrekturen aus Runde 17
+
+- Eine gespeicherte Steuer-Jahresfassung mit Anteilen ließ sich nicht wieder öffnen: Beim Lesen wurde die Prüfsumme ohne die Eigentümeraufteilung nachgerechnet. Jetzt gehört sie dazu.
+- Gab es keine Anteile, aber einzelne Buchungen mit Eigentümer, fehlte in der Steueraufteilung der übrige Betrag „Ohne Eigentümer“. Jetzt wird jeder Betrag aufgeteilt, sobald irgendwo ein Eigentümer erfasst ist.
+
 ## Grenzen
 
-- Die Buchungsliste hat keinen Eigentümerfilter; Buchungen je Eigentümer zeigen die Berichte.
-- Die WISO-Vorbereitung und der DATEV-Export bleiben je Bestand. Für die Erklärung der einzelnen Eigentümer (z. B. gesonderte und einheitliche Feststellung) dient die Tabelle „Anteile je Eigentümer“ als Grundlage; sie ersetzt keine steuerliche Beratung.
-- Kontostände und Kontoeröffnungssalden werden nicht nach Eigentümern geteilt.
-- Ein Wechsel wird nicht rückgängig gemacht, sondern über die Anteile korrigiert.
+- Die WISO-Vorbereitung und der DATEV-Export je Eigentümer verteilen nach den erfassten Anteilen. Ob ein Betrag steuerlich so zuzurechnen ist (z. B. gesonderte und einheitliche Feststellung, abweichende Vereinbarungen), prüfen sie nicht; sie ersetzen keine steuerliche Beratung.
+- Der Kontostand je Eigentümer teilt jede Buchung nach den Anteilen ihres Tages. Er ist ein rechnerischer Anteil, kein eigenes Bankkonto.
+- Rückgängig zu machen ist nur der jeweils letzte Wechsel eines Objekts mit Änderungssatz (ab Runde 17).
+- Die DSGVO-Auskunft und -Anonymisierung für Kontakte gibt es über die Programmschnittstelle, wie bei Mietern, noch ohne eigene Schaltfläche.
