@@ -14,6 +14,7 @@
   (§ 556 Abs. 3 BGB), an invoice due before its date, an adjustment lowering the rent,
   an open invoice with a negative amount.
 - A running contract without a rent history, or whose history begins after the contract (R12-17, R12-03).
+- A tenant's payment in the last days of December without a tax year (§ 11 EStG, R12-14).
 - Bank accounts sharing an IBAN (entered before that was refused): their balances count twice.
 """
 
@@ -221,6 +222,18 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "link": f"/bookings?booking_id={quote(booking.id, safe='')}"})
 
     for booking in bookings:
+        day = booking.booking_date
+        # R12-14: a tenant's payment in the last days of December is often the January rent
+        if (booking.tenant_id and booking.amount > 0 and booking.tax_year is None and not booking.reverses_booking_id
+                and (day.month, day.day) >= (12, 22) and day.year >= today.year - 1 and day <= today):
+            items.append({
+                "kind": "turn_of_year_payment", "severity": "info",
+                "title": f"Zahlung von {tenants.get(booking.tenant_id, '—')} am {_day(day)}: Steuerjahr prüfen",
+                "detail": f"{_eur(booking.amount)}. Ist das die Januarmiete, gehört sie steuerlich ins Jahr {day.year + 1} "
+                          "(§ 11 Abs. 1 Satz 2 EStG): bitte in der Buchung das Steuerjahr eintragen, sonst das Jahr "
+                          "des Buchungsdatums.",
+                "entity_type": "booking", "entity_id": booking.id,
+                "link": f"/bookings?booking_id={quote(booking.id, safe='')}"})
         if (booking.amount > 0 and not booking.tenant_id and not booking.category_id and booking.booking_date <= today
                 and not booking.reverses_booking_id
                 and _money(booking.amount) + reversed_amount.get(booking.id, Decimal("0"))):

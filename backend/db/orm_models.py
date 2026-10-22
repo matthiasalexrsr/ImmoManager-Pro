@@ -225,6 +225,8 @@ class BookingORM(Base):
     receipt_url: Mapped[str | None] = mapped_column(Text)
     # a reversal (Storno) names the booking it cancels (domain.booking_reversal)
     reverses_booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
+    # § 11 Abs. 1 Satz 2 EStG: the year a payment around the turn of the year belongs to (None: its date's)
+    tax_year: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

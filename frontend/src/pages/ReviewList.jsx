@@ -18,6 +18,7 @@ const KIND_LABELS = {
   duplicate_iban: 'IBAN doppelt',
   contract_without_history: 'Kein Mietverlauf',
   history_starts_late: 'Mietverlauf beginnt spät',
+  turn_of_year_payment: 'Steuerjahr prüfen',
 };
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */

@@ -269,6 +269,27 @@ def test_a_missing_or_late_rent_history_is_on_the_review_list(client, world):
     assert set(kinds()) >= {"contract_without_history"} and "history_starts_late" not in kinds()
 
 
+def test_a_tenant_payment_in_the_last_days_of_december_asks_for_its_tax_year(client, world):
+    """R12-14: the January rent paid on 29 December belongs to the next tax year (§ 11 EStG)."""
+    from backend.domain.clock import local_today
+    year = local_today().year - 1
+    paid = client.post("/api/v1/bookings", headers=world["owner"], json={
+        "account_id": world["account"]["id"], "tenant_id": world["tenant"]["id"], "booking_date": f"{year}-12-29",
+        "amount": 600, "status": "booked"}).json()
+
+    def hints():
+        items = client.get("/api/v1/review", headers=world["owner"]).json()["items"]
+        return [item for item in items if item["kind"] == "turn_of_year_payment"]
+
+    (hint,) = hints()
+    assert hint["entity_id"] == paid["id"] and f"ins Jahr {year + 1}" in hint["detail"]
+    marked = client.patch(f"/api/v1/bookings/{paid['id']}", headers=world["owner"], json={"tax_year": year + 1})
+    assert marked.status_code == 200, marked.text
+    assert hints() == []
+    wrong = client.patch(f"/api/v1/bookings/{paid['id']}", headers=world["owner"], json={"tax_year": year - 1})
+    assert wrong.status_code in (400, 422) and "§ 11" in wrong.text
+
+
 def test_accounts_that_already_share_an_iban_are_on_the_review_list(client, world):
     """Twins from before the IBAN check stay (the upgrade keeps them); the review list names them."""
     from backend.models import AccountCreate

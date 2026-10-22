@@ -307,6 +307,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', required: true },
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext' },
     { key: 'receipt_url', label: t('finance.bookings.form.receiptUrl') || 'Beleg-URL', placeholder: '/uploads/beleg.pdf' },
+    // § 11 Abs. 1 Satz 2 EStG: a regularly recurring payment within ten days around the turn of the year
+    { key: 'tax_year', label: 'Steuerjahr (nur zum Jahreswechsel)', type: 'number', step: '1',
+      hint: 'Leer: das Jahr des Buchungsdatums. Eine regelmäßige Zahlung vom 22.12. bis 10.01. (z. B. die Januarmiete am 29.12.) gehört steuerlich in das Jahr, für das sie gezahlt wird.' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('ui.filterChips.open') || 'Offen' },
       { value: 'matched', label: t('status.booking.matched') || 'Zugeordnet' },

@@ -278,11 +278,25 @@ class BookingCreate(BaseModel):
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
     reverses_booking_id: Optional[str] = None  # a reversal (Storno): the booking it cancels
+    # the tax year of a regularly recurring payment paid within ten days around the turn of the year
+    # (§ 11 Abs. 1 Satz 2 EStG, R12-14); None: the year of the booking date
+    tax_year: Optional[int] = Field(default=None, ge=1900, le=2200)
 
     @field_validator("amount")
     @classmethod
     def validate_amount(cls, v: Optional[float]) -> Optional[float]:
         return _cent_amount(v)
+
+    @model_validator(mode="after")
+    def tax_year_within_ten_days(self) -> "BookingCreate":
+        day, year = self.booking_date, self.tax_year
+        if year is None or year == day.year:
+            return self
+        if (year == day.year + 1 and (day.month, day.day) >= (12, 22)) or \
+                (year == day.year - 1 and (day.month, day.day) <= (1, 10)):
+            return self
+        raise ValueError("Ein anderes Steuerjahr gilt nur für regelmäßig wiederkehrende Zahlungen bis zehn Tage vor "
+                         "oder nach dem Jahreswechsel (22.12. bis 10.01., § 11 Abs. 1 Satz 2 EStG).")
 
 
 class Booking(BookingCreate):
@@ -645,6 +659,7 @@ class BookingPatch(BaseModel):
     status: Optional[str] = None
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
+    tax_year: Optional[int] = Field(default=None, ge=1900, le=2200)
 
     @field_validator("amount")
     @classmethod

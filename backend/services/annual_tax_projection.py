@@ -33,10 +33,21 @@ def cash_evidence(store, booking_id, portfolio_id):
     account = store.get_account(booking.account_id)
     if account.portfolio_id != portfolio_id:
         raise HTTPException(422, "annual_tax_reference_portfolio: Der Gegen-/Korrekturbeleg muss zum selben Portfolio gehören.")
-    return {"id": booking.id, "account_id": booking.account_id, "category_id": booking.category_id,
+    evidence = {"id": booking.id, "account_id": booking.account_id, "category_id": booking.category_id,
         "property_id": booking.property_id, "booking_date": booking.booking_date.isoformat(),
         "amount_cents": str(cents(booking.amount)), "status": booking.status,
         "updated_at": booking.updated_at.isoformat()}
+    if booking.tax_year is not None:
+        evidence["tax_year"] = booking.tax_year
+    return evidence
+
+
+def counted_by(entry, year, cutoff, as_of):
+    """Paid by the cut-off: a payment of the next January assigned to ``year`` (§ 11 EStG) once it is paid."""
+    day = entry["booking_date"]
+    if entry.get("tax_year") == year and day[:4] != f"{year:04}":
+        return day <= as_of.isoformat()
+    return day <= cutoff.isoformat()
 
 
 def checked_parts(store, spec, entry, command, rules, overrides, pairs, property_cache):
@@ -118,8 +129,8 @@ def compile_projection(store, profile, command, *, parent=None):
     override_evidence: dict[str, dict] = {}
     for item in command.overrides:
         evidence = cash_evidence(store, item.booking_id, portfolio_id)
-        if (evidence["booking_date"][:4] != f"{year:04}" or evidence["booking_date"] > cutoff.isoformat()
-                or evidence["status"] != "confirmed"):
+        if ((evidence.get("tax_year") or int(evidence["booking_date"][:4])) != year
+                or not counted_by(evidence, year, cutoff, command.as_of) or evidence["status"] != "confirmed"):
             raise HTTPException(422, "annual_tax_override_not_cash_source: Eine Aufteilung muss eine bestätigte Buchung bis zum Stichtag betreffen.")
         override_evidence[item.booking_id] = evidence
         if item.transfer_counter_booking_id:
@@ -155,14 +166,14 @@ def compile_projection(store, profile, command, *, parent=None):
                 errors = []
                 try:
                     amount = cents(entry["amount"])
-                    if entry["status"] == "confirmed" and entry["booking_date"] <= cutoff.isoformat():
+                    if entry["status"] == "confirmed" and counted_by(entry, year, cutoff, command.as_of):
                         counts["confirmed_cash_rows"] += 1
                         totals["cash_cents"] += amount
                     if entry["category_id"] and entry["category_portfolio_id"] != portfolio_id:
                         raise ValueError("category_missing_or_cross_portfolio")
                     if entry["property_id"] and entry["property_portfolio_id"] != portfolio_id:
                         raise ValueError("property_missing_or_cross_portfolio")
-                    if entry["booking_date"] > cutoff.isoformat():
+                    if not counted_by(entry, year, cutoff, command.as_of):
                         state = "after_cutoff"
                         counts["after_cutoff_rows"] += 1
                     elif entry["status"] != "confirmed":
@@ -179,7 +190,7 @@ def compile_projection(store, profile, command, *, parent=None):
                 except ValueError as error:
                     errors = [str(error)]
                     state = "needs_review"
-                    if amount is not None and entry["status"] == "confirmed" and entry["booking_date"] <= cutoff.isoformat():
+                    if amount is not None and entry["status"] == "confirmed" and counted_by(entry, year, cutoff, command.as_of):
                         totals["unclassified_cash_cents"] += amount
                     issue_counts[str(error)] += 1
                     if len(manifest["blocking_issues"]) < SAMPLE_ROWS:

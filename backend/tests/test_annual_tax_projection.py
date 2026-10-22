@@ -301,3 +301,31 @@ def test_sql_source_buffers_and_complete_atomic_persistence(tax_store, monkeypat
     saved = service.create_projection(store, save_command(command, checked), "actor")
     assert len(list(service.saved_sources(store, saved["id"]))) == 1005
     assert engine.pool.checkedout() <= 1
+
+
+def test_payments_around_the_turn_of_the_year_count_in_their_tax_year(tax_store):
+    """R12-14: § 11 Abs. 1 Satz 2 EStG; the evaluation followed the booking date strictly."""
+    store, _, _, _, _, _ = tax_store
+    booking(tax_store, 100)
+    booking(tax_store, 50, day=date(2023, 12, 29), tax_year=2024)      # January rent paid in December
+    booking(tax_store, 40, day=date(2025, 1, 5), tax_year=2024)        # December rent paid in January
+    booking(tax_store, 30, day=date(2024, 12, 30), tax_year=2025)      # belongs to the next year
+    version = service.create_profile(store, profile_command(tax_store), "actor")
+
+    by_year_end = service.preflight(store, preflight_command(version))
+    assert by_year_end["totals"]["income_cents"] == "15000" and by_year_end["after_cutoff_rows"] == 1
+    # the January payment counts once it is paid by the cut-off
+    later = service.preflight(store, AnnualTaxPreflightCreate(profile_version_id=version["id"], as_of=date(2025, 1, 31)))
+    assert later["totals"]["income_cents"] == "19000" and later["source_rows"] == 3
+
+
+def test_another_tax_year_is_only_for_the_ten_days_around_the_turn_of_the_year():
+    base = dict(account_id="a", booking_date=date(2024, 12, 15), amount=50)
+    with pytest.raises(ValidationError):
+        BookingCreate(**base, tax_year=2025)
+    with pytest.raises(ValidationError):
+        BookingCreate(**base | {"booking_date": date(2025, 1, 11)}, tax_year=2024)
+    with pytest.raises(ValidationError):
+        BookingCreate(**base | {"booking_date": date(2024, 12, 30)}, tax_year=2023)
+    assert BookingCreate(**base | {"booking_date": date(2024, 12, 22)}, tax_year=2025).tax_year == 2025
+    assert BookingCreate(**base | {"booking_date": date(2025, 1, 10)}, tax_year=2024).tax_year == 2024

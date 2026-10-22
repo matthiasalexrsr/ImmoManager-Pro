@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
-from sqlalchemy import String, and_, cast, select
+from sqlalchemy import String, and_, cast, or_, select
 
 from ..db.booking_order import bytewise_id
 from ..db.orm_models import AccountORM, BookingORM, CategoryORM, PropertyORM
@@ -14,7 +14,13 @@ from .tax_support import _memory_lock, _snapshot
 
 BATCH_SIZE = 1000  # A transfer buffer, never a record/export limit.
 FIELDS = ("id", "account_id", "category_id", "property_id", "unit_id", "tenant_id", "booking_date",
-          "amount", "reverses_booking_id", "status", "payment_text", "receipt_url", "updated_at")
+          "amount", "reverses_booking_id", "status", "payment_text", "receipt_url", "updated_at", "tax_year")
+
+
+def in_tax_year(book, year):
+    """The year a booking belongs to: its tax year (§ 11 Abs. 1 Satz 2 EStG, R12-14), else its date's."""
+    return or_(book.c.tax_year == year, and_(book.c.tax_year.is_(None), book.c.booking_date >= date(year, 1, 1),
+                                              book.c.booking_date < date(year + 1, 1, 1)))
 
 
 def cents(value):
@@ -47,8 +53,7 @@ def _query(portfolio_id, year, captured):
         account.c.name.label("account_name"), account.c.portfolio_id.label("account_portfolio_id"),
         category.c.name.label("category_name"), category.c.portfolio_id.label("category_portfolio_id"),
         prop.c.name.label("property_name"), prop.c.portfolio_id.label("property_portfolio_id"))
-    query = query.select_from(joins).where(account.c.portfolio_id == portfolio_id,
-        book.c.booking_date >= date(year, 1, 1), book.c.booking_date < date(year + 1, 1, 1))
+    query = query.select_from(joins).where(account.c.portfolio_id == portfolio_id, in_tax_year(book, year))
     for model in (BookingORM, AccountORM):
         query = scoped(query, model, captured)
     return query
@@ -56,6 +61,8 @@ def _query(portfolio_id, year, captured):
 
 def _safe_entry(row):
     result = dict(row)
+    if result.get("tax_year") is None:
+        result.pop("tax_year", None)      # rows without one stay as they were (source hashes)
     for key in ("booking_date", "updated_at"):
         if result[key] is not None:
             result[key] = result[key].isoformat()
@@ -75,8 +82,8 @@ def cash_source(store, portfolio_id, year):
             predicate = scoped_clause(BookingORM, scope=captured)
             if predicate is not None:
                 hidden = select(1).select_from(BookingORM.__table__.join(AccountORM.__table__)).where(
-                    AccountORM.portfolio_id == portfolio_id, BookingORM.booking_date >= date(year, 1, 1),
-                    BookingORM.booking_date < date(year + 1, 1, 1), ~predicate).limit(1)
+                    AccountORM.portfolio_id == portfolio_id, in_tax_year(BookingORM.__table__, year),
+                    ~predicate).limit(1)
                 if connection.scalar(hidden):
                     raise HTTPException(403, "annual_tax_source_scope_incomplete: Die Objektbezüge müssen durch die Verwaltung geprüft werden.")
 
@@ -102,13 +109,14 @@ def cash_source(store, portfolio_id, year):
             if captured is not None and not captured.unrestricted:
                 for booking in raw["bookings"].values():
                     account = raw["accounts"].get(booking.account_id)
-                    if (account and account.portfolio_id == portfolio_id and booking.booking_date.year == year
+                    if (account and account.portfolio_id == portfolio_id
+                            and (booking.tax_year or booking.booking_date.year) == year
                             and not memory_visible(store, "bookings", booking, scope=captured)):
                         raise HTTPException(403, "annual_tax_source_scope_incomplete: Die Objektbezüge müssen durch die Verwaltung geprüft werden.")
             entries = []
             for booking in store.bookings.values():
                 account = store.get_account(booking.account_id)
-                if account.portfolio_id != portfolio_id or booking.booking_date.year != year:
+                if account.portfolio_id != portfolio_id or (booking.tax_year or booking.booking_date.year) != year:
                     continue
                 category = store.get_category(booking.category_id) if booking.category_id else None
                 prop = store.get_property(booking.property_id) if booking.property_id else None
