@@ -204,7 +204,9 @@ def read_projection(row):
         request = json.loads(row.request_json)
         reviewed = {key: value for key, value in request.items() if key not in {"preview_hash", "previous_projection_id", "revision_reason"}}
         expected = fingerprint({"profile": manifest["profile_sha256"], "source": manifest["source_sha256"],
-            "request": reviewed, "totals": manifest["totals"], "groups": manifest["groups"], "issues": manifest["blocking_issue_counts"]})
+            "request": reviewed, "totals": manifest["totals"], "groups": manifest["groups"], "issues": manifest["blocking_issue_counts"],
+            # the owner split is part of the reviewed preview (annual_tax_projection.compile_projection)
+            **({"owners": manifest["owner_split"]} if "owner_split" in manifest else {})})
         valid = hmac.compare_digest(expected, manifest["preview_hash"]) and request["preview_hash"] == expected
     except (ValueError, TypeError, AttributeError, KeyError, UnicodeError):
         valid = False

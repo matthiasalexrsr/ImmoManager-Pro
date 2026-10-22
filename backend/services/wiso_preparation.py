@@ -119,8 +119,51 @@ def prepare(profile, manifest):
     return report
 
 
+OWNER_NOTE = ("Je Eigentümer nach den erfassten Eigentumsanteilen am Buchungstag (Eigentümer einer Buchung: "
+              "ganz). Die Anteile ergeben je Zeile centgenau den Gesamtbetrag; keine Prüfung der steuerlichen Zurechnung.")
+
+
+def owner_sheets(report, manifest):
+    """Each owner's part of the rows, from the projection's owner split; outside the hashed report.
+
+    The parts of one row add up to its amount to the cent, or the saved projection is damaged.
+    """
+    split = manifest.get("owner_split")
+    if not split:
+        return []
+    rows = {(row["property_id"], row["treatment"], row["form_line"]): row for row in report["rows"]}
+    sums: defaultdict[tuple, int] = defaultdict(int)
+    sheets: dict[str | None, dict[str, Any]] = {}
+    for part in split:
+        key = (part["property_id"], part["treatment"], part["form_line"])
+        row, value = rows.get(key), int(part["amount_cents"])
+        if row is None:
+            raise HTTPException(503, "wiso_preparation_owner_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
+        sums[key] += value
+        sheet = sheets.setdefault(part["owner_contact_id"], {"owner_contact_id": part["owner_contact_id"],
+            "owner_name": part["owner_name"], "rows": [], "totals": {"income_cents": 0, "expense_cents": 0}})
+        sheet["rows"].append({field: row[field] for field in ("object_number", "property_id", "property_name",
+            "target_object_label", "treatment", "form_line", "target_label", "mapping_complete")}
+            | {"amount_cents": str(value), "amount_eur": euro(value)})
+        sheet["totals"][part["treatment"] + "_cents"] += value
+    if any(sums.get(key, 0) != int(row["amount_cents"]) for key, row in rows.items()):
+        raise HTTPException(503, "wiso_preparation_owner_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
+    order = {key: index for index, key in enumerate(rows)}
+    result = sorted(sheets.values(), key=lambda sheet: (sheet["owner_contact_id"] is None, sheet["owner_name"].casefold()))
+    for sheet in result:
+        sheet["rows"].sort(key=lambda row: order[(row["property_id"], row["treatment"], row["form_line"])])
+        sheet["totals"] = {key: str(value) for key, value in sheet["totals"].items()}
+        sheet["note"] = OWNER_NOTE
+    return result
+
+
 def saved_preparation(store, projection_id):
     """Validate retained originals and profile before exposing a historical sheet."""
+    return saved_preparation_by_owner(store, projection_id)[0]
+
+
+def saved_preparation_by_owner(store, projection_id):
+    """The checked report and each owner's sheet (services.ownership; empty without owners)."""
     from . import annual_tax_storage as storage
     from .annual_tax_projection import canonical
 
@@ -157,7 +200,7 @@ def saved_preparation(store, projection_id):
         raise HTTPException(422, "wiso_preparation_profile_missing: Eine neue Profil-/Jahresfassung mit manuellen Zielzuordnungen erstellen.")
     if canonical(report) != canonical(manifest.get("wiso_preparation")):
         raise HTTPException(503, "wiso_preparation_snapshot_integrity_failed: Die gespeicherte WISO-Vorbereitung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
-    return report
+    return report, owner_sheets(report, manifest)
 
 
 def worksheet_bytes(report):
@@ -174,4 +217,21 @@ def worksheet_bytes(report):
             report["profile_version_id"], report["source_sha256"])
         # Monetary strings are independently formatted numbers, not text input.
         writer.writerow([value if index == 9 else csv_cell(value) for index, value in enumerate(values)])
+    return output.getvalue().encode("utf-8-sig")
+
+
+def owner_worksheet_bytes(report, owners):
+    """Each owner's rows in one CSV, exact cents, for filtering by owner in a spreadsheet."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
+    writer.writerow(("tax_year", "owner_contact_id", "owner_name", "object_number", "property_id", "source_object_name",
+        "reviewed_target_object_label", "treatment", "source_form_line", "reviewed_manual_target_label", "amount_cents",
+        "amount_eur", "mapping_complete", "profile_version_id", "source_sha256"))
+    for sheet in owners:
+        for row in sheet["rows"]:
+            values = (report["tax_year"], sheet["owner_contact_id"], sheet["owner_name"], row["object_number"], row["property_id"],
+                row["property_name"], row["target_object_label"], row["treatment"], row["form_line"], row["target_label"],
+                int(row["amount_cents"]), row["amount_eur"], row["mapping_complete"], report["profile_version_id"],
+                report["source_sha256"])
+            writer.writerow([value if index == 11 else csv_cell(value) for index, value in enumerate(values)])
     return output.getvalue().encode("utf-8-sig")

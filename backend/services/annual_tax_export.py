@@ -32,10 +32,10 @@ def prepare_download(store, projection_id, *, parent=None):
     profile = get_profile(store, manifest["profile_version_id"])
     if profile["sha256"] != manifest["profile_sha256"]:
         raise HTTPException(503, "annual_tax_saved_profile_integrity_failed: Die gespeicherte Steuerfassung ist beschädigt. Bitte Vollbackup und Schlüssel prüfen.")
-    preparation = None
+    preparation, owners = None, []
     if profile["spec"].get("wiso_preparation"):
-        from .wiso_preparation import saved_preparation
-        preparation = saved_preparation(store, projection_id)
+        from .wiso_preparation import saved_preparation_by_owner
+        preparation, owners = saved_preparation_by_owner(store, projection_id)
     cleanup = ExitStack()
     try:
         workspace, _ = cleanup.enter_context(private_workspace(parent))
@@ -97,6 +97,9 @@ def prepare_download(store, projection_id, *, parent=None):
                         "Geldquelle: gespeicherte bestätigte Buchungen, je Zahlung einmal. Geldwerte sind Centwerte.\r\n"
                         "Fehlende Zuordnungen und Teiljahre bleiben im Prüfbericht sichtbar.\r\n"
                         "Keine XML-Importdatei enthalten; Hersteller-Serializer und Zielimport weiterhin offen.\r\n").encode("utf-8")})
+                if owners:
+                    from .wiso_preparation import owner_worksheet_bytes
+                    extras["manual-transfer-worksheet-by-owner.csv"] = owner_worksheet_bytes(preparation, owners)
             for name, content in extras.items():
                 info = ZipInfo(name, timestamp)
                 info.compress_type = ZIP_DEFLATED

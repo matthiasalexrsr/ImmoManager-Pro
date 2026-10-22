@@ -208,12 +208,11 @@ def compile_projection(store, profile, command, *, parent=None):
                         totals["excluded_cash_cents"] += cash
                         continue
                     effective = cash if kind == "income" else -cash
-                    if ownership.recorded or entry.get("owner_contact_id"):
-                        unit = entry.get("unit_id") if part["property_id"] == entry.get("property_id") else None
-                        for owner, share in ownership.split(Decimal(effective) / 100, part["property_id"], unit,
-                                                            date.fromisoformat(entry["booking_date"]),
-                                                            entry.get("owner_contact_id")).items():
-                            owner_split[(owner or "", part["property_id"] or "", kind, part["form_line"] or "")] += int(share * 100)
+                    unit = entry.get("unit_id") if part["property_id"] == entry.get("property_id") else None
+                    for owner, share in ownership.split(Decimal(effective) / 100, part["property_id"], unit,
+                                                        date.fromisoformat(entry["booking_date"]),
+                                                        entry.get("owner_contact_id")).items():
+                        owner_split[(owner or "", part["property_id"] or "", kind, part["form_line"] or "")] += int(share * 100)
                     totals[kind + "_cents"] += effective
                     key = (part["property_id"], kind, part["form_line"])
                     group = groups.setdefault(key, {"property_id": part["property_id"], "property_name": part["property_name"],
@@ -248,7 +247,8 @@ def compile_projection(store, profile, command, *, parent=None):
             cash_totals_complete="invalid_cash_amount" not in issue_counts, tax_totals_complete=not issue_counts,
             note="Keine automatische AfA, Eigentümerquote oder Steuer-/WISO-Formularprüfung.")
         hashed = {}
-        if owner_split:
+        # only with an owner recorded somewhere; then every amount is split, the unowned part included
+        if any(owner for owner, *_ in owner_split):
             names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
             manifest["owner_split"] = [
                 {"owner_contact_id": owner or None, "owner_name": names.get(owner, "Ohne Eigentümer") if owner else "Ohne Eigentümer",
