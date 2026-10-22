@@ -61,7 +61,7 @@ jobs:
       - name: Install backend and PyInstaller
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt "pyinstaller>=6.0.0"
+          pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
 
       - name: Build ImmoManager-Pro.exe
         run: python -m PyInstaller immomanager.spec --noconfirm

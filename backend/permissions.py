@@ -49,8 +49,9 @@ TECHNICAL = ("/maintenance", "/meters", "/handover-protocols", *INVOICE_FACTUAL)
 # inside an area the role may write, these paths stay closed to it
 DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
                                       "buchhaltung": INVOICE_FACTUAL}
+# /updates/configure decides where updates come from, so it is the owner's like installing them
 OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
-              "/updates/restart", "/admin/operations/second-target", "/admin/operations/plugins")
+              "/updates/restart", "/updates/configure", "/admin/operations/second-target", "/admin/operations/plugins")
 
 WRITE_AREAS: dict[str, tuple[str, ...] | None] = {
     "eigentuemer": None,          # None: everything

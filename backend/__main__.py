@@ -295,7 +295,9 @@ def main():
     data_dir = _configure_runtime_environment(args.data_dir, testversion=args.testversion)
     testversion = _is_testversion()
 
-    print("ImmoManager Pro v1.0.0")
+    from backend.config import _get_version
+
+    print(f"ImmoManager Pro v{_get_version()}")
     print(f"Python {sys.version}")
     if IS_FROZEN:
         print(f"Bundle: {base_dir}")

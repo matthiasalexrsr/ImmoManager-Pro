@@ -8,7 +8,9 @@ echo ""
 
 # 1. Pull latest code
 echo "[1/5] Pulling latest code..."
-git pull --ff-only origin main || { echo "ERROR: git pull failed. Resolve conflicts first."; exit 1; }
+# the branch this installation follows (the repository's default branch is master)
+branch="$(git rev-parse --abbrev-ref HEAD)"
+git pull --ff-only origin "$branch" || { echo "ERROR: git pull of origin/$branch failed. Resolve conflicts first."; exit 1; }
 
 # 2. Install/update Python dependencies (exact versions, whole tree)
 echo "[2/5] Installing Python dependencies..."

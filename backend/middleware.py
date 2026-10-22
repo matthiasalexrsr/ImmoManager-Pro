@@ -259,6 +259,19 @@ class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
         if (
             request.method in _RBAC_WRITE_METHODS
             and path.startswith("/api/v1/")
+            and not path.startswith("/api/v1/updates")
+            and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
+        ):
+            # While an update runs (and after it, until the restart) nothing may be saved:
+            # a failed step restores the database as it was at the start (backend.updater)
+            from .updater import writes_blocked
+
+            reason = writes_blocked()
+            if reason:
+                return JSONResponse(status_code=503, content={"detail": reason}, headers={"Retry-After": "60"})
+        if (
+            request.method in _RBAC_WRITE_METHODS
+            and path.startswith("/api/v1/")
             and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
         ):
             from .permissions import ROLE_LABELS, may_write

@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# cryptography: without it IBANs are silently stored in plain text.
+# cryptography seals integration secrets and the full backup; PyJWT signs the sessions.
 REQUIRED = {"cryptography", "pyjwt"}
 
 
@@ -41,3 +41,25 @@ def test_pyproject_declares_security_dependencies():
 def test_requirements_files_declare_security_dependencies():
     for path in (ROOT / "requirements.txt", ROOT / "backend" / "requirements.txt"):
         assert REQUIRED <= _requirements(path), path
+
+
+def test_pyproject_declares_every_runtime_dependency_of_requirements():
+    """Regression: pypdf (full-text search of PDFs) was missing; build.bat/build.sh install the project
+    from pyproject.toml and built a package without it."""
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    declared = {_name(dep) for dep in data["dependencies"] + data["optional-dependencies"]["postgres"]}
+    # pytest belongs to the checks, not to the program
+    assert _requirements(ROOT / "requirements.txt") - {"pytest"} <= declared
+
+
+def test_release_builds_use_the_pinned_build_tools():
+    """The Windows packages are built with the PyInstaller of requirements-build.txt, not any 6.x."""
+    build = (ROOT / "requirements-build.txt").read_text(encoding="utf-8")
+    match = re.search(r"^PyInstaller==(\S+)$", build, re.M)
+    assert match, "requirements-build.txt pins PyInstaller"
+    pin = match.group(1)
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert f"pyinstaller=={pin}" in data["project"]["optional-dependencies"]["build"]
+    for workflow in ("release.yml", "testversion.yml"):
+        text = (ROOT / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
+        assert "-r requirements-build.txt" in text and "pyinstaller>=" not in text.lower(), workflow

@@ -76,3 +76,19 @@ def test_no_release_yet_is_reported_plainly(github, monkeypatch):
     github["answer"].update(status=404, json={"message": "Not Found"})
     result = updater.check_for_updates()
     assert (result["update_available"], result["error"]) == (False, "Repository oder Releases nicht gefunden")
+
+
+def test_the_version_is_the_one_of_the_code_not_of_an_old_installation(tmp_path, monkeypatch):
+    """Regression: an editable install (install.sh/.bat) keeps the version metadata of its installation.
+    After an update to 2.1.0 the program still said 2.0.0 and offered the installed update again."""
+    import importlib.metadata
+
+    from backend import config
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "2.0.0")
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[tool.other]\nversion = "9.9"\n\n[project]\nname = "immomanager-pro"\nversion = "2.1.0"\n',
+                         encoding="utf-8")
+    assert config._get_version(pyproject) == "2.1.0"
+    # an installed wheel has no pyproject.toml next to the code: its metadata counts
+    assert config._get_version(tmp_path / "missing.toml") == "2.0.0"

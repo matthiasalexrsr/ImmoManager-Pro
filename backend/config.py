@@ -17,19 +17,26 @@ SETTING_ORIGINS: dict[str, str] = {}
 SETTING_ORIGIN_FILES: dict[str, str] = {}
 
 
-def _get_version() -> str:
-    """Read version from package metadata, falling back to pyproject.toml."""
+def _get_version(pyproject: Path | None = None) -> str:
+    """The version of the running code: pyproject.toml next to it, else the package metadata.
+
+    A checkout (also an editable install) and the Windows package carry pyproject.toml. The metadata
+    of an editable install keeps the version of its installation: after an update it would still name
+    the old version, and the update check would offer the installed update again.
+    """
+    import tomllib
+
+    pyproject = pyproject or Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        version = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {}).get("version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+    except (OSError, ValueError):
+        pass
     try:
         return importlib.metadata.version("immomanager-pro")
     except importlib.metadata.PackageNotFoundError:
-        pass
-    # Fallback: parse pyproject.toml directly
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    if pyproject.exists():
-        for line in pyproject.read_text().splitlines():
-            if line.strip().startswith("version"):
-                return line.split("=")[1].strip().strip('"').strip("'")
-    return "0.0.0"
+        return "0.0.0"
 
 
 class Environment(str, enum.Enum):
