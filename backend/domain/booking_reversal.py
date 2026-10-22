@@ -17,7 +17,7 @@ from typing import Any, Optional, Sequence
 
 from .money import money, money_sum
 
-LINKED_FIELDS = ("account_id", "category_id", "property_id", "unit_id", "tenant_id")
+LINKED_FIELDS = ("account_id", "category_id", "property_id", "unit_id", "tenant_id", "owner_contact_id")
 
 
 def _same_assignment(a: Any, b: Any) -> bool:
@@ -50,7 +50,7 @@ def reversal_problem(
         if amount * money(original.amount) >= 0:
             return "Ein Storno hat das umgekehrte Vorzeichen der stornierten Buchung"
         if not _same_assignment(booking, original):
-            return "Ein Storno gehört zu Konto, Kategorie, Objekt, Einheit und Mieter der stornierten Buchung"
+            return "Ein Storno gehört zu Konto, Kategorie, Objekt, Einheit, Mieter und Eigentümer der stornierten Buchung"
         if booking.booking_date < original.booking_date:
             return "Ein Storno kann nicht vor der stornierten Buchung liegen"
         if abs(amount + money_sum(s.amount for s in siblings)) > abs(money(original.amount)):

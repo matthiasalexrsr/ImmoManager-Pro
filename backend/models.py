@@ -281,6 +281,9 @@ class BookingCreate(BaseModel):
     # the tax year of a regularly recurring payment paid within ten days around the turn of the year
     # (§ 11 Abs. 1 Satz 2 EStG, R12-14); None: the year of the booking date
     tax_year: Optional[int] = Field(default=None, ge=1900, le=2200)
+    # the owner (contact of type "owner") the whole booking belongs to, e.g. a withdrawal; None: the
+    # owners of its unit or property by their shares (services/ownership.py)
+    owner_contact_id: Optional[str] = None
 
     @field_validator("amount")
     @classmethod
@@ -660,6 +663,7 @@ class BookingPatch(BaseModel):
     payment_text: Optional[str] = None
     receipt_url: Optional[str] = None
     tax_year: Optional[int] = Field(default=None, ge=1900, le=2200)
+    owner_contact_id: Optional[str] = None
 
     @field_validator("amount")
     @classmethod

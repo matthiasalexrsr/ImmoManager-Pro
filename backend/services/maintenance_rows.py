@@ -55,6 +55,7 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
         ContractORM,
         ContractRentPeriodORM,
         InsuranceORM,
+        OwnershipShareORM,
         PaymentAllocationORM,
         PropertyORM,
         ReceivableORM,
@@ -62,6 +63,7 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
         UnitORM,
     )
     from ..finance_models import SavedReport, Settlement
+    from ..models_ownership import OwnershipShare
 
     return {
         "properties": (PropertyORM, models.Property),
@@ -105,6 +107,7 @@ def registry() -> dict[str, tuple[Any, type[BaseModel]]]:
         "cost_items": (CostItemORM, models.CostItem),
         "billing_periods": (BillingPeriodORM, models.BillingPeriod),
         "allocation_keys": (AllocationKeyORM, models.AllocationKey),
+        "ownership_shares": (OwnershipShareORM, OwnershipShare),
     }
 
 

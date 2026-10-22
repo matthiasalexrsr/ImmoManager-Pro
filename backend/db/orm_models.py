@@ -227,6 +227,8 @@ class BookingORM(Base):
     reverses_booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
     # § 11 Abs. 1 Satz 2 EStG: the year a payment around the turn of the year belongs to (None: its date's)
     tax_year: Mapped[int | None] = mapped_column(Integer)
+    # the owner the whole booking belongs to (a contact; no foreign key: the API refuses deleting it)
+    owner_contact_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -1139,6 +1141,26 @@ class ContactORM(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OwnershipShareORM(Base):
+    """An owner's share of a property, or of one of its units, for a period (services/ownership.py)."""
+    __tablename__ = "ownership_shares"
+    __table_args__ = (
+        Index("idx_ownership_shares_property", "property_id"),
+        Index("idx_ownership_shares_owner", "owner_contact_id"),
+        CheckConstraint("share_percent > 0 AND share_percent <= 100", name="ck_ownership_share_percent"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"), nullable=False)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id"))
+    share_percent: Mapped[float] = mapped_column(Numeric(7, 4, asdecimal=False), nullable=False)
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_to: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class MeterORM(Base):

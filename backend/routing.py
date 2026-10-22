@@ -61,6 +61,7 @@ from .routers import (
     meters_standalone,
     notifications,
     operations,
+    ownership,
     photos,
     portfolios,
     properties,
@@ -153,6 +154,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(escalation.router, dependencies=_auth_dep)
     api_v1.include_router(history.router, dependencies=_auth_dep)
     api_v1.include_router(contacts.router, dependencies=_auth_dep)
+    api_v1.include_router(ownership.router, dependencies=_auth_dep)
     api_v1.include_router(meters_standalone.router, dependencies=_auth_dep)
     api_v1.include_router(messages.router, dependencies=_auth_dep)
     api_v1.include_router(channels.router, dependencies=_auth_dep)

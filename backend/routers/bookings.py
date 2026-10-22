@@ -12,6 +12,7 @@ from ..services.booking_writes import booking_write
 from ..services.deletion_guard import ensure_deletable
 from ..services.deposits import _booking_linked, ensure_booking_unchanged
 from ..services.maintenance_projects import ensure_booking_unallocated
+from ..services.ownership import require_owner
 from ..services.payment_allocations import (
     allocate_unassigned,
     auto_allocate,
@@ -63,6 +64,7 @@ def list_bookings(
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)
 def create_booking(payload: BookingCreate) -> Booking:
+    require_owner(store, payload.owner_contact_id)
     try:
         with booking_write(store, reversal_of=payload.reverses_booking_id, changes=payload.model_dump()) as target:
             booking = target.create_booking(payload)
@@ -151,7 +153,7 @@ def reverse_booking(booking_id: str, payload: ReversalRequest | None = None) -> 
             text = request.payment_text or f"Storno: {original.payment_text or original.booking_date.strftime('%d.%m.%Y')}"
             data = BookingCreate(
                 account_id=original.account_id, category_id=original.category_id, property_id=original.property_id,
-                unit_id=original.unit_id, tenant_id=original.tenant_id,
+                unit_id=original.unit_id, tenant_id=original.tenant_id, owner_contact_id=original.owner_contact_id,
                 booking_date=request.booking_date or max(local_today(), original.booking_date),
                 amount=float(amount), status=original.status, payment_text=text, reverses_booking_id=original.id)
             reversal = target.create_booking(data)
@@ -173,6 +175,7 @@ def get_booking(booking_id: str) -> Booking:
 
 @router.put("/{booking_id}", response_model=Booking)
 def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
+    require_owner(store, payload.owner_contact_id)
     try:
         with booking_write(store, booking_id=booking_id, changes=payload.model_dump()) as target:
             protect_bank_booking(target, booking_id, payload.model_dump())
@@ -187,6 +190,7 @@ def update_booking(booking_id: str, payload: BookingCreate) -> Booking:
 
 @router.patch("/{booking_id}", response_model=Booking)
 def patch_booking(booking_id: str, payload: BookingPatch) -> Booking:
+    require_owner(store, payload.owner_contact_id)
     try:
         with booking_write(store, booking_id=booking_id, changes=payload.model_dump(exclude_unset=True)) as target:
             protect_bank_booking(target, booking_id, payload.model_dump(exclude_unset=True))
