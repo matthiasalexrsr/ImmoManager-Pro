@@ -266,7 +266,8 @@ def test_tenant_account_counts_partial_payments_and_the_return_once(estate):
     end_of_march = tenant_account(store, tom, date(2026, 3, 31))
     assert end_of_march["contracts"][0] | {"contract_id": None} == {
         "contract_id": None, "contract_number": "A1", "expected": 1899.99, "paid": 1899.99,
-        "outstanding": 0.0, "overpaid": 0.0, "ledger_start": None, "carried_balance": None}
+        "outstanding": 0.0, "overpaid": 0.0, "ledger_start": None, "carried_balance": None,
+        "claims": 0.0, "credits": 0.0, "total_balance": 0.0}
     assert end_of_march["unassigned"] == []
     # on 10 March the rest of March (333.33, paid on the 20th) is still open: later payments do not count yet
     tenth = tenant_account(store, tom, date(2026, 3, 10))
@@ -279,7 +280,8 @@ def test_an_overpayment_is_the_contracts_credit_not_an_unassigned_payment(estate
     february = tenant_account(store, tina, date(2026, 2, 28))
     assert (february["contracts"][0]["expected"], february["contracts"][0]["overpaid"]) == (225.0, 275.0)
     assert february["totals"] == {"expected": 225.0, "paid": 500.0, "outstanding": 0.0, "overpaid": 275.0,
-                                  "balance": -275.0, "unassigned": 0.0}
+                                  "balance": -275.0, "unassigned": 0.0, "claims": 0.0, "credits": 0.0,
+                                  "total_balance": -275.0}
     assert february["unassigned"] == []
     # the credit is used up by March's rent: 225.00 + 450.00 - 500.00 = 175.00 open
     march = tenant_account(store, tina, date(2026, 3, 31))

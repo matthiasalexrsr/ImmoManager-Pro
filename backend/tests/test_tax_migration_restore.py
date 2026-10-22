@@ -50,7 +50,8 @@ def test_assigned_migration_preserves_every_existing_row_and_rejects_audit_downg
 def test_tax_backup_restores_ciphertext_keys_original_bytes_and_money(tmp_path, monkeypatch):
     path = tmp_path / "source.db"
     url = f"sqlite:///{path.as_posix()}"
-    command.upgrade(schema_state.alembic_config(url), "e160a1b2c303")
+    # written through today's ORM below, so the source needs today's schema
+    command.upgrade(schema_state.alembic_config(url), "head")
     box = secret_box.SecretBox(tmp_path / "synthetic-keyring.json")
     monkeypatch.setattr(annual, "default_secret_box", lambda: box)
     monkeypatch.setattr(datev, "default_secret_box", lambda: box)
