@@ -18,6 +18,8 @@ Geprüft wurde der Stand `0c6d633` (nach Codex' Prüfung von Bankimport, Zahlung
 
 ## Offen oder zur Entscheidung
 
+> Stand 22.10.2026: alle Punkte entschieden und umgesetzt (R12-09 bleibt beobachtet), siehe [IMPROVEMENTS_20261022.md](IMPROVEMENTS_20261022.md).
+
 | ID | Bereich | Schwere | Befund | Vorschlag |
 |---|---|---|---|---|
 | R12-19 | Nebenkosten | mittel | Forderungen entstehen auch aus noch nicht zugestellten Abrechnungen (Status „finalisiert“) und sind 30 Tage ab Erzeugung fällig, nicht ab Zugang; eine Mahnung ist möglich, bevor der Mieter die Abrechnung hat. | Fälligkeit ab Zustellvermerk; ohne Vermerk nur mit Bestätigung. |

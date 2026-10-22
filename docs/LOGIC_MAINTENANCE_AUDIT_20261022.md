@@ -60,6 +60,8 @@ Die ganze Backend-Suite lief zusätzlich zweimal mit vorgestellter Uhr, am 1. Ap
 
 ## Vorschläge
 
+> Umgesetzt in Runde 15, zusammen mit den offenen Entscheidungen aus Runde 12: [IMPROVEMENTS_20261022.md](IMPROVEMENTS_20261022.md).
+
 - **Budget-Ist aus Buchungen:** Der Ist-Betrag eines Budgets wird von Hand gepflegt. Aus den Buchungen je Objekt, Jahr und Kategorie berechnet, wäre der Soll/Ist-Vergleich immer aktuell; dafür bräuchte jede Budget-Kategorie eine Zuordnung zu Buchungskategorien.
 - **Doppelte IBANs anzeigen:** Bestehende Dubletten aus der Zeit vor R14-03 bleiben stehen (die Migration legt dann keinen Unique-Index an). Ein Eintrag in der Prüfliste („Konten mit gleicher IBAN“) würde sie zeigen.
 - **`iban_encryption.py`** ist unbenutzt (siehe Betriebsdoku) und könnte entfallen.

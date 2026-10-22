@@ -11,6 +11,23 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-22 Round 15: proposals and open decisions
+
+The proposals of round 14 and the open decisions of round 12 are implemented, and owner withdrawals and contributions are new: [docs/IMPROVEMENTS_20261022.md](docs/IMPROVEMENTS_20261022.md). Four migrations add five optional columns (`e4b6d8f0a2c3`, `f5c7e9a1b3d4`, `a6d8f0b2c4e5`, `b8f0a2c4d6e7`).
+
+- **Owner money:** a category of the new type `private` holds withdrawals, distributions and contributions of private means. They move the balance but are no income or expense: the ledger puts them on the sides `withdrawal`/`contribution`; cash view, cash report, bookings page and dashboard show them beside income and expenses; the period result, the performance report, the forecast averages and budgets leave them out.
+- **Budget actuals from the bookings on request:** a budget names its booking categories; "Ist aus Buchungen" shows the spending of the property in the budget's year with the bookings behind it and saves it only when taken over (not if the bookings changed in between).
+- **One "today":** `backend/domain/clock.py` (`local_today()`, `local_date()`, Europe/Berlin) replaces `date.today()` in 31 modules and the UTC dates of the SEPA debit file and the retention; `test_clock.py` guards it. A run of the suite at 00:35 Berlin found a lead counting one day since its decision, and the same UTC-day error in the delivery day of statements, the creation day of documents and recurring tasks.
+- **Review list:** accounts sharing an IBAN, running contracts without or with a late rent history (R12-03, R12-17), tenant payments of the last December days without a tax year.
+- **Tax year of payments around the turn of the year** (§ 11 Abs. 1 Satz 2 EStG, R12-14): a booking from 22 December to 10 January can name the neighbouring tax year; the tax source selects by it. Rows without one keep their hashes.
+- **Heating costs** (HeizkostenV, R12-07): a cost item can share 50 to 70 % by consumption and the rest by a key for the fixed costs (default: area); the statement splits it. Heating shared by area alone gets the § 12 warning.
+- **Back payments are due from the statement's delivery** (R12-19); without a delivery note they wait for a confirmation.
+- **Claims of their own** (receivable kind `other`, R12-15) count as income in the period result and the performance report.
+- **§ 558 checks** leave increases after modernization out of the waiting periods and add them to the cap (R12-16); rent adjustments offer Vergleichsmiete, Modernisierung and Vereinbarung.
+- **Tenant account with all claims** (R12-20): claims, credits and the total balance per contract; a proposal to settle a claim from a payment credited as rent, booked through the existing settlement.
+- The statement letter warns of open rent of the period (R12-12, BGH VIII ZR 271/10). Default dunning fees are 2.50 € per letter (R12-18).
+- **Maintenance:** `requirements-pip.txt` pins pip for CI, release builds and the image; the updater refuses a checkout whose `origin` is another repository than `UPDATE_REPO_URL` (credentials never shown); the unused `iban_encryption.py` is removed.
+
 ## Unreleased — 2026-10-22 Round 14: logic, maintainability and updates
 
 Fresh and upgraded installations, the update paths, the dependency manifests and further business logic were reviewed; findings, fixes and proposals: [docs/LOGIC_MAINTENANCE_AUDIT_20261022.md](docs/LOGIC_MAINTENANCE_AUDIT_20261022.md). Each fix has a regression test that fails without it.

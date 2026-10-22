@@ -18,6 +18,8 @@ Browser (React/Vite, frontend/src)
 
 Beide Speicher sind gleichwertig: Jeder Backend-Test läuft in CI mit `TEST_STORE_BACKEND=memory` und `=sql`, dazu kommt ein PostgreSQL-Lauf ohne übersprungene Tests.
 
+**Datum und Zeit:** „Heute“ ist das Kalenderdatum der Installation in Europe/Berlin: `backend/domain/clock.local_today()`. Der Tag eines gespeicherten Zeitpunkts (`…_at`, in UTC) kommt aus `local_date()`. `date.today()`, `datetime.now().date()` und `<…>_at.date()` lässt `test_clock.py` nicht zu; vom Nutzer eingegebene Uhrzeiten wie `scheduled_at` sind davon ausgenommen.
+
 ## Wo liegt was
 
 | Bereich | Ort | Hinweis |

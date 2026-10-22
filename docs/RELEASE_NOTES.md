@@ -44,6 +44,13 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - das Programm versendet nichts selbst.
 - **Rechnungsprüfung:** sachlich und rechnerisch prüfen, freigeben (auf Wunsch mit vier Augen), Skonto, Reklamation. Ist eine ältere Rechnung als bezahlt markiert, aber keine Zahlung zugeordnet, zeigt die Übersicht „Ungeklärt“ statt einen Nachweis vorzutäuschen.
 - **Kaution** vom Vereinbaren bis zur Abrechnung beim Auszug.
+- **Entnahmen, Ausschüttungen und Einlagen:** Eine Kategorie „Privat (Entnahme/Einlage)“ für das eigene Geld der Eigentümer. Der Kontostand stimmt, Ergebnis, Kosten und Budgets bleiben davon frei. Zahlungsübersicht, Buchungen und Startseite zeigen Entnahmen und Einlagen getrennt.
+- **Budget-Ist aus den Buchungen auf Knopfdruck:** Im Budget die Buchungskategorien wählen, dann „Ist aus Buchungen“: Das Programm zeigt Betrag und Buchungen und übernimmt erst auf Bestätigung.
+- **Mieterkonto mit allen Forderungen:** Nachzahlungen, Guthaben und Gebühren stehen mit im Gesamtsaldo. Wurde eine Zahlung auf eine Nachzahlung als Miete gutgeschrieben, schlägt das Konto den Ausgleich vor („Ausgleich buchen“).
+- **Steuerjahr zum Jahreswechsel:** Die Januarmiete vom 29.12. lässt sich dem neuen Jahr zuordnen (§ 11 EStG); die Prüfliste fragt danach.
+- **Heizkosten nach Heizkostenverordnung:** 50 bis 70 % nach Verbrauch, der Rest nach Fläche, in einer Kostenposition. Werden Heizkosten nur nach Fläche verteilt, warnt die Abrechnung (§ 12, Kürzungsrecht).
+- **Sonstige Forderungen** (Schaden, Schlüssel) zählen im Periodenergebnis als Ertrag, wenn sie so markiert sind.
+- **Mieterhöhung nach § 558:** Erhöhungen wegen Modernisierung zählen für Fristen und Kappungsgrenze nicht mehr mit.
 - **SEPA-Lastschriftdatei für Mieten** (Forderungen → „SEPA-Lastschriftdatei …“): Für ein Konto und einen Monat erstellt das Programm die Datei für das Online-Banking mit den offenen Mieten aller Lastschriftzahler (pain.008, wie es die deutschen Banken erwarten). Es zeigt vorher, was bei einem Mieter noch fehlt (IBAN, Mandat, Datum der Unterschrift), merkt sich die Gläubiger-ID je Konto und verhindert, dass dieselbe Miete versehentlich zweimal eingezogen wird. Gesendet wird nichts; die Datei lädt man selbst bei der Bank hoch. IBAN, Kontoinhaber und Mandatsdatum stehen beim Mieter.
 
 ### Haus und Betrieb
@@ -130,7 +137,11 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Abgeschlossene Abrechnungen bleiben unverändert.
 - **Datenexport (JSON):** Ein Export dieser Version hat das Format 14 (mit Ablaufdaten, Aufbewahrungsklassen und Lastschriftdaten). Ältere Versionen lehnen ihn ab, statt Daten wegzulassen; ältere Exporte lassen sich weiterhin einlesen.
 - **Mietkonten nach der Rechenprüfung:** Fälligkeiten verschieben sich vom 3. Kalendertag auf den 3. Werktag. Verträge mit einer Mietänderung zur Monatsmitte zeigen für diesen Monat jetzt den tagesgenauen Betrag; Rückstand oder Guthaben dieser Konten können sich dadurch um den Unterschied ändern. Bereits abgeschlossene Mahnschreiben und Abrechnungen bleiben, wie sie sind. Bisher unzugeordnete Zahlungen eines Mieters mit nur einem Vertrag, die vor dem Einzug oder nach dem Auszug eingingen, ordnet das Programm beim ersten Start diesem Vertrag zu.
-- **Konten mit gleicher IBAN** aus früheren Versionen bleiben erhalten; neue lassen sich nicht mehr anlegen. Bitte doppelt angelegte Konten zusammenführen.
+- **Konten mit gleicher IBAN** aus früheren Versionen bleiben erhalten; neue lassen sich nicht mehr anlegen. Die Prüfliste nennt sie; bitte doppelt angelegte Konten zusammenführen.
+- **Nachzahlungen aus Nebenkostenabrechnungen** sind 30 Tage nach dem Zustellvermerk fällig. Ohne Vermerk legt „Forderungen erzeugen“ sie erst nach einer Rückfrage an.
+- **Mahngebühren:** Ohne eigene Einstellung sind es jetzt 2,50 € je Mahnung (vorher 2,50 / 5,00 / 5,00 €). Eigene Einstellungen und abgeschlossene Schreiben bleiben.
+- **Entnahmen** ohne Kategorie zählen weiter als Ausgabe. Erst mit einer Kategorie „Privat (Entnahme/Einlage)“ fallen sie aus Ergebnis und Kosten.
+- **„Heute“ ist überall das Datum in Deutschland:** Im Docker-Betrieb galt bisher bis 1 bzw. 2 Uhr nachts noch der Vortag.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
 
 ## Bekannte Grenzen
