@@ -656,12 +656,25 @@ export default function Statements() {
     if (!selectedPeriod) return;
     setCreatingReceivables(true);
     try {
-      const res = await api.post(`/billing/periods/${selectedPeriod.id}/create-receivables`, {});
+      const url = `/billing/periods/${selectedPeriod.id}/create-receivables`;
+      let res = await api.post(url, {});
+      let created = res?.created_receivables ?? 0;
+      // a back payment is due from the delivery of its statement (R12-19): without a delivery note it waits
+      if (res?.awaiting_delivery?.length && await confirm(
+        `${res.awaiting_delivery.length} Nachzahlung(en) ohne Zustellvermerk: Die Abrechnung hat den Mieter vielleicht noch nicht erreicht. `
+        + 'Besser erst die Zustellung vermerken – dann ist die Nachzahlung 30 Tage danach fällig. Trotzdem jetzt anlegen (Zugang heute angenommen)?',
+        { title: 'Nachzahlungen ohne Zustellung', confirmLabel: 'Trotzdem anlegen' })) {
+        const confirmed = await api.post(`${url}?undelivered_confirmed=true`, {});
+        created += confirmed?.created_receivables ?? 0;
+        res = { ...confirmed, awaiting_delivery: [] };
+      }
       const skipped = res?.skipped_existing ? ` (${res.skipped_existing} bereits vorhanden)` : '';
       const late = res?.excluded_late?.length
         ? ` · ${res.excluded_late.length} Nachzahlung(en) nicht angelegt: Zugang nach Ablauf der Abrechnungsfrist am ${formatDate(res.deadline)} (§ 556 Abs. 3 BGB)`
         : '';
-      toast.show(`Forderungen erzeugt: ${res?.created_receivables ?? 0}${skipped}${late}`, late ? 'warning' : 'success');
+      const waiting = res?.awaiting_delivery?.length
+        ? ` · ${res.awaiting_delivery.length} Nachzahlung(en) warten auf den Zustellvermerk` : '';
+      toast.show(`Forderungen erzeugt: ${created}${skipped}${late}${waiting}`, late || waiting ? 'warning' : 'success');
     } catch (err) {
       toast.show(err.message || 'Forderungen konnten nicht erzeugt werden');
     } finally {

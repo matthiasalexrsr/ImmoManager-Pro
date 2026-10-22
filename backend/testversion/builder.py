@@ -487,7 +487,8 @@ class Builder:
                 continue                                  # for the tester: check, finalize, create receivables
             self.api("verwalter", "POST", f"/billing/periods/{period['id']}/submit-review", {})
             self.api("verwalter", "POST", f"/billing/periods/{period['id']}/finalize", {})
-            self.api("verwalter", "POST", f"/billing/periods/{period['id']}/create-receivables", {})
+            # the data set has no delivery notes: the statements count as delivered today
+            self.api("verwalter", "POST", f"/billing/periods/{period['id']}/create-receivables?undelivered_confirmed=true", {})
             self.settle(prop, period["id"], year)
 
     def settle(self, prop: PropertySpec, period_id: str, year: int) -> None:

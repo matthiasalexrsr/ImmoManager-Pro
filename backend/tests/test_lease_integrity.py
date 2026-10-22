@@ -20,6 +20,7 @@ from backend.models import (
     TenantCreate,
     UnitCreate,
     UtilityStatementCreate,
+    UtilityStatementPatch,
 )
 from backend.services.data_snapshot import clear_business_data
 
@@ -146,7 +147,7 @@ def test_receivables_from_a_statement_are_created_once(client, house):
         store.create_utility_statement(UtilityStatementCreate(
             billing_period_id=period.id, contract_id=house["lease"].id, unit_id=house["unit"].id,
             total_cost=1000, advance_paid=1000 - balance, balance=balance))
-    url = f"/api/v1/billing/periods/{period.id}/create-receivables"
+    url = f"/api/v1/billing/periods/{period.id}/create-receivables?undelivered_confirmed=true"
 
     first = client.post(url).json()
     second = client.post(url).json()
@@ -154,6 +155,32 @@ def test_receivables_from_a_statement_are_created_once(client, house):
     assert first["created_receivables"] == 2
     assert second["created_receivables"] == 0
     assert len(store.list_receivables()) == 2
+
+
+def test_a_back_payment_waits_for_the_delivery_of_its_statement(client, house):
+    """R12-19: a finalized statement may not have reached the tenant; its back payment was due 30 days
+    after it was created and could be dunned before the tenant had the statement."""
+    from datetime import datetime, timezone
+    year = local_today().year - 1
+    period = store.create_billing_period(BillingPeriodCreate(
+        property_id=house["prop"].id, label=f"BK {year}", start_date=date(year, 1, 1),
+        end_date=date(year, 12, 31), status="finalized"))
+    waiting = store.create_utility_statement(UtilityStatementCreate(
+        billing_period_id=period.id, contract_id=house["lease"].id, unit_id=house["unit"].id,
+        total_cost=1000, advance_paid=880, balance=120))
+    url = f"/api/v1/billing/periods/{period.id}/create-receivables"
+
+    result = client.post(url).json()
+
+    assert result["created_receivables"] == 0
+    assert result["awaiting_delivery"] == [{"statement_id": waiting.id, "contract_id": house["lease"].id, "amount": 120.0}]
+    assert store.list_receivables() == []
+    # with its delivery note it is due 30 days after that day: 0:30 on 2 March in Berlin, still 1 March in UTC
+    delivered = datetime(year + 1, 3, 1, 23, 30, tzinfo=timezone.utc)
+    store._patch_entity("utility_statement", waiting.id, UtilityStatementPatch(delivered_at=delivered))
+    assert client.post(url).json()["created_receivables"] == 1
+    (receivable,) = store.list_receivables()
+    assert receivable.due_date == date(year + 1, 4, 1)
 
 
 def _late_period(house, unit_id=None, delivered_at=None):
@@ -185,10 +212,12 @@ def test_a_back_payment_delivered_in_time_is_claimed_later(client, house):
 
     assert client.post(url).json()["created_receivables"] == 2
     assert sorted(r.amount_due for r in store.list_receivables()) == [-80.0, 120.5]
+    # due 30 days after the delivery, not after the day the receivable was created
+    assert {r.due_date for r in store.list_receivables()} == {date(2024, 12, 20)}
 
 
 def test_a_late_back_payment_is_claimed_when_the_landlord_is_not_to_blame(client, house):
-    result = client.post(_late_period(house) + "?late_not_attributable=true").json()
+    result = client.post(_late_period(house) + "?late_not_attributable=true&undelivered_confirmed=true").json()
 
     assert result["created_receivables"] == 2 and result["excluded_late"] == []
 
@@ -196,7 +225,7 @@ def test_a_late_back_payment_is_claimed_when_the_landlord_is_not_to_blame(client
 def test_the_deadline_does_not_cover_business_premises(client, house):
     shop = store.create_unit(UnitCreate(property_id=house["prop"].id, label="Laden", unit_type="Gewerbe"))
 
-    assert client.post(_late_period(house, unit_id=shop.id)).json()["created_receivables"] == 2
+    assert client.post(_late_period(house, unit_id=shop.id) + "?undelivered_confirmed=true").json()["created_receivables"] == 2
 
 
 @pytest.mark.parametrize("end, deadline", [

@@ -432,7 +432,8 @@ class Simulation:
                        area="NK-Abrechnung")
                 v.call("POST", f"/billing/periods/{period['id']}/finalize", {}, expect=(200, 201, 400, 409),
                        area="NK-Abrechnung")
-                v.call("POST", f"/billing/periods/{period['id']}/create-receivables", {}, expect=(200, 201, 400, 409),
+                v.call("POST", f"/billing/periods/{period['id']}/create-receivables?undelivered_confirmed=true", {},
+                       expect=(200, 201, 400, 409),
                        area="NK-Abrechnung")
                 # big back payment: raise the advances from next month (manual rent period)
                 for s in statements:

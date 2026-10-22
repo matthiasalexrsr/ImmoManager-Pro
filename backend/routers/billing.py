@@ -785,6 +785,8 @@ def create_receivables_from_period(
     period_id: str,
     late_not_attributable: bool = Query(False, description="Die Verspätung hat der Vermieter nicht zu vertreten "
                                                            "(§ 556 Abs. 3 Satz 3 Halbsatz 2 BGB)"),
+    undelivered_confirmed: bool = Query(False, description="Nachzahlungen auch ohne Zustellvermerk anlegen; "
+                                                           "Zugang heute angenommen"),
 ):
     """Create receivables/refund bookings from finalized statement balances.
 
@@ -793,6 +795,10 @@ def create_receivables_from_period(
     of a flat whose statement reached (or would reach) the tenant after the
     deadline is excluded (§ 556 Abs. 3 BGB) unless the landlord is not to blame;
     refunds are always booked.
+
+    A back payment is due RECEIVABLE_DUE_DAYS after the statement reached the tenant (its
+    delivery note), never before (R12-19): without the note it waits (``awaiting_delivery``)
+    until the user confirms that it is delivered today.
     """
     from ..models import ReceivableCreate
 
@@ -815,10 +821,11 @@ def create_receivables_from_period(
 
     # Due after the tenant had time to check the statement, not at period end
     # (which made every back payment overdue the moment it was created).
-    due_date = local_today() + timedelta(days=RECEIVABLE_DUE_DAYS)
+    today = local_today()
     created_count = 0
     skipped_count = 0
     excluded_late = []
+    awaiting_delivery = []
     units = {u.id: u for u in store.list_units()}
     for stmt in period_statements:
         if stmt.contract_id is None:  # vacancy: the landlord's share, nobody to bill
@@ -831,11 +838,16 @@ def create_receivables_from_period(
         if amount == 0:
             continue
         # Not delivered yet: it can reach the tenant today at the earliest.
-        received = local_date(stmt.delivered_at) if stmt.delivered_at else local_today()
+        received = local_date(stmt.delivered_at) if stmt.delivered_at else today
         if amount > 0 and not late_not_attributable and late_claim_excluded(
                 units.get(stmt.unit_id), period.end_date, received):
             excluded_late.append({"statement_id": stmt.id, "contract_id": stmt.contract_id, "amount": float(amount)})
             continue
+        if amount > 0 and not stmt.delivered_at and not undelivered_confirmed:
+            # the tenant may not have the statement yet: nothing to remind of before it arrives
+            awaiting_delivery.append({"statement_id": stmt.id, "contract_id": stmt.contract_id, "amount": float(amount)})
+            continue
+        due_date = received + timedelta(days=RECEIVABLE_DUE_DAYS)
         kind = "Nachzahlung" if amount > 0 else "Guthaben"
         if period.corrects_period_id:
             kind = f"Korrektur Rev. {period.revision}, {kind}"
@@ -852,7 +864,8 @@ def create_receivables_from_period(
         created_count += 1
 
     return {"period_id": period_id, "created_receivables": created_count, "skipped_existing": skipped_count,
-            "excluded_late": excluded_late, "deadline": statement_deadline(period.end_date).isoformat()}
+            "excluded_late": excluded_late, "awaiting_delivery": awaiting_delivery,
+            "deadline": statement_deadline(period.end_date).isoformat()}
 
 
 def _corrected_versions(period: BillingPeriod) -> list[BillingPeriod]:
