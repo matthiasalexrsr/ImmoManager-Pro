@@ -24,6 +24,7 @@ Jeder behobene Befund hat einen Regressionstest, der ohne die Korrektur fehlschl
 | R14-13 | Rechte | niedrig | Die Quelle der Updates (`/updates/configure`: Repository, Kanal, Token) durften Eigentümer und Verwalter ändern; das Einspielen nur der Eigentümer. | Auch die Update-Einstellungen sind dem Eigentümer vorbehalten. |
 | R14-10 | Nebenkosten | niedrig | Die Beträge der Vorauszahlungsabschnitte wurden „zur geraden Ziffer“ gerundet (525,105 → 525,10), die Vorauszahlungen der Abrechnung kaufmännisch (3.075,11). Die angezeigten Abschnitte ergaben nicht die Summe. | Die Abschnitte werden kaufmännisch gerundet (`money`). |
 | R14-02 | Update | niedrig | Unter PostgreSQL fehlte aktualisierten Datenbanken der Fremdschlüssel einer Rechnung auf ihr Quelldokument. Bezüge auf gelöschte Dokumente blieben stehen. | Die Migration leert solche Bezüge und legt den Fremdschlüssel an (`ON DELETE SET NULL`). Unter SQLite ginge das nur mit Tabellenumbau; dort bleibt es dokumentierte Ausnahme im Paritätstest. |
+| R14-14 | Tests | niedrig | Der Test der Testversion baut die Daten zum 05.10.2026, fragte die Prüfliste aber zum echten Datum ab. Mit der Uhr auf dem 01.04.2027 meldet sie eine dann fällige Mietstufe; der Test wäre von selbst rot geworden, sobald dieser Tag erreicht ist. | Die Prüfliste wird zum Stichtag der Daten abgefragt (`as_of`). |
 | R14-04 | Wartbarkeit | niedrig | Drei IBAN-Prüfungen nebeneinander; die der Plausibilitätsprüfung kannte die Länge je Land nicht. | Eine Prüfung (`sepa_rules.iban_problem`) für Konten und Lastschriftdaten. |
 
 ## Für Wartbarkeit und Updates neu abgesichert
@@ -39,6 +40,13 @@ Jeder behobene Befund hat einen Regressionstest, der ohne die Korrektur fehlschl
 - **Updater:** `test_updater_apply.py` prüft den Ablauf mit nachgebildetem git, pip und npm: feste Versionen, Abbruch und Rückbau, nur Vorspulen, Schreibsperre, Update-Skript.
 - **Abhängigkeiten:** `test_dependency_manifests.py` gleicht `requirements.txt`, `pyproject.toml`, `requirements-build.txt` und die Workflows ab.
 - **Rückwärts-Migrationen:** Ein verweigerter Downgrade bleibt unter SQLite bei der Migration stehen, die ihn verweigert; SQLite kennt keine transaktionalen Schemaänderungen. Daten ändern sich dabei nicht; der Start verlangt dann wieder das Upgrade. Der geprüfte Rückweg bleibt das Vollbackup vor dem Upgrade.
+
+## Tests über die Zeit
+
+Die ganze Backend-Suite lief zusätzlich mit vorgestellter Uhr (1. April 2027, Paket `time-machine` nur im Prüfaufbau). Von 3539 Tests schlugen 6 fehl. Einer war ein echter Zeitzünder (R14-14). Die übrigen fünf sind Grenzen des Prüfaufbaus, keine Fehler des Programms:
+- Testzertifikate entstehen mit der vorgestellten Python-Uhr, OpenSSL prüft sie mit der echten Systemzeit (drei TLS-Tests).
+- Die Veraltungsprüfung der Backup-Sperre vergleicht das Änderungsdatum der Datei (echte Zeit) mit der vorgestellten Uhr.
+- Das Registrierungskontingent wird in Unterprozessen mit echter Uhr gefüllt.
 
 ## Geprüft und in Ordnung
 
