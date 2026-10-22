@@ -120,7 +120,7 @@ from .models import (
     ViewingAppointment,
     ViewingAppointmentCreate,
 )
-from .models_ownership import OwnershipShare
+from .models_ownership import OwnershipShare, OwnershipTransfer
 from .models_reletting import LeadAttachment, RelettingProject
 from .services.memory_revisions import atomic_memory_update
 from .storage_deposits import DepositMemoryStore
@@ -219,6 +219,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
     escalation_rules: Dict[str, EscalationRule] = field(default_factory=dict)
     contacts: Dict[str, Contact] = field(default_factory=dict)
     ownership_shares: Dict[str, OwnershipShare] = field(default_factory=dict)
+    ownership_transfers: Dict[str, OwnershipTransfer] = field(default_factory=dict)
     meters: Dict[str, Meter] = field(default_factory=dict)
     standalone_meter_readings: Dict[str, StandaloneMeterReading] = field(default_factory=dict)
     message_threads: Dict[str, MessageThread] = field(default_factory=dict)
@@ -1974,6 +1975,9 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
 
     def list_ownership_shares(self) -> List[OwnershipShare]:
         return list(self.ownership_shares.values())
+
+    def list_ownership_transfers(self) -> List[OwnershipTransfer]:
+        return list(self.ownership_transfers.values())
 
     def create_contact(self, data: ContactCreate) -> Contact:
         contact = Contact(id=_generate_id(), **data.model_dump())

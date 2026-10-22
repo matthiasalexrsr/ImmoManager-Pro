@@ -9,7 +9,7 @@ from ..auth import require_auth
 from ..dependencies import store
 from ..domain.clock import local_today
 from ..models import UserRead
-from ..models_ownership import OwnershipShare, OwnershipShareCreate
+from ..models_ownership import OwnershipShare, OwnershipShareCreate, OwnershipTransfer, OwnershipTransferCreate
 from ..services import ownership as service
 from ..storage import NotFoundError
 
@@ -36,6 +36,21 @@ def overview(property_id: str = Query(...), as_of: date | None = Query(None)):
         return service.overview(store, property_id, as_of or local_today())
     except NotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.get("/history")
+def history(property_id: str = Query(...)):
+    """Who owned the property and each unit when, and the journal of owner changes."""
+    try:
+        return service.history(store, property_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.post("/transfers", response_model=OwnershipTransfer, status_code=status.HTTP_201_CREATED)
+def record_transfer(payload: OwnershipTransferCreate, actor: Actor):
+    """A sale, gift, inheritance or division on a day: shares end the day before, new ones begin."""
+    return service.record_transfer(store, payload, actor.id)
 
 
 @router.post("", response_model=OwnershipShare, status_code=status.HTTP_201_CREATED)

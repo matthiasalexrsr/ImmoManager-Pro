@@ -28,6 +28,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_documents", "property_id", ("Dokument", "Dokumente")),
         ("list_service_contract_locations", "property_id", ("Objektvertragsstandort", "Objektvertragsstandorte")),
         ("list_ownership_shares", "property_id", ("Eigentumsanteil", "Eigentumsanteile")),
+        ("list_ownership_transfers", "property_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
     ]),
     "unit": ("Einheit", [
         ("list_contracts", "unit_id", ("Vertrag", "Verträge")),
@@ -45,6 +46,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_service_contract_locations", "unit_id", ("Objektvertragsstandort", "Objektvertragsstandorte")),
         ("list_reletting_projects", "unit_id", ("Neuvermietungsprojekt", "Neuvermietungsprojekte")),
         ("list_ownership_shares", "unit_id", ("Eigentumsanteil", "Eigentumsanteile")),
+        ("list_ownership_transfers", "unit_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
     ]),
     "tenant": ("Mieter", [
         ("list_contracts", "tenant_id", ("Vertrag", "Verträge")),
@@ -95,6 +97,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         # an owner's shares and the bookings that belong to them alone
         ("list_ownership_shares", "owner_contact_id", ("Eigentumsanteil", "Eigentumsanteile")),
         ("list_bookings", "owner_contact_id", ("Buchung", "Buchungen")),
+        ("list_ownership_transfers", "from_owner_contact_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
     ]),
     # a bill linked to a service contract may already be part of a utility statement
     "invoice": ("Rechnung", [

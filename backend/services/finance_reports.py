@@ -89,18 +89,13 @@ class InvoiceScopes:
                 self.locations[location.service_contract_id].append(location)
         self._visible: set[str] | None = None
 
-    def amount(self, invoice, amount, period_start, period_end, view=None):
-        """One invoice identity, projected through its project or weighted contract locations.
-
-        With an owner view: that owner's part of each place on the period's first day.
-        """
-        def owned(part, property_id, unit_id):
-            return view.part(part, property_id, unit_id, period_start) if view is not None else part
-
+    def places(self, invoice, amount, period_start, period_end):
+        """(part, property, unit) of one invoice identity within the filter: its project, its contract's
+        weighted locations, or its own property."""
         project = self.projects.get(invoice.id)
         if project:
             case = self.cases.get(project[0].case_id)
-            return owned(amount, case.property_id, case.unit_id) if case and self.dims.matches(case.property_id, case.unit_id) else ZERO
+            return [(amount, case.property_id, case.unit_id)] if case and self.dims.matches(case.property_id, case.unit_id) else []
         linked = self.contracts.get(invoice.id)
         if linked:
             from ..domain.service_contract_finance import active_in
@@ -110,9 +105,17 @@ class InvoiceScopes:
                 portions = allocate_cents(amount, [Decimal(str(loc.share_weight)) for loc in locations])
                 if self._visible is None:
                     self._visible = {p.id for p in self.store.list_properties()}
-                return sum((owned(part, loc.property_id, loc.unit_id) for loc, part in zip(locations, portions)
-                            if loc.property_id in self._visible and self.dims.matches(loc.property_id, loc.unit_id)), ZERO)
-        return owned(amount, invoice.property_id, None) if not self.flt.unit_id and self.dims.matches(invoice.property_id) else ZERO
+                return [(part, loc.property_id, loc.unit_id) for loc, part in zip(locations, portions)
+                        if loc.property_id in self._visible and self.dims.matches(loc.property_id, loc.unit_id)]
+        return [(amount, invoice.property_id, None)] if not self.flt.unit_id and self.dims.matches(invoice.property_id) else []
+
+    def amount(self, invoice, amount, period_start, period_end, view=None):
+        """One invoice identity, projected through its project or weighted contract locations.
+
+        With an owner view: that owner's part of each place by their days in the service period.
+        """
+        return sum((view.period(part, property_id, unit_id, period_start, period_end) if view is not None else part
+                    for part, property_id, unit_id in self.places(invoice, amount, period_start, period_end)), ZERO)
 
 
 def location_amount(store, contract_id, amount, flt, day, view=None):
@@ -203,7 +206,7 @@ def performance(store, d):
         shares = allocate_cents(money(statement.balance), [Decimal((min(month_end(m), end) - max(m, start)).days + 1) for m in span])
         for m, share in zip(span, shares):
             key = month_key(m)
-            share = view.contract(contract, share, m)
+            share = view.period(share, contract.property_id, contract.unit_id, max(m, start), min(month_end(m), end))
             if key in values and (share or not view.active):
                 values[key]["other_income"] += share
                 sources.append({"identity": "utility-statement:" + statement.id, "month": key, "amount": str(share), "contribution": "other_income",
@@ -217,7 +220,7 @@ def performance(store, d):
             continue
         for line in LeaseEngine.build_monthly_receivables(contract_start=max(first, contract.start_date),
                 contract_end=contract.end_date, rent_steps=rent_steps(reads, contract), until_including=last):
-            due = view.contract(contract, line.total_amount, line.period_start)
+            due = view.contract_period(contract, line.total_amount, line.period_start, line.period_end - timedelta(days=1))
             if month_key(line.period_start) in values and (due or not view.active):
                 sources.append({"identity": "rent:" + contract.id + ":" + month_key(line.period_start),
                                 "month": month_key(line.period_start), "amount": str(due), "contribution": "rent_due",
@@ -242,7 +245,8 @@ def performance(store, d):
         start = invoice.performance_start or (link.period_start if link else invoice.invoice_date)
         end = invoice.performance_end or (link.period_end if link else invoice.invoice_date)
         amount = reviewed.get(invoice.id, ("legacy", money(invoice.gross_amount)))[1]
-        amount = scopes.amount(invoice, amount, start, end, view if view.active else None)
+        places = scopes.places(invoice, amount, start, end)
+        amount = sum((portion for portion, _, _ in places), ZERO)
         if not amount:
             continue
         if bool(invoice.performance_start) != bool(invoice.performance_end) or end < start:
@@ -252,13 +256,19 @@ def performance(store, d):
         if not invoice.performance_start and not link:
             warnings.append({"source": "invoice:" + invoice.id, "message": "Leistungszeitraum fehlt; Rechnungsdatum verwendet."})
         period_months = months_between(start, end)
-        days = [(min(month_end(m), end) - max(m, start)).days + 1 for m in period_months]
-        shares = allocate_cents(amount, [Decimal(n) for n in days])
-        for m, share in zip(period_months, shares):
+        days = [Decimal((min(month_end(m), end) - max(m, start)).days + 1) for m in period_months]
+        # each place's part by month, and with an owner their part of each month by their days in it
+        owned: dict[str, Decimal] = defaultdict(lambda: ZERO)
+        for portion, property_id, unit_id in (places if view.active else [(amount, None, None)]):
+            for m, share in zip(period_months, allocate_cents(portion, days)):
+                if view.active:
+                    share = view.period(share, property_id, unit_id, max(m, start), min(month_end(m), end))
+                owned[month_key(m)] += share
+        for m in period_months:
             key = month_key(m)
-            if key in values:
-                values[key]["costs"] += share
-                sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(share), "contribution": "costs",
+            if key in values and (owned[key] or not view.active):
+                values[key]["costs"] += owned[key]
+                sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(owned[key]), "contribution": "costs",
                                 "url": "/invoice-review/" + invoice.id, "basis": "Leistung"})
     from .report_service import _receivables
     for receivable in _receivables(store, applied):

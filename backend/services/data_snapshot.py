@@ -50,7 +50,7 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 12: document expiry dates and reminder lead times (likewise)
 # 13: the retention class chosen on a document (likewise)
 # 14: a tenant's direct debit account and mandate date (likewise)
-# 15: owners' shares of properties and units, and the owner a booking belongs to (likewise)
+# 15: owners' shares of properties and units, their changes and the owner a booking belongs to (likewise)
 SNAPSHOT_FORMAT_VERSION = 15
 
 # Keys used by exports written before format 2.

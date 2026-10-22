@@ -52,9 +52,10 @@ def budget_analysis(
 ):
     """Budget vs. actual analysis with deviation.
 
-    A budget belongs to its whole property. With an owner, planned and actual amounts count with the
-    owner's part of the property on 1 January of the budget's year (services.ownership: the property's
-    shares, else the units' owners by living area); the owners' parts add up to the budget.
+    A budget belongs to its whole property and year. With an owner, planned and actual amounts count with
+    the owner's part of the property by their days in the year (services.ownership: the property's
+    shares, else the units' owners by living area; a sale in July splits the year); the owners' parts add
+    up to the budget.
     """
     results = store.list_budgets()
     if property_id:
@@ -64,10 +65,11 @@ def budget_analysis(
     view = OwnerView(store, SimpleNamespace(owner_contact_id=owner_contact_id or None))
 
     def owned(budget: Budget, amount: float) -> Decimal:
-        return view.part(amount, budget.property_id, None, date(budget.year, 1, 1))
+        return view.period(amount, budget.property_id, None, date(budget.year, 1, 1), date(budget.year, 12, 31))
 
     if view.active:
-        results = [b for b in results if view.owns(b.property_id, None, date(b.year, 1, 1))]
+        results = [b for b in results
+                   if view.owns_between(b.property_id, None, date(b.year, 1, 1), date(b.year, 12, 31))]
     planned = {b.id: owned(b, b.planned_amount) for b in results}
     actual = {b.id: owned(b, b.actual_amount) for b in results}
     total_planned = money_sum(planned.values())

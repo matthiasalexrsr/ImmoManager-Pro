@@ -1163,6 +1163,24 @@ class OwnershipShareORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class OwnershipTransferORM(Base):
+    """The journal of owner changes (services/ownership.record_transfer); the shares carry the result."""
+    __tablename__ = "ownership_transfers"
+    __table_args__ = (Index("idx_ownership_transfers_property", "property_id", "effective_date"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id"))
+    scope: Mapped[str] = mapped_column(String(10), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    from_owner_contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"), nullable=False)
+    fraction_percent: Mapped[float] = mapped_column(Numeric(7, 4, asdecimal=False), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    receivers: Mapped[list] = mapped_column(JSON, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class MeterORM(Base):
     __tablename__ = "meters"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

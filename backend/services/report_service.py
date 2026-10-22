@@ -134,7 +134,9 @@ def rent_due_by_month(store: Any, flt: FinanceFilter, first: date, last: date) -
                 contract_start=start, contract_end=contract.end_date,
                 rent_steps=rent_steps(reads, contract), until_including=last_day):
             if line.period_start >= first:
-                due[month_key(line.period_start)] += view.contract(contract, line.total_amount, line.period_start)
+                # by the owners' days of the month: a sale on the 16th splits the month's rent
+                due[month_key(line.period_start)] += view.contract_period(
+                    contract, line.total_amount, line.period_start, line.period_end - timedelta(days=1))
     return due
 
 

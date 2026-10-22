@@ -14,6 +14,11 @@ Which shares an amount follows (on its day):
   unit;
 - money of neither (an account's own bookings): nobody recorded.
 
+Owners change: a sale, gift, inheritance or division (record_transfer) ends the shares involved on
+the day before and starts the new ones on its day. Money of a day follows the owners of that day;
+money of a period (a month's rent, a service period, a budget year) is split by the owners' days in
+it (split_period), so a sale on the 16th gives each owner their days of the month's rent.
+
 Amounts are split to the cent by the largest remainder over all owners at once
 (domain.billing_engine.allocate_cents), so the owners' parts always add up to the amount and
 every report by owner adds up to the report of all owners.
@@ -22,13 +27,14 @@ every report by owner adds up to the report of all owners.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import HTTPException
 
 from ..domain.billing_engine import allocate_cents
+from ..domain.clock import local_today
 from ..domain.money import ZERO, money
 from ..models_ownership import OwnershipShare, OwnershipShareCreate
 from ..storage import NotFoundError
@@ -67,6 +73,7 @@ class Ownership:
             self._units[unit.property_id].append(unit)
             self._unit_property[unit.id] = unit.property_id
         self._cache: dict[tuple, dict[Optional[str], Decimal]] = {}
+        self._changes: dict[str, list[date]] = {}
 
     def _direct(self, property_id: str, unit_id: Optional[str], day: date) -> Optional[dict[Optional[str], Decimal]]:
         active = [share for share in self._shares.get((property_id, unit_id), ()) if active_on(share, day)]
@@ -115,15 +122,61 @@ class Ownership:
         amount = money(amount)
         if owner:
             return {owner: amount}
-        weights = self.weights(property_id, unit_id, day)
-        owners = sorted(weights, key=lambda name: (name is None, name or ""))
-        parts = allocate_cents(amount, [weights[name] for name in owners]) if amount else [ZERO] * len(owners)
-        return dict(zip(owners, parts))
+        return self._allocate(amount, self.weights(property_id, unit_id, day))
 
     def part(self, owner: Optional[str], amount: Any, property_id: Optional[str], unit_id: Optional[str],
              day: date, booking_owner: Optional[str] = None) -> Decimal:
         """One owner's part (owner None: the part nobody is recorded for)."""
         return self.split(amount, property_id, unit_id, day, booking_owner).get(owner, ZERO)
+
+    def _change_days(self, property_id: str) -> list[date]:
+        """Days on which a share of the property or one of its units begins or ends (the day after)."""
+        found = self._changes.get(property_id)
+        if found is None:
+            days: set[date] = set()
+            for (prop, _unit), shares in self._shares.items():
+                if prop != property_id:
+                    continue
+                for share in shares:
+                    if share.valid_from:
+                        days.add(share.valid_from)
+                    if share.valid_to and share.valid_to < date.max:
+                        days.add(share.valid_to + timedelta(days=1))
+            found = self._changes[property_id] = sorted(days)
+        return found
+
+    def period_weights(self, property_id: Optional[str], unit_id: Optional[str], first: date,
+                       last: date) -> dict[Optional[str], Decimal]:
+        """Percent per owner over a period, by days: a change of owners within it counts day by day."""
+        if property_id is None and unit_id:
+            property_id = self._unit_property.get(unit_id)
+        if property_id is None or last <= first:
+            return self.weights(property_id, unit_id, first)
+        inside = [day for day in self._change_days(property_id) if first < day <= last]
+        if not inside:
+            return self.weights(property_id, unit_id, first)
+        starts = [first, *inside]
+        ends = [day - timedelta(days=1) for day in inside] + [last]
+        total = Decimal((last - first).days + 1)
+        weights: dict[Optional[str], Decimal] = defaultdict(lambda: ZERO)
+        for start, end in zip(starts, ends):
+            days = Decimal((end - start).days + 1)
+            for owner, percent in self.weights(property_id, unit_id, start).items():
+                weights[owner] += percent * days / total
+        return dict(weights)
+
+    def _allocate(self, amount: Decimal, weights: dict[Optional[str], Decimal]) -> dict[Optional[str], Decimal]:
+        owners = sorted(weights, key=lambda name: (name is None, name or ""))
+        parts = allocate_cents(amount, [weights[name] for name in owners]) if amount else [ZERO] * len(owners)
+        return dict(zip(owners, parts))
+
+    def split_period(self, amount: Any, property_id: Optional[str], unit_id: Optional[str], first: date, last: date,
+                     owner: Optional[str] = None) -> dict[Optional[str], Decimal]:
+        """An amount of a period (a month's rent, a service period, a budget year) by the owners' days in it."""
+        amount = money(amount)
+        if owner:
+            return {owner: amount}
+        return self._allocate(amount, self.period_weights(property_id, unit_id, first, last))
 
     def booking_split(self, booking: Any, amount: Any = None) -> dict[Optional[str], Decimal]:
         return self.split(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
@@ -162,6 +215,25 @@ class OwnerView:
 
     def contract(self, contract: Any, amount: Any, day: date) -> Decimal:
         return self.part(amount, contract.property_id, contract.unit_id, day)
+
+    def period(self, amount: Any, property_id: Optional[str], unit_id: Optional[str], first: date, last: date) -> Decimal:
+        """The owner's part of an amount for a period, by their days in it."""
+        if self.ownership is None:
+            return money(amount)
+        return self.ownership.split_period(amount, property_id, unit_id, first, last).get(self.owner, ZERO)
+
+    def contract_period(self, contract: Any, amount: Any, first: date, last: date) -> Decimal:
+        """A contract's amount for its days from *first* to *last* (within its term)."""
+        first = max(first, contract.start_date)
+        if contract.end_date:
+            last = min(last, contract.end_date)
+        return self.period(amount, contract.property_id, contract.unit_id, first, max(first, last))
+
+    def owns_between(self, property_id: Optional[str], unit_id: Optional[str], first: date, last: date) -> bool:
+        """Whether the owner has a part of the property or unit on any day of a period."""
+        if self.ownership is None:
+            return True
+        return self.ownership.period_weights(property_id, unit_id, first, last).get(self.owner, ZERO) > 0
 
     def owns(self, property_id: Optional[str], unit_id: Optional[str], day: date) -> bool:
         """Whether the owner has a part of the property or unit (always without an owner filter)."""
@@ -303,4 +375,169 @@ def overview(store: Any, property_id: str, day: date) -> dict[str, Any]:
         "units": [{"unit_id": unit.id, "label": unit.label,
                    "basis": "unit" if ownership._direct(prop.id, unit.id, day) else ("property" if own else "none"),
                    "owners": described(ownership.weights(prop.id, unit.id, day))} for unit in units],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Changes of owners: sale, gift, inheritance, division
+# ---------------------------------------------------------------------------
+
+SHARE_UNIT = Decimal("0.0001")
+
+
+def _split_percent(moved: Decimal, weights: list[Decimal]) -> list[Decimal]:
+    """A percentage split by weights to 0.0001 %, the parts adding up exactly (largest remainder)."""
+    units = int((moved / SHARE_UNIT).to_integral_value())
+    total = sum(weights, ZERO)
+    exact = [Decimal(units) * weight / total for weight in weights]
+    floors = [int(value) for value in exact]
+    for index in sorted(range(len(weights)), key=lambda i: (-(exact[i] - floors[i]), i))[:units - sum(floors)]:
+        floors[index] += 1
+    return [Decimal(value) * SHARE_UNIT for value in floors]
+
+
+def _owner_contact(store: Any, contact_id: str, role: str) -> Any:
+    try:
+        contact = store.get_contact(contact_id)
+    except NotFoundError:
+        raise HTTPException(422, f"{role} ist nicht im Adressbuch.") from None
+    if contact.contact_type != "owner":
+        raise HTTPException(422, f"{role} ist kein Kontakt vom Typ „Eigentümer“.")
+    return contact
+
+
+def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
+    """Record a change of owners on a day, in one step.
+
+    For every object the change covers (the chosen property or unit, or with scope "all" every
+    property and unit the giver holds a share of on that day): the giver's share ends on the day
+    before and their rest, if any, continues from the day; the part that changes hands goes to the
+    receivers by their percentages. A receiver who already holds a share of the object gets one
+    share of the sum from the day. Shares that begin on that very day are replaced, so several
+    changes on one day (two heirs passing to one) add up. The sum of the shares stays as it was.
+    """
+    from uuid import uuid4
+
+    from ..models_ownership import TRANSFER_KINDS, OwnershipTransfer
+    from .maintenance_projects import work
+    from .maintenance_rows import stamp
+
+    day = data.effective_date
+    with work(store, actor_id, AREAS) as unit_of_work:
+        rows, target = Rows.of(unit_of_work), unit_of_work.store
+        giver = _owner_contact(target, data.from_owner_contact_id, "Der Abgebende")
+        receivers = [_owner_contact(target, r.owner_contact_id, "Ein Empfänger") for r in data.receivers]
+        try:
+            prop = target.get_property(data.property_id)
+            unit = target.get_unit(data.unit_id) if data.unit_id else None
+        except NotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        if unit is not None and unit.property_id != prop.id:
+            raise HTTPException(422, "Die Einheit gehört nicht zu diesem Objekt.")
+        labels = {u.id: u.label for u in target.list_units() if u.property_id == prop.id}
+
+        def place(obj: Optional[str]) -> str:
+            return f"„{labels.get(obj, 'Einheit')}“" if obj else f"„{prop.name}“ (ganzes Objekt)"
+
+        shares = rows.find("ownership_shares", property_id=prop.id)
+        if data.scope == "all":
+            objects = sorted({s.unit_id for s in shares if s.owner_contact_id == giver.id and active_on(s, day)},
+                             key=lambda obj: (obj is not None, labels.get(obj or "", "")))
+            if not objects:
+                raise HTTPException(409, f"{owner_name(giver)} hat am {day:%d.%m.%Y} keinen Anteil an „{prop.name}“.")
+        else:
+            objects = [data.unit_id]
+        involved = {giver.id, *(r.id for r in receivers)}
+        kind = TRANSFER_KINDS[data.kind]
+        now = stamp("ownership_shares")
+
+        def close(share: Any) -> None:
+            if (share.valid_from or date.min) < day:
+                rows.update("ownership_shares", share.id, valid_to=day - timedelta(days=1))
+            else:
+                rows.delete("ownership_shares", share.id)
+
+        def open_share(owner: str, obj: Optional[str], percent: Decimal, note: Optional[str]) -> None:
+            rows.add("ownership_shares", OwnershipShare(
+                id=str(uuid4()), owner_contact_id=owner, property_id=prop.id, unit_id=obj,
+                share_percent=float(percent), valid_from=day, valid_to=None, note=note, created_at=now, updated_at=now))
+
+        for obj in objects:
+            own = [s for s in shares if s.unit_id == obj]
+            held = [s for s in own if s.owner_contact_id == giver.id and active_on(s, day)]
+            if not held:
+                raise HTTPException(409, f"{owner_name(giver)} hat am {day:%d.%m.%Y} keinen Anteil an {place(obj)}."
+                                    + ("" if obj or data.scope == "all" else " Gehören ihm Einheiten, bitte „Alle Anteile am Objekt“ wählen."))
+            if any((s.valid_from or date.min) > day for s in own):
+                raise HTTPException(409, f"An {place(obj)} ist nach dem {day:%d.%m.%Y} schon ein Wechsel erfasst. "
+                                         "Bitte die Wechsel der Reihe nach erfassen.")
+            if any(s.owner_contact_id in involved and active_on(s, day) and s.valid_to is not None for s in own):
+                raise HTTPException(409, f"Ein beteiligter Anteil an {place(obj)} hat ein festes Ende. Bitte das Ende zuerst entfernen.")
+            share = held[0]
+            current = _percent(share.share_percent)
+            moved = (current * Decimal(str(data.fraction_percent)) / HUNDRED).quantize(SHARE_UNIT)
+            if moved <= 0:
+                raise HTTPException(422, "Der übertragene Teil ist kleiner als 0,0001 %.")
+            close(share)
+            if current - moved > 0:
+                open_share(giver.id, obj, current - moved, share.note)
+            parts = _split_percent(moved, [Decimal(str(r.percent)) for r in data.receivers]) if data.receivers else []
+            for receiver, part in zip(receivers, parts):
+                existing = next((s for s in own if s.owner_contact_id == receiver.id and active_on(s, day)), None)
+                note = f"{kind} von {owner_name(giver)} am {day:%d.%m.%Y}"
+                if existing is not None:
+                    close(existing)
+                    part += _percent(existing.share_percent)
+                    note = f"{existing.note}; {note}" if existing.note else note
+                open_share(receiver.id, obj, part, note)
+        record = OwnershipTransfer(
+            id=str(uuid4()), property_id=prop.id, unit_id=data.unit_id, scope=data.scope, effective_date=day,
+            from_owner_contact_id=giver.id, fraction_percent=data.fraction_percent, kind=data.kind,
+            receivers=[{"owner_contact_id": r.owner_contact_id, "percent": r.percent} for r in data.receivers],
+            note=data.note, actor_id=actor_id, created_at=now)
+        rows.add("ownership_transfers", record)
+        return record
+
+
+def _described(weights: dict[Optional[str], Decimal], names: dict[str, str]) -> list[dict[str, Any]]:
+    rows = [{"owner_contact_id": owner, "name": names.get(owner, "Eigentümer") if owner else "Ohne Eigentümer",
+             "percent": float(round(percent, 4))} for owner, percent in weights.items() if percent > 0]
+    return sorted(rows, key=lambda row: (row["owner_contact_id"] is None, -row["percent"], row["name"]))
+
+
+def history(store: Any, property_id: str) -> dict[str, Any]:
+    """Who owned the property and each unit when: periods between changes, and the journal of changes."""
+    from ..models_ownership import TRANSFER_KINDS
+
+    prop = store.get_property(property_id)
+    names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
+    ownership = Ownership(store)
+    days = ownership._change_days(prop.id)
+    units = sorted((u for u in store.list_units() if u.property_id == prop.id), key=lambda u: u.label or "")
+
+    def periods(unit_id: Optional[str]) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        starts: list[Optional[date]] = [None, *days]
+        for index, start in enumerate(starts):
+            end = days[index] - timedelta(days=1) if index < len(days) else None
+            probe = start or (days[0] - timedelta(days=1) if days else local_today())
+            owners = _described(ownership.weights(prop.id, unit_id, probe), names)
+            if found and found[-1]["owners"] == owners:
+                found[-1]["to"] = end.isoformat() if end else None
+                continue
+            found.append({"from": start.isoformat() if start else None, "to": end.isoformat() if end else None,
+                          "owners": owners})
+        return found
+
+    journal = sorted(Rows.reading(store).find("ownership_transfers", property_id=prop.id),
+                     key=lambda t: (t.effective_date, str(t.created_at)))
+    return {
+        "property_id": prop.id,
+        "objects": [{"unit_id": None, "label": "Ganzes Objekt", "periods": periods(None)},
+                    *({"unit_id": u.id, "label": u.label, "periods": periods(u.id)} for u in units)],
+        "transfers": [{**t.model_dump(mode="json"), "kind_label": TRANSFER_KINDS.get(t.kind, t.kind),
+                       "from_name": names.get(t.from_owner_contact_id, "Eigentümer"),
+                       "unit_label": next((u.label for u in units if u.id == t.unit_id), None),
+                       "receivers": [{**r, "name": names.get(r["owner_contact_id"], "Eigentümer")} for r in t.receivers]}
+                      for t in journal],
     }

@@ -906,6 +906,10 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
         from ..services.maintenance_rows import Rows
         return Rows.reading(self).find("ownership_shares")
 
+    def list_ownership_transfers(self) -> list:
+        from ..services.maintenance_rows import Rows
+        return Rows.reading(self).find("ownership_transfers")
+
     def create_contact(self, data: ContactCreate) -> Contact:
         return self.communication.create_contact(data)
 
