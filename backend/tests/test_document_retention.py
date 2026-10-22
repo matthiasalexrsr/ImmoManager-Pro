@@ -130,11 +130,13 @@ def test_the_class_can_be_chosen_on_the_document_and_the_years_are_settings(case
     assert changed.status_code == 200 and changed.json()["retention_class"] == "none"
     assert owner.patch(f"/api/v1/documents/{paper['id']}", json={"retention_class": "forever"}).status_code == 422
 
-    invoice = _create(case, title="Rechnung 2017", document_type="Rechnung", document_date="2017-05-01")
+    # nine years old: eight years of retention are over, ten are not (a fixed 2017 ended on 31.12.2027)
+    year = date.today().year - 9
+    invoice = _create(case, title=f"Rechnung {year}", document_type="Rechnung", document_date=f"{year}-05-01")
     assert owner.get("/api/v1/documents/retention").json()["items"][invoice["id"]]["state"] == "ended"
     saved = owner.put("/api/v1/auth/users/me/settings", json={
         "values": {"document_retention_booking_years": 10}, "base_revision": 0, "idempotency_key": "keep-10-years",
         "scope": "global"})
     assert saved.status_code in (200, 201), saved.text
-    assert owner.get("/api/v1/documents/retention").json()["items"][invoice["id"]]["until"] == "2027-12-31"
+    assert owner.get("/api/v1/documents/retention").json()["items"][invoice["id"]]["until"] == f"{year + 10}-12-31"
     assert owner.delete(f"/api/v1/documents/{invoice['id']}").status_code == 409

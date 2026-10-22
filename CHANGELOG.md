@@ -23,7 +23,7 @@ Fresh and upgraded installations, the update paths, the dependency manifests and
 - **Maintenance projects:** a case with placed orders or linked invoices can no longer be deleted (it took the order, change orders and invoice links with it); cancel or complete it instead.
 - **Utility statements:** the advance sections round half up like the advances (525.105 € showed as 525.10 €, the sections did not add up).
 - Only the owner changes where updates come from (`/updates/configure`), as only the owner installs them.
-- The backend suite was also run with the clock moved to 2027-04-01: the test version test asked the review list for the real date instead of its data set's day and would have failed by itself; the other differences came from the time-shifted test setup.
+- The backend suite was also run with the clock moved to 2027-04-01 and 2028-01-03. Two tests would have failed by themselves: the test version test asked the review list for the real date instead of its data set's day, and a retention test expected a 2017 invoice to stay locked (ten years end on 31.12.2027); it now uses an invoice nine years old. The other differences came from the time-shifted test setup.
 - Removed the stale prototype schema `db/schema.sql` (33 of 159 tables), which was shipped in the Docker image and the Windows package and recommended by `db/README.md`.
 
 ## Unreleased — 2026-10-22 Round 13: frontend and layout audit

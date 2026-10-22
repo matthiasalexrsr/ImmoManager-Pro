@@ -25,6 +25,7 @@ Jeder behobene Befund hat einen Regressionstest, der ohne die Korrektur fehlschl
 | R14-10 | Nebenkosten | niedrig | Die Beträge der Vorauszahlungsabschnitte wurden „zur geraden Ziffer“ gerundet (525,105 → 525,10), die Vorauszahlungen der Abrechnung kaufmännisch (3.075,11). Die angezeigten Abschnitte ergaben nicht die Summe. | Die Abschnitte werden kaufmännisch gerundet (`money`). |
 | R14-02 | Update | niedrig | Unter PostgreSQL fehlte aktualisierten Datenbanken der Fremdschlüssel einer Rechnung auf ihr Quelldokument. Bezüge auf gelöschte Dokumente blieben stehen. | Die Migration leert solche Bezüge und legt den Fremdschlüssel an (`ON DELETE SET NULL`). Unter SQLite ginge das nur mit Tabellenumbau; dort bleibt es dokumentierte Ausnahme im Paritätstest. |
 | R14-14 | Tests | niedrig | Der Test der Testversion baut die Daten zum 05.10.2026, fragte die Prüfliste aber zum echten Datum ab. Mit der Uhr auf dem 01.04.2027 meldet sie eine dann fällige Mietstufe; der Test wäre von selbst rot geworden, sobald dieser Tag erreicht ist. | Die Prüfliste wird zum Stichtag der Daten abgefragt (`as_of`). |
+| R14-15 | Tests | niedrig | Ein Aufbewahrungstest legte eine Rechnung von 2017 an und erwartete mit zehn Jahren die Löschsperre bis 31.12.2027. Ab dem 1. Januar 2028 wäre er von selbst rot geworden; gefunden mit der Uhr auf dem 03.01.2028. | Das Rechnungsjahr liegt jetzt immer neun Jahre zurück: acht Jahre sind abgelaufen, zehn nicht. Geprüft mit der Uhr 2027, 2028 und 2030. |
 | R14-04 | Wartbarkeit | niedrig | Drei IBAN-Prüfungen nebeneinander; die der Plausibilitätsprüfung kannte die Länge je Land nicht. | Eine Prüfung (`sepa_rules.iban_problem`) für Konten und Lastschriftdaten. |
 
 ## Für Wartbarkeit und Updates neu abgesichert
@@ -43,7 +44,7 @@ Jeder behobene Befund hat einen Regressionstest, der ohne die Korrektur fehlschl
 
 ## Tests über die Zeit
 
-Die ganze Backend-Suite lief zusätzlich mit vorgestellter Uhr (1. April 2027, Paket `time-machine` nur im Prüfaufbau). Von 3539 Tests schlugen 6 fehl. Einer war ein echter Zeitzünder (R14-14). Die übrigen fünf sind Grenzen des Prüfaufbaus, keine Fehler des Programms:
+Die ganze Backend-Suite lief zusätzlich zweimal mit vorgestellter Uhr, am 1. April 2027 und am 3. Januar 2028 (Paket `time-machine` nur im Prüfaufbau). Von 3539 Tests schlugen je 6 fehl. Zwei waren echte Zeitzünder (R14-14, R14-15). Die übrigen fünf sind Grenzen des Prüfaufbaus, keine Fehler des Programms:
 - Testzertifikate entstehen mit der vorgestellten Python-Uhr, OpenSSL prüft sie mit der echten Systemzeit (drei TLS-Tests).
 - Die Veraltungsprüfung der Backup-Sperre vergleicht das Änderungsdatum der Datei (echte Zeit) mit der vorgestellten Uhr.
 - Das Registrierungskontingent wird in Unterprozessen mit echter Uhr gefüllt.
