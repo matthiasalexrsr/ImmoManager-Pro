@@ -1,6 +1,7 @@
 """Evidence-bound local findings and explicit preparation through existing drafts."""
 from fastapi import HTTPException
 
+from ..domain.clock import local_date
 from . import assistant_context as context
 from . import assistant_storage as db
 
@@ -61,7 +62,7 @@ def prepare_task(store, actor_id, run_id, finding_id, command):
             raise HTTPException(422, "Bitte die vorhandene Aufgabe direkt öffnen und bearbeiten.")
         values = {"title": ("Klärung: " + anchor.get("title", "Prüfhinweis"))[:200],
                   "description": finding["message"] + "\n\n" + finding.get("next_step", "Angaben anhand der Originalakte prüfen.") +
-                  "\n\nPrüfgrundlage: " + str(finding.get("as_of") or data.get("local_checks", {}).get("as_of") or run.created_at.date()) +
+                  "\n\nPrüfgrundlage: " + str(finding.get("as_of") or data.get("local_checks", {}).get("as_of") or local_date(run.created_at)) +
                   "\nQuelle: " + anchor.get("href", anchor["id"]), "priority": "medium", "status": "open"}
         for key, kind in (("property_id", "property"), ("unit_id", "unit")):
             identifier = anchor["id"] if anchor["kind"] == kind else anchor["values"].get(key)

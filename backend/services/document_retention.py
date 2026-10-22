@@ -29,7 +29,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
-from ..domain.clock import local_today
+from ..domain.clock import local_date, local_today
 from .settings_catalogue import RETENTION_YEARS
 
 CLASSES: dict[str, dict[str, Any]] = {
@@ -116,7 +116,7 @@ def assess(document: Any, contract_end: date | None, configured: dict[str, int],
             until = date(end.year + int(count or 0), 12, 31)
             state = "running" if today <= until else "ended"
     else:
-        created = document.created_at.date() if isinstance(document.created_at, datetime) else document.created_at
+        created = local_date(document.created_at) if isinstance(document.created_at, datetime) else document.created_at
         start = document.document_date or created or today
         until = date(start.year + int(count or 0), 12, 31)
         state = "running" if today <= until else "ended"

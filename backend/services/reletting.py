@@ -42,7 +42,7 @@ from ..db.orm_models import (
     UnitORM,
     ViewingAppointmentORM,
 )
-from ..domain.clock import local_today
+from ..domain.clock import local_date, local_today
 from ..models import Lead, Listing, Tenant, Unit, ViewingAppointment
 from ..models_reletting import (
     AcceptRequest,
@@ -300,7 +300,7 @@ def _applicant(project: RelettingProject, lead: Lead, viewings: list[ViewingAppo
     warm = warm_rent(project)
     share = (warm / _money(lead.net_income) * 100) if warm and lead.net_income else None
     ratings = [v.rating for v in viewings if v.rating]
-    decided = lead.decided_at.date() if lead.decided_at else None
+    decided = local_date(lead.decided_at) if lead.decided_at else None
     waited = (today - decided).days if decided and lead.status in CLOSED_OUT else None
     return {
         **lead.model_dump(mode="json"),
@@ -392,7 +392,7 @@ def overview(store, actor_id: str) -> dict:
             steps = _steps(project, _missing_for_ad(project, apartment) if apartment else [], group,
                            viewings.get(project.id, []), _signed(project, contracts))
             due = [lead for lead in group if lead.status in CLOSED_OUT and lead.decided_at
-                   and (today - lead.decided_at.date()).days >= PURGE_AFTER_DAYS]
+                   and (today - local_date(lead.decided_at)).days >= PURGE_AFTER_DAYS]
             rows.append({
                 "id": project.id, "status": project.status, "unit_id": project.unit_id,
                 "unit_label": apartment.label if apartment else None,

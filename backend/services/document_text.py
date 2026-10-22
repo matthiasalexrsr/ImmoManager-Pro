@@ -29,6 +29,7 @@ from sqlalchemy import and_, func, literal, or_, select
 
 from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import DocumentORM, DocumentTextORM
+from ..domain.clock import local_today
 from ..store_errors import NotFoundError
 from . import document_context
 
@@ -355,7 +356,7 @@ def schedule(reason: str) -> None:
         return
     try:
         from .jobs.scheduler import get_job_store, request_wakeup
-        get_job_store().enqueue(KIND, f"{KIND}@{reason}", {"as_of": now().date().isoformat()}, max_attempts=3)
+        get_job_store().enqueue(KIND, f"{KIND}@{reason}", {"as_of": local_today().isoformat()}, max_attempts=3)
         request_wakeup()
     except Exception:                 # the daily run catches up
         pass

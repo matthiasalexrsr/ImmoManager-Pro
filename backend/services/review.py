@@ -22,6 +22,7 @@ from decimal import Decimal
 from typing import Any
 from urllib.parse import quote
 
+from ..domain.clock import local_date
 from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
 from ..domain.money import money as _money
 from .payment_allocations import credited_by_tenant, non_rent_shares
@@ -90,7 +91,7 @@ def review_items(store: Any, today: date) -> list[dict]:
                 "entity_type": "contract", "entity_id": contract.id, "link": "/contracts"})
         taken_over = (first.source == "contract_start" and len(periods) == 1
                       and (first.created_at - contract.created_at).days >= 1  # written by the migration
-                      and unit.updated_at.date() > contract.start_date)
+                      and local_date(unit.updated_at) > contract.start_date)
         if taken_over:
             items.append({
                 "kind": "history_taken_over", "severity": "info",

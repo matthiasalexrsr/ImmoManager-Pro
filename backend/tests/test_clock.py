@@ -4,7 +4,7 @@ import ast
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from backend.domain.clock import local_today
+from backend.domain.clock import local_date, local_today
 from backend.services.jobs import schedule
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -21,9 +21,16 @@ def _calendar_reads(tree: ast.AST) -> list[int]:
         owner = func.value.id if isinstance(func.value, ast.Name) else getattr(func.value, "attr", None)
         if func.attr == "today" and owner in {"date", "datetime"}:
             lines.append(node.lineno)
-        # datetime.now(...).date()
-        if (func.attr == "date" and isinstance(func.value, ast.Call) and isinstance(func.value.func, ast.Attribute)
-                and func.value.func.attr == "now"):
+        # datetime.now(...).date(), now().date(), utcnow().date()
+        if func.attr == "date" and isinstance(func.value, ast.Call):
+            called = func.value.func
+            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", None)
+            if name in {"now", "utcnow"}:
+                lines.append(node.lineno)
+        # record.decided_at.date(): stored instants are UTC, their day comes from local_date();
+        # scheduled_at is a wall time the user entered
+        if (func.attr == "date" and isinstance(func.value, ast.Attribute) and func.value.attr.endswith("_at")
+                and func.value.attr != "scheduled_at"):
             lines.append(node.lineno)
     return lines
 
@@ -37,13 +44,19 @@ def test_no_module_takes_today_from_the_server_zone():
             continue
         for line in _calendar_reads(ast.parse(path.read_text(encoding="utf-8-sig"))):
             offenders.append(f"{path.relative_to(BACKEND.parent)}:{line}")
-    assert not offenders, "use backend.domain.clock.local_today(): " + ", ".join(sorted(offenders))
+    assert not offenders, "use backend.domain.clock.local_today() or local_date(): " + ", ".join(sorted(offenders))
 
 
 def test_today_is_the_date_in_berlin_also_around_midnight_utc():
     assert local_today(datetime(2026, 12, 31, 23, 30, tzinfo=timezone.utc)) == date(2027, 1, 1)
     assert local_today(datetime(2026, 7, 31, 22, 30)) == date(2026, 8, 1)          # naive means UTC
     assert local_today(datetime(2026, 7, 31, 21, 59)) == date(2026, 7, 31)
+
+
+def test_a_stored_instant_falls_on_its_day_in_berlin():
+    """Regression: a lead declined at 00:49 in Berlin (22:49 UTC) counted one day since the decision."""
+    assert local_date(datetime(2026, 10, 22, 22, 49)) == date(2026, 10, 23)
+    assert local_date(datetime(2026, 10, 22, 21, 59, tzinfo=timezone.utc)) == date(2026, 10, 22)
 
 
 def test_the_scheduler_uses_the_same_today():

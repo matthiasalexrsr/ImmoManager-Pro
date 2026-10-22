@@ -17,3 +17,8 @@ def local_today(now: datetime | None = None, tz: ZoneInfo = BERLIN) -> date:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(tz).date()
+
+
+def local_date(moment: datetime, tz: ZoneInfo = BERLIN) -> date:
+    """The installation's calendar day of a stored instant (``…_at``, UTC; naive means UTC)."""
+    return local_today(moment, tz)

@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from ...db.orm_models import TaskORM
+from ...domain.clock import local_date
 from ...models import TaskCreate
 from ..notifier import OPEN_WORK_STATUSES
 from ..task_recurrence import next_due_date, parse_rrule
@@ -45,7 +46,7 @@ def is_active_template(template: Any) -> bool:
 
 
 def anchor_of(template: Any) -> date:
-    return template.due_date or template.created_at.date()
+    return template.due_date or local_date(template.created_at)
 
 
 def rule_version(template: Any) -> str:

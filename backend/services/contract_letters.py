@@ -22,7 +22,7 @@ from sqlalchemy import insert, select, text
 
 from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import ContractORM, DocumentORM, PropertyORM, TenantORM, UnitORM, UtilityStatementORM
-from ..domain.clock import local_today
+from ..domain.clock import local_date, local_today
 from ..models import Document, DocumentCreate
 from ..permissions import may_write
 from ..storage import NotFoundError
@@ -122,7 +122,7 @@ def _statement(unit, contract_id: str) -> dict | None:
             "start": start.isoformat(), "end": end.isoformat(), "usage_days": days,
             "months": round(days * 12 / 365.25, 2), "total_cost": str(statement.total_cost),
             "advance_paid": str(statement.advance_paid), "balance": str(statement.balance),
-            "issued_on": statement.delivered_at.date().isoformat() if statement.delivered_at else None}
+            "issued_on": local_date(statement.delivered_at).isoformat() if statement.delivered_at else None}
 
 
 def _source(unit, contract_id: str, *, lock: bool = False):

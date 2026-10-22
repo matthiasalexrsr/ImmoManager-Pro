@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import auth
 from ..auth import require_role
 from ..dependencies import store
-from ..domain.clock import local_today
+from ..domain.clock import local_date, local_today
 from ..models import (
     AllocationKey,
     AllocationKeyCreate,
@@ -831,7 +831,7 @@ def create_receivables_from_period(
         if amount == 0:
             continue
         # Not delivered yet: it can reach the tenant today at the earliest.
-        received = stmt.delivered_at.date() if stmt.delivered_at else local_today()
+        received = local_date(stmt.delivered_at) if stmt.delivered_at else local_today()
         if amount > 0 and not late_not_attributable and late_claim_excluded(
                 units.get(stmt.unit_id), period.end_date, received):
             excluded_late.append({"statement_id": stmt.id, "contract_id": stmt.contract_id, "amount": float(amount)})
