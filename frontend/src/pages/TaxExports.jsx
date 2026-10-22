@@ -307,6 +307,12 @@ export default function TaxExports() {
       {preview && <><p role="status">{annual ? preview.ready ? 'Zur Bestätigung bereit' : 'Bitte fehlende Angaben bearbeiten' : 'Vollständig geprüfter Export gespeichert'} · {annual ? preview.source_rows : preview.rows} Buchungsquellen</p>
         {annual && preview.wiso_preparation && preparationView(preview.wiso_preparation)}
         {annual ? <><dl>{Object.entries(preview.totals).map(([name, cents]) => <div key={name}><dt>{{ cash_cents: 'Zahlungen gesamt', income_cents: 'Einnahmen', expense_cents: 'Ausgaben', excluded_cash_cents: 'Ausgeschlossen', unclassified_cash_cents: 'Noch zu prüfen' }[name]}</dt><dd>{money(cents)}</dd></div>)}</dl>
+          {preview.owner_split?.length > 0 && <div className="tax-owner-split"><h3>Anteile je Eigentümer</h3>
+            <p>Nach den erfassten Eigentumsanteilen am Buchungstag; eine Buchung, die einem Eigentümer allein gehört, zählt ganz für ihn. Zusammen ergeben die Zeilen die Einnahmen und Ausgaben oben.</p>
+            <table><caption className="sr-only">Einnahmen und Ausgaben je Eigentümer</caption><thead><tr><th scope="col">Eigentümer</th><th scope="col">Objekt</th><th scope="col">Behandlung</th><th scope="col">Formularzeile</th><th scope="col">Betrag</th></tr></thead>
+              <tbody>{preview.owner_split.map(row => <tr key={JSON.stringify([row.owner_contact_id, row.property_id, row.treatment, row.form_line])}>
+                <th scope="row">{row.owner_name}</th><td>{options.properties?.find(p => p.id === row.property_id)?.name || row.property_id || '—'}</td>
+                <td>{labels[row.treatment] || row.treatment}</td><td>{row.form_line || '—'}</td><td>{money(row.amount_cents)}</td></tr>)}</tbody></table></div>}
           {preview.blocking_issues.map((issue, i) => <p key={i}>{issue.booking_id || 'Gesamtprüfung'}: {issueNames[issue.code] || `Quelle muss geprüft werden (${issue.code})`}</p>)}
           <p>Objektaufteilungen und Korrekturen: Die Summe der Teilbeträge muss dem vorzeichenbehafteten Buchungsbetrag in Cent entsprechen.</p>
           {(sourcePage?.items || preview.source_samples).map(source => <details key={source.booking.id}><summary>{source.booking.booking_date} · {source.booking.payment_text || source.booking.id} · {money(source.booking.amount_cents)}</summary>
