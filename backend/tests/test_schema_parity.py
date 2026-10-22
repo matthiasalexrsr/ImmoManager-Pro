@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.pool import NullPool
 
-from backend.db.schema_state import alembic_config
+from backend.db.schema_state import alembic_config, head_revision
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -136,7 +136,6 @@ def test_the_current_head_adopts_unversioned_desktop_databases():
     """
     import re
 
-    from backend.db.schema_state import head_revision
 
     source = (ROOT / "backend" / "db" / "migrations" / "env.py").read_text(encoding="utf-8")
     block = re.search(r"ORM_ADOPTION_TARGETS = frozenset\(\{(.*?)\}\)", source, re.S)
@@ -166,5 +165,5 @@ def test_upgrade_keeps_accounts_that_share_an_iban(tmp_path):
     engine = sa.create_engine(url, poolclass=NullPool)
     with engine.connect() as connection:
         assert connection.execute(sa.text("SELECT COUNT(*) FROM accounts")).scalar() == 2
-        assert connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar() == "d1f3a5c7e9b2"
+        assert connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar() == head_revision()
     engine.dispose()

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Calculator } from 'lucide-react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,6 +7,7 @@ import DataTable from '../components/DataTable';
 import KpiAction from '../components/KpiAction';
 import FormModal from '../components/FormModal';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate, formatMoney } from '../utils/format';
 
 function fmt(v) {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -18,6 +20,34 @@ const CATEGORY_OPTIONS = [
   { value: 'reserve', label: 'Rücklage' },
   { value: 'other', label: 'Sonstiges' },
 ];
+
+// income and the owners' own money are no spending (services/budget_actuals.py)
+const NOT_SPENDING = new Set(['income', 'private']);
+
+/** The booking categories whose expenses make up the actual amount when it is taken from the bookings. */
+function bookingCategoryField(categories, portfolios) {
+  const names = Object.fromEntries(portfolios.map(p => [p.id, p.name]));
+  const spending = categories.filter(c => !NOT_SPENDING.has(c.category_type));
+  return function BookingCategories({ id, value, onChange, disabled }) {
+    const chosen = new Set(Array.isArray(value) ? value : []);
+    const toggle = categoryId => {
+      const next = new Set(chosen);
+      if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
+      onChange([...next]);
+    };
+    if (!spending.length) return <p id={id} className="text-muted">Noch keine Ausgabenkategorien angelegt.</p>;
+    return (
+      <fieldset id={id} className="checkbox-list" disabled={disabled}>
+        {spending.map(c => (
+          <label key={c.id}>
+            <input type="checkbox" checked={chosen.has(c.id)} onChange={() => toggle(c.id)} />
+            {c.name}{portfolios.length > 1 && names[c.portfolio_id] ? ` (${names[c.portfolio_id]})` : ''}
+          </label>
+        ))}
+      </fieldset>
+    );
+  };
+}
 
 const COLUMNS = [
   { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
@@ -43,6 +73,9 @@ export default function Budgets() {
   const confirm = useConfirm();
   const store = useDataStore();
   const { items: properties } = useEntities('properties', '/properties');
+  const { items: categories } = useEntities('categories', '/categories');
+  const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const [actual, setActual] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -87,8 +120,32 @@ export default function Budgets() {
     { key: 'category', label: 'Kategorie', type: 'select', required: true, options: CATEGORY_OPTIONS },
     { key: 'planned_amount', label: 'Geplanter Betrag (€)', type: 'number', required: true },
     { key: 'actual_amount', label: 'Tatsächlicher Betrag (€)', type: 'number' },
+    { key: 'booking_category_ids', label: 'Ist aus Buchungen dieser Kategorien', full: true,
+      component: bookingCategoryField(categories, portfolios),
+      hint: 'Optional. Über „Ist aus Buchungen“ lässt sich der tatsächliche Betrag dann aus den Ausgaben der Immobilie im Budgetjahr berechnen und übernehmen.' },
     { key: 'notes', label: 'Notizen', type: 'textarea' },
   ];
+
+  const openActual = async row => {
+    setActual({ row, loading: true });
+    try {
+      setActual({ row, result: await api.get(`/budgets/${row.id}/actual-from-bookings`) });
+    } catch (err) {
+      setActual({ row, error: err.message || 'Das Ist ließ sich nicht berechnen.' });
+    }
+  };
+
+  const takeActual = async () => {
+    setActual(current => ({ ...current, saving: true, error: null }));
+    try {
+      await api.post(`/budgets/${actual.row.id}/actual-from-bookings`, { expected_amount: actual.result.from_bookings });
+      setActual(null);
+      refreshData();
+      if (store) store.invalidateRelated('budgets');
+    } catch (err) {
+      setActual(current => ({ ...current, saving: false, error: err.message || 'Übernehmen fehlgeschlagen' }));
+    }
+  };
 
   const handleSave = async (data) => {
     if (modal === 'create') {
@@ -122,7 +179,7 @@ export default function Budgets() {
         <KpiAction label="Tatsächlich gesamt" value={fmt(totalActual)} onClick={showSources} />
         <KpiAction label="Abweichung" value={fmt(totalActual - totalPlanned)} onClick={showSources} />
       </div>
-      <p className="text-muted">Grundlage: die geplanten und erfassten Istbeträge der unten aufgeführten Budgetpositionen.</p>
+      <p className="text-muted">Grundlage: die geplanten und erfassten Istbeträge der unten aufgeführten Budgetpositionen. Mit gewählten Buchungskategorien berechnet „Ist aus Buchungen“ den Istbetrag auf Wunsch aus den Ausgaben.</p>
 
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
@@ -138,7 +195,50 @@ export default function Budgets() {
         onAdd={() => setModal('create')}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
+        rowActions={() => [{ label: 'Ist aus Buchungen', icon: <Calculator size={15} aria-hidden="true" />, write: true,
+          onClick: openActual }]}
       />
+      {actual && (
+        <div className="modal-overlay" onClick={() => setActual(null)} role="presentation">
+          <div className="modal modal-wide" role="dialog" aria-modal="true" aria-label="Ist aus Buchungen" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Ist aus Buchungen: {actual.row.property_name} {actual.row.year}</h2>
+              <button onClick={() => setActual(null)} className="btn-close" aria-label="Schließen">✕</button>
+            </div>
+            <div className="modal-body">
+              {actual.loading && <p>{t('ui.table.loading')}</p>}
+              {actual.error && <div className="alert alert-error" role="alert">{actual.error}</div>}
+              {actual.result && (<>
+                <p>
+                  Ausgaben {actual.result.year} in {actual.result.categories.map(c => `„${c.name}“`).join(', ')}:{' '}
+                  <strong>{formatMoney(actual.result.from_bookings)}</strong>. Erfasst ist {formatMoney(actual.result.actual_amount)}
+                  {actual.result.difference ? ` (Abweichung ${formatMoney(actual.result.difference)})` : ' – das stimmt überein'}.
+                </p>
+                {actual.result.bookings.length > 0 ? (
+                  <table className="data-table">
+                    <thead><tr><th>Datum</th><th>Kategorie</th><th>Text</th><th className="text-right">Betrag</th></tr></thead>
+                    <tbody>
+                      {actual.result.bookings.map(b => (
+                        <tr key={b.id}>
+                          <td>{formatDate(b.booking_date)}</td>
+                          <td>{b.category}</td>
+                          <td>{b.reverses_booking_id ? 'Storno' : (b.payment_text || '—')}</td>
+                          <td className="text-right td-num">{formatMoney(b.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p className="text-muted">Keine Buchungen dieser Kategorien im Budgetjahr.</p>}
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setActual(null)}>Abbrechen</button>
+                  <button type="button" className="btn btn-primary" onClick={takeActual}
+                    disabled={actual.saving || !actual.result.difference}>Als tatsächlichen Betrag übernehmen</button>
+                </div>
+              </>)}
+            </div>
+          </div>
+        </div>
+      )}
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Budget erstellen' : 'Budget bearbeiten'}

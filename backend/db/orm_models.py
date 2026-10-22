@@ -995,6 +995,7 @@ class BudgetORM(Base):
     planned_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False))
     actual_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
     notes: Mapped[str | None] = mapped_column(Text)
+    booking_category_ids: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 

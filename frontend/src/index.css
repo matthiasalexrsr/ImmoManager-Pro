@@ -190,6 +190,14 @@ fieldset { min-inline-size: 0; }
   font-size: var(--text-base);
   cursor: pointer;
 }
+/* Several choices of one form field, one per line (e.g. the booking categories of a budget). */
+.checkbox-list {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
 :where(fieldset) {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);

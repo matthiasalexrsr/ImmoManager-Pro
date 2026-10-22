@@ -1661,12 +1661,20 @@ class BudgetCreate(BaseModel):
     planned_amount: float
     actual_amount: float = 0.0
     notes: Optional[str] = None
+    # booking categories whose expenses make up the actual amount when it is taken from the bookings
+    # (services/budget_actuals.py); empty: the actual amount is entered by hand
+    booking_category_ids: list[str] = Field(default_factory=list)
 
     @field_validator("actual_amount", mode="before")
     @classmethod
     def no_actual_amount_yet(cls, value: Any) -> Any:
         # a new budget has spent nothing yet; the form sends an empty field as null
         return 0.0 if value is None else value
+
+    @field_validator("booking_category_ids", mode="before")
+    @classmethod
+    def no_categories(cls, value: Any) -> Any:
+        return [] if value is None else value
 
 
 class Budget(BudgetCreate):
@@ -1692,6 +1700,7 @@ class BudgetPatch(BaseModel):
     planned_amount: Optional[float] = None
     actual_amount: Optional[float] = None
     notes: Optional[str] = None
+    booking_category_ids: Optional[list[str]] = None
 
 
 # ---------------------------------------------------------------------------
