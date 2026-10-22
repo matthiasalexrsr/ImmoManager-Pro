@@ -21,7 +21,6 @@ from backend.auth import (
 )
 from backend.services.email_service import EmailConfig, send_email
 from backend.services.file_storage import LocalStorage
-from backend.services.iban_encryption import decrypt_iban, encrypt_iban, mask_iban
 from backend.services.portal_adapter import (
     ImmobilienScout24Adapter,
     ImmoweltAdapter,
@@ -33,52 +32,7 @@ from backend.services.portal_adapter import (
 from backend.services.task_queue import SyncQueue
 
 # ---------------------------------------------------------------------------
-# 1. IBAN Encryption
-# ---------------------------------------------------------------------------
-
-
-class TestIBANEncryption:
-    """Tests for IBAN encrypt / decrypt / mask round-trips."""
-
-    def test_encrypt_returns_enc_prefix(self):
-        encrypted = encrypt_iban("DE89370400440532013000")
-        assert encrypted.startswith("enc:")
-
-    def test_round_trip_encrypt_decrypt(self):
-        original = "DE89370400440532013000"
-        encrypted = encrypt_iban(original)
-        assert encrypted != original
-        decrypted = decrypt_iban(encrypted)
-        assert decrypted == original
-
-    def test_decrypt_plain_value_returned_as_is(self):
-        plain = "DE89370400440532013000"
-        assert decrypt_iban(plain) == plain
-
-    def test_decrypt_empty_string(self):
-        assert decrypt_iban("") == ""
-
-    def test_decrypt_none_returns_none(self):
-        assert decrypt_iban(None) is None  # type: ignore[arg-type]
-
-    def test_encrypt_empty_string(self):
-        assert encrypt_iban("") == ""
-
-    def test_mask_iban_shows_last_four(self):
-        result = mask_iban("DE89370400440532013000")
-        assert result == "****3000"
-
-    def test_mask_iban_short_value(self):
-        result = mask_iban("AB")
-        assert result == "****"
-
-    def test_mask_iban_empty(self):
-        result = mask_iban("")
-        assert result == "****"
-
-
-# ---------------------------------------------------------------------------
-# 2. Password Policy
+# 1. Password Policy
 # ---------------------------------------------------------------------------
 
 
@@ -112,7 +66,7 @@ class TestPasswordPolicy:
 
 
 # ---------------------------------------------------------------------------
-# 3. Login Rate Limiting
+# 2. Login Rate Limiting
 # ---------------------------------------------------------------------------
 
 
@@ -166,7 +120,7 @@ class TestLoginRateLimiting:
 
 
 # ---------------------------------------------------------------------------
-# 4. TOTP Two-Factor Authentication
+# 3. TOTP Two-Factor Authentication
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +164,7 @@ class TestTOTP:
 
 
 # ---------------------------------------------------------------------------
-# 5. Task Queue (SyncQueue)
+# 4. Task Queue (SyncQueue)
 # ---------------------------------------------------------------------------
 
 
@@ -253,7 +207,7 @@ class TestSyncQueue:
 
 
 # ---------------------------------------------------------------------------
-# 6. File Storage (LocalStorage)
+# 5. File Storage (LocalStorage)
 # ---------------------------------------------------------------------------
 
 
@@ -302,7 +256,7 @@ class TestLocalStorage:
 
 
 # ---------------------------------------------------------------------------
-# 7. Portal Adapter
+# 6. Portal Adapter
 # ---------------------------------------------------------------------------
 
 
@@ -349,7 +303,7 @@ class TestPortalAdapter:
 
 
 # ---------------------------------------------------------------------------
-# 8. Email Service
+# 7. Email Service
 # ---------------------------------------------------------------------------
 
 

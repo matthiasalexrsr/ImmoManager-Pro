@@ -25,6 +25,8 @@ class Checkout:
             return subprocess.CompletedProcess(args, 0, self.commits[0], "")
         if args[:2] == ("rev-parse", "--abbrev-ref"):
             return subprocess.CompletedProcess(args, 0, "main", "")
+        if args[:2] == ("remote", "get-url"):
+            return subprocess.CompletedProcess(args, 0, "https://github.com/o/r.git", "")
         if args[0] == "merge" and not code:
             self.commits.pop(0)
         if args[:2] == ("reset", "--hard"):

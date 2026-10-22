@@ -337,7 +337,6 @@ a = Analysis(
         'backend.services',
         'backend.services.email_service',
         'backend.services.file_storage',
-        'backend.services.iban_encryption',
         'backend.services.portal_adapter',
         'backend.services.ocr_service',
         'backend.services.task_queue',

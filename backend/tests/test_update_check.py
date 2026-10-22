@@ -1,5 +1,6 @@
 """The update check: it tells every installation about a newer release, the Windows package how to get it."""
 
+import subprocess
 import sys
 
 import httpx
@@ -32,6 +33,13 @@ def github(monkeypatch):
     return {"calls": calls, "answer": answer}
 
 
+def cloned_from(monkeypatch, url):
+    """A git checkout whose origin is ``url``."""
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(updater, "_is_git_repo", lambda: True)
+    monkeypatch.setattr(updater, "_run_git", lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, url, ""))
+
+
 def test_the_project_repository_is_checked_by_default():
     assert settings.update_repo_url == "https://github.com/matthiasalexrsr/ImmoManager-Pro"
 
@@ -54,21 +62,33 @@ def test_a_current_installation_gets_no_hint(github, monkeypatch):
 
 
 def test_a_git_checkout_outside_production_installs_itself(github, monkeypatch):
-    monkeypatch.delattr(sys, "frozen", raising=False)
-    monkeypatch.setattr(updater, "_is_git_repo", lambda: True)
+    cloned_from(monkeypatch, "git@github.com:O/R.git")
     monkeypatch.setattr(settings, "environment", Environment.development)
     result = updater.check_for_updates()
     assert (result["update_available"], result["can_apply"], result["download_hint"]) == (True, True, None)
 
 
 def test_production_checkouts_install_only_when_allowed(github, monkeypatch):
-    monkeypatch.delattr(sys, "frozen", raising=False)
-    monkeypatch.setattr(updater, "_is_git_repo", lambda: True)
+    cloned_from(monkeypatch, "https://github.com/o/r.git")
     monkeypatch.setattr(settings, "environment", Environment.production)
     monkeypatch.setattr(settings, "update_allow_in_production", False)
     assert updater.check_for_updates()["can_apply"] is False
     monkeypatch.setattr(settings, "update_allow_in_production", True)
     assert updater.check_for_updates()["can_apply"] is True
+
+
+def test_a_checkout_of_another_repository_is_not_offered_an_update_it_cannot_fetch(github, monkeypatch):
+    """The check reads the releases of UPDATE_REPO_URL, the update fetches from origin: they must agree."""
+    cloned_from(monkeypatch, "https://user:geheim@github.com/someone/fork.git")
+    monkeypatch.setattr(settings, "environment", Environment.development)
+
+    result = updater.check_for_updates()
+
+    assert (result["update_available"], result["can_apply"]) == (True, False)
+    assert "o/r" in result["download_hint"] and "someone/fork" in result["download_hint"]
+    assert "geheim" not in result["download_hint"]
+    refused = updater.apply_update()
+    assert not refused["success"] and refused["message"] == result["download_hint"] and not refused["steps"]
 
 
 def test_no_release_yet_is_reported_plainly(github, monkeypatch):

@@ -63,3 +63,19 @@ def test_release_builds_use_the_pinned_build_tools():
     for workflow in ("release.yml", "testversion.yml"):
         text = (ROOT / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
         assert "-r requirements-build.txt" in text and "pyinstaller>=" not in text.lower(), workflow
+
+
+def test_every_build_installs_with_the_pinned_pip():
+    """CI, release builds and the image first install the pip of requirements-pip.txt, never the latest."""
+    assert re.search(r"^pip==\d+(\.\d+)+$", (ROOT / "requirements-pip.txt").read_text(encoding="utf-8"), re.M)
+    sources = {path.name: path.read_text(encoding="utf-8")
+               for path in [*(ROOT / ".github" / "workflows").glob("*.yml"), ROOT / "Dockerfile"]}
+    for name, text in sources.items():
+        if "pip install" not in text:
+            continue
+        assert "--upgrade pip" not in text and "-U pip" not in text, name
+        first = text.index("pip install")
+        assert text.startswith("pip install --no-cache-dir -r requirements-pip.txt", first) or \
+            text.startswith("pip install -r requirements-pip.txt", first), name
+        # every job installs it before anything else
+        assert text.count("-r requirements-pip.txt") >= text.count("actions/setup-python"), name

@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && apt-get purge -y gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies: direct pins plus the whole transitive tree
-COPY requirements.txt constraints.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
+COPY requirements-pip.txt requirements.txt constraints.txt ./
+RUN pip install --no-cache-dir -r requirements-pip.txt \
+    && pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 # Copy application code
 COPY backend/ backend/

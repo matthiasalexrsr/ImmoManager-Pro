@@ -53,6 +53,7 @@ jobs:
           node-version: '24.21.0'
       - name: Install pinned local document tools
         run: |
+          python -m pip install -r requirements-pip.txt
           python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
           sudo apt-get update
           sudo apt-get install --yes tesseract-ocr-deu tesseract-ocr-eng
@@ -115,7 +116,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install -r requirements-pip.txt
           pip install -r requirements.txt -r requirements-bank.txt -c constraints.txt
           pip install ruff==0.15.20 pytest-cov==7.1.0 mypy==2.4.0 pdfplumber==0.11.10 -c constraints.txt
           # the audit tool stays current on purpose (it judges the pinned set above)
@@ -166,6 +167,7 @@ jobs:
           python-version: '3.12'
       - name: Install pinned test dependencies and PostgreSQL tools
         run: |
+          python -m pip install -r requirements-pip.txt
           python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
           sudo apt-get update
           sudo apt-get install --yes postgresql-client

@@ -163,6 +163,24 @@ def _get_current_branch() -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _source_mismatch() -> str | None:
+    """Why the checkout cannot install what the update check reports, if it pulls from another repository.
+
+    The check reads the releases of UPDATE_REPO_URL; apply_update fetches from the checkout's origin.
+    """
+    configured = _extract_owner_repo(settings.update_repo_url or "")
+    remote = _run_git("remote", "get-url", "origin")
+    origin = remote.stdout.strip() if remote.returncode == 0 else ""
+    if not configured or (origin and (_extract_owner_repo(origin) or "").lower() == configured.lower()):
+        return None
+    if not origin:
+        return "Der Checkout hat kein Remote „origin“; ein Update lässt sich nicht holen."
+    # never show credentials of an https remote
+    shown = _extract_owner_repo(origin) or re.sub(r"//[^/@]*@", "//", origin)
+    return (f"Die Update-Prüfung liest {configured}, der Checkout holt seinen Code aber von {shown}. "
+            "Bitte UPDATE_REPO_URL oder das Remote „origin“ angleichen.")
+
+
 def _has_uncommitted_changes() -> bool:
     """Check for uncommitted changes in the working tree."""
     result = _run_git("status", "--porcelain")
@@ -271,9 +289,12 @@ def check_for_updates() -> dict:
         result["published_at"] = release.get("published_at", "")
         result["update_available"] = is_newer_version(tag, current)
         frozen = bool(result["is_frozen"])
-        result["can_apply"] = (not frozen and bool(result["is_git_repo"])
+        mismatch = _source_mismatch() if result["is_git_repo"] and not frozen else None
+        result["can_apply"] = (not frozen and bool(result["is_git_repo"]) and not mismatch
                                and (not settings.is_production or settings.update_allow_in_production))
-        if result["update_available"] and not result["can_apply"]:
+        if result["update_available"] and mismatch:
+            result["download_hint"] = mismatch
+        elif result["update_available"] and not result["can_apply"]:
             result["download_hint"] = (
                 "Neue Version von der Release-Seite herunterladen, das ZIP entpacken und das Programm der neuen "
                 "Version starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
@@ -552,6 +573,11 @@ def apply_update(target_version: str | None = None) -> dict:
 
     if not settings.update_repo_url:
         result["message"] = "Kein Update-Repository konfiguriert"
+        return result
+
+    mismatch = _source_mismatch()
+    if mismatch:
+        result["message"] = mismatch
         return result
 
     # Validate target_version format if provided
