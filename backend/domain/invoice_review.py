@@ -16,6 +16,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from .clock import local_today
 from .money import ZERO, as_number, cents, money
 
 ONE_CENT = Decimal("0.01")
@@ -346,7 +347,7 @@ def settle(*, gross: Any, status: str, approved: Any = None, credits: Any = ZERO
     was approved); more credit reduces what is owed. Skonto counts when every payment was
     made by its deadline and together they reach payable − Skonto.
     """
-    today = today or date.today()
+    today = today or local_today()
     g = money(gross)
     result = Settlement(gross=g, status=status, due_on=due_on, skonto_until=skonto_until)
     payments = sorted(payments, key=lambda p: p.paid_on)

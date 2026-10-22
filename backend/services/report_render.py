@@ -1,6 +1,5 @@
 """Readable, complete PDFs from the same finance payload shown by the API."""
 
-from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
@@ -11,6 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from ..domain.clock import local_today
 from .housing_confirmation_render import _fonts
 
 REPORT_TITLES = {
@@ -90,11 +90,11 @@ def render_report_pdf(report_name: str, data: dict, *, selection: dict | None = 
         flow.append(item)
 
     flow.extend([p("ImmoManager Pro", note), p(REPORT_TITLES[report_name], title),
-                 p(f"Erstellt am {date.today():%d.%m.%Y}", note)])
+                 p(f"Erstellt am {local_today():%d.%m.%Y}", note)])
     flt = data.get("filters", {})
     start, end = flt.get("date_from"), flt.get("date_to")
     if report_name == "occupancy":
-        flow.append(p(f"Belegung zum {date.today():%d.%m.%Y}", note))
+        flow.append(p(f"Belegung zum {local_today():%d.%m.%Y}", note))
     else:
         flow.append(p(f"Zeitraum: {start or 'ohne Anfangsgrenze'} bis {end or 'ohne Endgrenze'}", note))
     for key, label in (("portfolio_id", "Portfolio"), ("property_id", "Immobilie"), ("unit_id", "Einheit")):

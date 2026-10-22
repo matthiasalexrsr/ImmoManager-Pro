@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from .. import auth
 from .. import maintenance_models as mm
+from ..domain.clock import local_today
 from ..domain.money import ZERO, as_number, money
 from ..domain.project_costs import (
     AllocationFacts,
@@ -620,7 +621,7 @@ def accept_quote(store: Any, case_id: str, quote_id: str, payload: mm.QuoteDecis
         order = mm.MaintenanceOrder(
             id=str(uuid4()), case_id=case_id, quote_id=quote.id, contact_id=quote.contact_id,
             supplier_name=quote.supplier_name, order_number=payload.order_number,
-            order_date=payload.order_date or date.today(), net_amount=quote.net_amount,
+            order_date=payload.order_date or local_today(), net_amount=quote.net_amount,
             gross_amount=quote.gross_amount, notes=payload.note, created_by=p.actor_id)
         p.rows.add("maintenance_orders", order)
         if payload.reject_competing and quote.work_package_id:
@@ -1461,7 +1462,7 @@ def read_project(store: Any, case_id: str, actor: dict | None) -> dict:
     allowed = [{"status": target, "reason_required": target == "cancelled" or status in ("completed", "cancelled"),
                 "blockers": _blockers(rows, case_id, target)}
                for target in TRANSITIONS.get(status, CASE_STATUSES) if target != status]
-    today = date.today()
+    today = local_today()
     return {
         "case": {**_dump(case), "property_name": property_name, "unit_label": unit_label},
         "workflow": {"status": status, "label": STATUS_LABELS.get(status, status), "allowed": allowed},

@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
+from ..domain.clock import local_today
 from ..domain.lease_engine import LeaseEngine
 from ..domain.money import ZERO, as_number, cents, money, money_sum
 from ..domain.occupancy import NON_BILLABLE_STATUSES, unit_statuses_on
@@ -130,7 +131,7 @@ def _receivables(store: Any, flt: FinanceFilter) -> list:
 
 def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | None = None) -> dict[str, Any]:
     flt = flt or FinanceFilter()
-    today = today or date.today()
+    today = today or local_today()
     dims = Dimensions(store, flt)
     receivables = _receivables(store, flt)
     from .receivable_residuals import ResidualReader
@@ -190,7 +191,7 @@ def compute_finance(store: Any, flt: FinanceFilter | None = None) -> dict[str, A
 
 
 def compute_occupancy(*, units: list, contracts: list, today: date | None = None) -> dict[str, Any]:
-    statuses = unit_statuses_on(today or date.today(), units, contracts)
+    statuses = unit_statuses_on(today or local_today(), units, contracts)
     total = len(units)
     rented = sum(1 for status in statuses.values() if status == "occupied")
     rate = (rented / total) if total else 0.0
@@ -205,7 +206,7 @@ def compute_receivables_aging(store: Any, flt: FinanceFilter | None = None,
                               today: date | None = None) -> dict[str, Any]:
     """Unpaid receivables by days past due; credits are reported apart, never netted."""
     flt = flt or FinanceFilter()
-    today = today or date.today()
+    today = today or local_today()
     receivables = _receivables(store, flt)
     buckets = {"current": ZERO, "days1to30": ZERO, "days31to60": ZERO, "days61to90": ZERO, "days90plus": ZERO}
     from .receivable_residuals import ResidualReader
@@ -277,7 +278,7 @@ def compute_period_result(store: Any, flt: FinanceFilter | None = None,
                           today: date | None = None) -> dict[str, Any]:
     """Period result (accrual) in whole months: rent due + other income - costs."""
     flt = flt or FinanceFilter()
-    today = today or date.today()
+    today = today or local_today()
     first, last = period_months(flt, today)
     months = months_between(first, last)
     applied = flt.with_period(first, month_end(last))
@@ -307,7 +308,7 @@ def compute_contracts_expiring(
     days: int = 90,
     today: date | None = None,
 ) -> dict[str, Any]:
-    today = today or date.today()
+    today = today or local_today()
     threshold = today + timedelta(days=days)
     expiring = []
     for c in contracts:
@@ -366,7 +367,7 @@ def compute_liquidity_forecast(store: Any, flt: FinanceFilter | None = None, *, 
     first booking; months without bookings count as zero.
     """
     flt = (flt or FinanceFilter()).with_period(None, None)     # the history and the future set the periods
-    today = today or date.today()
+    today = today or local_today()
     this_month = month_start(today)
     history_end = add_months(this_month, -1)
     history_start = add_months(this_month, -HISTORY_MONTHS)

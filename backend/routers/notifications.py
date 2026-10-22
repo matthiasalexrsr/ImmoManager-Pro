@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..auth import require_auth
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.receivables import is_unpaid_debt
 from ..models import (
     Notification,
@@ -156,7 +157,7 @@ def generate_overdue_payment_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
     """Notify once about every unpaid receivable past its due date."""
-    check_date = as_of or date.today()
+    check_date = as_of or local_today()
     notifier = Notifier(store)
     created: list[Notification] = []
 
@@ -190,7 +191,7 @@ def generate_expiring_contract_notifications(
     """Notify once about every contract ending within the given window."""
     from datetime import timedelta
 
-    check_date = as_of or date.today()
+    check_date = as_of or local_today()
     horizon = check_date + timedelta(days=days_ahead)
     notifier = Notifier(store)
     created: list[Notification] = []
@@ -230,7 +231,7 @@ def generate_due_task_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
     """Notify once about every unfinished task that is due today or overdue."""
-    check_date = as_of or date.today()
+    check_date = as_of or local_today()
     notifier = Notifier(store)
     created: list[Notification] = []
 

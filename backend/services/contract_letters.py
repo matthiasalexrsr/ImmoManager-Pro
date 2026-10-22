@@ -12,17 +12,17 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, timezone
 from typing import Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import insert, select, text
 
 from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import ContractORM, DocumentORM, PropertyORM, TenantORM, UnitORM, UtilityStatementORM
+from ..domain.clock import local_today
 from ..models import Document, DocumentCreate
 from ..permissions import may_write
 from ..storage import NotFoundError
@@ -69,8 +69,7 @@ def work(store, actor_id, contract_id=None, *, write=False, command_key=None):
                 raise HTTPException(404, "Vertrag oder zugehörige Akte nicht gefunden.") from None
 
 
-def _today() -> date:
-    return datetime.now(ZoneInfo("Europe/Berlin")).date()
+_today = local_today
 
 
 def _pick(row, keys):

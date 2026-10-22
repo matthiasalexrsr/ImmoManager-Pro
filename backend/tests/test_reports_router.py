@@ -199,7 +199,7 @@ def test_reports_receivables_aging() -> None:
         )
     )
 
-    today = datetime.date.today()
+    today = datetime.local_today()
     store.create_receivable(
         ReceivableCreate(
             contract_id=contract.id,
@@ -266,7 +266,7 @@ def test_credits_are_not_netted_against_receivables() -> None:
         contract_number="C-500", property_id=property_item.id, unit_id=unit.id, tenant_id=tenant.id,
         start_date=datetime.date(2024, 1, 1),
     ))
-    today = datetime.date.today()
+    today = datetime.local_today()
     for days_ago, amount, status in [(40, 900.0, "open"), (10, 300.0, "overdue"), (-5, 200.0, "open"),
                                      (20, -206.32, "open"), (3, 50.0, "paid")]:
         store.create_receivable(ReceivableCreate(
@@ -297,7 +297,7 @@ def test_account_balance_and_liquidity_start_from_the_opening_balance() -> None:
                                                opening_balance=10000.0))
     store.create_account(_AccountCreate(portfolio_id=portfolio.id, name="Rücklage", account_type="bank",
                                         opening_balance=2500.0, balance=99.0))
-    today = datetime.date.today()
+    today = datetime.local_today()
     for days_ago, amount in [(40, 640.0), (10, 640.0), (5, -230.5)]:
         store.create_booking(BookingCreate(account_id=rent.id, amount=amount,
                                            booking_date=today - datetime.timedelta(days=days_ago)))
@@ -364,7 +364,7 @@ def test_reports_contracts_expiring() -> None:
     )
     tenant = store.create_tenant(TenantCreate(full_name="Mieter A"))
 
-    today = datetime.date.today()
+    today = datetime.local_today()
     store.create_contract(
         ContractCreate(
             contract_number="C-500",

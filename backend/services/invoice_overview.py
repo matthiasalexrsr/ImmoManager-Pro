@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Iterable
 
+from ..domain.clock import local_today
 from ..domain.money import ZERO, as_number, money
 from .invoice_review import settlements
 from .maintenance_rows import Rows
@@ -15,7 +16,7 @@ from .maintenance_rows import Rows
 
 def overview(store: Any, invoices: Iterable[Any], *, today: date | None = None) -> list[dict]:
     invoices = list(invoices)
-    today = today or date.today()
+    today = today or local_today()
     balances = settlements(Rows.reading(store), invoices, today)
     result = []
     for invoice in invoices:

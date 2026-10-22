@@ -10,7 +10,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-BERLIN = ZoneInfo("Europe/Berlin")
+from ...domain.clock import BERLIN, local_today
+
+__all__ = ["BERLIN", "local_today"]
 
 
 def utcnow() -> datetime:
@@ -20,11 +22,6 @@ def utcnow() -> datetime:
 
 def as_aware_utc(moment: datetime) -> datetime:
     return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
-
-
-def local_today(now: datetime | None = None, tz: ZoneInfo = BERLIN) -> date:
-    """The installation's calendar date (not the server's, not UTC's)."""
-    return as_aware_utc(now or utcnow()).astimezone(tz).date()
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from backend import auth
 from backend.app import app
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import ContactCreate, DocumentCreate, PortfolioCreate, PropertyCreate, TaskCreate
 from backend.services import business_documents as documents
 from backend.services import business_qol as office
@@ -590,7 +591,7 @@ def test_invoice_duplicate_number_normalization_does_not_drop_old_separator_matc
 def test_dashboard_escalation_source_exactly_matches_rules_and_pages(owner, estate):
     from backend.models import EscalationRuleCreate, MaintenanceCaseCreate
     from backend.routers.dashboard import _count_maintenance_escalation_candidates
-    today = date.today()
+    today = local_today()
     for days in (10, 3, -1):
         store.create_escalation_rule(EscalationRuleCreate(name=f"Regel {days}", entity_type="maintenance",
             condition_field="due_date", days_overdue=days, action="notify"))
@@ -665,7 +666,7 @@ def test_dunning_work_deadline_is_final_letter_payment_deadline_not_tenancy_star
         assert owner[1].get(API + "/summary", params={"due_before": before}).json()["counts"]["dunning"] == 0
         old_key = cards.json()["items"][0]["work_item_key"]
         deferred = owner[1].put("/api/v1/workspace/deferrals/" + old_key, json={"base_revision": 0,
-            "due_on": (date.today() + timedelta(days=30)).isoformat(), "reason": "Antwort zur alten Akte abwarten",
+            "due_on": (local_today() + timedelta(days=30)).isoformat(), "reason": "Antwort zur alten Akte abwarten",
             "idempotency_key": str(uuid4())})
         assert deferred.status_code == 200, deferred.text
         assert owner[1].get(API + "/items", params={"kind": "dunning", "deferred": "active"}).json()["items"] == []

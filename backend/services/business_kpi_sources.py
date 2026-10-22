@@ -13,6 +13,7 @@ from ..db.orm_models import (
     EscalationRuleORM,
     MaintenanceCaseORM,
 )
+from ..domain.clock import local_today
 from ..domain.occupancy import NON_BILLABLE_STATUSES, billable_contracts
 from ..models import BillingPeriod, MaintenanceCase
 
@@ -47,7 +48,7 @@ def _model(model: Any, orm: Any, row: Any):
 def escalation_cases(store: Any, *, skip: int, limit: int, property_id: str | None = None,
                      status_filter: str | None = None, sort_by: str | None = None, descending: bool = False,
                      date_from: date | None = None, date_to: date | None = None) -> list[MaintenanceCase]:
-    today = date.today()  # same calendar as the dashboard count
+    today = local_today()  # same calendar as the dashboard count
     if hasattr(store, "db"):
         days = store.db.scalar(select(func.min(case((EscalationRuleORM.days_overdue > 0,
             EscalationRuleORM.days_overdue), else_=0))).where(EscalationRuleORM.is_active.is_(True),

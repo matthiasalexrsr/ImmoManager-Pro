@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend import audit, auth
 from backend.app import app
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.services import document_retention as retention
 from backend.services.data_snapshot import clear_business_data
@@ -131,7 +132,7 @@ def test_the_class_can_be_chosen_on_the_document_and_the_years_are_settings(case
     assert owner.patch(f"/api/v1/documents/{paper['id']}", json={"retention_class": "forever"}).status_code == 422
 
     # nine years old: eight years of retention are over, ten are not (a fixed 2017 ended on 31.12.2027)
-    year = date.today().year - 9
+    year = local_today().year - 9
     invoice = _create(case, title=f"Rechnung {year}", document_type="Rechnung", document_date=f"{year}-05-01")
     assert owner.get("/api/v1/documents/retention").json()["items"][invoice["id"]]["state"] == "ended"
     saved = owner.put("/api/v1/auth/users/me/settings", json={

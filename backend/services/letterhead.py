@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
+from ..domain.clock import local_today
 from . import daily_state as state
 from . import document_versions as archive
 from . import workspace_contexts as contexts
@@ -213,7 +214,6 @@ def delete_logo(store, actor_id: str, scope: str, base_revision: int, idempotenc
 
 def sample_pdf(store, actor_id: str, property_id: str | None = None) -> bytes:
     """A specimen letter with the effective letterhead, to check layout, logo and footer."""
-    from datetime import date
 
     from .letter_layout import render_letter
     with archive.work(store, actor_id) as unit, contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
@@ -222,7 +222,7 @@ def sample_pdf(store, actor_id: str, property_id: str | None = None) -> bytes:
         head = source(unit, property_id, fallback_sender="Ihr Name oder Ihre Verwaltung")
         letter = {
             "recipient_name": "Erika Mustermann", "recipient_address": "Musterstraße 1\n12345 Musterstadt",
-            "issue_date": date.today().isoformat(), "subject": "Musterbrief: so sehen Ihre Briefe aus",
+            "issue_date": local_today().isoformat(), "subject": "Musterbrief: so sehen Ihre Briefe aus",
             "info": [["Vertrag", "MV-0001"], ["Objekt", "Musterhaus, Whg. 1"]],
             "salutation": "Sehr geehrte Frau Mustermann,",
             "body": ("dieser Musterbrief zeigt den Briefkopf, wie er auf allen Schreiben erscheint: Absender und Logo "

@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..models import Tenant, TenantCreate, TenantDocumentPage, TenantOverview, TenantPatch
 from ..services.deletion_guard import ensure_deletable
 from ..services.payment_allocations import tenant_account
@@ -74,7 +75,7 @@ def get_tenant_account(tenant_id: str, as_of: date | None = Query(None)) -> dict
         store.get_tenant(tenant_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return tenant_account(store, tenant_id, as_of or date.today())
+    return tenant_account(store, tenant_id, as_of or local_today())
 
 
 @router.get("/{tenant_id}/overview", response_model=TenantOverview)

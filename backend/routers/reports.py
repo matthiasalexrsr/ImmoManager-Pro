@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ..auth import require_auth
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.money import money
 from ..models import UserRead
 from ..services import report_service
@@ -166,7 +167,7 @@ def get_cashflow_report(format: Format = None,
     up to today), or every booking.
     """
     if months and not (date_from or date_to):
-        today = date.today()
+        today = local_today()
         date_from, date_to = add_months(month_start(today), -(months - 1)), today
     data = report_service.compute_cashflow(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id))
 

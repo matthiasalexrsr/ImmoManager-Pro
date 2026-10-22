@@ -13,6 +13,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 
 from ..domain.billing_engine import allocate_cents
+from ..domain.clock import local_today
 from ..domain.money import ZERO, money
 from ..finance_models import ReverseSettlement, Settlement, SettlementCommand
 from .maintenance_projects import work
@@ -273,7 +274,7 @@ class ResidualReader:
         """
         self.currency(receivable.contract_id)  # preserve the same authorized parent chain as a detailed read
         own = [event for event in self.contract_evidence(receivable.contract_id) if event[0] == receivable.id]
-        return _balance(receivable, own, as_of or date.today())[1]
+        return _balance(receivable, own, as_of or local_today())[1]
 
     def currency(self, contract_id):
         if contract_id not in self.currencies:
@@ -301,7 +302,7 @@ def _balance(receivable, own, as_of):
 
 
 def residual(store, receivable, as_of=None, *, evidence=None, edges=None, currency=None):
-    as_of = as_of or date.today()
+    as_of = as_of or local_today()
     evidence = dated_evidence(store, receivable.contract_id) if evidence is None else evidence
     own = [e for e in evidence if e[0] == receivable.id]
     applied, balance, unresolved, legacy_closed = _balance(receivable, own, as_of)

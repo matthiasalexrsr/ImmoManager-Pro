@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -52,11 +52,8 @@ def test_creation_receipt_survives_omitted_date_and_later_decision_without_reope
             expected_source_sha256=billing._compute_snapshot_hash(period.id),
             rationale="Der Beleg bestätigt die ursprüngliche Verteilung", idempotency_key=str(uuid4()))
         billing.reject_issued_objection(result["id"], decision, actor.id)
-        class Tomorrow(date):
-            @classmethod
-            def today(cls):
-                return date.today() + timedelta(days=1)
-        monkeypatch.setattr(billing, "date", Tomorrow)
+        tomorrow = billing.local_today() + timedelta(days=1)
+        monkeypatch.setattr(billing, "local_today", lambda: tomorrow)
         replay = client.post(path, json=payload, headers=auth_headers(actor))
         assert replay.status_code == 201, replay.text
         assert replay.json()["id"] == result["id"]

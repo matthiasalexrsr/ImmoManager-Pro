@@ -42,6 +42,7 @@ from ..db.orm_models import (
     UnitORM,
     ViewingAppointmentORM,
 )
+from ..domain.clock import local_today
 from ..models import Lead, Listing, Tenant, Unit, ViewingAppointment
 from ..models_reletting import (
     AcceptRequest,
@@ -364,7 +365,7 @@ def _vacancies(unit: archive.Unit, open_units: set[str], today: date) -> list[di
 
 
 def overview(store, actor_id: str) -> dict:
-    today = date.today()
+    today = local_today()
     with archive.work(store, actor_id) as unit:
         projects = _rows(unit, "reletting_projects")
         leads: dict[str, list[Lead]] = {}
@@ -500,7 +501,7 @@ def _next_step(project: RelettingProject, steps: list[dict]) -> dict | None:
 
 
 def _detail(unit: archive.Unit, project: RelettingProject) -> dict:
-    today = date.today()
+    today = local_today()
     apartment, building = _unit_and_property(unit, project.unit_id)
     leads = _rows(unit, "leads", project_id=project.id)
     ids = {lead.id for lead in leads}
@@ -577,7 +578,7 @@ def start(store, payload: RelettingStart, actor_id: str) -> dict:
         if any(p.status == "open" for p in projects):
             raise _conflict("Für diese Einheit läuft bereits ein Neuvermietungsprojekt.")
         previous = max(projects, key=lambda p: p.created_at, default=None)
-        today = date.today()
+        today = local_today()
         running = [c for c in unit.store.list_contracts() if c.unit_id == apartment.id and _covering(c, today)]
         free = max((c.end_date for c in running if c.end_date), default=None)
         kind = KINDS.get((apartment.unit_type or "wohnung").strip().lower(), "Mietobjekt")

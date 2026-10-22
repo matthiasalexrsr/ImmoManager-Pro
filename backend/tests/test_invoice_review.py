@@ -24,6 +24,7 @@ from backend import auth
 from backend.app import app
 from backend.dependencies import store
 from backend.domain import invoice_review as rules
+from backend.domain.clock import local_today
 from backend.invoice_review_models import DecisionRequest
 from backend.models import (
     AccountCreate,
@@ -44,7 +45,7 @@ from backend.services.file_storage import get_file_storage
 
 SQL = os.environ.get("TEST_STORE_BACKEND", "memory") == "sql"
 API = "/api/v1"
-TODAY = date.today()
+TODAY = local_today()
 
 
 # ─── the rules themselves ────────────────────────────────────────────────────

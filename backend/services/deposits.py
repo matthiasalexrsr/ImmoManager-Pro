@@ -59,6 +59,7 @@ from ..db.orm_models import (
     UnitORM,
 )
 from ..domain import deposit_rules as rules
+from ..domain.clock import local_today
 from ..domain.lease_engine import LeaseEngine
 from ..domain.money import ZERO, as_number, money
 from ..models import Booking, Deposit, Document, DocumentCreate, PaymentAllocation, Receivable
@@ -765,7 +766,7 @@ def _takeover_changes(unit: archive.Unit, deposit: Deposit, payload: TakeoverReq
     if amount is None or payload.carried_on is None:
         raise HTTPException(400, "Für die Übernahme bitte den Übernahmetag und den bis dahin eingegangenen Betrag "
                                  "angeben.")
-    if payload.carried_on > date.today():
+    if payload.carried_on > local_today():
         raise HTTPException(400, "Der Übernahmetag liegt in der Zukunft.")
     earlier = [booking for link, booking in _receipts(unit, deposit.id)
                if booking is not None and booking.booking_date < payload.carried_on]
@@ -797,7 +798,7 @@ def _legacy_candidate(unit: archive.Unit, deposit: Deposit, used: set[str] | Non
 
     `used` names the deposits with payments, settlements or instalments (read once for a list)."""
     if not (deposit.form in rules.MONEY_FORMS and deposit.status == "held" and deposit.held_date is not None
-            and deposit.held_date <= date.today() and money(deposit.amount) > 0 and deposit.carried_on is None):
+            and deposit.held_date <= local_today() and money(deposit.amount) > 0 and deposit.carried_on is None):
         return False
     if used is not None:
         return deposit.id not in used
@@ -985,7 +986,7 @@ def create_settlement(store, deposit_id: str, payload: SettlementCreate, actor_i
             return {"created": False, **_detail(unit, deposit)}
         protocol_id = None
         if payload.kind == "final":
-            day = payload.settlement_date or contract.end_date or date.today()
+            day = payload.settlement_date or contract.end_date or local_today()
             protocol = _move_out_protocol(unit, contract.id)
             protocol_id = protocol.id if protocol is not None else None
         else:
@@ -994,7 +995,7 @@ def create_settlement(store, deposit_id: str, payload: SettlementCreate, actor_i
                 raise _conflict("Ein Einbehalt wird erst nach der abgeschlossenen Kautionsabrechnung freigegeben.")
             if _retention(unit.store.list_deposit_settlement_items(final.id)) <= 0:
                 raise _conflict("Die Kautionsabrechnung hat nichts einbehalten.")
-            day = payload.settlement_date or max(date.today(), final.settlement_date)
+            day = payload.settlement_date or max(local_today(), final.settlement_date)
         stamp = now()
         settlement = DepositSettlement(id=new_id(), deposit_id=deposit.id, kind=payload.kind, settlement_date=day,
                                        handover_protocol_id=protocol_id, status="draft", created_at=stamp,
@@ -1558,7 +1559,7 @@ def _detail(unit: archive.Unit, deposit: Deposit) -> dict[str, Any]:
     final = _final(settlements)
     retention = (_retention(unit.store.list_deposit_settlement_items(final.id))
                  if final is not None and final.finalized_at is not None else ZERO)
-    today = date.today()
+    today = local_today()
     until = final.settlement_date if final is not None and final.finalized_at is not None else today
     interest = _interest(unit, deposit, until)
     bookings: dict[str, Any] = {}

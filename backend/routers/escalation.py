@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.receivables import is_unpaid_debt
 from ..models import (
     EscalationRule,
@@ -73,7 +74,7 @@ def delete_rule(rule_id: str):
 @router.post("/run", response_model=None)
 def run_escalation(as_of: date | None = Query(None)):
     """Execute all active escalation rules and notify once per rule and overdue item."""
-    return execute_escalation(store, as_of or date.today())
+    return execute_escalation(store, as_of or local_today())
 
 
 def execute_escalation(store, check_date: date) -> dict:

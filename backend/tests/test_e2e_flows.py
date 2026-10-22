@@ -4,7 +4,7 @@ These tests exercise complete user flows through the HTTP API,
 chaining multiple requests to verify realistic usage scenarios.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.dependencies import store
+from backend.domain.clock import local_today
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -597,7 +598,7 @@ class TestEscalationRun:
         assert rule_resp.status_code == 201
 
         # Step 2: Create a task that is overdue (due_date 10 days ago)
-        overdue_date = (date.today() - timedelta(days=10)).isoformat()
+        overdue_date = (local_today() - timedelta(days=10)).isoformat()
         task_resp = client.post(
             "/api/v1/tasks",
             json={
@@ -611,7 +612,7 @@ class TestEscalationRun:
         assert task_resp.status_code == 201
 
         # Step 3: Create a task that is NOT overdue (due tomorrow)
-        future_date = (date.today() + timedelta(days=1)).isoformat()
+        future_date = (local_today() + timedelta(days=1)).isoformat()
         client.post(
             "/api/v1/tasks",
             json={

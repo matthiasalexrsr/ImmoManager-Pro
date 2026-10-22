@@ -18,6 +18,7 @@ from ..db.assistant_models import AssistantAttachmentORM as Attachment
 from ..db.assistant_models import AssistantConversationORM as Conversation
 from ..db.assistant_models import AssistantRunORM as Run
 from ..db.orm_models import Base
+from ..domain.clock import local_today
 from ..finance_models import ReportDefinition
 from . import assistant_context as context
 from . import assistant_storage as db
@@ -267,7 +268,7 @@ def _investigate(unit, row, data, args, *, persist=True):
     from .maintenance_rows import Rows
 
     # Freeze the effective day in proofs and cursors, including across midnight.
-    as_of = args.as_of or datetime.now(ZoneInfo("Europe/Berlin")).date()
+    as_of = args.as_of or local_today()
     effective = args.model_copy(update={"as_of": as_of})
     fingerprint = context.content_hash(effective.model_dump(mode="json", exclude={"cursor", "limit"}))
     kinds = sorted(set(args.kinds or checks.KINDS))

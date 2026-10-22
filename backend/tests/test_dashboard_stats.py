@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import (
     AccountCreate,
     AllocationKeyCreate,
@@ -62,7 +63,7 @@ def test_dashboard_stats_include_operational_workflow_counts() -> None:
     store.create_receivable(
         ReceivableCreate(
             contract_id=contract.id,
-            due_date=date.today() + timedelta(days=30),
+            due_date=local_today() + timedelta(days=30),
             amount_due=900,
             status="open",
         ),

@@ -29,6 +29,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
+from ..domain.clock import local_today
 from .settings_catalogue import RETENTION_YEARS
 
 CLASSES: dict[str, dict[str, Any]] = {
@@ -65,7 +66,7 @@ def _de(value: date) -> str:
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    return local_today()
 
 
 def years(store) -> dict[str, int]:

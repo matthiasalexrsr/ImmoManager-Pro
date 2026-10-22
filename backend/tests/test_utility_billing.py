@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import (
     AllocationKeyCreate,
     BillingPeriodCreate,
@@ -363,7 +364,7 @@ def test_receivables_only_for_tenants_and_due_in_30_days(koeln):
     receivables = store.list_receivables()
 
     assert len(receivables) == 4  # Laden, 1.OG, 3.OG (Ben), Garage — no vacancy rows
-    assert {r.due_date for r in receivables} == {date.today() + timedelta(days=30)}
+    assert {r.due_date for r in receivables} == {local_today() + timedelta(days=30)}
     assert all((r.description or "").startswith("Nebenkostenabrechnung BK: ") for r in receivables)
 
 

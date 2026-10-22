@@ -55,6 +55,7 @@ from ..db.orm_models import (
     TenantORM,
     UnitORM,
 )
+from ..domain.clock import local_today
 from ..models import (
     Document,
     DocumentCreate,
@@ -455,7 +456,7 @@ def source(store, contract_id: str, protocol_type: str, actor_id: str) -> dict[s
     with archive.work(store, actor_id) as unit:
         contract, prop, location, tenant, portfolio = _parents(unit, contract_id)
         suggestion = _suggestion(unit, contract, location, tenant, portfolio, protocol_type)
-        day = date.fromisoformat(suggestion["protocol_date"]) if suggestion["protocol_date"] else date.today()
+        day = date.fromisoformat(suggestion["protocol_date"]) if suggestion["protocol_date"] else local_today()
         return {
             "contract_id": contract.id,
             "source": _source(contract, prop, location, tenant, portfolio),
@@ -577,7 +578,7 @@ def create_from_contract(store, payload: CreateRequest, actor_id: str) -> dict[s
             draft = max(open_drafts, key=lambda p: (_utc(p.created_at), p.id))
             return {"created": False, **_detail(unit, draft)}
         suggestion = _suggestion(unit, contract, location, tenant, portfolio, payload.protocol_type)
-        day = payload.protocol_date or _boundary(payload.protocol_type, contract) or date.today()
+        day = payload.protocol_date or _boundary(payload.protocol_type, contract) or local_today()
         protocol = _new_protocol(contract, location, payload.protocol_type, day,
                                  tenant_signature=suggestion["tenant_signature"],
                                  landlord_signature=suggestion["landlord_signature"])

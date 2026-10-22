@@ -1,8 +1,8 @@
-from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.occupancy import unit_statuses_on
 from ..models import Unit, UnitCreate, UnitPatch
 from ..services.deletion_guard import dependents, ensure_deletable
@@ -29,7 +29,7 @@ def _keep_location(unit: Unit, payload: UnitCreate) -> None:
 
 def _current(units: list[Unit]) -> list[Unit]:
     """Units with today's status: occupied follows the contracts, not a stored flag."""
-    statuses = unit_statuses_on(date.today(), units, store.list_contracts())
+    statuses = unit_statuses_on(local_today(), units, store.list_contracts())
     return [u if u.status == statuses[u.id] else u.model_copy(update={"status": statuses[u.id]}) for u in units]
 
 

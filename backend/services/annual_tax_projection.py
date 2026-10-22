@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from ..domain.clock import local_today
 from ..tax_models import AnnualTaxRule
 from .annual_tax_source import cash_source, cents
 from .portfolio_scope import current_scope, refresh_scope
@@ -108,7 +109,7 @@ def compile_projection(store, profile, command, *, parent=None):
     year, portfolio_id = spec["tax_year"], spec["portfolio_id"]
     if store.get_portfolio(portfolio_id).currency != spec["currency"]:
         raise HTTPException(422, "annual_tax_portfolio_currency_changed")
-    if command.as_of < date(year, 1, 1) or command.as_of > date.today():
+    if command.as_of < date(year, 1, 1) or command.as_of > local_today():
         raise HTTPException(422, "annual_tax_cash_cutoff: Der Stichtag muss im/ab Steuerjahr liegen und darf nicht in der Zukunft liegen.")
     cutoff = min(command.as_of, date(year, 12, 31))
     rules = {(rule["account_id"], rule["category_id"]): AnnualTaxRule(**rule) for rule in spec["rules"]}

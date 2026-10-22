@@ -28,6 +28,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ..domain.billing_engine import AdvancePayment, BillingEngine, CostEntry, UnitShare
+from ..domain.clock import local_today
 from ..domain.lease_engine import charge_on
 from ..domain.money import money
 from ..domain.occupancy import (
@@ -188,7 +189,7 @@ def _split(start: date, end: date, changes: list[tuple[date, Any]], initial: Any
 
 
 def compute_period_billing(store: Any, period: Any, today: Optional[date] = None) -> PeriodBilling:
-    today = today or date.today()
+    today = today or local_today()
     store = CachedReads(store)  # rent histories are read once, not once per contract and month
     result = PeriodBilling()
     start, end = period.start_date, period.end_date

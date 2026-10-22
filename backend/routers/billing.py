@@ -30,6 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from .. import auth
 from ..auth import require_role
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..models import (
     AllocationKey,
     AllocationKeyCreate,
@@ -814,7 +815,7 @@ def create_receivables_from_period(
 
     # Due after the tenant had time to check the statement, not at period end
     # (which made every back payment overdue the moment it was created).
-    due_date = date.today() + timedelta(days=RECEIVABLE_DUE_DAYS)
+    due_date = local_today() + timedelta(days=RECEIVABLE_DUE_DAYS)
     created_count = 0
     skipped_count = 0
     excluded_late = []
@@ -830,7 +831,7 @@ def create_receivables_from_period(
         if amount == 0:
             continue
         # Not delivered yet: it can reach the tenant today at the earliest.
-        received = stmt.delivered_at.date() if stmt.delivered_at else date.today()
+        received = stmt.delivered_at.date() if stmt.delivered_at else local_today()
         if amount > 0 and not late_not_attributable and late_claim_excluded(
                 units.get(stmt.unit_id), period.end_date, received):
             excluded_late.append({"statement_id": stmt.id, "contract_id": stmt.contract_id, "amount": float(amount)})
@@ -992,7 +993,7 @@ def _record_objection(period_id: str, request: BillingObjectionRequest) -> Billi
         objection = store.create_billing_objection(BillingObjectionCreate(
             billing_period_id=period_id,
             statement_id=request.statement_id,
-            received_on=request.received_on or date.today(),
+            received_on=request.received_on or local_today(),
             reason=request.reason,
             source_period_status=first_status,
         ))

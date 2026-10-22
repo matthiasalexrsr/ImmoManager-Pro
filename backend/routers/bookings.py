@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
 from ..services.bank_imports import protect_bank_booking
@@ -151,7 +152,7 @@ def reverse_booking(booking_id: str, payload: ReversalRequest | None = None) -> 
             data = BookingCreate(
                 account_id=original.account_id, category_id=original.category_id, property_id=original.property_id,
                 unit_id=original.unit_id, tenant_id=original.tenant_id,
-                booking_date=request.booking_date or max(date.today(), original.booking_date),
+                booking_date=request.booking_date or max(local_today(), original.booking_date),
                 amount=float(amount), status=original.status, payment_text=text, reverses_booking_id=original.id)
             reversal = target.create_booking(data)
             auto_allocate(target, reversal)

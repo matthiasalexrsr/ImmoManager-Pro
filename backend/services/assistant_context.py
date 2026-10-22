@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
 from typing import Any, Literal
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..domain.clock import local_today
 from ..finance_models import ReportDefinition
 from . import business_documents, document_versions, finance_reports, workspace_contexts
 from .portfolio_scope import scope_context, scope_from_user
@@ -208,7 +207,7 @@ def local_analysis(store, selection: ContextSelection | dict, actor_id: str, *,
     bundle = build_context(store, selection, actor_id)
     from .assistant_checks import findings_for_source
     from .assistant_findings import normalize
-    as_of = datetime.now(ZoneInfo("Europe/Berlin")).date()
+    as_of = local_today()
     findings: list[dict] = []
     extracted = []
     for source in bundle["sources"]:

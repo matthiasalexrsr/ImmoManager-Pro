@@ -55,6 +55,7 @@ from ..db.dunning_models import (
 )
 from ..db.orm_models import ContractORM, DocumentORM, ReceivableORM
 from ..domain import dunning_process as rules_
+from ..domain.clock import local_today
 from ..domain.dunning_process import (
     STAGE_LABELS,
     Claim,
@@ -139,7 +140,7 @@ def now() -> datetime:
 
 
 def today() -> date:
-    return date.today()
+    return local_today()
 
 
 class _Part:

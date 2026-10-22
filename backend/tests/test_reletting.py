@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from backend import auth
 from backend.app import app
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import ContractCreate, PortfolioCreate, PropertyCreate, TenantCreate, UnitCreate
 from backend.routers.files import _file_url_to_key
 from backend.services.data_snapshot import clear_business_data, export_snapshot, import_snapshot
@@ -64,7 +65,7 @@ def _estate(name="Nord", number="V-1", city="Dresden"):
     old = store.create_tenant(TenantCreate(full_name=f"Vormieter {number}"))
     store.create_contract(ContractCreate(contract_number=number, property_id=prop.id, unit_id=unit.id,
                                          tenant_id=old.id, start_date=date(2020, 1, 1),
-                                         end_date=date.today() - timedelta(days=20), status="expired"))
+                                         end_date=local_today() - timedelta(days=20), status="expired"))
     return {"portfolio": portfolio, "property": prop, "unit": unit}
 
 
@@ -166,7 +167,7 @@ def test_a_project_starts_from_the_unit_and_the_overview_shows_vacancies(client)
     estate = _estate()
     overview = client.get(BASE).json()
     assert [row["unit_id"] for row in overview["vacancies"]] == [estate["unit"].id]
-    assert overview["vacancies"][0]["vacant_since"] == (date.today() - timedelta(days=20)).isoformat()
+    assert overview["vacancies"][0]["vacant_since"] == (local_today() - timedelta(days=20)).isoformat()
     started = client.post(BASE, json={"unit_id": estate["unit"].id})
     assert started.status_code == 201, started.text
     data = started.json()

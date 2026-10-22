@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
+from ..domain.clock import local_today
 from ..domain.money import ZERO, money
 from ..domain.receivables import UNPAID_RECEIVABLE_STATUSES
 from ..store_errors import NotFoundError
@@ -47,7 +48,7 @@ def creditor_key(account_id: str) -> str:
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    return local_today()
 
 
 def _month(value: Any) -> tuple[date, date]:

@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
 
+from ..domain.clock import local_today
 from ..domain.lease_engine import ChargeConfig, RentStep, charge_on
 from ..models import ContractRentPeriod, ContractRentPeriodCreate
 
@@ -51,7 +52,7 @@ def overview_rent(contract: Any, periods: list[ContractRentPeriod], day: date | 
     Missing history stays unknown: a unit's current defaults cannot establish
     what a previous tenant paid. Callers can load every contract's periods once.
     """
-    effective_day = max(day or date.today(), contract.start_date)
+    effective_day = max(day or local_today(), contract.start_date)
     if contract.end_date:
         effective_day = min(effective_day, contract.end_date)
     applicable = [period for period in periods if period.valid_from <= effective_day]

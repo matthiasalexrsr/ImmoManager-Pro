@@ -5,6 +5,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.invoice_matching import BookingCandidate, InvoiceMatcher, InvoiceToMatch
 from ..domain.money import money
 from ..models import Invoice, InvoiceCreate, InvoicePatch
@@ -125,7 +126,7 @@ def match_invoice_to_bookings(invoice_id: str) -> dict:
     from ..services.service_contracts import _is_tenant_money
 
     rows = Rows.reading(store)
-    balance = settlements(rows, [invoice], date.today())[invoice.id]
+    balance = settlements(rows, [invoice], local_today())[invoice.id]
     remaining = (max(money(invoice.gross_amount) - balance.paid, Decimal("0"))
                  if balance.payable is None else balance.open)
     if invoice.status == "cancelled" or balance.payment_status in ("rejected", "credit_note"):

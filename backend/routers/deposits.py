@@ -4,7 +4,6 @@ plus the older plain record endpoints, which refuse to touch a settled file.
 All endpoints are synchronous (thread pool): no database work on the event loop.
 """
 
-from datetime import date
 from typing import Annotated
 from urllib.parse import quote
 
@@ -15,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from ..auth import require_auth
 from ..db.deposit_models import DepositInstalmentORM, DepositInterestRateORM
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..models import Deposit, DepositCreate, DepositPatch, UserRead
 from ..models_deposits import (
     AgreementRequest,
@@ -161,7 +161,7 @@ def finalize_settlement(deposit_id: str, settlement_id: str, payload: FinalizeRe
 def settlement_document(deposit_id: str, settlement_id: str, actor: Actor,
                         download: bool = Query(False)):
     content, row = _call(service.read_original, store, deposit_id, settlement_id, actor.id)
-    name = f"kautionsabrechnung-{date.today():%Y%m%d}.pdf" if not row.filename else row.filename
+    name = f"kautionsabrechnung-{local_today():%Y%m%d}.pdf" if not row.filename else row.filename
     disposition = "attachment" if download else "inline"
     return Response(content, media_type="application/pdf", headers={
         **_PRIVATE, "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(name)}",

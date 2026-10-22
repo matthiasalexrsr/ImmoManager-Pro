@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.money import money
 from ..domain.occupancy import billable_contracts, unit_statuses_on
 from ..domain.receivables import is_overdue_debt, is_unpaid_debt
@@ -150,7 +151,7 @@ def get_dashboard_stats() -> dict:
     Uses direct counts for core inventory and existing list APIs for
     workflow-specific operational totals.
     """
-    today = date.today()
+    today = local_today()
     contracts = store.list_contracts()
     unit_statuses = list(unit_statuses_on(today, store.list_units(), contracts).values())
     invoices = store.list_invoices()

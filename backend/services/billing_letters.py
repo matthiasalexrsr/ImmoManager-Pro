@@ -5,11 +5,10 @@ cover and annex come from one reviewed snapshot, never from client-side amounts.
 """
 import hashlib
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any
 from urllib.parse import quote
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import insert, select, text
@@ -24,6 +23,7 @@ from ..db.orm_models import (
     UnitORM,
     UtilityStatementORM,
 )
+from ..domain.clock import local_today
 from ..models import Document, DocumentCreate
 from ..permissions import may_write
 from ..storage import NotFoundError
@@ -215,7 +215,7 @@ def context(store, statement_id, actor_id):
         return {"source_revision": digest(source), "statement_status": statement.status,
                 "period_status": period.status, "can_publish": not problem and all(may_write(unit.user["role"], path) for path in write_areas(statement_id)),
                 "defaults": {"sender_name": sender, "sender_address": address, "recipient_name": recipient,
-                    "recipient_address": recipient_address, "issue_date": datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat(),
+                    "recipient_address": recipient_address, "issue_date": local_today().isoformat(),
                     "subject": f"Betriebskostenabrechnung {period.label}", "salutation": f"Guten Tag {recipient},",
                     "intro": "anbei erhalten Sie Ihre Betriebskostenabrechnung. " + result,
                     "closing": "Für Rückfragen zu Ihrer Abrechnung stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen",

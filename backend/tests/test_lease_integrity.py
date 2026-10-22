@@ -9,6 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.models import (
     BillingPeriodCreate,
     ContractCreate,
@@ -137,7 +138,7 @@ def test_store_patch_validates_before_writing(house):
 
 def test_receivables_from_a_statement_are_created_once(client, house):
     """Regression: every call created the receivables again (12 instead of 6)."""
-    year = date.today().year - 1     # its statement deadline has not passed
+    year = local_today().year - 1     # its statement deadline has not passed
     period = store.create_billing_period(BillingPeriodCreate(
         property_id=house["prop"].id, label=f"BK {year}", start_date=date(year, 1, 1),
         end_date=date(year, 12, 31), status="finalized"))

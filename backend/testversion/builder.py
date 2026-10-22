@@ -14,6 +14,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 
+from ..domain.clock import local_today
 from .dataset import (
     COMPANY_TENANTS,
     CONTRACTORS,
@@ -56,7 +57,7 @@ class Builder:
     def __init__(self, client: Any, headers: dict[str, dict], today: Optional[date] = None, seed: int = 15,
                  progress: Callable[[str], None] = print):
         self.c, self.h = client, headers
-        self.today = today or date.today()
+        self.today = today or local_today()
         self.start = date(self.today.year - 3, 1, 1)
         self.rnd = random.Random(seed)
         self.progress = progress

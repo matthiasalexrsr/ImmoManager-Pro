@@ -24,11 +24,7 @@ from backend.tests.test_annual_tax_projection import tax_store as tax_store  # n
 
 @pytest.fixture(autouse=True)
 def completed_year(monkeypatch):
-    class CompletedYear(date):
-        @classmethod
-        def today(cls):
-            return cls(2027, 1, 2)
-    monkeypatch.setattr(annual_tax_projection, "date", CompletedYear)
+    monkeypatch.setattr(annual_tax_projection, "local_today", lambda: date(2027, 1, 2))
 
 
 def preparation_configuration(fixture):

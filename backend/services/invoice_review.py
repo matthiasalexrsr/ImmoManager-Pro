@@ -42,6 +42,7 @@ from fastapi import HTTPException
 
 from .. import auth
 from ..domain import invoice_review as rules
+from ..domain.clock import local_today
 from ..domain.money import ZERO, as_number, cents, money
 from ..invoice_review_models import (
     CheckRequest,
@@ -215,7 +216,7 @@ def settlements(rows: Rows, invoices: Iterable[Any], today: date | None = None) 
     reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=ids)}
     payments = _effective_payments(rows, ids, as_of=today)
     credits = _credit_totals(rows, ids, as_of=today)
-    today = today or date.today()
+    today = today or local_today()
     return {i.id: _settle(i, reviews.get(i.id), payments.get(i.id, []), credits.get(i.id, ZERO), today)
             for i in invoices}
 
@@ -449,7 +450,7 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
         now = stamp("invoice_reviews")
         review = InvoiceReview(
             id=str(uuid4()), invoice_id=invoice.id, kind=payload.kind,
-            credit_for_invoice_id=payload.credit_for_invoice_id, received_on=payload.received_on or date.today(),
+            credit_for_invoice_id=payload.credit_for_invoice_id, received_on=payload.received_on or local_today(),
             document_id=document_id, document_sha256=digest, status="received",
             vat_lines=[line.model_dump() for line in payload.vat_lines or []],
             skonto_percent=payload.skonto_percent, skonto_days=payload.skonto_days,
@@ -696,7 +697,7 @@ def resolve_dispute(store: Any, invoice_id: str, payload: DisputeResolution, act
         if r.review.dispute_status != "open":
             raise conflict("Zu dieser Rechnung ist kein Widerspruch offen.")
         credits = _credit_totals(r.rows, [invoice_id]).get(invoice_id, ZERO)
-        settlement = _settle(r.invoice, r.review, [], credits, date.today())
+        settlement = _settle(r.invoice, r.review, [], credits, local_today())
         remaining = settlement.dispute_open
         settled = ZERO
         if payload.outcome == "credit" and credits == 0:
@@ -943,7 +944,7 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
     invoice = rows.require("invoices", invoice_id, INVOICE_MISSING)
     review = review_of(rows, invoice_id)
     settings = _settings(rows)
-    today = today or date.today()
+    today = today or local_today()
     links = _links(rows, invoice_id)
     settlement = settlements(rows, [invoice], today)[invoice_id]
     arithmetic = _arithmetic(invoice, review)
@@ -1062,7 +1063,7 @@ def inbox(store: Any, *, status: str | None = None, due: str | None = None, skon
     resolved disputes, effective payments and discounts. SQL candidates are evaluated
     in bounded batches before counting and paging.
     """
-    today = today or date.today()
+    today = today or local_today()
     q = (q or "").strip() or None
     rows = Rows.reading(store)
     horizon: dict[str, Any] = {"overdue": None, "week": today + timedelta(days=7), "month": today + timedelta(days=30)}
@@ -1181,7 +1182,7 @@ def rows_properties(store: Any, ids: set[str]) -> list[Any]:
 def payment_proposals(store: Any, *, until: date | None = None, today: date | None = None, skip: int = 0,
                       limit: int = 100) -> dict:
     """Approved invoices with an open amount: what to pay, by when, with which Skonto. Nothing is sent."""
-    today = today or date.today()
+    today = today or local_today()
     rows = Rows.reading(store)
     approved = [r for r in rows.find("invoice_reviews", status=list(rules.APPROVED)) if r.kind == "invoice"]
     invoices = {i.id: i for i in rows.find("invoices", id=[r.invoice_id for r in approved])}

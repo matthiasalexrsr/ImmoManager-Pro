@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Optional
 
+from ..domain.clock import local_today
 from ..domain.money import money
 from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
@@ -173,7 +174,7 @@ def property_(data: dict, store: Any) -> None:
     _no_markup(data, "name", "Der Name")
     _one_of(data, "property_type", PROPERTY_TYPES, "Der Objekttyp")
     year = data.get("year_built") if _touched(data, "year_built") else None
-    if isinstance(year, int) and not 1000 <= year <= date.today().year + 5:
+    if isinstance(year, int) and not 1000 <= year <= local_today().year + 5:
         raise ValidationError(f"Baujahr {year} ist nicht plausibel")
     _max_length(data, "name", "Der Name")
     code, country = data.get("postal_code"), (data.get("country") or "DE").strip().upper()
@@ -189,7 +190,7 @@ def booking(data: dict, store: Any) -> None:
     _number(data, {"amount": "Der Betrag"})
     _at_most(data, {"amount": ("Der Betrag", 1_000_000_000)})
     day = _day(data.get("booking_date")) if _touched(data, "booking_date") else None
-    if day and not 1950 <= day.year <= date.today().year + 10:
+    if day and not 1950 <= day.year <= local_today().year + 10:
         raise ValidationError(f"Buchungsdatum {day:%d.%m.%Y} ist nicht plausibel")
     unit_obj = _get(store.get_unit, data.get("unit_id"))
     if unit_obj and data.get("property_id") and unit_obj.property_id != data["property_id"]:
@@ -198,10 +199,10 @@ def booking(data: dict, store: Any) -> None:
 
 def contract(data: dict, store: Any) -> None:
     start = _day(data.get("start_date")) if _touched(data, "start_date") else None
-    if start and not 1900 <= start.year <= date.today().year + 5:
+    if start and not 1900 <= start.year <= local_today().year + 5:
         raise ValidationError(f"Vertragsbeginn {start:%d.%m.%Y} ist nicht plausibel")
     end = _day(data.get("end_date")) if _touched(data, "end_date") else None
-    if end and end.year > date.today().year + 100:
+    if end and end.year > local_today().year + 100:
         raise ValidationError(f"Vertragsende {end:%d.%m.%Y} ist nicht plausibel; ohne Ende bitte leer lassen")
 
 
@@ -259,7 +260,7 @@ def meter_reading(data: dict, store: Any) -> None:
     value = data.get("value")
     _not_negative(data, {"value": "Der Zählerstand"})
     day = _day(data.get("reading_date"))
-    if day and day > date.today():
+    if day and day > local_today():
         raise ValidationError("Eine Ablesung kann nicht in der Zukunft liegen")
     if not isinstance(value, (int, float)) or not day or not data.get("meter_id"):
         return

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from ..concurrency import one_at_a_time
 from ..dependencies import store
+from ..domain.clock import local_today
 from ..domain.lease_engine import LeaseEngine
 from ..models import (
     Contract,
@@ -81,7 +82,7 @@ def create_contract(payload: ContractCreate) -> Contract:
 @one_at_a_time
 def current_rents(as_of: Optional[date] = Query(None)) -> dict[str, dict]:
     """The rent each contract owes on a day (today by default), from its rent history."""
-    day = as_of or date.today()
+    day = as_of or local_today()
     reads = CachedReads(store)      # all rent histories in one query instead of one per contract
     rents = {}
     for contract in reads.list_contracts():
@@ -156,7 +157,7 @@ def get_contract_settlement(
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    today = as_of or date.today()
+    today = as_of or local_today()
     receivables, payments = contract_ledger(store, contract, today)
 
     dashboard = LeaseEngine.build_dashboard(
@@ -186,7 +187,7 @@ def create_dunning_campaign(
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    today = as_of or date.today()
+    today = as_of or local_today()
     receivables, payments = contract_ledger(store, contract, today)
 
     dunning_policy = None

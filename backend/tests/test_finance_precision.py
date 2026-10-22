@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from backend import auth
 from backend.app import app
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.domain.money import as_number, money, money_sum
 from backend.models import (
     AccountCreate,
@@ -418,7 +419,7 @@ def test_reversal_rules(client, estate):
     assert rest.status_code == 201 and rest.json()["amount"] == 23.33
     # without a date the reversal is booked today
     assert client.post(f"/api/v1/bookings/{b['two_dimes'].id}/reverse",
-                       headers=owner).json()["booking_date"] == date.today().isoformat()
+                       headers=owner).json()["booking_date"] == local_today().isoformat()
     again = client.post(f"/api/v1/bookings/{expense.id}/reverse", headers=owner)
     assert again.status_code == 400 and "vollständig" in again.json()["error"]["message"]
     # a reversal is not reversed, and no reversal exceeds or repeats the sign of its booking

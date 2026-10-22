@@ -1,11 +1,12 @@
 """Shared financial evidence stays consistent across list, file and suggestions."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi import HTTPException
 
 from backend.dependencies import store
+from backend.domain.clock import local_today
 from backend.maintenance_models import InvoicePaymentCreate
 from backend.models import AccountCreate, BookingCreate, InvoiceCreate, PortfolioCreate, PropertyCreate, TenantCreate
 from backend.routers import invoices
@@ -19,10 +20,10 @@ def finance():
     account = store.create_account(AccountCreate(portfolio_id=portfolio.id, name="Bank", account_type="Bankkonto"))
     prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name="Haus", property_type="MFH"))
     def invoice(amount=100, **kw):
-        return store.create_invoice(InvoiceCreate(supplier="Anbieter", invoice_date=date.today(), net_amount=amount,
+        return store.create_invoice(InvoiceCreate(supplier="Anbieter", invoice_date=local_today(), net_amount=amount,
                                                   gross_amount=amount, property_id=prop.id, **kw))
     def booking(amount, **kw):
-        return store.create_booking(BookingCreate(account_id=account.id, booking_date=date.today(), amount=amount,
+        return store.create_booking(BookingCreate(account_id=account.id, booking_date=local_today(), amount=amount,
                                                   property_id=prop.id, status="open", **kw))
     def pay(invoice, booking, amount):
         return maintenance_projects.add_invoice_payment(store, invoice.id,
@@ -70,7 +71,7 @@ def test_overview_does_not_turn_manual_paid_flags_into_payment_evidence(finance)
 
 def test_overview_uses_partial_payments_reversals_and_calendar_due_day(finance):
     invoice, booking, pay = finance
-    today = date.today()
+    today = local_today()
     target = invoice(due_date=today)
     payment = booking(-100)
     pay(target, payment, 40)
@@ -100,7 +101,7 @@ def test_suggestions_never_spend_tenant_money_or_use_a_different_property(financ
     other = store.create_property(PropertyCreate(portfolio_id=store.get_property(target.property_id).portfolio_id,
                                                  name="Anderes Haus", property_type="MFH"))
     store.create_booking(BookingCreate(account_id=tenant_payment.account_id, property_id=other.id,
-                                       amount=-100, booking_date=date.today(), status="open"))
+                                       amount=-100, booking_date=local_today(), status="open"))
     result = invoices.match_invoice_to_bookings(target.id)
     assert result["allocations"] == []
     assert result["unmatched_amount"] == 100
