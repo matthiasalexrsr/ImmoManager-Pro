@@ -20,6 +20,7 @@ All 58 pages in five widths (1440 to 390 px), the main pages in dark mode, and t
 - **Tables:** a single word up to 24 characters (contract or invoice number) no longer breaks; the sort arrow of a number column stands right before its heading; the payment note of an invoice takes two lines.
 - **Forms** give the keyboard back to the button that opened them (WCAG 2.4.3).
 - The deposits page no longer scrolls sideways at 1024 px; the sidebar scrolls the current entry into view; the KPI arrow stays with its last word; the property page's unit and document lists; the document version form on phones; the notification inbox is no longer both lazy and static.
+- CI: vitest 4.1.12, since `npm audit` refuses 4.1.11 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp; test runner only, not in the app); a deposit test compared a float sum that changes with today's date and now compares cents.
 
 ## Unreleased — 2026-10-21 Round 12: audit of all calculations and bookings
 

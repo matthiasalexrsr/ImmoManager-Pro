@@ -413,7 +413,8 @@ def test_a_deposit_paid_before_the_app_is_taken_over_and_settled_with_its_intere
     assert detail["interest"]["carried"] == 15.0
     assert (detail["interest"]["years"][0]["year"], detail["interest"]["years"][0]["principal_start"],
             detail["interest"]["years"][0]["interest"]) == (2025, "1515.00", "15.15")
-    assert detail["interest"]["total"] == 15.0 + sum(float(y["interest"]) for y in detail["interest"]["years"])
+    # the running year's interest grows with today's date; compare in cents, not as a float sum
+    assert detail["interest"]["total"] == round(15.0 + sum(float(y["interest"]) for y in detail["interest"]["years"]), 2)
     listed = client.get(f"{BASE}/files").json()["items"][0]
     assert (listed["received"], listed["outstanding"], listed["stage"]) == (1500.0, 0.0, "received")
     # a booking before the takeover day is part of the carried amount
