@@ -248,7 +248,7 @@ export default function TaxExports() {
       <option value="annual-tax">Jahressteuerbasis (neutral)</option><option value="datev">DATEV EXTF ohne Umsatzsteuerautomatik</option></select></label>
     <label>Portfolio<select value={portfolio} disabled={busy} onChange={e => { resetContext(); setPortfolio(e.target.value); }}><option value="">Bitte wählen</option>
       {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label></div>
-    <aside>WISO Steuer Windows, Fachjahr 2026: Historische Musterexporte aus WISO Hausverwalter 365 belegen XML-Struktur und Feldschlüssel. Vollständige fachliche Feldzuordnung und Zielimport fehlen. Die neutrale Jahressteuerbasis ist keine WISO-Datei. Keine automatische AfA oder Eigentümerquote.
+    <aside>WISO Steuer Windows, Fachjahr 2026: Historische Musterexporte aus WISO Hausverwalter 365 belegen XML-Struktur und Feldschlüssel. Vollständige fachliche Feldzuordnung und Zielimport fehlen. Die neutrale Jahressteuerbasis ist keine WISO-Datei. Keine automatische AfA; Anteile je Eigentümer folgen den erfassten Eigentumsanteilen, ohne steuerliche Prüfung der Zurechnung.
       {annual && <button disabled={busy} onClick={async () => { const evidence = await action(() => api.get('/reports/annual-tax/wiso/evidence')); if (evidence) setWisoEvidence(evidence); }}>Herstellernachweise anzeigen</button>}
       {annual && wisoEvidence && <details open><summary>Nachweisgrenze: {wisoEvidence.producer_product} {wisoEvidence.producer_version}</summary>
         <p>{wisoEvidence.boundary}</p><ul>{wisoEvidence.missing_evidence.map(item => <li key={item}>{item}</li>)}</ul>
