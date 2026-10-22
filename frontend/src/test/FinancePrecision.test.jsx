@@ -48,6 +48,33 @@ describe('Tenant account totals', () => {
   });
 });
 
+describe('Tenant account with all claims', () => {
+  it('shows the total with the stored claims and settles a payment credited as rent', async () => {
+    const proposal = { contract_id: 'a', contract_number: 'MV-A', receivable_id: 'r1', description: 'Nebenkostenabrechnung 2025: Nachzahlung',
+      due_date: '2026-03-01', open: 120, amount: 120, booking_id: 'b9', booking_date: '2026-03-10', expected_revision: 'rev-1' };
+    const account = {
+      contracts: [{ contract_id: 'a', contract_number: 'MV-A', expected: 1800, paid: 1920, outstanding: 0, overpaid: 120,
+        claims: 120, credits: 0, total_balance: 0 }],
+      totals: { expected: 1800, paid: 1920, outstanding: 0, overpaid: 120, balance: -120, unassigned: 0, claims: 120, credits: 0, total_balance: 0 },
+      unassigned: [], settlement_suggestions: [proposal],
+    };
+    api.get.mockImplementation(path => Promise.resolve(path.includes('/account') ? account : { id: 't1', full_name: 'Anna Muster' }));
+    api.post.mockResolvedValue({ id: 's1' });
+    render(<MemoryRouter initialEntries={['/tenants/t1/account?as_of=2026-03-31']}>
+      <Routes><Route path="/tenants/:id/account" element={<TenantAccount />} /></Routes>
+    </MemoryRouter>);
+
+    const label = await screen.findByText('Gesamt offen (mit Forderungen)');
+    expect(label.parentElement.querySelector('.stat-value')).toHaveTextContent('0,00');
+    const proposals = screen.getByRole('region', { name: 'Vorschläge zum Ausgleich' });
+    expect(proposals).toHaveTextContent('Nebenkostenabrechnung 2025: Nachzahlung');
+    fireEvent.click(within(proposals).getByRole('button', { name: 'Ausgleich buchen' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/receivables/r1/settlements', expect.objectContaining({
+      expected_revision: 'rev-1', booking_id: 'b9', amount: 120 })));
+    expect(context.toast.success).toHaveBeenCalledWith('Ausgleich gebucht');
+  });
+});
+
 describe('Booking reversal', () => {
   const booking = { id: 'b1', tenant_id: null, account_id: 'a1', category_id: null, property_id: null, unit_id: null,
     booking_date: '2026-02-03', amount: 633.33, payment_text: 'Miete Februar', receipt_url: null, status: 'booked',

@@ -25,6 +25,8 @@ function TenantAccountSession({ id }) {
   const store = useDataStore();
   const party = usePartyWorkspace();
   const canWrite = useCanWrite('/tenants');
+  const canSettle = useCanWrite('/receivables');
+  const [settling, setSettling] = useState(null);
   const [editing, setEditing] = useState(false);
   const [tenant, setTenant] = useState(null);
   const [account, setAccount] = useState(null);
@@ -70,6 +72,25 @@ function TenantAccountSession({ id }) {
     balance: s.balance + c.outstanding - c.overpaid,
   }), { expected: 0, paid: 0, balance: 0 });
   const unassigned = account.totals?.unassigned ?? account.unassigned.reduce((s, b) => s + b.unassigned, 0);
+  // R12-20: the stored claims (back payments, credits, fees) belong to the same account; older servers send none
+  const claimsKnown = account.totals?.total_balance != null;
+  const suggestions = account.settlement_suggestions ?? [];
+  const settle = async proposal => {
+    setSettling(proposal.receivable_id);
+    try {
+      await api.post(`/receivables/${encodeURIComponent(proposal.receivable_id)}/settlements`, {
+        expected_revision: proposal.expected_revision, idempotency_key: crypto.randomUUID(),
+        booking_id: proposal.booking_id, amount: proposal.amount, effective_date: today < proposal.booking_date ? proposal.booking_date : today,
+        reason: 'Ausgleich aus dem Mietguthaben (§ 366 BGB), vorgeschlagen im Mieterkonto' });
+      toast.success('Ausgleich gebucht');
+      if (store) store.invalidateRelated('receivables', 'bookings');
+      setRevision(value => value + 1);
+    } catch (err) {
+      toast.error(err.message || 'Der Ausgleich ließ sich nicht buchen.');
+    } finally {
+      setSettling(null);
+    }
+  };
 
   return (
     <div className="page">
@@ -97,13 +118,47 @@ function TenantAccountSession({ id }) {
           <div className={`stat-value ${totals.balance > 0 ? 'text-red' : 'text-green'}`}>{eur(Math.abs(totals.balance))}</div>
         </button>
         <button type="button" className="stat-card kpi-action" onClick={() => showSources(unassignedSources)}><div className="stat-label">Nicht zugeordnet</div><div className="stat-value">{eur(unassigned)}</div></button>
+        {claimsKnown && (account.totals.claims || account.totals.credits) ? (
+          <button type="button" className="stat-card kpi-action" onClick={() => showSources(contractSources)}>
+            <div className="stat-label">{account.totals.total_balance >= 0 ? 'Gesamt offen (mit Forderungen)' : 'Gesamtguthaben (mit Forderungen)'}</div>
+            <div className={`stat-value ${account.totals.total_balance > 0 ? 'text-red' : 'text-green'}`}>{eur(Math.abs(account.totals.total_balance))}</div>
+          </button>) : null}
       </div>
+
+      {suggestions.length > 0 && (
+        <section className="card" aria-label="Vorschläge zum Ausgleich" style={{ marginBottom: '1rem' }}>
+          <div className="card-header"><strong>Ausgleich vorschlagen</strong></div>
+          <p className="text-muted" style={{ padding: '0 1rem' }}>
+            Eine Zahlung wurde als Miete gutgeschrieben, obwohl eine Forderung offen ist. Mit dem Ausgleich wird sie der Forderung zugeordnet; das Mietguthaben sinkt entsprechend.
+          </p>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Vertrag</th><th>Forderung</th><th>Fällig</th><th className="text-right">Offen</th><th>Zahlung</th><th className="text-right">Ausgleich</th><th><span className="sr-only">Aktion</span></th></tr></thead>
+              <tbody>
+                {suggestions.map(s => (
+                  <tr key={`${s.receivable_id}:${s.booking_id}`}>
+                    <td>{s.contract_number}</td>
+                    <td className="td-wrap">{s.description || 'Forderung'}</td>
+                    <td>{day(s.due_date)}</td>
+                    <td className="text-right td-num">{eur(s.open)}</td>
+                    <td><Link to={entityHref('booking', s.booking_id)}>{day(s.booking_date)}</Link></td>
+                    <td className="text-right td-num">{eur(s.amount)}</td>
+                    <td>{canSettle && <button type="button" className="btn btn-sm btn-primary" disabled={settling !== null}
+                      onClick={() => settle(s)}>Ausgleich buchen</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section ref={contractSources} aria-label="Vertragsquellen zum Stichtag" tabIndex={-1} className="card" style={{ marginBottom: '1rem' }}>
         <div className="card-header"><strong>Verträge</strong></div>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Vertrag</th><th className="text-right">Soll</th><th className="text-right">Gezahlt</th><th className="text-right">Offen</th><th className="text-right">Überzahlt</th></tr></thead>
+            <thead><tr><th>Vertrag</th><th className="text-right">Soll</th><th className="text-right">Gezahlt</th><th className="text-right">Offen</th><th className="text-right">Überzahlt</th>
+              {claimsKnown && <><th className="text-right">Forderungen</th><th className="text-right">Gesamtsaldo</th></>}</tr></thead>
             <tbody>
               {account.contracts.map(c => (
                 <tr key={c.contract_id}>
@@ -117,9 +172,13 @@ function TenantAccountSession({ id }) {
                   <td className="text-right td-num">{eur(c.paid)}</td>
                   <td className={`text-right td-num ${c.outstanding > 0 ? 'text-red' : ''}`}>{eur(c.outstanding)}</td>
                   <td className={`text-right td-num ${c.overpaid > 0 ? 'text-green' : ''}`}>{eur(c.overpaid)}</td>
+                  {claimsKnown && <>
+                    <td className="text-right td-num">{eur((c.claims || 0) - (c.credits || 0))}</td>
+                    <td className={`text-right td-num ${c.total_balance > 0 ? 'text-red' : c.total_balance < 0 ? 'text-green' : ''}`}>{eur(c.total_balance)}</td>
+                  </>}
                 </tr>
               ))}
-              {account.contracts.length === 0 && <tr><td colSpan={5} className="table-empty">Keine Verträge</td></tr>}
+              {account.contracts.length === 0 && <tr><td colSpan={claimsKnown ? 7 : 5} className="table-empty">Keine Verträge</td></tr>}
             </tbody>
           </table>
         </div>

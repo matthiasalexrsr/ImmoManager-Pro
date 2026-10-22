@@ -380,21 +380,31 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
     store = CachedReads(store)
     contracts = [c for c in store.list_contracts() if c.tenant_id == tenant_id]
     credited = [entry for entry in _credited(store, tenant_id) if entry[0].booking_date <= as_of]
-    rows = []
-    sums = {"expected": ZERO, "paid": ZERO, "outstanding": ZERO, "overpaid": ZERO}
+    from .receivable_residuals import ResidualReader
+    claims = ResidualReader(store)
+    rows, suggestions = [], []
+    sums = {"expected": ZERO, "paid": ZERO, "outstanding": ZERO, "overpaid": ZERO, "claims": ZERO, "credits": ZERO}
     for contract in contracts:
         receivables, payments = contract_ledger(store, contract, as_of, credited)
         balance = LeaseEngine.calculate_balance(receivables, payments)
+        # R12-20: the stored claims (back payments, credits, fees) due by then belong to the same account
+        due = [(claim, claims.balance(claim, as_of)) for claim in claims.claims.get(contract.id, [])
+               if claim.due_date <= as_of]
         values = {"expected": balance.expected_total, "paid": balance.paid_total,
-                  "outstanding": balance.outstanding_total, "overpaid": balance.overpaid_total}
+                  "outstanding": balance.outstanding_total, "overpaid": balance.overpaid_total,
+                  "claims": sum((rest for _, rest in due if rest > 0), ZERO),
+                  "credits": -sum((rest for _, rest in due if rest < 0), ZERO)}
         for name, value in values.items():
             sums[name] += value
         start, carried = takeover(contract)
         rows.append({"contract_id": contract.id, "contract_number": contract.contract_number,
                      **{name: as_number(value) for name, value in values.items()},
+                     "total_balance": as_number(values["outstanding"] - values["overpaid"] + values["claims"]
+                                                - values["credits"]),
                      # a tenancy taken over from a previous system: its account starts here
                      "ledger_start": start.isoformat() if start else None,
                      "carried_balance": as_number(carried) if start else None})
+        suggestions += _settlement_suggestions(claims, contract, balance.overpaid_total, due, credited)
     allocated: dict[str, Decimal] = defaultdict(lambda: ZERO)
     for booking, _, amount in credited:
         allocated[booking.id] += amount
@@ -410,10 +420,37 @@ def tenant_account(store: Any, tenant_id: str, as_of: date) -> dict:
                                "payment_text": booking.payment_text})
     totals = {name: as_number(value) for name, value in sums.items()}
     totals["balance"] = as_number(sums["outstanding"] - sums["overpaid"])
+    totals["total_balance"] = as_number(sums["outstanding"] - sums["overpaid"] + sums["claims"] - sums["credits"])
     totals["unassigned"] = as_number(unassigned_total)
     deposit_total = sum(deposit_shares(store, [b.id for b in own_bookings]).values(), ZERO)
     return {"tenant_id": tenant_id, "as_of": as_of.isoformat(), "contracts": rows, "totals": totals,
             "paid_total": as_number(sum((money(b.amount) for b in own_bookings), ZERO)),
             "deposit_total": as_number(deposit_total),
             "receivable_settlement_total": as_number(sum(shares.values(), ZERO) - deposit_total),
-            "unassigned": unassigned}
+            "unassigned": unassigned, "settlement_suggestions": suggestions}
+
+
+def _settlement_suggestions(claims: Any, contract: Any, overpaid: Decimal, due: list,
+                            credited: list[tuple[Any, str, Decimal]]) -> list[dict]:
+    """Rent paid beyond the rent while a stored claim of the contract is open: a proposal to settle it.
+
+    A payment on a back payment is first credited as rent; the rent account then shows a credit and
+    the claim stays open. Nothing is booked here: the user settles through the claim's settlement
+    (receivable_residuals.allocate), the earliest due claim first (§ 366 Abs. 2 BGB).
+    """
+    payments = sorted(((booking, amount) for booking, contract_id, amount in credited
+                       if contract_id == contract.id and amount > 0),
+                      key=lambda row: (row[0].booking_date, row[0].id), reverse=True)
+    left, proposals = overpaid, []
+    for claim, rest in sorted((row for row in due if row[1] > 0), key=lambda row: (row[0].due_date, row[0].id)):
+        if left <= 0 or not payments:
+            break
+        booking, credited_amount = payments[0]
+        amount = min(left, rest, credited_amount)
+        left -= amount
+        proposals.append({"contract_id": contract.id, "contract_number": contract.contract_number,
+                          "receivable_id": claim.id, "description": claim.description,
+                          "due_date": claim.due_date.isoformat(), "open": as_number(rest), "amount": as_number(amount),
+                          "booking_id": booking.id, "booking_date": booking.booking_date.isoformat(),
+                          "expected_revision": claims.read(claim, date.max)["revision"]})
+    return proposals
