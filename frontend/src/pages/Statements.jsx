@@ -499,6 +499,15 @@ export default function Statements() {
         { value: 'true', label: t('pages.statements.recoverableYes') || 'Ja – wird auf die Mieter verteilt' },
         { value: 'false', label: t('pages.statements.recoverableNo') || 'Nein – trägt der Eigentümer' },
       ]},
+    // HeizkostenV § 7: 50–70 % by consumption (the key above), the rest as fixed costs by area
+    { key: 'consumption_share', label: 'Verbrauchsanteil Heizkosten (%)', type: 'number', step: '1',
+      validate: value => value !== '' && value != null && (Number(value) < 50 || Number(value) > 70)
+        ? 'Nach der Heizkostenverordnung 50 bis 70 %.' : null,
+      hint: 'Nur für Heiz- und Warmwasserkosten mit einem Verbrauchsschlüssel: dieser Anteil nach Verbrauch, der Rest als Grundkosten.' },
+    { key: 'fixed_key_id', label: 'Schlüssel der Grundkosten', type: 'select',
+      options: [{ value: '', label: 'Fläche des Objekts (Standard)' },
+        ...allocationKeys.filter(k => k.property_id === selectedPeriod?.property_id && k.key_type !== 'consumption')
+          .map(k => ({ value: k.id, label: `${k.name} (${codeLabel(k.key_type)})` }))] },
   ];
 
   const handleSave = async (data) => {

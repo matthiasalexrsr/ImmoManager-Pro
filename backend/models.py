@@ -937,6 +937,10 @@ class CostItemCreate(BaseModel):
     gross_amount: Optional[float] = None
     # set by the transfer from a service contract bill (services.service_contracts); kept by corrections
     service_contract_invoice_id: Optional[str] = None
+    # heating and hot water (HeizkostenV § 7, § 8, R12-07): this percentage by the consumption key
+    # (allocation_key_id), the rest as fixed costs by fixed_key_id (else the property's area key)
+    consumption_share: Optional[float] = Field(default=None, ge=50, le=70)
+    fixed_key_id: Optional[str] = None
 
 
 class CostItem(CostItemCreate):
@@ -956,6 +960,8 @@ class CostItemPatch(BaseModel):
     vat_rate: Optional[float] = None
     net_amount: Optional[float] = None
     gross_amount: Optional[float] = None
+    consumption_share: Optional[float] = Field(default=None, ge=50, le=70)
+    fixed_key_id: Optional[str] = None
 
 
 _STATEMENT_PARTIES = {"tenant", "vacancy"}

@@ -230,7 +230,8 @@ def compute_period_billing(store: Any, period: Any, today: Optional[date] = None
                     ", ".join(ci.description for ci in non_positive))
 
     all_keys = {k.id: k for k in store.list_allocation_keys()}
-    used_key_ids = sorted({ci.allocation_key_id for ci in recoverable})
+    fixed_keys = _heating_split(result, recoverable, all_keys, period.property_id)
+    used_key_ids = sorted({ci.allocation_key_id for ci in recoverable} | set(fixed_keys.values()))
     missing_keys = [key_id for key_id in used_key_ids if key_id not in all_keys]
     if missing_keys:
         result.blocker("MISSING_ALLOCATION_KEYS", "Verteilerschlüssel für Kostenpositionen fehlen", ", ".join(missing_keys))
@@ -299,8 +300,50 @@ def compute_period_billing(store: Any, period: Any, today: Optional[date] = None
     if result.blockers or segments is None:
         return result
 
-    result.statements = _statements(period, keys, recoverable, shares, basis_units, advances, period_days, label)
+    result.statements = _statements(period, keys, recoverable, shares, basis_units, advances, period_days, label,
+                                    fixed_keys)
     return result
+
+
+HEATING_WORDS = ("heiz", "warmwasser", "wärme", "fernwärme")
+
+
+def _percent(value: Decimal) -> str:
+    return f"{float(value):g} %".replace(".", ",")
+
+
+def _heating_split(result: PeriodBilling, items: list, keys: dict, property_id: str) -> dict[str, str]:
+    """The key of the fixed costs of each heating cost shared by consumption (HeizkostenV § 7, R12-07).
+
+    A share needs a consumption key; the fixed costs go by the item's fixed_key_id, else by the
+    property's area key. Heating costs not shared by consumption get the § 12 warning.
+    """
+    area = sorted((k for k in keys.values() if k.property_id == property_id and k.key_type == "area_sqm"),
+                  key=lambda k: (k.name or "", k.id))
+    fixed: dict[str, str] = {}
+    for item in items:
+        key = keys.get(item.allocation_key_id)
+        if not item.consumption_share:
+            heating = (item.cost_category or "") in ("heating", "hot_water") or any(
+                word in (item.description or "").lower() for word in HEATING_WORDS)
+            if heating and key is not None and key.key_type != "consumption":
+                result.warn("HEATING_NOT_BY_CONSUMPTION",
+                            "Heiz- und Warmwasserkosten werden nicht nach Verbrauch verteilt; der Mieter darf seinen "
+                            "Anteil um 15 % kürzen (§ 12 HeizkostenV). Bitte 50 bis 70 % nach Verbrauch verteilen "
+                            "(Verbrauchsschlüssel und Verbrauchsanteil an der Kostenposition)", item.description)
+            continue
+        if key is not None and key.key_type != "consumption":
+            result.blocker("HEATING_SHARE_NEEDS_CONSUMPTION",
+                           "Ein Verbrauchsanteil braucht einen Verbrauchsschlüssel als Verteilerschlüssel",
+                           item.description)
+        chosen = keys.get(item.fixed_key_id) if item.fixed_key_id else (area[0] if area else None)
+        if chosen is None or chosen.property_id != property_id or chosen.key_type == "consumption":
+            result.blocker("HEATING_FIXED_KEY_MISSING",
+                           "Für die Grundkosten fehlt ein Schlüssel nach Fläche (oder ein anderer fester Schlüssel) "
+                           "dieses Objekts", item.description)
+            continue
+        fixed[item.id] = chosen.id
+    return fixed
 
 
 def _check_contracts(result: PeriodBilling, contracts: list, unit_by_id: dict, today: date) -> None:
@@ -730,15 +773,26 @@ def _section_rows(sections: tuple[Section, ...]) -> Optional[list[dict]]:
             for s in sections]
 
 
-def _statements(period, keys, cost_items, shares, basis_units, advances, period_days, label
-                ) -> list[UtilityStatementCreate]:
+def _statements(period, keys, cost_items, shares, basis_units, advances, period_days, label,
+                fixed_keys: Optional[dict[str, str]] = None) -> list[UtilityStatementCreate]:
     engine = BillingEngine()
     for key_id, key_shares in shares.items():
         for share in key_shares:
             s = share.segment
             engine.add_unit_share(key_id, UnitShare(s.unit_id, s.contract_id, share.value, s.start, s.end))
     for item in cost_items:
-        engine.add_cost(CostEntry(item.description, _decimal(item.amount), item.allocation_key_id, cost_id=item.id))
+        amount = _decimal(item.amount)
+        fixed_key = (fixed_keys or {}).get(item.id)
+        if item.consumption_share and fixed_key:
+            # HeizkostenV § 7: the consumption part (cents rounded half up) and the fixed costs as the rest
+            share = _decimal(item.consumption_share)
+            by_use = money(amount * share / 100)
+            engine.add_cost(CostEntry(f"{item.description} – Verbrauch {_percent(share)}", by_use,
+                                      item.allocation_key_id, cost_id=item.id))
+            engine.add_cost(CostEntry(f"{item.description} – Grundkosten {_percent(100 - share)}", amount - by_use,
+                                      fixed_key, cost_id=item.id))
+            continue
+        engine.add_cost(CostEntry(item.description, amount, item.allocation_key_id, cost_id=item.id))
     for contract_id, (unit_id, total, _) in advances.items():
         engine.add_advance(AdvancePayment(unit_id, contract_id, total))
 

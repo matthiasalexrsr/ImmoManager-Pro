@@ -622,6 +622,9 @@ class CostItemORM(Base):
     # the service contract bill this cost came from (no FK: an SQLite downgrade drops the column in place);
     # unique per period, so a bill reaches one statement once, also through a correction's copy
     service_contract_invoice_id: Mapped[str | None] = mapped_column(String(36))
+    # HeizkostenV § 7: the share by consumption (50–70 %) and the key of the fixed costs (no FK, as above)
+    consumption_share: Mapped[float | None] = mapped_column(Numeric(5, 2, asdecimal=False))
+    fixed_key_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

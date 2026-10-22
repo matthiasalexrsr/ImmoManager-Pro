@@ -910,3 +910,44 @@ def test_http_occupancies_objections_and_meter_units():
     assert [o["reason"] for o in objections.json()] == ["Fläche"]
     assert (meter.json()["measure_unit"], meter.json()["removal_date"]) == ("MWh", "2025-06-30")
     assert regenerate.status_code == 409
+
+
+def test_h_heating_costs_are_shared_by_consumption_and_area():
+    """R12-07: HeizkostenV § 7 wants 50-70 % by consumption, the rest by area; heating shared by
+    area alone lets the tenant cut 15 % (§ 12)."""
+    prop = _property()
+    first, second = _unit(prop, "WE 01", 60), _unit(prop, "WE 02", 40)
+    _lease(prop, first, "C-1")
+    _lease(prop, second, "C-2")
+    _meter(first, "heating", [(date(2025, 1, 1), 0), (date(2025, 12, 31), 1000)], measure_unit="kWh")
+    _meter(second, "heating", [(date(2025, 1, 1), 0), (date(2025, 12, 31), 3000)], measure_unit="kWh",
+           serial_number="WMZ-2")
+    use = _key(prop, "consumption", "Wärmemenge", meter_type="heating", measure_unit="kWh")
+    area = _key(prop, "area_sqm", "Fläche")
+    by_area = _period(prop, [("Heizkosten", 1000, area)], label="BK 2025 Fläche")
+    assert "HEATING_NOT_BY_CONSUMPTION" in _issues(by_area)[1]
+
+    period = _period(prop, [("Heizkosten", 1000, use)])
+    (item,) = [ci for ci in store.list_cost_items() if ci.billing_period_id == period.id]
+    store.update_cost_item(item.id, CostItemCreate(**{
+        **item.model_dump(include=set(CostItemCreate.model_fields)), "consumption_share": 70}))
+    blockers, warnings = _issues(period)
+    assert not blockers and "HEATING_NOT_BY_CONSUMPTION" not in warnings
+    rows = _by(billing.generate_utility_statements(period.id), "unit_id")
+
+    # 700 € by 1,000 : 3,000 kWh -> 175 / 525; 300 € by 60 : 40 m² -> 180 / 120
+    assert (rows[(first.id,)].total_cost, rows[(second.id,)].total_cost) == (355.0, 645.0)
+    lines = {line["description"]: line["allocated_amount"] for line in rows[(first.id,)].line_items}
+    assert lines == {"Heizkosten – Verbrauch 70 %": 175.0, "Heizkosten – Grundkosten 30 %": 180.0}
+
+
+def test_h_a_consumption_share_needs_a_consumption_key():
+    prop = _property()
+    flat = _unit(prop, "WE 01", 60)
+    _lease(prop, flat, "C-1")
+    area = _key(prop, "area_sqm", "Fläche")
+    period = _period(prop, [("Heizkosten", 1000, area)])
+    (item,) = [ci for ci in store.list_cost_items() if ci.billing_period_id == period.id]
+    store.update_cost_item(item.id, CostItemCreate(**{
+        **item.model_dump(include=set(CostItemCreate.model_fields)), "consumption_share": 60}))
+    assert "HEATING_SHARE_NEEDS_CONSUMPTION" in _issues(period)[0]
