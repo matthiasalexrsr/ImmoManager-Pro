@@ -31,6 +31,7 @@ from ..domain.calendar_days import national_holidays
 from . import daily_state as state
 from . import document_versions as archive
 from . import price_index
+from .ownership import owners_on
 from .settings_catalogue import record_audit, rule
 
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+(?:\.[a-z_]+)*)\s*\}\}")
@@ -53,6 +54,7 @@ GENERAL = {
     "vermieter.bankverbindung": "Bankverbindung (eine Zeile)",
     "mieter.name": "Name des Mieters",
     "mieter.anschrift": "Anschrift des Mieters (eine Zeile)",
+    "eigentuemer.namen": "Eigentümer der Einheit zum Briefdatum",
     "objekt.name": "Name des Objekts",
     "objekt.anschrift": "Anschrift des Objekts (eine Zeile)",
     "einheit.bezeichnung": "Bezeichnung der Einheit",
@@ -592,6 +594,9 @@ def evaluate(kind: str, source: dict, inputs: dict, issue: date) -> dict[str, An
         "vermieter.anschrift": ", ".join(line.strip() for line in (head.get("sender_address") or "").split("\n") if line.strip()) or None,
         "vermieter.bankverbindung": ", ".join(line.strip() for line in (head.get("bank") or "").split("\n") if line.strip()) or None,
         "mieter.name": tenant["full_name"], "mieter.anschrift": _address(tenant) or None,
+        # the recorded owners on the letter date (services.ownership.timeline), else the portfolio's owner
+        "eigentuemer.namen": ", ".join(owner["name"] for owner in owners_on(source.get("owners") or [], issue))
+        or (source.get("portfolio") or {}).get("owner_name") or None,
         "objekt.name": prop["name"], "objekt.anschrift": _address(prop) or prop["name"],
         "einheit.bezeichnung": location["label"],
         "einheit.wohnflaeche": f"{number(area)} m²" if area else None,

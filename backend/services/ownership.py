@@ -352,6 +352,39 @@ def owners(store: Any) -> list[dict[str, Any]]:
     return sorted(found, key=lambda owner: (owner["name"].lower(), owner["id"]))
 
 
+def timeline(store: Any, property_id: str, unit_id: Optional[str]) -> list[dict[str, Any]]:
+    """Who owns a property or unit from when to when, largest share first; empty without a recorded owner.
+
+    For sources frozen once and read for any day (letters: contract_letters._source).
+    """
+    ownership = Ownership(store)
+    names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
+    periods: list[dict[str, Any]] = []
+    changes = ownership._change_days(property_id)
+    starts: list[Optional[date]] = [None, *changes]
+    ends: list[Optional[date]] = [*(day - timedelta(days=1) for day in changes), None]
+    for start, end in zip(starts, ends):
+        weights = ownership.weights(property_id, unit_id, start or date.min)
+        owners = [{"owner_contact_id": owner, "name": names.get(owner, "Eigentümer"), "percent": str(percent)}
+                  for owner, percent in sorted(weights.items(), key=lambda item: (-item[1], item[0] or ""))
+                  if owner and percent > 0]
+        if periods and periods[-1]["owners"] == owners:
+            periods[-1]["valid_to"] = end.isoformat() if end else None
+            continue
+        periods.append({"valid_from": start.isoformat() if start else None,
+                        "valid_to": end.isoformat() if end else None, "owners": owners})
+    return periods if any(period["owners"] for period in periods) else []
+
+
+def owners_on(periods: list[dict[str, Any]], day: date) -> list[dict[str, Any]]:
+    """The owners of a timeline() on a day."""
+    text = day.isoformat()
+    for period in periods:
+        if (period["valid_from"] or "") <= text and (period["valid_to"] is None or text <= period["valid_to"]):
+            return period["owners"]
+    return []
+
+
 def overview(store: Any, property_id: str, day: date) -> dict[str, Any]:
     """Who owns the property and each of its units on a day, as the reports split their money."""
     prop = store.get_property(property_id)

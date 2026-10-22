@@ -114,6 +114,26 @@ def test_source_suggests_but_never_fills_in_the_actual_move_in(client, lease):
     assert body["source"]["wizard"] is None and body["source_etags"]["wizard_revision"] is None
 
 
+def test_the_owner_suggestion_names_the_recorded_owners_on_the_contract_start(client, lease):
+    from backend.models import ContactCreate
+    from backend.models_ownership import OwnershipShareCreate
+    from backend.services import ownership
+
+    url = _base(lease["contract"].id) + "/source"
+    assert client.get(url).json()["suggestions"]["owner_name"] == "Linda Reiser"     # no shares: the portfolio's owner
+    anna = store.create_contact(ContactCreate(contact_type="owner", first_name="Anna", last_name="Berg"))
+    ben = store.create_contact(ContactCreate(contact_type="owner", first_name="Ben", last_name="Berg"))
+    shares = [ownership.create_share(store, OwnershipShareCreate(owner_contact_id=owner.id, property_id=lease["property"].id,
+                                                                 share_percent=percent, valid_from=date(2024, 6, 1)), None)
+              for owner, percent in ((ben, 30), (anna, 70))]
+    # the owners from June on did not own the dwelling when the contract began
+    assert client.get(url).json()["suggestions"]["owner_name"] == "Linda Reiser"
+    for share in shares:
+        ownership.update_share(store, share.id, OwnershipShareCreate(
+            **share.model_dump(include=set(OwnershipShareCreate.model_fields)) | {"valid_from": None}), None)
+    assert client.get(url).json()["suggestions"]["owner_name"] == "Anna Berg, Ben Berg"      # largest share first
+
+
 def test_preview_publish_and_retry_store_exactly_one_verified_original(client, lease):
     contract_id = lease["contract"].id
     payload, review = _preview(client, contract_id)

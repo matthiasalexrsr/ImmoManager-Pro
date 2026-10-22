@@ -136,6 +136,21 @@ def _source_snapshot(contract, prop, location, tenant, portfolio) -> tuple[dict,
     return source, etags
 
 
+def _owner_names(store, prop, location, day) -> str | None:
+    """The owners of the dwelling on the contract start by the shares recorded (services.ownership), largest first."""
+    from .ownership import Ownership, owner_name
+
+    weights = Ownership(store).weights(prop.id, location.id, day)
+    owners = sorted((owner for owner, percent in weights.items() if owner and percent > 0), key=lambda owner: -weights[owner])
+    names = []
+    for owner in owners:
+        try:
+            names.append(owner_name(store.get_contact(owner)))
+        except NotFoundError:       # a share naming a contact out of reach: no suggestion rather than a partial one
+            return None
+    return ", ".join(names) or None
+
+
 def source(store, contract_id: str, actor_id: str) -> dict[str, Any]:
     with archive.work(store, actor_id) as unit:
         contract, prop, location, tenant, portfolio = _parents(unit, contract_id)
@@ -151,7 +166,7 @@ def source(store, contract_id: str, actor_id: str) -> dict[str, Any]:
                 "housing_provider_address": defaults["document_address"] or None,
                 "issuer_name": defaults["document_signature"],
                 "issuer_role": defaults["document_profile"],
-                "owner_name": portfolio.owner_name,
+                "owner_name": _owner_names(unit.store, prop, location, contract.start_date) or portfolio.owner_name,
                 "apartment_address": _address(prop),
                 "apartment_label": location.label,
                 "resident_names": [tenant.full_name],

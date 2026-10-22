@@ -316,6 +316,27 @@ def test_own_templates_are_checked_versioned_and_archived(case):
     assert template["id"] in [item["id"] for item in client.get("/api/v1/letter-templates?archived=true").json()["items"]]
 
 
+def test_the_owners_placeholder_names_the_owners_on_the_letter_date(case):
+    from backend.models import ContactCreate
+    from backend.models_ownership import OwnershipShareCreate
+    from backend.services import ownership
+
+    created = case["client"].post("/api/v1/letter-templates", json={
+        "kind": "free", "name": "Eigentümer", "subject": "Eigentümer", "body": "Eigentümer: {{eigentuemer.namen}}",
+        "idempotency_key": "template-owners-01"})
+    assert created.status_code == 201, created.text
+    template = created.json()["id"]
+    assert compose(case, template)["data"]["body"] == "Eigentümer: Linda Reiser"      # no shares: the portfolio's owner
+    anna = store.create_contact(ContactCreate(contact_type="owner", first_name="Anna", last_name="Berg"))
+    ben = store.create_contact(ContactCreate(contact_type="owner", first_name="Ben", last_name="Berg"))
+    for owner, first, last in ((anna, None, date(2026, 6, 30)), (ben, date(2026, 7, 1), None)):
+        ownership.create_share(store, OwnershipShareCreate(owner_contact_id=owner.id, property_id=case["property"].id,
+                                                           share_percent=100, valid_from=first, valid_to=last), None)
+    assert compose(case, template)["data"]["body"] == "Eigentümer: Ben Berg"
+    assert compose(case, template, issue="2026-03-01")["data"]["body"] == "Eigentümer: Anna Berg"
+    assert templates.known_placeholders("free")["eigentuemer.namen"] == "Eigentümer der Einheit zum Briefdatum"
+
+
 def _png(width=600, height=200, mode="RGBA"):
     output = BytesIO()
     Image.new(mode, (width, height), (18, 111, 104, 255) if mode == "RGBA" else (18, 111, 104)).save(output, "PNG")

@@ -147,6 +147,10 @@ def _source(unit, contract_id: str, *, lock: bool = False):
         "letterhead": letterhead.source(unit, prop.id, fallback_sender=portfolio.owner_name or portfolio.name),
         "price_index": {key: value for key, value in price_index.read(unit).items() if key != "revision"},
     }
+    from .ownership import timeline
+    owners = timeline(unit.store, prop.id, location.id)
+    if owners:                      # only then: the sources of letters without recorded owners stay the same
+        source["owners"] = owners
     return source, contract, prop, location, tenant
 
 
