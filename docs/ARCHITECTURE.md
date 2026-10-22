@@ -47,6 +47,9 @@ Beide Speicher sind gleichwertig: Jeder Backend-Test läuft in CI mit `TEST_STOR
    - Spalten nur anlegen, wenn sie fehlen: Datenbanken aus `create_all` haben sie schon.
    - Der Downgrade verweigert sich, solange Daten in den Spalten stehen.
    - Unter SQLite die Spalte mit `ALTER TABLE … DROP COLUMN` entfernen, nicht per Batch-Neuaufbau, sonst gehen Trigger verloren.
+   - Indizes und Constraints gehören ebenso in die Migration wie Spalten. Neue Installationen bekommen ihr Schema aus `create_all`, bestehende aus den Migrationen. `backend/tests/test_schema_parity.py` vergleicht beide Wege (Tabellen, Spalten, Indizes, Fremdschlüssel, Trigger), unter PostgreSQL auch im PostgreSQL-Gate.
+   - Die neue Revision zusätzlich in `ORM_ADOPTION_TARGETS` (`backend/db/migrations/env.py`) eintragen. Sonst scheitert das Upgrade alter Desktop-Datenbanken ohne Versionsstand (ein Test meldet es).
+   - Ein neues Modul `backend/db/*_models.py` braucht seinen Import in `schema_state.initialise_empty`. Der Paritätstest baut die neue Installation in einem eigenen Prozess und bemerkt eine fehlende Tabelle.
 3. **Pydantic-Felder** in `XCreate` und `XPatch` eintragen. Prüfungen über mehrere Felder gehören als `model_validator` in `XCreate`, denn PATCH prüft den zusammengeführten Datensatz.
 4. Beide Stores übernehmen Felder automatisch, Snapshots (Export und Import) ebenfalls. Ein Roundtrip-Test sichert das ab.
 5. **Formularfeld** in der Seite (`fields` der `FormModal`).

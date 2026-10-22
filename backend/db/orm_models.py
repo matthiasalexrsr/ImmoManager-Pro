@@ -1,6 +1,7 @@
 """SQLAlchemy 2.0 declarative ORM models.
 
-Maps to the PostgreSQL schema in db/schema.sql. Also works with SQLite for dev/test.
+The schema of SQLite and PostgreSQL databases: new installations create it from these models
+(schema_state.initialise_empty), existing ones reach it through the migrations (backend/db/migrations).
 """
 
 import uuid
@@ -1015,7 +1016,10 @@ class EscalationRuleORM(Base):
 
 class ChangeHistoryORM(Base):
     __tablename__ = "change_history"
-    __table_args__ = (Index("idx_change_history_cursor", "changed_at", "id"),)
+    __table_args__ = (
+        Index("idx_change_history_cursor", "changed_at", "id"),
+        Index("idx_change_history_entity", "entity_type", "entity_id"),   # the history of one record
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[str] = mapped_column(String(36))

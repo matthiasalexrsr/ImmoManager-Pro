@@ -29,7 +29,8 @@ def test_sqlite_upgrade_preserves_existing_long_keys_and_refuses_lossy_downgrade
         with pytest.raises(RuntimeError, match='longer than 64'):
             migrate.downgrade(PREVIOUS)
         with engine.connect() as connection:
-            assert connection.execute(sa.text('SELECT version_num FROM alembic_version')).scalar() == migrate.head
+            # SQLite has no transactional DDL: the downgrade stops at the migration that refuses it
+            assert connection.execute(sa.text('SELECT version_num FROM alembic_version')).scalar() == 'c7e9a1b3d5f7'
             assert connection.execute(sa.text('SELECT count(*) FROM job_occurrences')).scalar() == 2
         assert isinstance(sa.inspect(engine).get_columns('job_occurrences')[2]['type'], sa.Text)
     finally:

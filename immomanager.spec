@@ -295,11 +295,6 @@ seed_file = os.path.join(ROOT, 'seed_data.py')
 if os.path.isfile(seed_file):
     backend_data.append((seed_file, '.'))
 
-# Include db/schema.sql
-db_schema = os.path.join(ROOT, 'db', 'schema.sql')
-if os.path.isfile(db_schema):
-    backend_data.append((db_schema, 'db'))
-
 a = Analysis(
     ['backend/__main__.py'],
     pathex=[ROOT, WIZARD_ROOT],
