@@ -199,3 +199,24 @@ def test_two_heirs_on_one_day_are_undone_one_after_the_other(estate):
                                     ("Sabine", 50, None, "2026-08-31")]
     call("POST", f"/ownership-shares/transfers/{firsts[0]['id']}/revert")
     assert held(estate, "WE 2") == [("Richard", 50, None, None), ("Sabine", 50, None, None)]
+
+
+def test_a_restored_backup_keeps_account_holders_and_owner_changes_with_their_undo(estate):
+    from backend.services.data_snapshot import export_snapshot, import_snapshot
+
+    call = estate["call"]
+    estate["share"]("Richard", 100, "WE 1")
+    account = estate["post"]("/accounts", {"portfolio_id": estate["pf"], "name": "Konto Richard", "account_type": "bank",
+                                           "owner_contact_id": estate["people"]["Richard"]})
+    first = estate["transfer"]("Richard", [("Linda", 100)], "2026-10-01", "WE 1")
+    second = estate["transfer"]("Linda", [("Sabine", 100)], "2026-11-01", "WE 1")
+    call("POST", f"/ownership-shares/transfers/{second['id']}/revert")
+    snapshot = export_snapshot(store)
+    import_snapshot(store, snapshot, replace=True)
+    assert call("GET", f"/accounts/{account['id']}")["owner_contact_id"] == estate["people"]["Richard"]
+    journal = {t["id"]: t for t in call("GET", f"/ownership-shares/history?property_id={estate['house']}")["transfers"]}
+    assert journal[second["id"]]["reverted_at"] and not journal[second["id"]]["revertible"]
+    assert journal[first["id"]]["revertible"]
+    # the restored change still knows what it did, so it can be undone
+    call("POST", f"/ownership-shares/transfers/{first['id']}/revert")
+    assert held(estate, "WE 1") == [("Richard", 100, None, None)]
