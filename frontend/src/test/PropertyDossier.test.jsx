@@ -403,6 +403,8 @@ describe('property page as the place to act on a property', () => {
     expect(within(form).getByLabelText('Name *')).toHaveValue('Haus Alpha');
     api.get.mockImplementation(path => (path === '/properties/p1'
       ? Promise.resolve({ ...properties.p1, year_built: 1928 }) : Promise.resolve(undefined)));
+    // the form opens once its saved drafts are checked; a submit before that is ignored
+    await waitFor(() => expect(within(form).getByLabelText('Baujahr')).toBeEnabled());
     fireEvent.change(within(form).getByLabelText('Baujahr'), { target: { value: '1928' } });
     fireEvent.submit(form.querySelector('form'));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith('/properties/p1', expect.objectContaining({ year_built: 1928 })));

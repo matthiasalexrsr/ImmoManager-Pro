@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { entityHref } from '../../utils/entityLinks';
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { Building2, CalendarDays, Check, ClipboardCheck, Copy, FileCheck, FileText, Mail, MapPin, Phone, PiggyBank, UserRound, X } from 'lucide-react';
@@ -62,7 +62,8 @@ function CopyButton({ value, label }) {
   const [error, setError] = useState(false);
   const timerRef = useRef(null);
   const mountedRef = useRef(false);
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; clearTimeout(timerRef.current); }; }, []);
+  // set while the button is on the page: a click right after it appears must not be ignored
+  useLayoutEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; clearTimeout(timerRef.current); }; }, []);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value);
