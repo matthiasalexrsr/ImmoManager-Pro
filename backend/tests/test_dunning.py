@@ -172,7 +172,7 @@ def test_stages_follow_their_timing_and_charge_fee_and_interest_from_stage_two(c
         f"Mahngebühr 1. Mahnung ({first['reference']})", f"Verzugszinsen bis 25.07.2026 ({first['reference']})"}
     third = _preview(client, owner, "2026-08-09", contract_id=contract)["entries"][0]["letter"]
     # earlier fee and interest are claimed again, interest only from the 26.7. on (no double charge)
-    assert third["earlier_charges_total"] == 6.28 and third["fee"] == 5.0
+    assert third["earlier_charges_total"] == 6.28 and third["fee"] == 2.5     # R12-18: cost of a letter
     assert third["lines"][0]["interest_from"] == "2026-07-26"
     assert third["interest"] == 2.58                          # 1000 × 6.27 % × 15 / 365
     _letter(client, owner, contract, "2026-08-09")

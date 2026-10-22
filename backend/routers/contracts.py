@@ -35,8 +35,8 @@ class DunningPolicyRequest(BaseModel):
     level_2_after_days: int = 14
     level_3_after_days: int = 30
     fee_level_1: float = 2.50
-    fee_level_2: float = 5.00
-    fee_level_3: float = 7.50
+    fee_level_2: float = 2.50
+    fee_level_3: float = 2.50
 
 
 @router.get("", response_model=list[Contract])

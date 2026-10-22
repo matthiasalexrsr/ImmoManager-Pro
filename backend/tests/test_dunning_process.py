@@ -129,6 +129,11 @@ def test_stage_one_after_the_due_date_later_stages_after_letter_and_deadline():
                       last_deadline=None).stage is None
 
 
+def test_the_default_fees_are_the_cost_of_a_letter():
+    """R12-18: a consumer owes only the actual cost; 5 € per letter is often refused."""
+    assert [rule.fee for rule in DEFAULT_RULES] == [Decimal("0.00")] + [Decimal("2.50")] * 3
+
+
 def test_stage_settings_need_all_four_stages_and_sane_values():
     assert [r.stage for r in check_rules(list(reversed(DEFAULT_RULES)))] == [1, 2, 3, 4]
     with pytest.raises(ValueError):

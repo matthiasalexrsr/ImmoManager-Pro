@@ -52,11 +52,14 @@ class StageRule:
     charge_interest: bool = True
 
 
+# R12-18: a consumer owes only the actual cost of a letter (postage, material); flat fees above
+# about 2.50 € are often refused in court. The fees stay adjustable in the settings.
+REMINDER_FEE = Decimal("2.50")
 DEFAULT_RULES: tuple[StageRule, ...] = (
     StageRule(1, "Zahlungserinnerung", 7, Decimal("0.00"), 14, False),
-    StageRule(2, "1. Mahnung", 14, Decimal("2.50"), 14, True),
-    StageRule(3, "2. Mahnung", 14, Decimal("5.00"), 10, True),
-    StageRule(4, "Letzte Mahnung vor Abgabe", 14, Decimal("5.00"), 7, True),
+    StageRule(2, "1. Mahnung", 14, REMINDER_FEE, 14, True),
+    StageRule(3, "2. Mahnung", 14, REMINDER_FEE, 10, True),
+    StageRule(4, "Letzte Mahnung vor Abgabe", 14, REMINDER_FEE, 7, True),
 )
 
 
