@@ -59,7 +59,7 @@ const COLUMNS = [
       : value === 'credit_note' ? <span className="badge badge-gray">Gutschrift</span>
         : value === 'overpaid' ? <span className="badge badge-yellow">Überzahlt</span>
           : <StatusBadge status={value} />}
-    {row.payment_summary.note && <span className="td-sub">{row.payment_summary.note}</span>}
+    {row.payment_summary.note && <span className="td-sub td-clamp">{row.payment_summary.note}</span>}
   </span> },
   { key: 'status', label: 'Manueller Status', hidden: true, type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },

@@ -7,6 +7,7 @@ import { PlusIcon, EditIcon, TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import BulkBar from './BulkBar';
 import EntityLink from './EntityLink';
+import RowActionMenu from './RowActionMenu';
 import { formatDate, formatMoney, formatNumber, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
@@ -95,7 +96,10 @@ function cellContent(col, row) {
       </span>
     );
   }
-  return <span className="cell-text" title={text.length > 24 ? text : undefined}>{linked(col.link, row, text)}</span>;
+  // A single word up to 24 characters (a contract or invoice number, an IBAN group, a code) is never broken.
+  const token = text.length <= 24 && !/\s/.test(text);
+  return <span className={`cell-text${token ? ' cell-nowrap' : ''}`} title={text.length > 24 ? text : undefined}>
+    {linked(col.link, row, text)}</span>;
 }
 
 
@@ -141,9 +145,18 @@ function sumLabel(col, value) {
   return col.sum === 'number' ? (col.formatTotal ? col.formatTotal(value) : formatNumber(value, 2)) : formatMoney(value);
 }
 
+// A row shows at most this many action buttons; with more, the first INLINE_ROW_ACTIONS of the page's own
+// actions and "Bearbeiten" stay, the others and "Löschen" are in the row's "⋯" menu.
+const MAX_ROW_ACTIONS = 5;
+const INLINE_ROW_ACTIONS = 3;
+
+function isRight(col) {
+  return col.align === 'right' || (col.align == null && NUMERIC_TYPES.has(col.type));
+}
+
 function cellClass(col) {
   return [
-    col.align === 'right' || (col.align == null && NUMERIC_TYPES.has(col.type)) ? 'text-right td-num' : '',
+    isRight(col) ? 'text-right td-num' : '',
     col.wrap ? 'td-wrap' : '',
   ].filter(Boolean).join(' ') || undefined;
 }
@@ -756,8 +769,10 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                   aria-sort={!serverPaged && col.sortable !== false ? (sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                 >
                   {!serverPaged && col.sortable !== false ? <button type="button" className="table-sort-button">
+                    {/* a number column's heading ends over its numbers, so its arrow comes first */}
+                    {isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? '↑ ' : '↓ ') : '↕ '}</span>}
                     {plainLabel(col.label)}
-                    <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+                    {!isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>}
                   </button> :
                   <span className="th-content">
                     {plainLabel(col.label)}
@@ -904,32 +919,49 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                       {cellContent(col, row)}
                     </td>
                   ))}
-                  {hasActions && (
-                    <td className="action-cell" onClick={e => e.stopPropagation()}>
-                      {rowActions?.(row).map(action => (
-                        // an action without an icon shows its label, never an empty button
-                        <button key={action.label} onClick={event => action.onClick(row, event)}
-                                className={`btn btn-sm btn-ghost${action.icon ? '' : ' row-action-text'}`}
-                                aria-label={action.label} aria-description={String(bulkWords.rowName(row))} title={action.label}>
-                          {action.icon || action.label}
-                        </button>
-                      ))}
-                      {onEdit && (
-                        <button onClick={() => { markRow(row); onEdit(row); }} className="btn btn-sm btn-ghost"
-                          aria-label={t('ui.buttons.edit')} aria-description={String(bulkWords.rowName(row))}
-                          title={t('ui.buttons.edit')}>
-                          <EditIcon size={15} />
-                        </button>
-                      )}
-                      {onDelete && (
-                        <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost"
-                          aria-label={t('ui.buttons.delete')} aria-description={String(bulkWords.rowName(row))}
-                          title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
-                          <TrashIcon size={15} />
-                        </button>
-                      )}
-                    </td>
-                  )}
+                  {hasActions && (() => {
+                    // Many actions do not fit beside the data: the first ones and "Bearbeiten" stay in
+                    // the row, the rest (and "Löschen") go into the row's "⋯" menu with their labels.
+                    const extra = rowActions?.(row) || [];
+                    const crowded = extra.length + (onEdit ? 1 : 0) + (onDelete ? 1 : 0) > MAX_ROW_ACTIONS;
+                    const inline = crowded ? extra.slice(0, INLINE_ROW_ACTIONS) : extra;
+                    const name = String(bulkWords.rowName(row));
+                    const menu = crowded ? [
+                      ...extra.slice(INLINE_ROW_ACTIONS).map(action => ({
+                        key: action.label, label: action.label, icon: action.icon,
+                        onSelect: event => action.onClick(row, event) })),
+                      ...(onDelete ? [{ key: 'delete', label: t('ui.buttons.delete'), icon: <TrashIcon size={15} />,
+                        danger: true, onSelect: () => onDelete(row) }] : []),
+                    ] : [];
+                    return (
+                      <td className="action-cell" onClick={e => e.stopPropagation()}>
+                        {inline.map(action => (
+                          // an action without an icon shows its label, never an empty button
+                          <button key={action.label} onClick={event => action.onClick(row, event)}
+                                  className={`btn btn-sm btn-ghost${action.icon ? '' : ' row-action-text'}`}
+                                  aria-label={action.label} aria-description={name} title={action.label}>
+                            {action.icon || action.label}
+                          </button>
+                        ))}
+                        {onEdit && (
+                          <button onClick={() => { markRow(row); onEdit(row); }} className="btn btn-sm btn-ghost"
+                            aria-label={t('ui.buttons.edit')} aria-description={name}
+                            title={t('ui.buttons.edit')}>
+                            <EditIcon size={15} />
+                          </button>
+                        )}
+                        {crowded && <RowActionMenu items={menu} description={name}
+                          label={tr('comp.dataTable.moreActions', 'Weitere Aktionen')} />}
+                        {onDelete && !crowded && (
+                          <button onClick={() => onDelete(row)} className="btn btn-sm btn-ghost"
+                            aria-label={t('ui.buttons.delete')} aria-description={name}
+                            title={t('ui.buttons.delete')} style={{ color: 'var(--color-danger)' }}>
+                            <TrashIcon size={15} />
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })()}
                 </tr>
               ))
             )}

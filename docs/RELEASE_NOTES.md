@@ -109,6 +109,11 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Nebenkosten: Eine Nachzahlung, deren Abrechnung erst nach Ablauf der Abrechnungsfrist beim Mieter ankommt, wird nicht mehr als Forderung angelegt (§ 556 Abs. 3 BGB); Guthaben schon. Hat der Vermieter die Verspätung nicht zu vertreten, lässt sie sich ausdrücklich doch anlegen. Bei Gewerbe gilt die Frist nicht. Fehlt beim Mieterwechsel nur eine Zwischenablesung, teilen sich die übrigen Zeiträume genau den Rest des Jahresverbrauchs.
   - Mahnungen für Gewerbeeinheiten berechnen Verzugszinsen mit 9 statt 5 Prozentpunkten über dem Basiszinssatz (§ 288 Abs. 2 BGB).
 
+- **Bessere Lesbarkeit und Bedienung (Layout-Prüfung, Oktober 2026):**
+  - Listen mit vielen Aktionen zeigen die wichtigsten direkt; die übrigen und „Löschen“ stehen mit Beschriftung im Menü „⋯“. Am Handy verdeckt die Aktionsspalte die Daten nicht mehr.
+  - Graue Hinweise und farbige Status-Kennzeichen haben stärkeren Kontrast; im dunklen Design ist der aktive Filter wieder lesbar.
+  - Vertragsnummern brechen nicht mehr mitten in der Nummer um; nach dem Schließen eines Formulars steht der Fokus wieder auf dem Knopf, der es geöffnet hat.
+
 ## Hinweise zum Update von einer älteren Version
 - Beim ersten Start aktualisiert das Programm die Datenbank. Davor legt es ein Vollbackup an; der Speicherort steht im schwarzen Fenster.
 - **Bestehende Benutzerkonten** sehen weiterhin alles. Neue Konten sehen erst etwas, wenn der Eigentümer ihnen Portfolios zuweist.

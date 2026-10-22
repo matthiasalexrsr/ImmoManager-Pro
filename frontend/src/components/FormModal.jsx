@@ -66,6 +66,17 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const draftWaiting = draft.enabled && (draft.status === 'loading' || Boolean(draft.recovery));
   const fieldDisabled = saving || draftWaiting || draftBusy || (draft.enabled && !draft.ready);
   const modalRef = useRef(null);
+  // The control that opened the form ("Neu", "Bearbeiten") gets the keyboard back when it closes
+  // (WCAG 2.4.3); read during the first render, before the form takes the focus.
+  const [opener] = useState(() => (typeof document === 'undefined' ? null : document.activeElement));
+  useEffect(() => {
+    const box = modalRef.current;
+    return () => {
+      const current = document.activeElement;
+      const lost = !current || current === document.body || !current.isConnected || box?.contains(current);
+      if (lost && opener instanceof HTMLElement && opener !== document.body && opener.isConnected) opener.focus();
+    };
+  }, [opener]);
   const touchedRef = useRef(new Set());     // fields the user set by hand (derived values leave them alone)
   const formRef = useRef(null);
   const errorRef = useRef(null);

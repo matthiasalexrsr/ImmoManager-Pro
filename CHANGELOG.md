@@ -11,6 +11,16 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-22 Round 13: frontend and layout audit
+
+All 58 pages in five widths (1440 to 390 px), the main pages in dark mode, and the New form of 27 lists were measured and photographed; findings and what stays as it is: [docs/LAYOUT_AUDIT_20261022.md](docs/LAYOUT_AUDIT_20261022.md).
+
+- **Row actions:** a row with more than five actions keeps its first three and "Bearbeiten"; the others and "Löschen" are in a labelled "⋯" menu (`RowActionMenu`: arrow keys, Escape, focus back to the button, placed on the page so a scrolling table cannot cut it off). On phones the action column scrolls with the data instead of covering it (the contracts list showed nothing but icons).
+- **Contrast (WCAG AA):** muted text `#616e73` (was 4.39:1 on white), status badges one step darker (yellow was 3.07:1), and in dark mode the active filter chip (1.3:1), the notification count and the test-version badge.
+- **Tables:** a single word up to 24 characters (contract or invoice number) no longer breaks; the sort arrow of a number column stands right before its heading; the payment note of an invoice takes two lines.
+- **Forms** give the keyboard back to the button that opened them (WCAG 2.4.3).
+- The deposits page no longer scrolls sideways at 1024 px; the sidebar scrolls the current entry into view; the KPI arrow stays with its last word; the property page's unit and document lists; the document version form on phones; the notification inbox is no longer both lazy and static.
+
 ## Unreleased — 2026-10-21 Round 12: audit of all calculations and bookings
 
 Every calculation and booking path was reviewed; findings, fixes and open decisions are in [docs/CALCULATION_AUDIT_20261021.md](docs/CALCULATION_AUDIT_20261021.md). Each fix has a regression test that fails without it.

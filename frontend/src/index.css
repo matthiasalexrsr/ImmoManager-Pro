@@ -39,7 +39,8 @@
   --color-border-light: #edf1ee;
   --color-text: #182a30;
   --color-text-secondary: #586a70;
-  --color-text-muted: #6c7b80;
+  /* at least 4.5:1 on surface, page background and light borders (WCAG AA) */
+  --color-text-muted: #616e73;
 
   --radius-sm: 8px;
   --radius: 12px;
@@ -650,12 +651,16 @@ table.data-table .td-num {
 }
 
 /* A number column's heading stands over its numbers: right-aligned, the sort arrow on the left of the label.
-   The table rules above left-align every cell, so the class needs the table's weight to count. */
+   The table rules above left-align every cell, so the class needs the table's weight to count. The button
+   flows as text, so a heading on two lines keeps its arrow beside the words instead of at the column's edge. */
 :is(.data-table-wrapper, table.data-table, .simple-table, details.card) :is(th, td).text-right {
   text-align: right;
 }
 .data-table-wrapper th.text-right .table-sort-button,
-table.data-table th.text-right .table-sort-button,
+table.data-table th.text-right .table-sort-button {
+  display: inline;
+  text-align: right;
+}
 .data-table-wrapper th.text-right .th-content,
 table.data-table th.text-right .th-content {
   flex-direction: row-reverse;
@@ -668,6 +673,11 @@ table.data-table td.td-stacked {
 }
 .td-title {
   font-weight: 500;
+}
+/* a long note under a value: two lines, the whole text on hover (title of the cell) */
+.td-clamp {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; max-width: 16rem;
 }
 .td-sub {
   font-size: var(--text-xs);
@@ -847,29 +857,30 @@ table.data-table tbody tr:last-child td {
   letter-spacing: 0.01em;
 }
 
+/* badge texts are small: each colour keeps at least 4.5:1 on its tint (WCAG AA) */
 .badge-green {
   background: var(--color-success-light);
-  color: #059669;
+  color: #047857;
 }
 
 .badge-red {
   background: var(--color-danger-light);
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .badge-blue {
   background: var(--color-info-light);
-  color: #0891b2;
+  color: #0e7490;
 }
 
 .badge-yellow {
   background: var(--color-warning-light);
-  color: #d97706;
+  color: #b45309;
 }
 
 .badge-gray {
   background: #f3f4f6;
-  color: #6b7280;
+  color: #4b5563;
 }
 
 .badge-teal {
@@ -2476,7 +2487,17 @@ table.data-table tbody tr:last-child td {
 
 [data-theme="dark"] .notification-badge {
   border-color: var(--color-surface);
+  color: #401919;     /* white on the light dark-mode red was 2.2:1 */
 }
+
+/* The dark primary button text is dark; an active filter chip sits on a dark tint and keeps the light primary. */
+[data-theme="dark"] .filter-chips > .btn-primary,
+[data-theme="dark"] .filter-chips > .btn[aria-pressed="true"],
+[data-theme="dark"] .filter-chips > .btn-primary:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+[data-theme="dark"] .testversion-badge { color: #fcd34d; border-color: rgba(252, 211, 77, 0.45); }
 
 [data-theme="dark"] .filter-select,
 [data-theme="dark"] .filter-text,

@@ -123,6 +123,12 @@ function LayoutFrame() {
   const currentPageTitle = activeItem ? tr(activeItem.labelKey, activeItem.fallback)
     : subPage ? tr(subPage.labelKey, subPage.fallback) : tr('pages.notFound.title', 'Seite nicht gefunden');
 
+  // The current entry of a long, open group can lie below the visible part of the navigation.
+  useEffect(() => {
+    const active = document.querySelector('#primary-navigation .nav-link.active');
+    active?.scrollIntoView?.({ block: 'nearest' });
+  }, [location.pathname, activeGroup]);
+
   // /bookings?neu=1 (a quick action of the search): drop the marker so a reload or a later
   // filter change does not open the form again, then ask the page's list for its New form.
   useEffect(() => {

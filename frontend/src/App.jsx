@@ -5,6 +5,8 @@ import Layout from './components/Layout';
 import './components/notificationInbox.css';
 import DevModeOverlay from './components/DevModeOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
+// Static: the notification bell in the layout uses the inbox on every page anyway.
+import NotificationInbox from './components/NotificationInbox';
 import { NavigationProtectionProvider } from './components/UnsavedNavigationGuard';
 import { usePreferences } from './contexts/PreferencesContext';
 import { useAuth } from './contexts/AuthContext';
@@ -32,7 +34,6 @@ const RentOverview = lazy(() => import('./pages/RentOverview'));
 const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
-const NotificationInbox = lazy(() => import('./components/NotificationInbox'));
 const NotificationLanding = lazy(() => import('./pages/NotificationLanding'));
 const Messages = lazy(() => import('./pages/Messages'));
 const Settings = lazy(() => import('./pages/Settings'));

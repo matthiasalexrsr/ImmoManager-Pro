@@ -1312,6 +1312,7 @@
   "comp": {
     "dataTable": {
       "openRow": "Eintrag öffnen",
+      "moreActions": "Weitere Aktionen",
       "activeFilters": "Aktive Tabellenfilter",
       "removeFilter": "Filter entfernen",
       "removeSearch": "Suche entfernen",

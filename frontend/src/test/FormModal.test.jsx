@@ -15,6 +15,25 @@ function submit(initial) {
 }
 
 describe('FormModal', () => {
+  it('returns the keyboard to the control that opened it', async () => {
+    const { useState } = await import('react');
+    function Page() {
+      const [open, setOpen] = useState(false);
+      return <>
+        <button type="button" onClick={() => setOpen(true)}>Neu</button>
+        {open && <FormModal title="Mieter" fields={fields} onSave={vi.fn()} onClose={() => setOpen(false)} />}
+      </>;
+    }
+    render(<Page />);
+    const opener = screen.getByRole('button', { name: 'Neu' });
+    opener.focus();
+    fireEvent.click(opener);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument());
+    expect(opener).toHaveFocus();
+  });
+
   it('sends only one save while a keyboard submission is pending', async () => {
     let complete;
     const onSave = vi.fn(() => new Promise(resolve => { complete = resolve; }));
