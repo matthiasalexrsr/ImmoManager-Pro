@@ -42,7 +42,8 @@ def output(data, format):
             writer.writerow(["totals"])
             writer.writerow(data["totals"].keys())
             writer.writerow([Decimal(value) for value in data["totals"].values()])
-        numeric_columns = {"income", "expense", "net", "balance", "rent_due", "other_income", "costs", "result", "amount"}
+        numeric_columns = {"income", "expense", "net", "withdrawal", "contribution", "balance", "rent_due", "other_income", "costs",
+                           "result", "amount"}
         for section in ("monthly", "baseline_monthly", "opening_sources", "sources", "baseline_sources", "warnings"):
             writer.writerow([section])
             entries = data.get(section, [])

@@ -20,6 +20,7 @@ export default function Categories() {
       { value: 'expense', label: t('pages.categories.options.expense') || 'Ausgabe' },
       { value: 'maintenance', label: t('pages.categories.options.maintenance') || 'Instandhaltung' },
       { value: 'other', label: t('pages.categories.options.other') || 'Sonstige' },
+      { value: 'private', label: t('pages.categories.options.private') || 'Privat (Entnahme/Einlage)' },
     ]},
   ];
 

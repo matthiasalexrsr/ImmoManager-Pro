@@ -1932,7 +1932,8 @@
         "income": "Einnahme",
         "expense": "Ausgabe",
         "maintenance": "Instandhaltung",
-        "other": "Sonstige"
+        "other": "Sonstige",
+        "private": "Privat (Entnahme/Einlage)"
       }
     },
     "maintenance": {

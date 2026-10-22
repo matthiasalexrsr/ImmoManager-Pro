@@ -1909,7 +1909,8 @@
         "income": "Ingreso",
         "expense": "Gasto",
         "maintenance": "Mantenimiento",
-        "other": "Otros"
+        "other": "Otros",
+        "private": "Privado (retirada/aportación)"
       }
     },
     "maintenance": {

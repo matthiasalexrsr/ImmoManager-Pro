@@ -125,7 +125,12 @@ function FinanceOverview({ cashflow, aging, stats, known }) {
     {cashflow.status === 'success' && <>
       <p className="dashboard-finance-label">Einnahmen abzüglich Ausgaben</p>
       <Link to={bookings} className={`dashboard-finance-total ${Number(cashflow.data.netTotal) < 0 ? 'is-negative' : ''}`} aria-label="Saldo der Buchungen im angezeigten Zeitraum">{formatMoney(cashflow.data.netTotal)}</Link>
-      <dl className="dashboard-finance-breakdown"><div><dt>Einnahmen</dt><dd><Link to={sourceLink('income')}>{formatMoney(cashflow.data.incomeTotal)}</Link></dd></div><div><dt>Ausgaben</dt><dd><Link to={sourceLink('expense')}>{formatMoney(cashflow.data.expenseTotal)}</Link></dd></div></dl>
+      <dl className="dashboard-finance-breakdown"><div><dt>Einnahmen</dt><dd><Link to={sourceLink('income')}>{formatMoney(cashflow.data.incomeTotal)}</Link></dd></div><div><dt>Ausgaben</dt><dd><Link to={sourceLink('expense')}>{formatMoney(cashflow.data.expenseTotal)}</Link></dd></div>
+        {/* the owners' own money is not in the balance above */}
+        {(Number(cashflow.data.withdrawalTotal) || Number(cashflow.data.contributionTotal)) ? <>
+          <div><dt>Entnahmen</dt><dd><Link to={sourceLink('withdrawal')}>{formatMoney(cashflow.data.withdrawalTotal)}</Link></dd></div>
+          <div><dt>Einlagen</dt><dd><Link to={sourceLink('contribution')}>{formatMoney(cashflow.data.contributionTotal)}</Link></dd></div>
+        </> : null}</dl>
     </>}
     <div className="dashboard-finance-open"><SourceState source={aging} label="Forderungsübersicht" singular />
       {aging.status === 'success' && <Link to="/receivables?status=unpaid"><span>Offene Forderungen <small>Aktueller Bestand · alle Fälligkeiten</small></span><strong>{formatMoney(aging.data.openTotal)}</strong><ArrowRightIcon size={16} /></Link>}

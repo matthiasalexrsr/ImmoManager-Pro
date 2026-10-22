@@ -250,7 +250,9 @@ function ReportResult({ result }) {
   const plan = result.basis === 'liquidity-v2', payment = result.basis === 'cash-v2';
   const totals = result.totals || {};
   const metrics = plan ? [['Anfangssaldo', result.opening_balance, 'opening'], ['Endsaldo Szenario', result.closing_balance, 'scenario'], ['Endsaldo Basis', result.baseline_monthly?.at(-1)?.balance, 'baseline']]
-    : payment ? [['Einnahmen', totals.income], ['Ausgaben', totals.expense], ['Saldo', totals.net]]
+    : payment ? [['Einnahmen', totals.income], ['Ausgaben', totals.expense], ['Saldo', totals.net],
+      // the owners' own money moves the accounts, not the balance of income and expenses
+      ...(Number(totals.withdrawal) || Number(totals.contribution) ? [['Entnahmen', totals.withdrawal], ['Einlagen', totals.contribution]] : [])]
       : [['Sollmiete inkl. Vorauszahlungen', totals.rent_due, 'rent_due'], ['Sonstige Einnahmen', totals.other_income, 'other_income'], ['Kosten', totals.costs, 'costs'], ['Periodenergebnis', totals.result, '']];
   const reveal = (value, role = contribution) => { setMonth(value); if (!value) setSearch(''); if (plan) setSourceSet(role || 'scenario'); else setContribution(role); setPage(0); sourceRef.current?.focus(); sourceRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); };
   const sourceRows = plan && sourceSet === 'opening' ? result.opening_sources || [] : plan && sourceSet === 'baseline' ? result.baseline_sources || [] : result.sources;
@@ -264,7 +266,7 @@ function ReportResult({ result }) {
   return <section className="finance-result" aria-label="Berechneter Bericht">
     <h2>Ergebnis und Quellen</h2><p className="finance-help">{payment ? 'Tatsächliche Zahlungen' : plan ? 'Szenario und Basisprognose' : 'Sollmiete + sonstige Einnahmen − Kosten'} · {result.currency || 'EUR'}{result.filters?.date_from && ` · ${formatDate(result.filters.date_from)}`}{result.filters?.date_to && ` bis ${formatDate(result.filters.date_to)}`}</p>
     <div className="finance-result-metrics">{metrics.map(([label, value, role]) => <div className="finance-result-metric" key={label}><span>{label}</span><strong className={Number(value) < 0 ? 'is-negative' : ''}>{value == null ? 'Nicht übermittelt' : cash(value)}</strong>
-      {payment ? <Link to={`/bookings?${query}${label === 'Einnahmen' ? '&flow=income' : label === 'Ausgaben' ? '&flow=expense' : ''}`}>Buchungen prüfen →</Link> : <button type="button" disabled={value == null} onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
+      {payment ? <Link to={`/bookings?${query}${{ Einnahmen: '&flow=income', Ausgaben: '&flow=expense', Entnahmen: '&flow=withdrawal', Einlagen: '&flow=contribution' }[label] || ''}`}>Buchungen prüfen →</Link> : <button type="button" disabled={value == null} onClick={() => reveal('', role || '')}>Quellen prüfen →</button>}</div>)}</div>
     <div className="finance-table-scroll"><table><caption>Monatsverlauf</caption><thead><tr><th scope="col">Monat</th><th scope="col">{plan || payment ? 'Eingänge' : 'Sollmiete'}</th>{!plan && !payment && <th scope="col">Sonstige Einnahmen</th>}<th scope="col">{plan || payment ? 'Ausgänge' : 'Kosten'}</th><th scope="col">{plan ? 'Saldo Szenario' : payment ? 'Saldo' : 'Ergebnis'}</th>{result.baseline_monthly && <th scope="col">Saldo Basis</th>}</tr></thead><tbody>
       {result.monthly.map(row => <tr key={row.month}><th scope="row"><button type="button" onClick={() => reveal(row.month)} aria-label={`Quellen für ${row.month} anzeigen`}>{row.month}</button></th><td>{cash(row.income ?? row.rent_due)}</td>{!plan && !payment && <td>{cash(row.other_income)}</td>}<td>{cash(row.expense ?? row.costs)}</td><td>{cash(row.balance ?? row.net ?? row.result)}</td>{result.baseline_monthly && <td>{cash(result.baseline_monthly.find(baseline => baseline.month === row.month)?.balance)}</td>}</tr>)}
     </tbody></table></div>

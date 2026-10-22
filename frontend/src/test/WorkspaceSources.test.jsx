@@ -29,6 +29,13 @@ describe('Kennzahlen öffnen ihre fachlichen Quellen', () => {
     expect(cashflowSide({ amount: 25, reverses_booking_id: 'expense' }, [])).toBe('expense');
     expect(cashflowSide({ amount: -25, reverses_booking_id: 'income' }, [])).toBe('income');
   });
+  it('keeps the owners\' own money out of income and expenses', () => {
+    const categories = [{ id: 'owner', category_type: 'private' }];
+    expect(cashflowSide({ amount: -500, category_id: 'owner' }, categories)).toBe('withdrawal');
+    expect(cashflowSide({ amount: 300, category_id: 'owner' }, categories)).toBe('contribution');
+    // a reversal of a withdrawal lowers the withdrawals, it is no contribution
+    expect(cashflowSide({ amount: 100, category_id: 'owner', reverses_booking_id: 'w' }, categories)).toBe('withdrawal');
+  });
   it('inherits the report period and includes the refund in the income sources', async () => {
     api.list.mockResolvedValue([
       { id: 'rent', amount: 100, tenant_id: 'party', booking_date: '2026-01-01' },

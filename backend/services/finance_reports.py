@@ -13,6 +13,7 @@ from ..domain.occupancy import NON_BILLABLE_STATUSES
 from ..finance_models import ReportDefinition, SavedReport, SaveReport
 from ..storage import NotFoundError
 from .finance_ledger import (
+    PRIVATE_SIDES,
     Dimensions,
     FinanceFilter,
     add_months,
@@ -134,6 +135,9 @@ def validate_source_currencies(store, definition, currency):
             raise HTTPException(422, "Die Währung einer Buchungsquelle stimmt nicht mit dem gewählten Bestand überein oder ist nicht prüfbar. Bitte Kontozuordnung und Zugriffsrechte prüfen.")
 
 
+CASH_KEYS = ("income", "expense", "net", "withdrawal", "contribution")
+
+
 def cash(store, d):
     """The canonical cash calculation, with the exact bookings behind its rows."""
     from .report_service import compute_cashflow
@@ -149,9 +153,9 @@ def cash(store, d):
                for booking in selected]
     actual_first = applied.date_from or (selected[0].booking_date if selected else None)
     return {"filters": applied.with_period(actual_first, applied.date_to).echo(),
-            "monthly": [{"month": row["month"], **{key: str(money(row[key])) for key in ("income", "expense", "net")}}
+            "monthly": [{"month": row["month"], **{key: str(money(row[key])) for key in CASH_KEYS}}
                         for row in calculated["monthly"]],
-            "totals": {key: str(money(calculated[key + "Total"])) for key in ("income", "expense", "net")},
+            "totals": {key: str(money(calculated[key + "Total"])) for key in CASH_KEYS},
             "sources": sorted(sources, key=lambda source: (source["day"], source["identity"])), "warnings": []}
 
 
@@ -257,6 +261,8 @@ def performance(store, d):
         if not amount:
             continue
         side = booking_side(categories.get(b.category_id), b)
+        if side in PRIVATE_SIDES:
+            continue        # the owners' own money is no income and no cost
         key = month_key(b.booking_date)
         field = "costs" if side == "expense" else "other_income"
         contribution = -amount if side == "expense" else amount

@@ -1931,7 +1931,8 @@
         "income": "Income",
         "expense": "Expense",
         "maintenance": "Maintenance",
-        "other": "Other"
+        "other": "Other",
+        "private": "Owner money (withdrawal/contribution)"
       }
     },
     "maintenance": {

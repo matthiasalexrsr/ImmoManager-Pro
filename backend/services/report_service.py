@@ -27,6 +27,7 @@ from ..domain.lease_engine import LeaseEngine
 from ..domain.money import ZERO, as_number, cents, money, money_sum
 from ..domain.occupancy import NON_BILLABLE_STATUSES, unit_statuses_on
 from .finance_ledger import (
+    PRIVATE_SIDES,
     BookingTotal,
     Dimensions,
     FinanceFilter,
@@ -56,6 +57,16 @@ def _expense(rows: list[BookingTotal]) -> Decimal:
     return -sum((row.amount for row in rows if row.side == "expense"), ZERO)
 
 
+def _withdrawn(rows: list[BookingTotal]) -> Decimal:
+    """What the owners took out (withdrawals, distributions), as a positive amount."""
+    return -sum((row.amount for row in rows if row.side == "withdrawal"), ZERO)
+
+
+def _contributed(rows: list[BookingTotal]) -> Decimal:
+    """What the owners put in from private means."""
+    return sum((row.amount for row in rows if row.side == "contribution"), ZERO)
+
+
 def _other_flows(rows: list[BookingTotal]) -> tuple[Decimal, Decimal, Decimal]:
     """(other income, costs, unassigned income) of bookings that do not settle a tenant's account.
 
@@ -66,7 +77,7 @@ def _other_flows(rows: list[BookingTotal]) -> tuple[Decimal, Decimal, Decimal]:
     """
     other = costs = unassigned = ZERO
     for row in rows:
-        if row.tenant:
+        if row.tenant or row.side in PRIVATE_SIDES:
             continue
         if row.side == "expense":
             costs -= row.amount
@@ -234,6 +245,9 @@ def compute_receivables_aging(store: Any, flt: FinanceFilter | None = None,
 def compute_cashflow(store: Any, flt: FinanceFilter | None = None, *, decimal_strings: bool = False) -> dict[str, Any]:
     """Cash view: what came in and went out in the period, with a row for every month.
 
+    Income and expenses leave out the owners' own money; withdrawals (distributions) and
+    contributions of private means are reported beside them.
+
     A bounded period lists each of its months, months without bookings as zero rows; an open
     period runs from the first to the last booking.
 
@@ -253,14 +267,19 @@ def compute_cashflow(store: Any, flt: FinanceFilter | None = None, *, decimal_st
         months = []
     monthly = []
     for key in months:
-        income, expense = _income(by_month.get(key, [])), _expense(by_month.get(key, []))
+        month_rows = by_month.get(key, [])
+        income, expense = _income(month_rows), _expense(month_rows)
         monthly.append({"month": key, "income": number(income), "expense": number(expense),
-                        "net": number(income - expense)})
+                        "net": number(income - expense), "withdrawal": number(_withdrawn(month_rows)),
+                        "contribution": number(_contributed(month_rows))})
     income, expense = _income(rows), _expense(rows)
     return {
         "incomeTotal": number(income),
         "expenseTotal": number(expense),
         "netTotal": number(income - expense),
+        # the owners' own money: it moves the balance, not the result (finance_ledger)
+        "withdrawalTotal": number(_withdrawn(rows)),
+        "contributionTotal": number(_contributed(rows)),
         "monthly": monthly,
         "basis": "cash",
         "filters": flt.echo(),

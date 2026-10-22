@@ -17,8 +17,9 @@ def _calendar_reads(tree: ast.AST) -> list[int]:
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
         func = node.func
-        # date.today(), datetime.today()
-        if func.attr == "today" and isinstance(func.value, ast.Name) and func.value.id in {"date", "datetime"}:
+        # date.today(), datetime.today(), datetime.date.today()
+        owner = func.value.id if isinstance(func.value, ast.Name) else getattr(func.value, "attr", None)
+        if func.attr == "today" and owner in {"date", "datetime"}:
             lines.append(node.lineno)
         # datetime.now(...).date()
         if (func.attr == "date" and isinstance(func.value, ast.Call) and isinstance(func.value.func, ast.Attribute)

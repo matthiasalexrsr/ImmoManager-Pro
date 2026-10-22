@@ -6,6 +6,11 @@ carries the category and tenant of the booking it cancels and the opposite sign
 (domain.booking_reversal), so it lands on that booking's side and nets it: a returned rent
 payment lowers the income, it is no expense of its own.
 
+Owner money: a category of type "private" holds what the owners take out (withdrawal,
+distribution) or put in from private means (contribution). Such a booking moves the account
+balance but is neither income nor expense: its side is "withdrawal" or "contribution" by its sign
+(a reversal again on the side of the booking it cancels), and no result, cost or tax figure counts it.
+
 Filter (FinanceFilter): period by date (inclusive), portfolio, property, unit. A booking belongs
 to the portfolio of its account and to the property it names, or else to the property of its
 unit; other records (contracts, receivables, invoices) belong to the property they name and to
@@ -31,6 +36,8 @@ from ..domain.money import ZERO, from_cents, money
 from ..storage import NotFoundError
 
 SIDES = ("income", "expense")
+PRIVATE = "private"                                   # category type of the owners' own money
+PRIVATE_SIDES = ("withdrawal", "contribution")
 GROUPS = frozenset({"month", "category", "account"})
 
 
@@ -201,7 +208,7 @@ class Dimensions:
 class BookingTotal:
     """Signed sum of the bookings that share a classification (and the requested groups)."""
 
-    side: str            # income or expense
+    side: str            # income or expense; withdrawal or contribution for the owners' own money
     tenant: bool         # names a tenant: rent, its returns and refunds
     classified: bool     # has an income or expense category
     unit: bool           # names a unit
@@ -214,11 +221,13 @@ class BookingTotal:
 def booking_side(category_type: Optional[str], booking: Any) -> str:
     if category_type in SIDES:
         return str(category_type)
-    if booking.tenant_id:
-        return "income"
     positive = money(booking.amount) > 0
     if getattr(booking, "reverses_booking_id", None):
         positive = not positive     # a reversal sits on the side of the booking it cancels
+    if category_type == PRIVATE:
+        return "contribution" if positive else "withdrawal"
+    if booking.tenant_id:
+        return "income"
     return "income" if positive else "expense"
 
 
@@ -329,7 +338,9 @@ def _sql_totals(db: Any, flt: FinanceFilter, groups: frozenset[str]) -> list[Boo
     classified = category_type.in_(SIDES)
     incoming = or_(and_(bookings.c.reverses_booking_id.is_(None), bookings.c.amount > 0),
                    and_(bookings.c.reverses_booking_id.is_not(None), bookings.c.amount < 0))
-    side = case((classified, category_type), (bookings.c.tenant_id.is_not(None), literal("income")),
+    side = case((classified, category_type),
+                (category_type == PRIVATE, case((incoming, literal("contribution")), else_=literal("withdrawal"))),
+                (bookings.c.tenant_id.is_not(None), literal("income")),
                 (incoming, literal("income")), else_=literal("expense"))
     columns = [
         side.label("side"),

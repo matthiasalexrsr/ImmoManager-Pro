@@ -237,6 +237,8 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       case 'no_receipt': return rows.filter(b => !hasReceipt(b.receipt_url));
       case 'income': return rows.filter(b => cashflowSide(b, categoryTypes) === 'income');
       case 'expense': return rows.filter(b => cashflowSide(b, categoryTypes) === 'expense');
+      case 'withdrawal': return rows.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal');
+      case 'contribution': return rows.filter(b => cashflowSide(b, categoryTypes) === 'contribution');
       default: return rows;
     }
   }, [basis, filter, categoryTypes]);
@@ -245,6 +247,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const totalCount = basis.length;
   const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
   const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  // the owners' own money (category type "private"): neither income nor expense
+  const totalWithdrawn = -basis.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
+  const totalContributed = basis.filter(b => cashflowSide(b, categoryTypes) === 'contribution').reduce((s, b) => s + Math.round(Number(b.amount) * 100), 0) / 100;
   const noCategory = basis.filter(b => !b.category_id).length;
   const noReceipt = basis.filter(b => !hasReceipt(b.receipt_url)).length;
 
@@ -494,6 +499,10 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         <KpiAction label="Gesamt" value={totalCount} onClick={() => openSources('all')} />
         <KpiAction label="Einnahmen" value={formatMoney(totalIncome)} color="var(--success)" onClick={() => openSources('income')} />
         <KpiAction label="Ausgaben" value={formatMoney(totalExpense)} color="var(--danger)" onClick={() => openSources('expense')} />
+        {(totalWithdrawn !== 0 || totalContributed !== 0) && <>
+          <KpiAction label="Entnahmen" value={formatMoney(totalWithdrawn)} onClick={() => openSources('withdrawal')} />
+          <KpiAction label="Einlagen" value={formatMoney(totalContributed)} onClick={() => openSources('contribution')} />
+        </>}
         <KpiAction label="Ohne Kategorie" value={noCategory} onClick={() => openSources('no_category')} />
         <KpiAction label="Ohne nutzbaren Beleg" value={noReceipt} onClick={() => openSources('no_receipt')} />
       </div>}
