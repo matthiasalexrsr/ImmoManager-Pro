@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ..dependencies import store
 from ..models import Contact, ContactCreate, ContactPatch
 from ..services.deletion_guard import ensure_deletable
+from ..services.ownership import ensure_owner_type_kept
 from ..services.portfolio_scope import scope_context
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
@@ -46,6 +47,7 @@ def get_contact(contact_id: str) -> Contact:
 @router.put("/{contact_id}", response_model=Contact)
 def update_contact(contact_id: str, payload: ContactCreate) -> Contact:
     try:
+        ensure_owner_type_kept(store, contact_id, payload.contact_type)
         return store.update_contact(contact_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -54,6 +56,7 @@ def update_contact(contact_id: str, payload: ContactCreate) -> Contact:
 @router.patch("/{contact_id}", response_model=Contact)
 def patch_contact(contact_id: str, payload: ContactPatch) -> Contact:
     try:
+        ensure_owner_type_kept(store, contact_id, payload.contact_type)
         return store._patch_entity("contact", contact_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

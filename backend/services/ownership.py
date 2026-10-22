@@ -352,6 +352,24 @@ def owners(store: Any) -> list[dict[str, Any]]:
     return sorted(found, key=lambda owner: (owner["name"].lower(), owner["id"]))
 
 
+def ensure_owner_type_kept(store: Any, contact_id: str, contact_type: Optional[str]) -> None:
+    """An owner named by shares, bookings, owner changes or accounts stays of type owner (409 otherwise)."""
+    if contact_type in (None, "owner") or store.get_contact(contact_id).contact_type != "owner":
+        return
+    from .deletion_guard import OWNER_DEPENDENTS
+    from .portfolio_scope import scope_context
+
+    found = []
+    with scope_context(None):           # entries of other portfolios name the contact too
+        for list_method, field, (singular, plural) in OWNER_DEPENDENTS:
+            count = sum(1 for item in getattr(store, list_method)() if getattr(item, field, None) == contact_id)
+            if count:
+                found.append(f"{count} {singular if count == 1 else plural}")
+    if found:
+        raise HTTPException(409, "Der Kontakt bleibt vom Typ „Eigentümer“: Ihn nennen noch " + ", ".join(found)
+                            + ". Bitte diese zuerst einem anderen Eigentümer zuordnen oder beenden.")
+
+
 def timeline(store: Any, property_id: str, unit_id: Optional[str]) -> list[dict[str, Any]]:
     """Who owns a property or unit from when to when, largest share first; empty without a recorded owner.
 

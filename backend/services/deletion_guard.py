@@ -10,6 +10,15 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
+# an owner's shares, the bookings that belong to them alone, their owner changes and accounts; they also
+# keep the contact of type owner (services.ownership.ensure_owner_type_kept)
+OWNER_DEPENDENTS = (
+    ("list_ownership_shares", "owner_contact_id", ("Eigentumsanteil", "Eigentumsanteile")),
+    ("list_bookings", "owner_contact_id", ("Buchung", "Buchungen")),
+    ("list_ownership_transfers", "from_owner_contact_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
+    ("list_accounts", "owner_contact_id", ("Konto als Kontoinhaber", "Konten als Kontoinhaber")),
+)
+
 # entity: (label, [(store list method, referencing field, (singular, plural))])
 _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     "portfolio": ("Portfolio", [
@@ -94,11 +103,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
     # the provider of a service contract stays in the address book while the contract exists
     "contact": ("Kontakt", [
         ("list_service_contracts", "provider_contact_id", ("Objektvertrag", "Objektverträge")),
-        # an owner's shares and the bookings that belong to them alone
-        ("list_ownership_shares", "owner_contact_id", ("Eigentumsanteil", "Eigentumsanteile")),
-        ("list_bookings", "owner_contact_id", ("Buchung", "Buchungen")),
-        ("list_ownership_transfers", "from_owner_contact_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
-        ("list_accounts", "owner_contact_id", ("Konto als Kontoinhaber", "Konten als Kontoinhaber")),
+        *OWNER_DEPENDENTS,
     ]),
     # a bill linked to a service contract may already be part of a utility statement
     "invoice": ("Rechnung", [

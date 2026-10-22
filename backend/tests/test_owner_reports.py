@@ -9,6 +9,7 @@ from backend.app import app
 from backend.auth import clear_users, create_access_token, register_user
 from backend.dependencies import store
 from backend.finance_models import ReportDefinition
+from backend.models import ContactPatch
 from backend.services import finance_reports
 from backend.services.data_snapshot import clear_business_data
 
@@ -85,8 +86,25 @@ def test_the_result_per_owner_adds_up_to_the_result_of_the_house(estate):
     assert data["totals"]["result"] == 1690 == sum(row["result"] for row in rows.values())
 
 
+def test_an_owner_named_by_shares_stays_an_owner(estate):
+    client = TestClient(app)
+    user = register_user("other", "other@example.com", "Other", "Secret123", "eigentuemer")
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    refused = client.patch(f"{API}/contacts/{estate['linda']}", headers=headers, json={"contact_type": "supplier"})
+    assert refused.status_code == 409
+    assert "2 Eigentumsanteile, 1 Buchung" in refused.json()["error"]["message"]
+    contact = estate["get"](f"/contacts/{estate['linda']}")
+    replaced = client.put(f"{API}/contacts/{estate['linda']}", headers=headers, json={**contact, "contact_type": "tenant"})
+    assert replaced.status_code == 409
+    # other changes and an owner without any entries are free
+    estate["patch"](f"/contacts/{estate['linda']}", {"phone": "0351 123"})
+    nobody = estate["post"]("/contacts", {"contact_type": "owner", "first_name": "Neu"})["id"]
+    assert estate["patch"](f"/contacts/{nobody}", {"contact_type": "supplier"})["contact_type"] == "supplier"
+
+
 def test_an_owner_whose_contact_type_changed_keeps_their_row(estate):
-    estate["patch"](f"/contacts/{estate['linda']}", {"contact_type": "supplier"})
+    # e.g. a restored backup from before the guard: the reports still find the owner by their shares
+    store._patch_entity("contact", estate["linda"], ContactPatch(contact_type="supplier"))
     rows = {row["name"]: row for row in estate["get"](f"/reports/owner-results?{MARCH}")["owners"]}
     assert (rows["Linda"]["result"], rows["Linda"]["withdrawal"]) == (940, 1000)
     assert "Linda" in {owner["name"] for owner in estate["get"]("/ownership-shares/owners")}
@@ -192,3 +210,22 @@ def test_an_account_holder_must_be_an_owner(estate):
     with pytest.raises(AssertionError, match="Kontoinhaber"):
         estate["post"]("/accounts", {"portfolio_id": estate["pf"], "name": "X", "account_type": "bank",
                                      "owner_contact_id": supplier["id"]})
+
+
+def test_an_owners_data_access_export_and_anonymization(estate):
+    linda = estate["linda"]
+    estate["patch"](f"/contacts/{linda}", {"last_name": "Reiser", "email": "linda@example.de", "iban": "DE02120300000000202051"})
+    estate["post"]("/accounts", {"portfolio_id": estate["pf"], "name": "Konto Linda", "account_type": "bank",
+                                 "owner_contact_id": linda})
+    export = estate["get"](f"/admin/dsgvo/contact/{linda}/export")
+    assert export["contact"]["email"] == "linda@example.de"
+    assert (len(export["ownership_shares"]), len(export["bookings"]), len(export["accounts"])) == (2, 1, 1)
+    assert export["bookings"][0]["payment_text"] == "Entnahme Linda"
+    answer = estate["post"](f"/admin/dsgvo/contact/{linda}/anonymize", {})
+    assert answer["retained_records"] == {"ownership_shares": 2, "bookings": 1, "accounts": 1}
+    contact = estate["get"](f"/contacts/{linda}")
+    assert (contact["first_name"], contact["email"], contact["iban"]) == (None, None, None)
+    assert contact["last_name"] == f"Anonymisiert-{linda[:8]}" and contact["contact_type"] == "owner"
+    # the shares keep counting, now for the placeholder
+    rows = {row["name"]: row for row in estate["get"](f"/reports/owner-results?{MARCH}")["owners"]}
+    assert rows[f"Anonymisiert-{linda[:8]}"]["result"] == 940 and "Linda" not in rows

@@ -423,3 +423,70 @@ def dsgvo_anonymize_tenant(tenant_id: str):
         "note": "Verträge, Finanzdaten, Dokumente und Nachrichten bleiben wegen der Aufbewahrungspflichten"
                 " (§ 147 AO, § 257 HGB) erhalten.",
     }
+
+
+def _contact_records(contact_id: str) -> dict[str, list]:
+    """Everything stored about a contact: an owner's shares, owner changes, own bookings and accounts;
+    the service contracts of a provider."""
+    from ..services.ownership import list_shares
+
+    return {
+        "ownership_shares": list_shares(store, owner_contact_id=contact_id),
+        "ownership_transfers": [t for t in store.list_ownership_transfers() if t.from_owner_contact_id == contact_id
+                                or any(r.get("owner_contact_id") == contact_id for r in t.receivers)],
+        "bookings": [b for b in store.list_bookings() if b.owner_contact_id == contact_id],
+        "accounts": [a for a in store.list_accounts() if a.owner_contact_id == contact_id],
+        "service_contracts": [c for c in store.list_service_contracts() if c.provider_contact_id == contact_id],
+    }
+
+
+@router.get("/dsgvo/contact/{contact_id}/export", response_model=None)
+def dsgvo_export_contact_data(contact_id: str):
+    """DSGVO Art. 15 for a contact of the address book (owner, supplier, manager): the contact and every
+    record naming them (services.ownership: shares, owner changes, bookings, accounts; service contracts)."""
+    try:
+        contact = store.get_contact(contact_id)
+    except Exception:
+        raise HTTPException(404, f"Kontakt mit ID {contact_id} nicht gefunden")
+    export = {
+        "export_type": "DSGVO_Datenauskunft",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "contact": contact.model_dump(mode="json"),
+        # an owner change without its internal undo record (the shares of all involved)
+        **{name: [item.model_dump(mode="json", exclude={"changes"} if name == "ownership_transfers" else None)
+                  for item in items] for name, items in _contact_records(contact_id).items()},
+    }
+    content = json.dumps(export, ensure_ascii=False, indent=2, default=str)
+    return Response(content.encode("utf-8"), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="dsgvo_export_contact_{contact_id}.json"'})
+
+
+# Personal fields of a contact that anonymization clears; the name gets a placeholder.
+_CONTACT_PERSONAL_FIELDS = ("first_name", "company_name", "email", "phone", "mobile", "street", "zip_code", "city",
+                            "iban", "bic", "bank_name", "tax_id", "notes")
+
+
+@router.post("/dsgvo/contact/{contact_id}/anonymize", response_model=None)
+def dsgvo_anonymize_contact(contact_id: str):
+    """DSGVO Art. 17 for a contact: the name becomes a placeholder, contact, address, bank and tax fields
+    are cleared. Shares, owner changes, bookings and accounts stay for the retention duties and keep
+    counting for the placeholder in the reports by owner."""
+    from ..models import ContactPatch
+
+    try:
+        contact = store.get_contact(contact_id)
+    except Exception:
+        raise HTTPException(404, f"Kontakt mit ID {contact_id} nicht gefunden")
+    patch: dict[str, Any] = {"last_name": f"Anonymisiert-{contact_id[:8]}"}
+    patch.update({field: None for field in _CONTACT_PERSONAL_FIELDS if getattr(contact, field) is not None})
+    store._patch_entity("contact", contact_id, ContactPatch(**patch))
+    retained = {name: len(items) for name, items in _contact_records(contact_id).items() if items}
+    logger.info("DSGVO anonymization for contact %s: fields=%s", contact_id, sorted(patch))
+    return {
+        "status": "anonymized",
+        "contact_id": contact_id,
+        "anonymized_fields": sorted(patch),
+        "retained_records": retained,
+        "note": "Eigentumsanteile, Eigentümerwechsel, Buchungen und Konten bleiben wegen der Aufbewahrungspflichten"
+                " (§ 147 AO, § 257 HGB) erhalten.",
+    }
