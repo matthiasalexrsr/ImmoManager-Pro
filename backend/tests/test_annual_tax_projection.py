@@ -320,12 +320,14 @@ def test_payments_around_the_turn_of_the_year_count_in_their_tax_year(tax_store)
 
 
 def test_another_tax_year_is_only_for_the_ten_days_around_the_turn_of_the_year():
-    base = dict(account_id="a", booking_date=date(2024, 12, 15), amount=50)
+    def paid(day, tax_year):
+        return BookingCreate(account_id="a", booking_date=day, amount=50, tax_year=tax_year)
+
     with pytest.raises(ValidationError):
-        BookingCreate(**base, tax_year=2025)
+        paid(date(2024, 12, 15), 2025)
     with pytest.raises(ValidationError):
-        BookingCreate(**base | {"booking_date": date(2025, 1, 11)}, tax_year=2024)
+        paid(date(2025, 1, 11), 2024)
     with pytest.raises(ValidationError):
-        BookingCreate(**base | {"booking_date": date(2024, 12, 30)}, tax_year=2023)
-    assert BookingCreate(**base | {"booking_date": date(2024, 12, 22)}, tax_year=2025).tax_year == 2025
-    assert BookingCreate(**base | {"booking_date": date(2025, 1, 10)}, tax_year=2024).tax_year == 2024
+        paid(date(2024, 12, 30), 2023)
+    assert paid(date(2024, 12, 22), 2025).tax_year == 2025
+    assert paid(date(2025, 1, 10), 2024).tax_year == 2024
