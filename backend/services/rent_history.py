@@ -42,6 +42,21 @@ def rent_steps(store: Any, contract: Any) -> list[RentStep]:
     return [RentStep(contract.start_date, _charge(**_unit_defaults(store, contract)))]
 
 
+# adjustment types whose rent change is no comparative increase (§ 558 Abs. 1 Satz 3 BGB)
+CHANGE_KINDS = {"modernization": "559", "operating_costs": "560"}
+
+
+def rent_change_kinds(store: Any, contract: Any) -> list[Optional[str]]:
+    """Per step of rent_steps: "559"/"560" when an applied modernization or operating-cost adjustment
+    set it, else None (a § 558 increase, an index or stepped rent, an agreement or the start)."""
+    periods = store.list_contract_rent_periods(contract.id)
+    if not periods:
+        return [None]
+    types = {a.id: a.adjustment_type for a in store.list_rent_adjustments() if a.contract_id == contract.id}
+    return [CHANGE_KINDS.get(types.get(p.rent_adjustment_id or "", "")) if p.source == "adjustment" else None
+            for p in periods]
+
+
 def charge_for(store: Any, contract: Any, day: date) -> Optional[ChargeConfig]:
     return charge_on(rent_steps(store, contract), max(day, contract.start_date))
 

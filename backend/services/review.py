@@ -27,7 +27,7 @@ from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
 from ..domain.money import money as _money
 from .payment_allocations import credited_by_tenant, non_rent_shares
 from .read_cache import CachedReads
-from .rent_history import charge_for, rent_steps
+from .rent_history import charge_for, rent_change_kinds, rent_steps
 from .sepa_rules import compact, mask_iban
 
 
@@ -124,9 +124,15 @@ def review_items(store: Any, today: date) -> list[dict]:
         contract = by_id.get(adjustment.contract_id)
         if contract is None or adjustment.adjustment_type not in ("comparative", "mietspiegel", "increase"):
             continue
-        earlier = charge_on(rent_steps(store, contract), max(contract.start_date,
-                                                             adjustment.effective_date - timedelta(days=3 * 365)))
-        if earlier and earlier.cold_rent > 0 and _money(adjustment.new_rent) > earlier.cold_rent * Decimal("1.2"):
+        steps = rent_steps(store, contract)
+        base_day = max(contract.start_date, adjustment.effective_date - timedelta(days=3 * 365))
+        earlier = charge_on(steps, base_day)
+        # increases after modernization (§ 559) and operating-cost changes (§ 560) do not count (R12-16)
+        excluded = sum((after.charge.cold_rent - before.charge.cold_rent
+                        for before, after, kind in zip(steps, steps[1:], rent_change_kinds(store, contract)[1:])
+                        if kind and base_day < after.valid_from <= adjustment.effective_date), Decimal("0"))
+        if (earlier and earlier.cold_rent > 0
+                and _money(adjustment.new_rent) - excluded > earlier.cold_rent * Decimal("1.2")):
             items.append({
                 "kind": "increase_over_cap", "severity": "warning",
                 "title": f"Mieterhöhung für {number} über der Kappungsgrenze",

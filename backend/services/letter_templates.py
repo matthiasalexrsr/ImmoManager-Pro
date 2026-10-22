@@ -425,14 +425,29 @@ def residential(location: dict) -> bool | None:
     return None
 
 
+# § 558 Abs. 1 Satz 3, Abs. 3 Satz 1 BGB: increases after modernization (§ 559) and changes of the
+# operating costs (§ 560) count neither for the waiting periods nor for the cap (R12-16)
+NOT_COMPARATIVE = frozenset({"559", "560"})
+
+
 def last_cold_rent_change(steps: list[dict]) -> date | None:
     """The day the cold rent last changed after the start of the contract (None: unchanged since then)."""
     ordered = sorted(steps, key=lambda item: item["valid_from"])
     changed = None
     for before, after in zip(ordered, ordered[1:]):
-        if amount(after["cold_rent"]) != amount(before["cold_rent"]):
+        if amount(after["cold_rent"]) != amount(before["cold_rent"]) and after.get("kind") not in NOT_COMPARATIVE:
             changed = date.fromisoformat(after["valid_from"])
     return changed
+
+
+def excluded_increases(steps: list[dict], after: date, until: date) -> Decimal:
+    """The cold rent raised by §§ 559, 560 after ``after`` until ``until``: left out of the cap."""
+    ordered = sorted(steps, key=lambda item: item["valid_from"])
+    total = Decimal("0")
+    for before, step in zip(ordered, ordered[1:]):
+        if step.get("kind") in NOT_COMPARATIVE and after < date.fromisoformat(step["valid_from"]) <= until:
+            total += amount(step["cold_rent"]) - amount(before["cold_rent"])
+    return total
 
 
 # ─── Inputs ──────────────────────────────────────────────────────────────────
@@ -707,15 +722,18 @@ def _rent_increase(source, inputs, issue, values, blocks, checks, area) -> None:
                                       f"also frühestens wirksam ab {day(add_months(unchanged_since, 15))}."))
     base_day = max(start, add_months(effective, -36))
     base = amount((rent_on(steps, base_day) or current).get("cold_rent"))
-    allowed = (base * (1 + cap / 100)).quantize(CENT, ROUND_HALF_UP)
+    modernized = excluded_increases(steps, base_day, effective)
+    allowed = (base * (1 + cap / 100) + modernized).quantize(CENT, ROUND_HALF_UP)
+    beside = (f" zuzüglich {eur(modernized)} aus Erhöhungen nach §§ 559, 560 BGB, die nicht zählen"
+              if modernized else "")
     if new_cold > allowed:
         checks.append(_check("error", f"Die neue Miete überschreitet die Kappungsgrenze: höchstens {eur(allowed)} "
-                                      f"({cap} % über {eur(base)} am {day(base_day)}, § 558 Abs. 3 BGB). "
-                                      "Erhöhungen wegen Modernisierung (§ 559 BGB) sind dabei nicht abgezogen; "
-                                      "gab es solche, bitte den Mietverlauf prüfen."))
+                                      f"({cap} % über {eur(base)} am {day(base_day)}{beside}, § 558 Abs. 3 BGB). "
+                                      "Erhöhungen wegen Modernisierung zählen nur, wenn sie im Mietverlauf als "
+                                      "Mietanpassung „Modernisierung“ erfasst sind."))
     else:
         checks.append(_check("info", f"Kappungsgrenze eingehalten: höchstens {eur(allowed)} ({cap} % über {eur(base)} "
-                                     f"am {day(base_day)})."))
+                                     f"am {day(base_day)}{beside})."))
     first = min(date.fromisoformat(step["valid_from"]) for step in steps)
     checks.append(_check("info", f"Wirksam ab {day(effective)}, Zustimmung bis {day(consent_until)} (§ 558b BGB). "
                                  f"Grundlage der Fristen ist der Mietverlauf im Programm ab {day(first)}."))

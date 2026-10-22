@@ -98,7 +98,10 @@ export default function RentAdjustments() {
     { key: 'adjustment_type', label: 'Art', required: true, type: 'select', options: [
       { value: 'index', label: 'Indexmiete' },
       { value: 'stepped', label: 'Staffelmiete' },
-    ]},
+      { value: 'comparative', label: 'Vergleichsmiete (§ 558 BGB)' },
+      { value: 'modernization', label: 'Modernisierung (§ 559 BGB)' },
+      { value: 'agreement', label: 'Vereinbarung mit dem Mieter (§ 557 BGB)' },
+    ], hint: 'Erhöhungen wegen Modernisierung zählen für die Fristen und die Kappungsgrenze einer Mieterhöhung nach § 558 BGB nicht.' },
     { key: 'effective_date', label: 'Wirksamkeitsdatum', type: 'date', required: true },
     { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', required: true },
     { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', required: true },

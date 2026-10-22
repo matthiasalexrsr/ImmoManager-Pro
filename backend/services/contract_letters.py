@@ -42,7 +42,7 @@ from .contract_letter_validation import (
 )
 from .letter_layout import block_names, render_letter
 from .portfolio_scope import scope_context, scope_from_user
-from .rent_history import rent_steps
+from .rent_history import rent_change_kinds, rent_steps
 from .workspace_contexts import bound_actor, resolve_context
 
 TEXT_FIELDS = (("subject", "Betreff"), ("salutation", "Anrede"), ("body", "Text"), ("closing", "Schlussformel"),
@@ -130,6 +130,9 @@ def _source(unit, contract_id: str, *, lock: bool = False):
     steps = [{"valid_from": step.valid_from.isoformat(), "cold_rent": str(step.charge.cold_rent),
               "service_charge_advance": str(step.charge.service_charge_advance),
               "heating_advance": str(step.charge.heating_advance)} for step in rent_steps(unit.store, contract)]
+    for step, kind in zip(steps, rent_change_kinds(unit.store, contract)):
+        if kind:                    # only then: the sources of letters without such steps stay the same
+            step["kind"] = kind
     source = {
         "contract": _pick(contract, ("id", "contract_number", "property_id", "unit_id", "tenant_id", "status",
                                      "start_date", "end_date", "notice_period", "deposit_amount", "index_rent",

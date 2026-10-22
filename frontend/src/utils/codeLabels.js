@@ -11,7 +11,7 @@ const DE = {
   building: 'Gebäudeversicherung', liability: 'Haftpflicht', contents: 'Hausrat', legal: 'Rechtsschutz',
   rent_loss: 'Mietausfall', elementary: 'Elementarschaden',
   increase: 'Erhöhung', decrease: 'Senkung', index: 'Indexmiete', stepped: 'Staffelmiete', fixed: 'Festmiete',
-  comparative: 'Vergleichsmiete', modernization: 'Modernisierung',
+  comparative: 'Vergleichsmiete', modernization: 'Modernisierung', agreement: 'Vereinbarung',
   contract: 'Vertrag', invoice: 'Rechnung', receipt: 'Beleg', protocol: 'Protokoll', statement: 'Abrechnung',
   receivable: 'Forderung', maintenance: 'Wartung', task: 'Aufgabe',
   move_in: 'Einzug', move_out: 'Auszug',

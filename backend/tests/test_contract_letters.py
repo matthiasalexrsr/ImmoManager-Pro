@@ -117,6 +117,25 @@ def test_rent_increase_is_filled_with_deadlines_cap_and_table(case):
     assert hashlib.sha256(pdf.content).hexdigest() == shown["pdf_sha256"] == pdf.headers["X-Content-SHA256"]
 
 
+def test_a_modernization_increase_counts_neither_for_the_waiting_period_nor_for_the_cap(case):
+    """R12-16: § 558 Abs. 1 Satz 3, Abs. 3 BGB leave increases after § 559 out; the check counted every
+    change of the cold rent, so a modernization in January blocked a comparative increase for a year."""
+    from backend.models import RentAdjustmentCreate
+    adjustment = store.create_rent_adjustment(RentAdjustmentCreate(
+        contract_id=case["contract"].id, adjustment_type="modernization", effective_date=date(2026, 1, 1),
+        previous_rent=650, new_rent=700, status="applied"))
+    store.create_contract_rent_period(ContractRentPeriodCreate(
+        contract_id=case["contract"].id, valid_from=date(2026, 1, 1), cold_rent=700, service_charge_advance=150,
+        heating_advance=80, source="adjustment", rent_adjustment_id=adjustment.id))
+
+    composed = compose(case, "builtin:rent_increase", {**RENT_INCREASE, "new_cold_rent": "765"})
+
+    assert not [check for check in composed["checks"] if check["level"] == "error"], composed["checks"]
+    # 20 % on the 600 € of 1.1.2024 plus the 50 € of the modernization
+    assert any("höchstens 770,00 €" in check["text"] and "§§ 559, 560" in check["text"]
+               for check in composed["checks"])
+
+
 @pytest.mark.parametrize("change, message", [
     ({"new_cold_rent": "800"}, "Kappungsgrenze"),
     ({"new_cold_rent": "640"}, "höher sein als die bisherige"),
