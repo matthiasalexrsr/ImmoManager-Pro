@@ -404,12 +404,10 @@ def current_balance(store: Any, flt: FinanceFilter, today: date) -> Decimal:
     """Opening balances of the accounts in scope plus every booking up to today.
 
     Opening balances belong to accounts, not to properties or units: below the portfolio the
-    balance starts from the bookings alone.
+    balance starts from the bookings alone. With an owner: the opening balances of the accounts
+    they hold alone and their part of every booking (FinanceFilter.opening_accounts).
     """
-    opening = ZERO
-    if not flt.below_portfolio:
-        opening = money_sum(a.opening_balance for a in store.list_accounts()
-                            if not flt.portfolio_id or a.portfolio_id == flt.portfolio_id)
+    opening = money_sum(a.opening_balance for a in flt.opening_accounts(store))
     moved = sum((row.amount for row in booking_totals(store, flt.with_period(None, today))), ZERO)
     return opening + moved
 
@@ -485,11 +483,13 @@ def compute_owner_results(store: Any, flt: FinanceFilter | None = None, today: d
     def figures(owner: str | None) -> dict[str, Decimal]:
         selected = replace(flt, owner_contact_id=owner)
         result = compute_period_result(store, selected, today)
-        applied = selected.with_period(date.fromisoformat(result["filters"]["date_from"]),
-                                       date.fromisoformat(result["filters"]["date_to"]))
+        last = date.fromisoformat(result["filters"]["date_to"])
+        applied = selected.with_period(date.fromisoformat(result["filters"]["date_from"]), last)
         rows = booking_totals(store, applied)
         values = {key: money(result["totals"][key]) for key in keys}
         values["withdrawal"], values["contribution"] = _withdrawn(rows), _contributed(rows)
+        # the owner's part of the account balances at the period's end (their accounts' opening balances)
+        values["balance"] = current_balance(store, selected, last)
         return values
 
     whole = figures(None)

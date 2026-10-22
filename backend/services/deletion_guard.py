@@ -98,6 +98,7 @@ _DEPENDENTS: dict[str, tuple[str, list[tuple[str, str, tuple[str, str]]]]] = {
         ("list_ownership_shares", "owner_contact_id", ("Eigentumsanteil", "Eigentumsanteile")),
         ("list_bookings", "owner_contact_id", ("Buchung", "Buchungen")),
         ("list_ownership_transfers", "from_owner_contact_id", ("Eigentümerwechsel", "Eigentümerwechsel")),
+        ("list_accounts", "owner_contact_id", ("Konto als Kontoinhaber", "Konten als Kontoinhaber")),
     ]),
     # a bill linked to a service contract may already be part of a utility statement
     "invoice": ("Rechnung", [

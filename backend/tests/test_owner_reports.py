@@ -68,7 +68,8 @@ def estate():
     book(-100, category_id=costs, property_id=house, unit_id=units[2], payment_text="Reparatur WE 3")
     book(-10, category_id=costs, payment_text="Kontoführung")                               # nobody recorded
     book(-1000, category_id=private, property_id=house, owner_contact_id=linda, payment_text="Entnahme Linda")
-    yield {"get": get, "patch": patch, "house": house, "m": m, "linda": linda, "units": units}
+    yield {"get": get, "patch": patch, "post": post, "house": house, "m": m, "linda": linda, "units": units, "pf": pf,
+           "account": account, "costs": costs}
     clear_users()
     clear_business_data(store)
 
@@ -162,3 +163,32 @@ def test_the_bookings_list_shows_an_owners_bookings_with_their_part(estate):
         for b in estate["get"](f"/bookings?owner_contact_id={owner}"):
             added[b["id"]] = round(added.get(b["id"], 0) + b["owner_part"], 2)
     assert added == everything
+
+
+
+def test_account_balances_by_owner_add_up_and_an_owners_account_brings_its_opening_balance(estate):
+    post, get = estate["post"], estate["get"]
+    # Linda's own account with 500 € opening balance and the rent of WE 2 (100 % hers)
+    own = post("/accounts", {"portfolio_id": estate["pf"], "name": "Konto Linda", "account_type": "bank",
+                             "opening_balance": 500, "owner_contact_id": estate["linda"]})
+    post("/bookings", {"account_id": own["id"], "booking_date": "2026-03-20", "amount": 700, "status": "booked",
+                       "property_id": estate["house"], "unit_id": estate["units"][1], "payment_text": "Miete WE 2"})
+    data = get("/accounts/owner-balances?as_of=2026-03-31")
+    rows = {row["name"]: row for row in data["owners"]}
+    # joint account: -200 (insurance 90/110), -100 (WE 3 50/50), -10 (nobody), -1000 (Linda alone)
+    assert rows["Linda"]["balance"] == 500 + 700 - 110 - 50 - 1000
+    assert rows["Matthias"]["balance"] == -90 - 50
+    assert rows["Ohne Eigentümer"]["balance"] == -10
+    accounts = {row["name"]: row["balance"] for row in data["accounts"]}
+    assert accounts == {"Konto": -1310, "Konto Linda": 1200}
+    assert sum(row["balance"] for row in data["owners"]) == sum(accounts.values())
+    # the report per owner: the same balances at the period's end
+    results = {row["name"]: row["balance"] for row in get(f"/reports/owner-results?{MARCH}")["owners"]}
+    assert results == {"Linda": 40, "Matthias": -140, "Ohne Eigentümer": -10}
+
+
+def test_an_account_holder_must_be_an_owner(estate):
+    supplier = estate["post"]("/contacts", {"contact_type": "supplier", "company_name": "Handwerk GmbH"})
+    with pytest.raises(AssertionError, match="Kontoinhaber"):
+        estate["post"]("/accounts", {"portfolio_id": estate["pf"], "name": "X", "account_type": "bank",
+                                     "owner_contact_id": supplier["id"]})

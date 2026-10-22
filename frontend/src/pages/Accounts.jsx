@@ -17,6 +17,7 @@ export default function Accounts() {
   const toast = useToast();
   const store = useDataStore();
   const { items: portfolios } = useEntities('portfolios', '/portfolios');
+  const { items: owners } = useEntities('owners', '/ownership-shares/owners');
 
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +25,16 @@ export default function Accounts() {
   const [modal, setModal] = useState(null);
   const [basisOpen, setBasisOpen] = useState(false);
   const [drilldown, setDrilldown] = useState(0);
+  // each owner's part of the balances (services/ownership.owner_balances), loaded when opened
+  const [byOwner, setByOwner] = useState(null);
+  const [byOwnerError, setByOwnerError] = useState(null);
+  const showByOwner = () => {
+    if (byOwner) { setByOwner(null); return; }
+    setByOwnerError(null);
+    api.get('/accounts/owner-balances')
+      .then(data => { if (!Array.isArray(data?.owners)) throw new Error('Die Kontostände je Eigentümer konnten nicht gelesen werden.'); setByOwner(data); })
+      .catch(failure => setByOwnerError(failure.message));
+  };
 
   const refreshData = () => {
     setLoading(true);
@@ -45,12 +56,14 @@ export default function Accounts() {
 
   // Lookup maps
   const portfolioMap = Object.fromEntries(portfolios.map(p => [p.id, p.name]));
+  const ownerMap = Object.fromEntries(owners.map(owner => [owner.id, owner.name]));
 
   // Enriched data
   const enriched = useMemo(() => accounts.map(a => ({
     ...a,
     portfolio_name: portfolioMap[a.portfolio_id] || '—',
-  })), [accounts, portfolioMap]);
+    owner_name: a.owner_contact_id ? ownerMap[a.owner_contact_id] || 'Eigentümer' : 'Gemeinsam',
+  })), [accounts, portfolioMap, ownerMap]);
 
   // Summary stats
   const totalCount = enriched.length;
@@ -64,6 +77,7 @@ export default function Accounts() {
     { key: 'bank_name', label: t('finance.accounts.form.bank') || 'Bank', filterType: 'text' },
     { key: 'iban', label: 'IBAN', render: v => (v ? <span className="cell-iban">{formatIban(v)}</span> : '—') },
     { key: 'account_type', label: t('finance.accounts.form.type') || 'Typ', filterType: 'select' },
+    ...(owners.length ? [{ key: 'owner_name', label: 'Kontoinhaber', filterType: 'select', hidden: true }] : []),
     { key: 'balance', label: t('finance.accounts.form.balance') || 'Saldo (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => {
         const n = Number(v);
@@ -88,6 +102,9 @@ export default function Accounts() {
     ]},
     // The balance follows from the opening balance and the bookings.
     { key: 'opening_balance', label: t('finance.accounts.form.openingBalance') || 'Anfangssaldo (€)', type: 'number', default: 0 },
+    ...(owners.length ? [{ key: 'owner_contact_id', label: 'Kontoinhaber (Eigentümer)', type: 'select',
+      options: [{ value: '', label: 'Gemeinsames Konto' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))],
+      hint: 'Gehört das Konto einem Eigentümer allein, zählt sein Anfangssaldo zu diesem Eigentümer. Die Buchungen teilen sich immer nach den Eigentumsanteilen.' }] : []),
   ];
 
   const handleSave = async (data) => {
@@ -123,7 +140,15 @@ export default function Accounts() {
       {!loadError && <div className="kpi-row">
         <KpiAction label="Anzahl Konten" value={totalCount} onClick={() => setDrilldown(value => value + 1)} />
         <KpiAction label="Gesamtsaldo" value={formatMoney(totalBalance)} onClick={() => setBasisOpen(value => !value)} />
+        {owners.length > 0 && <KpiAction label="Kontostand je Eigentümer" value={owners.length} onClick={showByOwner} />}
       </div>}
+      {byOwnerError && <p className="alert-error" role="alert">{byOwnerError}</p>}
+      {byOwner && <section aria-label="Kontostand je Eigentümer" className="draft-recovery"><h2>Kontostand je Eigentümer</h2>
+        <p>Der Anteil jedes Eigentümers: der Anfangssaldo der Konten, die ihm allein gehören, und sein Anteil an jeder Buchung (nach den Eigentumsanteilen). Zusammen ergibt das den Gesamtsaldo.</p>
+        <div className="table-scroll"><table className="data-table"><thead><tr><th>Eigentümer</th><th>Konten</th><th>Anteil am Saldo</th></tr></thead><tbody>
+          {byOwner.owners.map(row => <tr key={row.owner_contact_id}><td>{row.name}</td>
+            <td>{row.accounts.map(item => `${item.name}: ${formatMoney(item.balance)}`).join(' · ') || '—'}</td><td>{formatMoney(row.balance)}</td></tr>)}
+        </tbody><tfoot><tr><th scope="row">Gesamt</th><td /><td>{formatMoney(byOwner.owners.reduce((sum, row) => sum + Math.round(row.balance * 100), 0) / 100)}</td></tr></tfoot></table></div></section>}
       {basisOpen && !loadError && <section aria-label="Grundlage des Gesamtsaldos" className="draft-recovery"><h2>Grundlage des Gesamtsaldos</h2>
         <p>Der Saldo besteht aus dem erfassten Anfangssaldo und den Buchungen jedes Kontos.</p>
         <div className="table-scroll"><table className="data-table"><thead><tr><th>Konto</th><th>Anfangssaldo</th><th>Buchungen netto</th><th>Saldo</th></tr></thead><tbody>{enriched.map(account => <tr key={account.id}>

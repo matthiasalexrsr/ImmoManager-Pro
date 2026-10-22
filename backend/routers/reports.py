@@ -221,7 +221,8 @@ def get_owner_results(format: Format = None, date_from: DateFrom = None, date_to
     if format == "csv":
         rows = [{"Eigentümer": row["name"], "Sollmiete": row["rent_due"], "Sonstige Erträge": row["other_income"],
                  "Kosten": row["costs"], "Ergebnis": row["result"], "Nicht zugeordnete Einnahmen": row["unassigned_income"],
-                 "Entnahmen": row["withdrawal"], "Einlagen": row["contribution"]} for row in data["owners"]]
+                 "Entnahmen": row["withdrawal"], "Einlagen": row["contribution"],
+                 "Kontostand zum Periodenende": row["balance"]} for row in data["owners"]]
         return _csv_response(rows, "ergebnis-je-eigentuemer.csv")
     return data
 

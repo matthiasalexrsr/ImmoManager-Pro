@@ -91,3 +91,6 @@ class OwnershipTransfer(BaseModel):
     note: Optional[str] = None
     actor_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    changes: Optional[dict] = None        # shares ended, removed and created, to undo the change
+    reverted_at: Optional[datetime] = None
+    reverted_by: Optional[str] = None

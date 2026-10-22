@@ -184,6 +184,7 @@ class AccountORM(Base):
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
     opening_balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
     balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    owner_contact_id: Mapped[str | None] = mapped_column(String(36))   # held by one owner alone (opening balance)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -1179,6 +1180,9 @@ class OwnershipTransferORM(Base):
     note: Mapped[str | None] = mapped_column(Text)
     actor_id: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    changes: Mapped[dict | None] = mapped_column(JSON)          # shares ended, removed and created (to undo)
+    reverted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reverted_by: Mapped[str | None] = mapped_column(String)
 
 
 class MeterORM(Base):

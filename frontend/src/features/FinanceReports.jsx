@@ -318,10 +318,10 @@ function OwnerResults({ definition, onPick }) {
     {current && state.status === 'loading' && <p role="status">Wird berechnet …</p>}
     {current && state.status === 'error' && <p role="alert">{state.error}</p>}
     {shown && <div className="finance-table-scroll"><table><caption>Ergebnis je Eigentümer</caption><thead><tr>
-      <th scope="col">Eigentümer</th><th scope="col">Sollmiete</th><th scope="col">Sonstige Einnahmen</th><th scope="col">Kosten</th><th scope="col">Ergebnis</th><th scope="col">Entnahmen</th><th scope="col">Einlagen</th><th scope="col"><span className="sr-only">Auswahl</span></th>
+      <th scope="col">Eigentümer</th><th scope="col">Sollmiete</th><th scope="col">Sonstige Einnahmen</th><th scope="col">Kosten</th><th scope="col">Ergebnis</th><th scope="col">Entnahmen</th><th scope="col">Einlagen</th><th scope="col">Kontostand zum Periodenende</th><th scope="col"><span className="sr-only">Auswahl</span></th>
     </tr></thead><tbody>
-      {shown.owners.map(row => <tr key={row.owner_contact_id}><th scope="row">{row.name}</th><td>{money(row.rent_due)}</td><td>{money(row.other_income)}</td><td>{money(row.costs)}</td><td>{money(row.result)}</td><td>{money(row.withdrawal)}</td><td>{money(row.contribution)}</td>
+      {shown.owners.map(row => <tr key={row.owner_contact_id}><th scope="row">{row.name}</th><td>{money(row.rent_due)}</td><td>{money(row.other_income)}</td><td>{money(row.costs)}</td><td>{money(row.result)}</td><td>{money(row.withdrawal)}</td><td>{money(row.contribution)}</td><td>{money(row.balance)}</td>
         <td><button type="button" className="btn btn-sm btn-ghost" onClick={() => onPick(row.owner_contact_id)}>Nur diesen Teil auswerten</button></td></tr>)}
-    </tbody><tfoot><tr><th scope="row">Gesamt</th><td>{money(shown.totals.rent_due)}</td><td>{money(shown.totals.other_income)}</td><td>{money(shown.totals.costs)}</td><td>{money(shown.totals.result)}</td><td>{money(shown.totals.withdrawal)}</td><td>{money(shown.totals.contribution)}</td><td /></tr></tfoot></table></div>}
+    </tbody><tfoot><tr><th scope="row">Gesamt</th><td>{money(shown.totals.rent_due)}</td><td>{money(shown.totals.other_income)}</td><td>{money(shown.totals.costs)}</td><td>{money(shown.totals.result)}</td><td>{money(shown.totals.withdrawal)}</td><td>{money(shown.totals.contribution)}</td><td>{money(shown.totals.balance)}</td><td /></tr></tfoot></table></div>}
   </section>;
 }

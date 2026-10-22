@@ -321,16 +321,16 @@ def delete_share(store: Any, share_id: str, actor_id: Optional[str]) -> None:
         rows.delete("ownership_shares", share_id)
 
 
-def require_owner(store: Any, contact_id: Optional[str]) -> None:
-    """A booking's owner is a contact of type "owner"."""
+def require_owner(store: Any, contact_id: Optional[str], role: str = "Der Eigentümer der Buchung") -> None:
+    """A booking's or an account's owner is a contact of type "owner"."""
     if not contact_id:
         return
     try:
         contact = store.get_contact(contact_id)
     except NotFoundError:
-        raise HTTPException(422, "Der Eigentümer der Buchung ist nicht im Adressbuch.") from None
+        raise HTTPException(422, f"{role} ist nicht im Adressbuch.") from None
     if contact.contact_type != "owner":
-        raise HTTPException(422, "Eine Buchung gehört nur einem Kontakt vom Typ „Eigentümer“.")
+        raise HTTPException(422, f"{role} muss ein Kontakt vom Typ „Eigentümer“ sein.")
 
 
 # ---------------------------------------------------------------------------
@@ -541,3 +541,46 @@ def history(store: Any, property_id: str) -> dict[str, Any]:
                        "receivers": [{**r, "name": names.get(r["owner_contact_id"], "Eigentümer")} for r in t.receivers]}
                       for t in journal],
     }
+
+
+# ---------------------------------------------------------------------------
+# Account balances by owner
+# ---------------------------------------------------------------------------
+
+def owner_balances(store: Any, as_of: date, portfolio_id: Optional[str] = None) -> dict[str, Any]:
+    """Each owner's part of the account balances on a day, per account.
+
+    An owner's part: the opening balances of the accounts they hold alone and their part of every
+    booking up to the day (the same split as the reports). The rows, "Ohne Eigentümer" included,
+    add up to each account's balance to the cent.
+    """
+    from ..domain.money import as_number
+    from .finance_ledger import FinanceFilter, booking_totals
+
+    accounts = {a.id: a for a in store.list_accounts() if not portfolio_id or a.portfolio_id == portfolio_id}
+    names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
+    keys = [contact.id for contact in store.list_contacts() if contact.contact_type == "owner"]
+    keys += sorted({a.owner_contact_id for a in accounts.values() if getattr(a, "owner_contact_id", None)} - set(keys))
+    whole: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    rows = []
+    for key in [*keys, NOBODY]:
+        flt = FinanceFilter(portfolio_id=portfolio_id, owner_contact_id=key).with_period(None, as_of)
+        per_account: dict[str, Decimal] = defaultdict(lambda: ZERO)
+        for account in flt.opening_accounts(store):
+            per_account[account.id] += money(account.opening_balance)
+        for total in booking_totals(store, flt, by=("account",)):
+            if total.account_id and total.account_id in accounts:
+                per_account[total.account_id] += total.amount
+        if not any(per_account.values()):
+            continue
+        for account_id, value in per_account.items():
+            whole[account_id] += value
+        rows.append({"owner_contact_id": key, "name": "Ohne Eigentümer" if key == NOBODY else names.get(key, "Eigentümer"),
+                     "balance": as_number(sum(per_account.values(), ZERO)),
+                     "accounts": [{"account_id": account_id, "name": accounts[account_id].name, "balance": as_number(value)}
+                                  for account_id, value in sorted(per_account.items(), key=lambda item: accounts[item[0]].name)
+                                  if value]})
+    rows.sort(key=lambda row: (row["owner_contact_id"] == NOBODY, row["name"].lower()))
+    return {"as_of": as_of.isoformat(), "owners": rows,
+            "accounts": [{"account_id": a.id, "name": a.name, "balance": as_number(whole.get(a.id, ZERO))}
+                         for a in sorted(accounts.values(), key=lambda a: a.name)]}

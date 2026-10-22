@@ -98,8 +98,22 @@ class FinanceFilter:
 
     @property
     def below_portfolio(self) -> bool:
-        """Narrowed to a property, unit or owner: account opening balances do not belong to it."""
-        return bool(self.property_id or self.unit_id or self.owner_contact_id)
+        """Narrowed to a property or unit: account opening balances do not belong to it."""
+        return bool(self.property_id or self.unit_id)
+
+    def opening_accounts(self, store: Any) -> list:
+        """The accounts whose opening balance belongs to the filter.
+
+        Opening balances belong to accounts, not to properties or units. With an owner: the accounts
+        held by that owner alone (``owner_contact_id``); "none" takes the accounts nobody holds alone.
+        """
+        if self.below_portfolio:
+            return []
+        accounts = [a for a in store.list_accounts() if not self.portfolio_id or a.portfolio_id == self.portfolio_id]
+        if self.owner_contact_id:
+            holder = None if self.owner_contact_id == "none" else self.owner_contact_id
+            accounts = [a for a in accounts if (getattr(a, "owner_contact_id", None) or None) == holder]
+        return accounts
 
     def in_period(self, day: Optional[date]) -> bool:
         if day is None:

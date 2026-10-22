@@ -52,13 +52,23 @@ def list_bookings(
 ):
     filters = {"account_id": account_id, "tenant_id": tenant_id, "status": status_filter}
     owner = owner_contact_id if isinstance(owner_contact_id, str) and owner_contact_id else None
-    listing = dict(entity_type="booking", filters=filters, order_by=sort_by, order_desc=(sort_order == "desc"),
-                   range_filters={"booking_date": (
-                       date_from if isinstance(date_from, date) else None,
-                       date_to if isinstance(date_to, date) else None,
-                   )})
+
+    def page(first: int, size: int) -> list:
+        return store._list_paginated(
+            entity_type="booking",
+            skip=first,
+            limit=size,
+            filters=filters,
+            order_by=sort_by,
+            order_desc=(sort_order == "desc"),
+            range_filters={"booking_date": (
+                date_from if isinstance(date_from, date) else None,
+                date_to if isinstance(date_to, date) else None,
+            )},
+        )
+
     if owner is None:
-        return store._list_paginated(skip=skip, limit=limit, **listing)
+        return page(skip, limit)
     # the owner's bookings: those with a part for them (services.ownership), each with that part
     if owner != NOBODY:
         try:
@@ -67,7 +77,7 @@ def list_bookings(
             raise HTTPException(status_code=422, detail="Der Eigentümer ist nicht im Adressbuch.") from exc
     ownership, key = Ownership(store), owner_key(owner)
     owned = []
-    for booking in store._list_paginated(skip=0, limit=10**9, **listing):
+    for booking in page(0, 10**9):
         part = ownership.booking_split(booking).get(key)
         if part:
             owned.append(booking.model_dump(mode="json") | {"owner_part": as_number(part)})

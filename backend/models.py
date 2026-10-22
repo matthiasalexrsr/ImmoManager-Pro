@@ -246,6 +246,13 @@ class AccountCreate(BaseModel):
     account_type: str
     opening_balance: float = 0.0
     balance: float = 0.0
+    # an account held by one owner alone: its opening balance is theirs (services/finance_ledger)
+    owner_contact_id: Optional[str] = None
+
+    @field_validator("owner_contact_id", mode="before")
+    @classmethod
+    def no_owner(cls, value):
+        return value or None
 
 
 class Account(AccountCreate):
@@ -648,6 +655,7 @@ class AccountPatch(BaseModel):
     account_type: Optional[str] = None
     opening_balance: Optional[float] = None
     balance: Optional[float] = None
+    owner_contact_id: Optional[str] = None
 
 
 class CategoryPatch(BaseModel):

@@ -464,8 +464,7 @@ def forecast(store, d):
     opening_sources = [{"identity": "account-opening:" + account.id, "amount": str(money(account.opening_balance)),
                         "label": "Eröffnungssaldo " + account.name, "basis": "Erfasster Kontovortrag",
                         "url": "/accounts?focus_id=" + account.id}
-                       for account in store.list_accounts() if not flt.below_portfolio and
-                       (not flt.portfolio_id or account.portfolio_id == flt.portfolio_id) and money(account.opening_balance)]
+                       for account in flt.opening_accounts(store) if money(account.opening_balance)]
     opening_sources += [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
                          "amount": str(view.booking(booking)), "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
                          "basis": "Buchung bis einschließlich Stichtag", "url": "/bookings?booking_id=" + booking.id}
