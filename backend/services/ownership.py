@@ -370,6 +370,44 @@ def ensure_owner_type_kept(store: Any, contact_id: str, contact_type: Optional[s
                             + ". Bitte diese zuerst einem anderen Eigentümer zuordnen oder beenden.")
 
 
+def current_owners(store: Any, day: date) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    """The recorded owners of every visible property and unit on a day, largest share first (list columns)."""
+    ownership = Ownership(store)
+    if not ownership.recorded:
+        return {"properties": {}, "units": {}}
+    names = {contact.id: owner_name(contact) for contact in store.list_contacts()}
+
+    def described(weights: dict[Optional[str], Decimal]) -> list[dict[str, Any]]:
+        return [{"owner_contact_id": owner, "name": names.get(owner, "Eigentümer"), "percent": float(round(percent, 4))}
+                for owner, percent in sorted(weights.items(), key=lambda item: (-item[1], item[0] or ""))
+                if owner and percent > 0]
+
+    found: dict[str, dict[str, list[dict[str, Any]]]] = {"properties": {}, "units": {}}
+    for prop in store.list_properties():
+        if ownership.has_shares(prop.id) and (owners := described(ownership.weights(prop.id, None, day))):
+            found["properties"][prop.id] = owners
+    for unit in store.list_units():
+        if ownership.has_shares(unit.property_id) and (owners := described(ownership.weights(unit.property_id, unit.id, day))):
+            found["units"][unit.id] = owners
+    return found
+
+
+def holdings(store: Any, owner_contact_id: str, day: date) -> dict[str, Any]:
+    """An owner's shares with their property and unit, those of the day first (the contact's page)."""
+    contact = store.get_contact(owner_contact_id)
+    properties = {prop.id: prop for prop in store.list_properties()}
+    units = {unit.id: unit for unit in store.list_units()}
+    rows = []
+    for share in list_shares(store, owner_contact_id=owner_contact_id):
+        prop, unit = properties.get(share.property_id), units.get(share.unit_id) if share.unit_id else None
+        rows.append(share.model_dump(mode="json") | {"property_name": prop.name if prop else None,
+                                                      "unit_label": unit.label if unit else None,
+                                                      "current": active_on(share, day)})
+    rows.sort(key=lambda row: (not row["current"], (row["property_name"] or "").casefold(), row["unit_label"] or "",
+                               row["valid_from"] or ""))
+    return {"owner_contact_id": contact.id, "name": owner_name(contact), "as_of": day.isoformat(), "shares": rows}
+
+
 def timeline(store: Any, property_id: str, unit_id: Optional[str]) -> list[dict[str, Any]]:
     """Who owns a property or unit from when to when, largest share first; empty without a recorded owner.
 

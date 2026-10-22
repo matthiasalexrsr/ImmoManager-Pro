@@ -13,6 +13,7 @@ import { useToast } from '../components/Toast';
 import { formatArea, formatMoney, formatPercent } from '../utils/format';
 import KpiAction from '../components/KpiAction';
 import { occupancyMapOn } from '../utils/occupancy';
+import { ownersLabel, useCurrentOwners } from '../features/ownership/currentOwners';
 
 export default function Units() {
   const [filter, setFilter, params] = useListRouteFilter(['all', 'occupied', 'vacant', 'reserved', 'no_contract', 'no_area', 'no_person_count', 'with_rent']);
@@ -29,6 +30,8 @@ export default function Units() {
   const tenantState = useEntities('tenants', '/tenants');
   const tenants = tenantState.items;
   const relatedSources = [propertyState, contractState, tenantState];
+  const currentOwners = useCurrentOwners();
+  const hasOwners = Object.keys(currentOwners.units).length > 0;
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -79,6 +82,7 @@ export default function Units() {
       warm_rent: warmRent,
       tenant_id: occupancy[u.id].tenant_id,
       tenant_name: tenantMap[occupancy[u.id].tenant_id] || '—',
+      owners_label: ownersLabel(currentOwners.units[u.id]),
       vacant_since: occupancy[u.id].status === 'vacant' ? (u.created_at || '—') : null,
     };
   });
@@ -118,6 +122,8 @@ export default function Units() {
     { key: 'person_count', hidden: true, label: t('units.form.personCount') || 'Personen', type: 'number', align: 'right' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
+    // today's recorded owners; shown once any share is recorded
+    { key: 'owners_label', hidden: !hasOwners, label: 'Eigentümer', filterType: 'text', render: v => v || '—' },
     { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];

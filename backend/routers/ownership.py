@@ -29,6 +29,21 @@ def list_owners():
     return service.owners(store)
 
 
+@router.get("/current")
+def current_owners(as_of: date | None = Query(None)):
+    """The recorded owners of every property and unit on a day (lists of properties and units)."""
+    return service.current_owners(store, as_of or local_today())
+
+
+@router.get("/holdings")
+def holdings(owner_contact_id: str = Query(...), as_of: date | None = Query(None)):
+    """An owner's shares with their property and unit (the contact's page)."""
+    try:
+        return service.holdings(store, owner_contact_id, as_of or local_today())
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
 @router.get("/overview")
 def overview(property_id: str = Query(...), as_of: date | None = Query(None)):
     """Who owns the property and each unit on a day, as the reports split their money."""

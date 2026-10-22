@@ -229,3 +229,14 @@ def test_an_owners_data_access_export_and_anonymization(estate):
     # the shares keep counting, now for the placeholder
     rows = {row["name"]: row for row in estate["get"](f"/reports/owner-results?{MARCH}")["owners"]}
     assert rows[f"Anonymisiert-{linda[:8]}"]["result"] == 940 and "Linda" not in rows
+
+
+def test_the_owners_of_today_for_the_lists_and_an_owners_holdings(estate):
+    current = estate["get"]("/ownership-shares/current?as_of=2026-03-31")
+    assert [(o["name"], o["percent"]) for o in current["properties"][estate["house"]]] == [("Linda", 55.0), ("Matthias", 45.0)]
+    assert [(o["name"], o["percent"]) for o in current["units"][estate["units"][0]]] == [("Matthias", 100.0)]
+    assert sorted(o["name"] for o in current["units"][estate["units"][2]]) == ["Linda", "Matthias"]
+    held = estate["get"](f"/ownership-shares/holdings?owner_contact_id={estate['linda']}&as_of=2026-03-31")
+    assert held["name"] == "Linda"
+    assert [(row["property_name"], row["unit_label"], row["share_percent"], row["current"]) for row in held["shares"]] == [
+        ("Haus", "WE 2", 100.0, True), ("Haus", "WE 3", 50.0, True)]

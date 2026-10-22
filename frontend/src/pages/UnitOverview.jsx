@@ -17,6 +17,7 @@ import EntityTimeline from '../features/workCenter/EntityTimeline';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { entityHref } from '../utils/entityLinks';
 import usePhotoNotification from '../hooks/usePhotoNotification';
+import { ownersLabel, useCurrentOwners } from '../features/ownership/currentOwners';
 import './propertyDossier.css';
 
 // What can be started from a unit, each opened prefilled with the unit and its property.
@@ -46,6 +47,7 @@ function UnitDossier({ id }) {
   const photoNotice = usePhotoNotification('unit', id);
   useEffect(() => { if (photoNotice.open) setPhotosOpen(true); }, [photoNotice.open]);
   const canContract = useCanWrite('/contracts');
+  const currentOwners = useCurrentOwners();
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +135,8 @@ function UnitDossier({ id }) {
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
+              <dt>Eigentümer</dt><dd>{currentOwners.units[unit.id]
+                ? <Link to={`/properties/${encodeURIComponent(unit.property_id)}?tab=owners`}>{ownersLabel(currentOwners.units[unit.id])}</Link> : '—'}</dd>
               <dt>Plan-Kaltmiete</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
               <dt>Plan-Nebenkosten</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
               <dt>Plan-Heizkosten</dt><dd>{formatMoney(unit.heating_advance)}</dd>

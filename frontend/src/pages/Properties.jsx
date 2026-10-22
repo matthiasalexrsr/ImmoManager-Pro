@@ -14,6 +14,7 @@ import { PlusIcon, PropertyIcon } from '../components/Icons';
 import './ListWorkspace.css';
 import { propertyFields } from '../features/properties/propertyFields';
 import KpiAction from '../components/KpiAction';
+import { ownersLabel, useCurrentOwners } from '../features/ownership/currentOwners';
 
 export default function Properties() {
   const { t } = useTranslation();
@@ -23,6 +24,8 @@ export default function Properties() {
   const toast = useToast();
   const store = useDataStore();
   const canWrite = useCanWrite('/properties');
+  const currentOwners = useCurrentOwners();
+  const hasOwners = Object.keys(currentOwners.properties).length > 0;
 
   const portfolioSource = useEntities('portfolios', '/portfolios');
   const unitSource = useEntities('units', '/units');
@@ -101,9 +104,10 @@ export default function Properties() {
       total_rent: totalRent,
       missing_rent_count: propUnits.length - withRent.length,
       open_maintenance: openMaint,
+      owners_label: ownersLabel(currentOwners.properties[prop.id]),
       _hasVacancy: hasVacancy,
     };
-  }), [properties, unitsByProperty, openMaintenanceByProperty, portfolioMap]);
+  }), [properties, unitsByProperty, openMaintenanceByProperty, portfolioMap, currentOwners]);
 
   // Filtered data
   const filtered = useMemo(() => {
@@ -135,6 +139,8 @@ export default function Properties() {
     { key: 'property_type', label: t('portfolio.properties.form.type') || 'Typ', filterType: 'select' },
     { key: 'city', hidden: true, label: t('portfolio.properties.form.city') || 'Stadt', filterType: 'text' },
     { key: 'postal_code', hidden: true, label: t('portfolio.properties.form.postalCode') || 'PLZ', filterType: 'text' },
+    // today's recorded owners (a property without own shares: by its units); shown once any share is recorded
+    { key: 'owners_label', hidden: !hasOwners, label: 'Eigentümer', filterType: 'text', render: v => v || '—' },
     { key: 'unit_count', label: 'Einheiten', type: 'number', align: 'right' },
     { key: 'occupancy_rate', label: 'Vermietung', type: 'number', align: 'right',
       render: (v, row) => {
