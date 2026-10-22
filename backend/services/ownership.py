@@ -444,7 +444,7 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
             objects = sorted({s.unit_id for s in shares if s.owner_contact_id == giver.id and active_on(s, day)},
                              key=lambda obj: (obj is not None, labels.get(obj or "", "")))
             if not objects:
-                raise HTTPException(409, f"{owner_name(giver)} hat am {day:%d.%m.%Y} keinen Anteil an „{prop.name}“.")
+                raise HTTPException(409, f"{owner_name(giver)} hält am {day:%d.%m.%Y} keinen Anteil an „{prop.name}“.")
         else:
             objects = [data.unit_id]
         involved = {giver.id, *(r.id for r in receivers)}
@@ -466,7 +466,7 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
             own = [s for s in shares if s.unit_id == obj]
             held = [s for s in own if s.owner_contact_id == giver.id and active_on(s, day)]
             if not held:
-                raise HTTPException(409, f"{owner_name(giver)} hat am {day:%d.%m.%Y} keinen Anteil an {place(obj)}."
+                raise HTTPException(409, f"{owner_name(giver)} hält am {day:%d.%m.%Y} keinen Anteil an {place(obj)}."
                                     + ("" if obj or data.scope == "all" else " Gehören ihm Einheiten, bitte „Alle Anteile am Objekt“ wählen."))
             if any((s.valid_from or date.min) > day for s in own):
                 raise HTTPException(409, f"An {place(obj)} ist nach dem {day:%d.%m.%Y} schon ein Wechsel erfasst. "

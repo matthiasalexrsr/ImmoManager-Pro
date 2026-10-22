@@ -62,7 +62,8 @@ def budget_analysis(
         results = [b for b in results if b.property_id == property_id]
     if year:
         results = [b for b in results if b.year == year]
-    view = OwnerView(store, SimpleNamespace(owner_contact_id=owner_contact_id or None))
+    owner = owner_contact_id if isinstance(owner_contact_id, str) and owner_contact_id else None
+    view = OwnerView(store, SimpleNamespace(owner_contact_id=owner))
 
     def owned(budget: Budget, amount: float) -> Decimal:
         return view.period(amount, budget.property_id, None, date(budget.year, 1, 1), date(budget.year, 12, 31))
