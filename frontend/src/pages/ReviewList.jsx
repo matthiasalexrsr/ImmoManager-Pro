@@ -16,6 +16,8 @@ const KIND_LABELS = {
   rent_decrease: 'Mietsenkung',
   invoice_negative: 'Negativer Rechnungsbetrag',
   duplicate_iban: 'IBAN doppelt',
+  contract_without_history: 'Kein Mietverlauf',
+  history_starts_late: 'Mietverlauf beginnt spät',
 };
 
 /** Rents and payments that need a decision, each with a link to where it is fixed. */

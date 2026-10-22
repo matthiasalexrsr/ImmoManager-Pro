@@ -251,6 +251,24 @@ def test_the_same_bank_account_cannot_be_entered_twice(client, world):
         "portfolio_id": pf, "name": "Kasse", "account_type": "cash"}).status_code == 201
 
 
+def test_a_missing_or_late_rent_history_is_on_the_review_list(client, world):
+    """R12-03, R12-17: without a history the past is charged at today's unit rent; a history starting
+    after the contract leaves the days before without any rent."""
+    from backend.models import ContractRentPeriodCreate
+    (period,) = store.list_contract_rent_periods(world["contract"]["id"])
+    fields = period.model_dump(include=set(ContractRentPeriodCreate.model_fields))
+    store.update_contract_rent_period(period.id, ContractRentPeriodCreate(**{**fields, "valid_from": "2024-03-01"}))
+
+    def kinds():
+        items = client.get("/api/v1/review", headers=world["owner"]).json()["items"]
+        return {item["kind"]: item for item in items if item["entity_id"] == world["contract"]["id"]}
+
+    late = kinds()["history_starts_late"]
+    assert "01.01.2024" in late["detail"] and "01.03.2024" in late["detail"]
+    store.delete_contract_rent_period(period.id)
+    assert set(kinds()) >= {"contract_without_history"} and "history_starts_late" not in kinds()
+
+
 def test_accounts_that_already_share_an_iban_are_on_the_review_list(client, world):
     """Twins from before the IBAN check stay (the upgrade keeps them); the review list names them."""
     from backend.models import AccountCreate

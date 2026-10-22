@@ -13,6 +13,7 @@
   an adjustment not taking effect on the 1st, a statement period over twelve months
   (§ 556 Abs. 3 BGB), an invoice due before its date, an adjustment lowering the rent,
   an open invoice with a negative amount.
+- A running contract without a rent history, or whose history begins after the contract (R12-17, R12-03).
 - Bank accounts sharing an IBAN (entered before that was refused): their balances count twice.
 """
 
@@ -49,6 +50,24 @@ def review_items(store: Any, today: date) -> list[dict]:
                    and (contract.end_date is None or contract.end_date >= today))
         unit = units.get(contract.unit_id)
         periods = store.list_contract_rent_periods(contract.id)
+        if contract.status in OCCUPYING_CONTRACT_STATUSES and not periods:
+            # R12-17: without a history the rent is taken from today's unit rent, also for past months
+            items.append({
+                "kind": "contract_without_history", "severity": "warning",
+                "title": f"Vertrag {contract.contract_number} hat keinen Mietverlauf",
+                "detail": "Das Mietsoll wird rückwirkend aus der heutigen Miete der Einheit berechnet. Bitte den "
+                          "Mietstand ab Vertragsbeginn erfassen.",
+                "entity_type": "contract", "entity_id": contract.id, "link": "/contracts"})
+        elif (contract.status in OCCUPYING_CONTRACT_STATUSES
+              and periods[0].valid_from > (contract.ledger_start or contract.start_date)):
+            # R12-03: the days before the first rent state owe nothing (a takeover owes from its ledger start)
+            begins = contract.ledger_start or contract.start_date
+            items.append({
+                "kind": "history_starts_late", "severity": "warning",
+                "title": f"Mietverlauf von {contract.contract_number} beginnt nach dem Vertragsbeginn",
+                "detail": f"{'Mietkonto ab' if contract.ledger_start else 'Vertragsbeginn'} {_day(begins)}, erster "
+                          f"Mietstand ab {_day(periods[0].valid_from)}: Für die Zeit dazwischen entsteht kein Mietsoll.",
+                "entity_type": "contract", "entity_id": contract.id, "link": "/contracts"})
         charge = charge_for(store, contract, today)
         if not (running and unit and charge and periods):
             continue
