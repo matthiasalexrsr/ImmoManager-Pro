@@ -8,6 +8,7 @@ import pytest
 from archive_helpers import purge_originals
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import text
 
 from backend import auth
 from backend.app import app
@@ -33,8 +34,10 @@ def _clear_rules():
     if hasattr(store, "db"):
         store.db.rollback()
         with store.db.get_bind().connect() as connection, connection.begin():
-            connection.exec_driver_sql("DELETE FROM daily_setting_rules WHERE key LIKE 'letter_template:%' "
-                                       "OR key LIKE 'document_%' OR key LIKE 'price_index:%'")
+            # bound patterns: a literal "%" is a placeholder for the PostgreSQL driver
+            connection.execute(text("DELETE FROM daily_setting_rules WHERE key LIKE :letters OR key LIKE :documents "
+                                    "OR key LIKE :index"),
+                               {"letters": "letter_template:%", "documents": "document_%", "index": "price_index:%"})
             connection.exec_driver_sql("DELETE FROM daily_commands")
     else:
         for key in ("_daily_rules", "_daily_commands"):
