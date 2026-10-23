@@ -1,0 +1,7 @@
+.task-recurrence { display: grid; gap: 0.75rem; }
+.task-recurrence-controls { min-width: 0; margin: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; }
+.task-recurrence-controls legend { font-size: 0.875rem; padding: 0 0.25rem; }
+.task-recurrence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0.75rem; }
+.task-recurrence-grid label, .task-recurrence-expert label { display: grid; gap: 0.35rem; }
+.task-recurrence-expert summary { cursor: pointer; margin-bottom: 0.5rem; }
+.task-recurrence-expert input { width: 100%; }

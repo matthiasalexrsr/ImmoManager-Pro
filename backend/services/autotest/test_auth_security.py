@@ -6,7 +6,22 @@ role-based access control, token revocation, and auth edge cases.
 
 import time
 
+from fastapi import HTTPException
+
+from ...auth import register_user
 from .runner import TestContext, TestResult, test_module
+
+
+def _register(username: str, email: str, full_name: str, password: str) -> int:
+    """Create a read-only test account in-process (public sign-up may be closed).
+
+    Returns the HTTP status the registration would produce.
+    """
+    try:
+        register_user(username, email, full_name, password, "readonly")
+    except HTTPException as exc:
+        return exc.status_code
+    return 201
 
 
 @test_module("auth_security", "Authentication, authorization, and token security")
@@ -17,42 +32,27 @@ def test_auth_security(ctx: TestContext) -> list[TestResult]:
 
     # Weak password rejection
     t0 = time.monotonic()
-    resp = ctx.client.post(f"{ctx.base_url}/auth/register", json={
-        "username": "weakpw_test",
-        "email": "weak@test.local",
-        "full_name": "Weak PW",
-        "password": "123",
-    })
+    status = _register("weakpw_test", "weak@test.local", "Weak PW", "123")
     dur = round((time.monotonic() - t0) * 1000, 1)
     results.append(TestResult(
         name="auth::weak_password_rejected",
-        passed=resp.status_code == 400,
+        passed=status == 400,
         duration_ms=dur,
-        message=f"Weak password returned {resp.status_code} (expected 400)",
+        message=f"Weak password returned {status} (expected 400)",
         file_path="backend/auth.py",
         line_hint="validate_password_strength()",
     ))
 
     # Duplicate username rejection
     t0 = time.monotonic()
-    ctx.client.post(f"{ctx.base_url}/auth/register", json={
-        "username": "dup_test_user",
-        "email": "dup@test.local",
-        "full_name": "Dup Test",
-        "password": "DupTest1234!",
-    })
-    resp = ctx.client.post(f"{ctx.base_url}/auth/register", json={
-        "username": "dup_test_user",
-        "email": "dup2@test.local",
-        "full_name": "Dup Test 2",
-        "password": "DupTest1234!",
-    })
+    _register("dup_test_user", "dup@test.local", "Dup Test", "DupTest1234!")
+    status = _register("dup_test_user", "dup2@test.local", "Dup Test 2", "DupTest1234!")
     dur = round((time.monotonic() - t0) * 1000, 1)
     results.append(TestResult(
         name="auth::duplicate_username_rejected",
-        passed=resp.status_code == 409,
+        passed=status == 409,
         duration_ms=dur,
-        message=f"Duplicate username returned {resp.status_code} (expected 409)",
+        message=f"Duplicate username returned {status} (expected 409)",
         file_path="backend/auth.py",
         line_hint="register_user()",
     ))
@@ -112,12 +112,7 @@ def test_auth_security(ctx: TestContext) -> list[TestResult]:
     t0 = time.monotonic()
     revoke_user = "revoke_test_user"
     revoke_pw = "RevokeTest1234!"
-    ctx.client.post(f"{ctx.base_url}/auth/register", json={
-        "username": revoke_user,
-        "email": "revoke@test.local",
-        "full_name": "Revoke Test",
-        "password": revoke_pw,
-    })
+    _register(revoke_user, "revoke@test.local", "Revoke Test", revoke_pw)
     login_resp = ctx.client.post(f"{ctx.base_url}/auth/login", json={
         "username": revoke_user,
         "password": revoke_pw,
@@ -152,12 +147,7 @@ def test_auth_security(ctx: TestContext) -> list[TestResult]:
     t0 = time.monotonic()
     readonly_user = "readonly_test_user"
     readonly_pw = "ReadOnly1234!"
-    ctx.client.post(f"{ctx.base_url}/auth/register", json={
-        "username": readonly_user,
-        "email": "readonly@test.local",
-        "full_name": "ReadOnly Test",
-        "password": readonly_pw,
-    })
+    _register(readonly_user, "readonly@test.local", "ReadOnly Test", readonly_pw)
     login_resp = ctx.client.post(f"{ctx.base_url}/auth/login", json={
         "username": readonly_user,
         "password": readonly_pw,

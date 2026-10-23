@@ -22,11 +22,11 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -49,16 +49,25 @@ _HTTP_TIMEOUT = 30.0
 
 # ─── Version Comparison ──────────────────────────────────────────────────────
 
-def _parse_version(version_str: str) -> tuple[int, ...]:
-    """Parse a semver string like '1.2.3' into a comparable tuple."""
-    cleaned = version_str.lstrip("vV").strip()
-    parts = []
-    for part in cleaned.split("."):
-        try:
-            parts.append(int(part.split("-")[0].split("+")[0]))
-        except ValueError:
-            parts.append(0)
-    return tuple(parts)
+_VERSION = re.compile(r"(\d+(?:\.\d+)*)(?:[-.]?([a-zA-Z]+)[-.]?(\d*))?")
+# a pre-release comes before its release: 2.0.0-dev < -alpha < -beta.1 < -beta.2 < -rc1 < 2.0.0
+_PHASES = {"dev": 0, "a": 1, "alpha": 1, "b": 2, "beta": 2, "c": 3, "rc": 3, "pre": 3, "preview": 3}
+_RELEASED = 4
+
+
+def _parse_version(version_str: str) -> tuple[tuple[int, ...], int, int]:
+    """'1.2.3', 'v2.1.0-rc1', '2.0.0-beta.2' or '2.0.0b2' as a comparable key; '+build' does not count."""
+    cleaned = version_str.strip().lstrip("vV").split("+")[0]
+    match = _VERSION.match(cleaned)
+    if not match:
+        return ((), 0, 0)
+    numbers = [int(number) for number in match.group(1).split(".")]
+    while len(numbers) > 1 and numbers[-1] == 0:      # 2.0 is 2.0.0
+        numbers.pop()
+    phase = match.group(2)
+    if phase is None:
+        return (tuple(numbers), _RELEASED, 0)
+    return (tuple(numbers), _PHASES.get(phase.lower(), 0), int(match.group(3) or 0))
 
 
 def is_newer_version(remote: str, local: str) -> bool:
@@ -103,12 +112,32 @@ def is_update_locked() -> bool:
         return False
     try:
         lock_data = json.loads(_LOCK_FILE.read_text())
+        if lock_data.get("pid") == os.getpid():
+            return True             # this process is updating; a long migration may take hours
         lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
         age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
         return age_seconds < 1800
     except Exception:
         logger.debug("Could not read update lock status", exc_info=True)
         return False
+
+
+# Set once an update is installed: this process still runs the previous code on the new schema.
+_restart_pending = False
+
+
+def writes_blocked() -> str | None:
+    """Why changes are refused right now, or None.
+
+    During an update a failed step restores the database snapshot taken at its start, which
+    would drop whatever was saved in between; after it, the old code would write into the
+    new schema until the restart.
+    """
+    if _restart_pending:
+        return "Das Update ist installiert. Bitte ImmoManager neu starten; bis dahin sind Änderungen gesperrt."
+    if is_update_locked():
+        return "Ein Update läuft. Änderungen sind bis zu seinem Ende gesperrt; Lesen geht weiter."
+    return None
 
 
 # ─── Git Helpers ──────────────────────────────────────────────────────────────
@@ -141,6 +170,24 @@ def _get_current_branch() -> str | None:
     """Return the current git branch name."""
     result = _run_git("rev-parse", "--abbrev-ref", "HEAD")
     return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _source_mismatch() -> str | None:
+    """Why the checkout cannot install what the update check reports, if it pulls from another repository.
+
+    The check reads the releases of UPDATE_REPO_URL; apply_update fetches from the checkout's origin.
+    """
+    configured = _extract_owner_repo(settings.update_repo_url or "")
+    remote = _run_git("remote", "get-url", "origin")
+    origin = remote.stdout.strip() if remote.returncode == 0 else ""
+    if not configured or (origin and (_extract_owner_repo(origin) or "").lower() == configured.lower()):
+        return None
+    if not origin:
+        return "Der Checkout hat kein Remote „origin“; ein Update lässt sich nicht holen."
+    # never show credentials of an https remote
+    shown = _extract_owner_repo(origin) or re.sub(r"//[^/@]*@", "//", origin)
+    return (f"Die Update-Prüfung liest {configured}, der Checkout holt seinen Code aber von {shown}. "
+            "Bitte UPDATE_REPO_URL oder das Remote „origin“ angleichen.")
 
 
 def _has_uncommitted_changes() -> bool:
@@ -194,14 +241,14 @@ def check_for_updates() -> dict:
         "is_git_repo": _is_git_repo(),
         "update_channel": channel,
         "is_frozen": getattr(sys, "frozen", False),
+        # whether this installation can install the update itself (a git checkout); the Windows
+        # package is replaced by the new package instead (download_hint)
+        "can_apply": False,
+        "download_hint": None,
     }
 
     if not repo_url:
         result["error"] = "Kein GitHub-Repository konfiguriert (UPDATE_REPO_URL)"
-        return result
-
-    if getattr(sys, "frozen", False):
-        result["error"] = "Updates sind im PyInstaller-Bundle nicht verfügbar. Bitte neue Version herunterladen."
         return result
 
     # Extract owner/repo from URL
@@ -238,11 +285,13 @@ def check_for_updates() -> dict:
         if channel == "stable":
             release = data
         else:
-            # data is a list; pick the first (newest)
-            if not data:
+            # data is a list, newest first by date; the highest version wins (a fix of an older line
+            # published after a pre-release does not hide it)
+            published = [item for item in data if not item.get("draft")]
+            if not published:
                 result["error"] = "Keine Releases gefunden"
                 return result
-            release = data[0]
+            release = max(published, key=lambda item: _parse_version(item.get("tag_name", "")))
 
         tag = release.get("tag_name", "")
         result["latest_version"] = tag.lstrip("vV")
@@ -250,6 +299,17 @@ def check_for_updates() -> dict:
         result["release_url"] = release.get("html_url", "")
         result["published_at"] = release.get("published_at", "")
         result["update_available"] = is_newer_version(tag, current)
+        frozen = bool(result["is_frozen"])
+        mismatch = _source_mismatch() if result["is_git_repo"] and not frozen else None
+        result["can_apply"] = (not frozen and bool(result["is_git_repo"]) and not mismatch
+                               and (not settings.is_production or settings.update_allow_in_production))
+        if result["update_available"] and mismatch:
+            result["download_hint"] = mismatch
+        elif result["update_available"] and not result["can_apply"]:
+            result["download_hint"] = (
+                "Neue Version von der Release-Seite herunterladen, das ZIP entpacken und das Programm der neuen "
+                "Version starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
+                "zuerst ein geprüftes Vollbackup an und aktualisiert dann die Datenbank.")
 
     except httpx.TimeoutException:
         result["error"] = "Zeitüberschreitung bei der Verbindung zu GitHub"
@@ -298,9 +358,10 @@ def _create_pre_update_backup() -> str | None:
 
     try:
 
-        # Use the same export logic as admin.py
-        from .routers.admin import _export_store_data
-        data = _export_store_data()
+        # Same lossless snapshot as /admin/export
+        from .dependencies import store
+        from .services.data_snapshot import export_snapshot
+        data = export_snapshot(store)
         data["_meta"] = {
             "type": "pre_update_backup",
             "version": settings.app_version,
@@ -347,7 +408,10 @@ def _create_db_snapshot() -> str | None:
     snapshot_path = _BACKUP_DIR / snapshot_name
 
     try:
-        shutil.copy2(db_path, snapshot_path)
+        # online backup API: a file copy of the live WAL database would miss commits
+        from .services.full_backup import sqlite_online_copy
+
+        sqlite_online_copy(db_path, snapshot_path)
         logger.info("Database snapshot created: %s", snapshot_name)
         return snapshot_name
     except Exception:
@@ -355,20 +419,40 @@ def _create_db_snapshot() -> str | None:
         return None
 
 
+# ─── Dependencies ────────────────────────────────────────────────────────────
+
+def _install_dependencies() -> tuple[bool, str]:
+    """The exact dependency tree of the checked-out code (requirements.txt with constraints.txt)."""
+    command = [sys.executable, "-m", "pip", "install", "-q", "-r", str(_PROJECT_ROOT / "requirements.txt")]
+    constraints = _PROJECT_ROOT / "constraints.txt"
+    if constraints.exists():
+        command += ["-c", str(constraints)]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    except Exception as exc:
+        logger.exception("pip could not be started during update")
+        return False, f"pip fehlgeschlagen: {type(exc).__name__}"
+    if result.returncode != 0:
+        logger.error("pip install failed during update: %s", result.stderr[-2000:])
+        return False, f"pip fehlgeschlagen (Code {result.returncode}): {result.stderr.strip()[-500:]}"
+    return True, "Abhängigkeiten aktualisiert"
+
+
 # ─── Migration ────────────────────────────────────────────────────────────────
 
 def _run_migrations() -> tuple[bool, str]:
-    """Run Alembic migrations.  Returns (success, message)."""
+    """Explicit upgrade with the updated code, in its own process (full backup first)."""
     try:
-        from alembic import command
-        from alembic.config import Config
-
-        alembic_cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
-        command.upgrade(alembic_cfg, "head")
-        return True, "Migrationen erfolgreich angewendet"
+        result = subprocess.run([sys.executable, "-m", "backend.upgrade"], cwd=str(_PROJECT_ROOT),
+                                capture_output=True, text=True, timeout=6 * 3600)
     except Exception as exc:
-        logger.exception("Migration failed during update")
-        return False, f"Migration fehlgeschlagen: {exc}"
+        logger.exception("Upgrade could not be started during update")
+        return False, f"Upgrade fehlgeschlagen: {type(exc).__name__}"
+    output = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        logger.error("Explicit upgrade failed during update: %s", output[-2000:])
+        return False, f"Upgrade fehlgeschlagen (Code {result.returncode}): {output[-500:]}"
+    return True, output.splitlines()[-1] if output else "Datenbank ist aktuell"
 
 
 # ─── Frontend Rebuild ─────────────────────────────────────────────────────────
@@ -389,20 +473,21 @@ def _rebuild_frontend() -> tuple[bool, str]:
         return True, "Node.js nicht installiert, Frontend-Build übersprungen"
 
     try:
-        # Install dependencies if needed
+        # Exactly the locked packages, as CI and the release build use them; npm install
+        # would rewrite package-lock.json and leave the checkout changed
         result = subprocess.run(
-            ["npm", "install", "--production=false"],
+            ["npm", "ci", "--include=dev"],
             cwd=frontend_dir,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
         if result.returncode != 0:
-            return False, f"npm install fehlgeschlagen: {result.stderr[:500]}"
+            return False, f"npm ci fehlgeschlagen: {result.stderr[:500]}"
 
         # Build
         result = subprocess.run(
-            ["npx", "vite", "build"],
+            ["npm", "run", "build"],
             cwd=frontend_dir,
             capture_output=True,
             text=True,
@@ -476,7 +561,8 @@ def apply_update(target_version: str | None = None) -> dict:
 
     Returns a result dict with status, messages, and whether restart is needed.
     """
-    result = {
+    global _restart_pending
+    result: dict[str, Any] = {
         "success": False,
         "message": "",
         "steps": [],
@@ -500,6 +586,11 @@ def apply_update(target_version: str | None = None) -> dict:
         result["message"] = "Kein Update-Repository konfiguriert"
         return result
 
+    mismatch = _source_mismatch()
+    if mismatch:
+        result["message"] = mismatch
+        return result
+
     # Validate target_version format if provided
     if target_version:
         cleaned = target_version.lstrip("vV").strip()
@@ -513,6 +604,7 @@ def apply_update(target_version: str | None = None) -> dict:
 
     previous_commit = _get_current_commit()
     stashed = False
+    dependencies_changed = False
 
     try:
         # Step 1: Create backups
@@ -557,15 +649,13 @@ def apply_update(target_version: str | None = None) -> dict:
                 return result
             result["steps"].append(f"Version {target_version} ausgecheckt")
         else:
-            # Merge latest from remote
+            # Only a fast-forward: a merge with local commits would install an untested combination
             merge_result = _run_git("merge", f"origin/{branch}", "--ff-only")
             if merge_result.returncode != 0:
-                # Try rebase if fast-forward fails
-                merge_result = _run_git("merge", f"origin/{branch}")
-                if merge_result.returncode != 0:
-                    result["message"] = f"Merge fehlgeschlagen: {merge_result.stderr.strip()}"
-                    _rollback(previous_commit, stashed, result)
-                    return result
+                result["message"] = ("Der Stand lässt sich nicht vorspulen: Diese Installation hat eigene Commits "
+                                     f"gegenüber origin/{branch}. Bitte von Hand zusammenführen.")
+                _rollback(previous_commit, stashed, result)
+                return result
             result["steps"].append("Code aktualisiert")
 
         new_commit = _get_current_commit()
@@ -579,17 +669,13 @@ def apply_update(target_version: str | None = None) -> dict:
 
         # Step 5: Install updated dependencies
         result["steps"].append("Installiere Abhängigkeiten...")
-        pip_result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", str(_PROJECT_ROOT / "requirements.txt"), "-q"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if pip_result.returncode != 0:
-            logger.warning("pip install had issues: %s", pip_result.stderr[:500])
-            result["steps"].append("Abhängigkeiten: Warnungen (nicht kritisch)")
-        else:
-            result["steps"].append("Abhängigkeiten aktualisiert")
+        dependencies_changed = True
+        pip_ok, pip_msg = _install_dependencies()
+        result["steps"].append(pip_msg)
+        if not pip_ok:
+            result["message"] = "Abhängigkeiten konnten nicht installiert werden — Rollback wird durchgeführt"
+            _rollback(previous_commit, stashed, result, dependencies_changed)
+            return result
 
         # Step 6: Run database migrations
         result["steps"].append("Führe Datenbank-Migrationen aus...")
@@ -597,7 +683,7 @@ def apply_update(target_version: str | None = None) -> dict:
         result["steps"].append(mig_msg)
         if not mig_ok:
             result["message"] = "Migration fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result)
+            _rollback(previous_commit, stashed, result, dependencies_changed)
             # Restore DB snapshot if available
             if db_snapshot and "sqlite" in settings.database_url:
                 _restore_db_snapshot(db_snapshot)
@@ -610,7 +696,7 @@ def apply_update(target_version: str | None = None) -> dict:
         result["steps"].append(fe_msg)
         if not fe_ok:
             result["message"] = "Frontend-Build fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result)
+            _rollback(previous_commit, stashed, result, dependencies_changed)
             if db_snapshot and "sqlite" in settings.database_url:
                 _restore_db_snapshot(db_snapshot)
                 result["steps"].append("Datenbank-Snapshot wiederhergestellt")
@@ -629,7 +715,8 @@ def apply_update(target_version: str | None = None) -> dict:
         new_version = _get_version()
         result["new_version"] = new_version
 
-        # Success!
+        # Success! The running process is the old code from now on.
+        _restart_pending = True
         result["success"] = True
         result["restart_required"] = True
         result["message"] = f"Update von {settings.app_version} auf {new_version} erfolgreich"
@@ -650,15 +737,15 @@ def apply_update(target_version: str | None = None) -> dict:
         logger.exception("Unexpected error during update")
         # Avoid leaking internal paths or stack traces to the API response
         result["message"] = f"Unerwarteter Fehler: {type(exc).__name__}"
-        _rollback(previous_commit, stashed, result)
+        _rollback(previous_commit, stashed, result, dependencies_changed)
     finally:
         _release_lock()
 
     return result
 
 
-def _rollback(previous_commit: str | None, stashed: bool, result: dict) -> None:
-    """Roll back to the previous commit."""
+def _rollback(previous_commit: str | None, stashed: bool, result: dict, dependencies_changed: bool = False) -> None:
+    """Roll back to the previous commit (and its dependencies, if they were already replaced)."""
     if not previous_commit:
         result["steps"].append("Rollback nicht möglich: vorheriger Commit unbekannt")
         return
@@ -668,6 +755,10 @@ def _rollback(previous_commit: str | None, stashed: bool, result: dict) -> None:
     if reset.returncode == 0:
         result["steps"].append(f"Rollback auf {previous_commit[:8]} durchgeführt")
         result["rollback_performed"] = True
+        if dependencies_changed:
+            ok, message = _install_dependencies()
+            result["steps"].append(("Abhängigkeiten des vorherigen Stands: " + message) if ok else
+                                   f"Abhängigkeiten des vorherigen Stands nicht wiederhergestellt: {message}")
     else:
         result["steps"].append(f"Rollback fehlgeschlagen: {reset.stderr.strip()}")
 
@@ -687,7 +778,10 @@ def _restore_db_snapshot(snapshot_name: str) -> bool:
         return False
 
     try:
-        shutil.copy2(snapshot_path, db_path)
+        # page by page into the live file: a file copy would be overridden by its old WAL
+        from .services.sqlite_backup import copy_database
+
+        copy_database(snapshot_path, db_path)
         logger.info("Database restored from snapshot: %s", snapshot_name)
         return True
     except Exception:

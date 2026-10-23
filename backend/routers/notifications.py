@@ -8,10 +8,16 @@ Route ordering: static paths (/templates, /generate/*) before path params (/{not
 
 import logging
 from datetime import date
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from ..auth import require_auth
 from ..dependencies import store
+from ..domain.clock import local_today
+from ..domain.receivables import is_unpaid_debt
 from ..models import (
     Notification,
     NotificationCreate,
@@ -19,12 +25,69 @@ from ..models import (
     NotificationTemplate,
     NotificationTemplateCreate,
     NotificationTemplatePatch,
+    UserRead,
 )
+from ..services import notification_inbox as personal
+from ..services.notification_email import Preview as EmailPreview
+from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, receivable_debtor
 from ..storage import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/notifications", tags=["Benachrichtigungen"])
+def private_response(response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+
+
+router = APIRouter(dependencies=[Depends(private_response)], prefix="/notifications", tags=["Benachrichtigungen"])
+
+
+class ReceiptCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    base_revision: int = Field(0, ge=0)
+    action: str
+    snapshot: str | None = None
+    source_kind: str | None = None
+    source_id: str | None = None
+    source_revision: str | None = None
+
+
+@router.get("/inbox")
+def personal_inbox(actor: UserRead = Depends(require_auth), status: str | None = None,
+                   offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), expected_snapshot: str | None = None, severity: str | None = None, kind: str | None = None, cursor: str | None = Query(None, max_length=4096)):
+    return personal.inbox(store, actor.id, status, offset, limit, expected_snapshot, severity, kind, cursor)
+
+
+@router.get("/{notification_id}/source")
+def notification_source(notification_id: str, actor: UserRead = Depends(require_auth)):
+    try:
+        return personal.open_source(store, actor.id, notification_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, "Hinweis oder Quelle nicht zugänglich.") from exc
+
+
+@router.post("/{notification_id}/receipt")
+def notification_receipt(notification_id: str, payload: ReceiptCommand, actor: UserRead = Depends(require_auth)):
+    try:
+        return personal.mutate(store, actor.id, notification_id, payload.model_dump())
+    except NotFoundError as exc:
+        raise HTTPException(404, "Hinweis oder Quelle nicht zugänglich.") from exc
+
+
+@router.post('/{notification_id}/email-preview')
+def notification_email_preview(notification_id: str, payload: EmailPreview, actor: UserRead = Depends(require_auth)):
+    from ..services.communication import Communication
+    from ..services.integrations.manager import integration_manager
+    from ..services.notification_email import preview
+    try:
+        return preview(Communication(store, integration_manager), notification_id, payload, actor.id)
+    except NotFoundError as exc:
+        raise HTTPException(404, 'Hinweis oder Quelle nicht zugänglich.') from exc
+    except IntegrityError as exc:
+        raise HTTPException(409, 'E-Mail-Vorschau gleichzeitig geändert. Bitte erneut abgleichen.') from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(503, 'E-Mail-Vorschau nicht bestätigt. Denselben Befehl erneut versuchen.') from exc
 
 
 # ---------------------------------------------------------------------------
@@ -93,36 +156,28 @@ def delete_notification_template(template_id: str) -> None:
 def generate_overdue_payment_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for overdue receivables."""
-    check_date = as_of or date.today()
+    """Notify once about every unpaid receivable past its due date."""
+    check_date = as_of or local_today()
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for receivable in store.list_receivables():
-        if receivable.status == "open" and receivable.due_date < check_date:
-            tenant_name = "Unbekannt"
-            try:
-                contract = store.get_contract(receivable.contract_id)
-                try:
-                    tenant = store.get_tenant(contract.tenant_id)
-                    tenant_name = tenant.full_name
-                except Exception:
-                    logger.debug("Could not resolve tenant for contract %s", receivable.contract_id, exc_info=True)
-            except Exception:
-                logger.debug("Could not resolve contract %s for receivable %s", receivable.contract_id, receivable.id, exc_info=True)
-
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="overdue_payment",
-                    title=f"Überfällige Zahlung: {tenant_name}",
-                    content=(
-                        f"Forderung über {receivable.amount_due:.2f} EUR fällig am"
-                        f" {receivable.due_date} ist überfällig."
-                    ),
-                    severity="warning",
-                    entity_type="receivable",
-                    entity_id=receivable.id,
-                )
-            )
+        if not (is_unpaid_debt(receivable) and receivable.due_date < check_date):
+            continue
+        tenant_name, contract_number = receivable_debtor(store, receivable)
+        purpose = f" ({receivable.description})" if receivable.description else ""
+        notification = notifier.notify(NotificationCreate(
+            notification_type="overdue_payment",
+            title=f"Überfällige Zahlung: {tenant_name}",
+            content=(
+                f"Forderung über {eur(receivable.amount_due)}{purpose} aus Vertrag {contract_number}"
+                f" war am {day(receivable.due_date)} fällig und ist noch offen."
+            ),
+            severity="warning",
+            entity_type="receivable",
+            entity_id=receivable.id,
+        ))
+        if notification:
             created.append(notification)
 
     return created
@@ -133,11 +188,12 @@ def generate_expiring_contract_notifications(
     days_ahead: int = Query(90, ge=1, le=365),
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for contracts expiring within the given window."""
+    """Notify once about every contract ending within the given window."""
     from datetime import timedelta
 
-    check_date = as_of or date.today()
+    check_date = as_of or local_today()
     horizon = check_date + timedelta(days=days_ahead)
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for contract in store.list_contracts():
@@ -153,17 +209,19 @@ def generate_expiring_contract_notifications(
             except Exception:
                 logger.debug("Could not resolve tenant for contract %s", contract.id, exc_info=True)
 
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="contract_expiry",
-                    title=f"Vertragsende: {contract.contract_number}",
-                    content=f"Vertrag {contract.contract_number} (Mieter: {tenant_name}) endet am {contract.end_date}.",
-                    severity="info",
-                    entity_type="contract",
-                    entity_id=contract.id,
-                )
-            )
-            created.append(notification)
+            notification = notifier.notify(NotificationCreate(
+                notification_type="contract_expiry",
+                title=f"Vertragsende: {contract.contract_number}",
+                content=(
+                    f"Vertrag {contract.contract_number} (Mieter: {tenant_name})"
+                    f" endet am {day(contract.end_date)}."
+                ),
+                severity="info",
+                entity_type="contract",
+                entity_id=contract.id,
+            ))
+            if notification:
+                created.append(notification)
 
     return created
 
@@ -172,27 +230,27 @@ def generate_expiring_contract_notifications(
 def generate_due_task_notifications(
     as_of: date | None = Query(None),
 ) -> list[Notification]:
-    """Generate notifications for overdue or due-today tasks."""
-    check_date = as_of or date.today()
+    """Notify once about every unfinished task that is due today or overdue."""
+    check_date = as_of or local_today()
+    notifier = Notifier(store)
     created: list[Notification] = []
 
     for task in store.list_tasks():
         if (
-            task.status == "open"
+            task.status in OPEN_WORK_STATUSES
             and task.due_date is not None
             and task.due_date <= check_date
         ):
-            notification = store.create_notification(
-                NotificationCreate(
-                    notification_type="task_due",
-                    title=f"Aufgabe fällig: {task.title}",
-                    content=f"Aufgabe '{task.title}' ist fällig seit {task.due_date}.",
-                    severity="warning" if task.due_date < check_date else "info",
-                    entity_type="task",
-                    entity_id=task.id,
-                )
-            )
-            created.append(notification)
+            notification = notifier.notify(NotificationCreate(
+                notification_type="task_due",
+                title=f"Aufgabe fällig: {task.title}",
+                content=f"Aufgabe „{task.title}“ ist seit {day(task.due_date)} fällig.",
+                severity="warning" if task.due_date < check_date else "info",
+                entity_type="task",
+                entity_id=task.id,
+            ))
+            if notification:
+                created.append(notification)
 
     return created
 
@@ -209,15 +267,32 @@ def list_notifications(
     status_filter: str | None = Query(None, alias="status"),
     notification_type: str | None = Query(None),
     severity: str | None = Query(None),
-) -> list[Notification]:
-    results = store.list_notifications()
-    if status_filter:
-        results = [r for r in results if r.status == status_filter]
-    if notification_type:
-        results = [r for r in results if r.notification_type == notification_type]
-    if severity:
-        results = [r for r in results if r.severity == severity]
-    return results[skip : skip + limit]
+    actor: UserRead = Depends(require_auth),
+) -> list[dict[str, Any]]:
+    # Keep the legacy window without constructing the entire inbox first (the
+    # dashboard asks for five). A multi-page answer uses one stable snapshot.
+    rows: list[dict[str, Any]] = []
+    offset = 0 if notification_type else skip
+    to_skip = skip if notification_type else 0
+    snapshot = None
+    while len(rows) < limit:
+        size = 200 if notification_type else min(200, limit - len(rows))
+        page = personal.inbox(store, actor.id, status_filter, offset, size, snapshot, severity)
+        for row in page['items']:
+            if notification_type and row['notification_type'] != notification_type:
+                continue
+            if to_skip:
+                to_skip -= 1
+            else:
+                rows.append(row)
+                if len(rows) == limit:
+                    break
+        if len(rows) == limit or page["next_offset"] is None:
+            break
+        snapshot = page['snapshot']
+        offset = page["next_offset"]
+    return rows
+
 
 
 @router.post("", response_model=Notification, status_code=status.HTTP_201_CREATED)
@@ -246,14 +321,13 @@ def update_notification(notification_id: str, payload: NotificationCreate) -> No
 
 @router.post("/{notification_id}/read", response_model=Notification)
 def mark_notification_read(notification_id: str) -> Notification:
-    try:
-        return store.mark_notification_read(notification_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    raise HTTPException(409, "Bitte den persönlichen Eingang neu laden und die Quelle öffnen.")
 
 
 @router.patch("/{notification_id}", response_model=Notification)
 def patch_notification(notification_id: str, payload: NotificationPatch) -> Notification:
+    if payload.status is not None or payload.read_at is not None:
+        raise HTTPException(409, "Lesestatus nur mit persoenlicher Quittung aendern.")
     try:
         return store._patch_entity("notification", notification_id, payload)
     except NotFoundError as exc:

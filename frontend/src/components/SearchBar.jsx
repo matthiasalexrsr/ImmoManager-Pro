@@ -2,7 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
-import { SearchIcon, CloseIcon, ENTITY_ICON_MAP } from './Icons';
+import { useAuth } from '../contexts/AuthContext';
+import { SearchIcon, CloseIcon, PlusIcon, ENTITY_ICON_MAP } from './Icons';
+import { NAV_SECTIONS, QUICK_ACTIONS } from './navigation';
+import { mayWrite } from '../utils/permissions';
+import { codeLabel } from '../utils/codeLabels';
+import { formatMoney } from '../utils/format';
 
 const ENTITY_ROUTES = {
   property: '/properties',
@@ -39,6 +44,8 @@ const ENTITY_ROUTES = {
   rent_adjustment: '/rent-adjustments',
 };
 
+const LOAD_MORE_LIMIT = 25;
+
 const ENTITY_LABELS = {
   property: 'Immobilien',
   unit: 'Einheiten',
@@ -73,21 +80,82 @@ const ENTITY_LABELS = {
   rent_adjustment: 'Mietanpassungen',
 };
 
+const PAGE_LIMIT = 6;
+const ACTION_LIMIT = 4;
+const RECENT_LIMIT = 8;
+const PAGES = NAV_SECTIONS.flatMap(section => section.items.map(item => ({ ...item, sectionKey: section.labelKey, sectionFallback: section.fallback })));
+// "Uebergabe", "übergabe" and "Ubergabe" all find "Übergabeprotokolle"
+const fold = text => String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u').replace(/ß/g, 'ss');
+
+const localRoute = value => typeof value === 'string' && /^\/(?!\/)/.test(value)
+  && [...value].every(character => character !== '\\' && character.charCodeAt(0) >= 32);
+
+// The second line of a hit as the lists show it: amounts in euros, stored codes as words.
+const MONEY_DETAILS = new Set(['invoice', 'booking']);
+function hitDetail(result, t) {
+  const detail = result.detail;
+  if (detail == null || detail === '') return '';
+  if (MONEY_DETAILS.has(result.entity_type) && /^-?\d+(\.\d+)?$/.test(detail)) return formatMoney(Number(detail));
+  if (/^[a-z][a-z_]*$/.test(detail)) {
+    const status = t(`status.badge.${detail}`);
+    return status && status !== `status.badge.${detail}` ? status : codeLabel(detail);
+  }
+  return detail;
+}
+
+// The records a person opened from the search, kept per signed-in user in this browser only.
+function readRecent(key) {
+  if (!key) return [];
+  try {
+    const list = JSON.parse(window.localStorage.getItem(key) || '[]');
+    return Array.isArray(list) ? list.filter(r => r && typeof r.entity_type === 'string'
+      && Object.hasOwn(ENTITY_ROUTES, r.entity_type) && ['string', 'number'].includes(typeof r.id)
+      && typeof r.display === 'string' && r.display
+      && (r.detail == null || typeof r.detail === 'string') && (r.url == null || localRoute(r.url)))
+      .slice(0, RECENT_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecent(key, list) {
+  if (!key) return;
+  try { window.localStorage.setItem(key, JSON.stringify(list)); } catch { /* not kept */ }
+}
+
 export default function SearchBar() {
   const { t } = useTranslation();
+  const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
+  const auth = useAuth();
+  const userId = auth?.user?.id;
+  const recentKey = userId ? `recent_search:${userId}` : null;
+  const [recent, setRecent] = useState(() => readRecent(recentKey));
+  useEffect(() => { setRecent(readRecent(recentKey)); }, [recentKey]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [groups, setGroups] = useState({});
+  // the query the shown records belong to: while typing on, older records are not offered
+  const [resultsFor, setResultsFor] = useState('');
+  const [loadingMore, setLoadingMore] = useState(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const searchSession = useRef(null);
+  const moreRequest = useRef(null);
   const navigate = useNavigate();
 
   // Keyboard shortcut: Ctrl+K
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+      const typing = e.target instanceof HTMLElement
+        && (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName));
+      // "/" as in many web apps, unless typing or inside a dialog
+      const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]');
+      if (((e.ctrlKey || e.metaKey) && e.key === 'k') || slash) {
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
@@ -99,32 +167,101 @@ export default function SearchBar() {
 
   // Debounced search
   useEffect(() => {
+    const session = {};
+    searchSession.current = session;
+    moreRequest.current = null;
+    setLoadingMore(null);
+    setLoading(false);
+    setActiveIndex(-1);
     if (query.length < 2) {
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(() => {
       setLoading(true);
       api.get(`/search?q=${encodeURIComponent(query)}`)
-        .then(data => { setResults(data.results || []); setActiveIndex(-1); })
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+        .then(data => {
+          if (cancelled) return;
+          setResults(data.results || []);
+          setResultsFor(query);
+          setGroups(Object.fromEntries((data.groups || []).map(g => [g.entity_type, g])));
+          setActiveIndex(-1);
+        })
+        .catch(() => { if (!cancelled) { setResults([]); setResultsFor(query); setGroups({}); } })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); if (searchSession.current === session) searchSession.current = null; };
   }, [query]);
 
   // Clear results when query is too short
-  const currentResults = query.length < 2 ? [] : results;
+  const currentResults = query.length < 2 || resultsFor !== query ? [] : results;
+  const awaitingResults = loading || (query.length >= 2 && resultsFor !== query);
+  const searching = query.trim().length >= 2;
+  const pageMatches = searching ? PAGES
+    .map(page => ({ ...page, kind: 'page', label: tr(page.labelKey, page.fallback), section: tr(page.sectionKey, page.sectionFallback) }))
+    .filter(page => fold(page.label).includes(fold(query.trim())))
+    .slice(0, PAGE_LIMIT) : [];
+  // "buchung" offers the page Buchungen and the action Neue Buchung; read-only roles get no actions
+  const actionMatches = searching ? QUICK_ACTIONS
+    .filter(action => !auth?.user || mayWrite(auth.write, action.area))
+    .map(action => {
+      const page = PAGES.find(p => p.to === action.area);
+      return { ...action, kind: 'page', label: tr(action.labelKey, action.fallback), pageLabel: page ? tr(page.labelKey, page.fallback) : '' };
+    })
+    .filter(action => [action.label, action.pageLabel].some(text => fold(text).includes(fold(query.trim()))))
+    .slice(0, ACTION_LIMIT) : [];
+  const showRecent = !query && recent.length > 0;
+  // one list for the arrow keys: pages first, then records (or the recently opened records)
+  // Match the displayed group order, also if the server interleaves entity types.
+  const groupedResults = Object.groupBy(currentResults, result => result.entity_type);
+  const options = showRecent ? recent : [...pageMatches, ...actionMatches, ...(awaitingResults ? [] : Object.values(groupedResults).flat())];
+  const dropdownOpen = open && (query.length >= 2 || showRecent);
+
+  // Next keyset page of one type, appended to its group
+  const loadMore = useCallback((type) => {
+    const cursor = groups[type]?.next_cursor;
+    if (!cursor || moreRequest.current || resultsFor !== query) return;
+    const request = { session: searchSession.current };
+    moreRequest.current = request;
+    setLoadingMore(type);
+    api.get(`/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${LOAD_MORE_LIMIT}&cursor=${encodeURIComponent(cursor)}`)
+      .then(data => {
+        if (searchSession.current !== request.session) return;
+        setResults(prev => {
+          const seen = new Set(prev.map(r => `${r.entity_type}:${r.id}`));
+          return [...prev, ...(data.results || []).filter(r => !seen.has(`${r.entity_type}:${r.id}`))];
+        });
+        setGroups(prev => ({ ...prev, [type]: { ...prev[type], ...(data.groups?.[0] || {}) } }));
+      })
+      .catch(() => {})
+      .finally(() => { if (moreRequest.current === request) { moreRequest.current = null; setLoadingMore(null); } });
+  }, [groups, query, resultsFor]);
 
   const handleSelect = useCallback((result) => {
     setOpen(false);
     setQuery('');
     setActiveIndex(-1);
-    const route = result.url || ENTITY_ROUTES[result.entity_type] || '/';
+    inputRef.current?.blur();
+    if (result.kind === 'page') { navigate(result.to); return; }
+    const route = localRoute(result.url) ? result.url : ENTITY_ROUTES[result.entity_type] || '/';
+    const entry = { entity_type: result.entity_type, id: result.id, display: result.display, detail: result.detail || '', url: route };
+    setRecent(current => {
+      const next = [entry, ...current.filter(r => !(r.entity_type === entry.entity_type && r.id === entry.id))].slice(0, RECENT_LIMIT);
+      writeRecent(recentKey, next);
+      return next;
+    });
     navigate(route);
-  }, [navigate]);
+  }, [navigate, recentKey]);
+
+  const clearRecent = () => {
+    setRecent([]);
+    writeRecent(recentKey, []);
+    setActiveIndex(-1);
+    inputRef.current?.focus();
+  };
 
   const handleKeyDown = (e) => {
-    if (!open || currentResults.length === 0) {
+    if (!dropdownOpen || options.length === 0) {
       if (e.key === 'Escape') {
         setOpen(false);
         inputRef.current?.blur();
@@ -135,7 +272,7 @@ export default function SearchBar() {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setActiveIndex(prev => Math.min(prev + 1, currentResults.length - 1));
+        setActiveIndex(prev => Math.min(prev + 1, options.length - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -143,9 +280,10 @@ export default function SearchBar() {
         break;
       case 'Enter':
         e.preventDefault();
-        if (activeIndex >= 0 && activeIndex < currentResults.length) {
-          handleSelect(currentResults[activeIndex]);
-        }
+        // Enter without choosing opens the first entry: "mahn" + Enter goes to the dunning page
+        if (activeIndex >= 0 && activeIndex < options.length) handleSelect(options[activeIndex]);
+        // pages and actions are known at once; records only count once they are loaded
+        else if (!awaitingResults || pageMatches.length + actionMatches.length > 0) handleSelect(options[0]);
         break;
       case 'Escape':
         e.preventDefault();
@@ -166,14 +304,14 @@ export default function SearchBar() {
 
   return (
     <div className="search-bar-global">
-      <div className="search-bar-input-wrapper" role="combobox" aria-expanded={open && query.length >= 2} aria-haspopup="listbox" aria-owns="search-results-listbox">
+      <div className="search-bar-input-wrapper" role="combobox" aria-expanded={dropdownOpen} aria-haspopup="listbox" aria-owns="search-results-listbox">
         <span className="search-bar-icon" aria-hidden="true"><SearchIcon size={16} /></span>
         <input
           ref={inputRef}
           type="text"
           placeholder={`${t('ui.form.search')}...`}
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { setQuery(e.target.value); setActiveIndex(-1); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           className="search-bar-input"
@@ -183,10 +321,15 @@ export default function SearchBar() {
           aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
         />
         {query ? (
-          <button
+          <button type="button"
             className="search-bar-clear"
-            onClick={() => { setQuery(''); setResults([]); setActiveIndex(-1); }}
-            aria-label={t('ui.buttons.clear') || 'Clear search'}
+            onClick={() => {
+              setQuery(''); setResults([]); setActiveIndex(-1);
+              // Removing this button should not strand the keyboard focus on
+              // the document body. Continue searching without another shortcut.
+              inputRef.current?.focus();
+            }}
+            aria-label={tr('ui.buttons.clear', 'Suche löschen')}
           >
             <CloseIcon size={14} />
           </button>
@@ -194,47 +337,83 @@ export default function SearchBar() {
           <span className="search-bar-shortcut" aria-hidden="true">Ctrl+K</span>
         )}
       </div>
-      {open && query.length >= 2 && (
+      {dropdownOpen && (
         <div className="search-bar-dropdown" id="search-results-listbox" role="listbox" ref={listRef} aria-label={t('ui.form.search')}>
-          {loading && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
-          {!loading && currentResults.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
-          {!loading && (() => {
-            const grouped = {};
-            currentResults.forEach(r => {
-              const type = r.entity_type;
-              if (!grouped[type]) grouped[type] = [];
-              grouped[type].push(r);
-            });
+          {(() => {
             let globalIndex = 0;
-            return Object.entries(grouped).map(([type, items]) => (
-              <div key={type}>
-                <div className="search-bar-group-header">{ENTITY_LABELS[type] || type}</div>
-                {items.map(r => {
-                  const idx = globalIndex++;
-                  const EntityIcon = ENTITY_ICON_MAP[r.entity_type];
-                  return (
-                    <div
-                      key={idx}
-                      id={`search-result-${idx}`}
-                      className={`search-bar-result${idx === activeIndex ? ' search-bar-result-active' : ''}`}
-                      onClick={() => handleSelect(r)}
-                      onMouseEnter={() => setActiveIndex(idx)}
-                      role="option"
-                      aria-selected={idx === activeIndex}
-                      tabIndex={-1}
-                    >
-                      <span className="search-bar-result-icon" aria-hidden="true">
-                        {EntityIcon ? <EntityIcon size={16} /> : <SearchIcon size={16} />}
-                      </span>
-                      <div className="search-bar-result-text">
-                        <span className="search-bar-result-title">{r.display}</span>
-                        <span className="search-bar-result-detail">{r.detail || ''}</span>
-                      </div>
+            const option = (r, title, detail, Icon) => {
+              const idx = globalIndex++;
+              return (
+                <div
+                  key={`${r.kind || r.entity_type}:${r.to || r.id}`}
+                  id={`search-result-${idx}`}
+                  className={`search-bar-result${idx === activeIndex ? ' search-bar-result-active' : ''}`}
+                  onClick={() => handleSelect(r)}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  role="option"
+                  aria-selected={idx === activeIndex}
+                  tabIndex={-1}
+                >
+                  <span className="search-bar-result-icon" aria-hidden="true">
+                    {Icon ? <Icon size={16} /> : <SearchIcon size={16} />}
+                  </span>
+                  <div className="search-bar-result-text">
+                    <span className="search-bar-result-title">{title}</span>
+                    <span className="search-bar-result-detail">{detail || ''}</span>
+                  </div>
+                </div>
+              );
+            };
+            if (showRecent) {
+              return (
+                <div>
+                  <div className="search-bar-group-header search-bar-group-header-action">
+                    <span>{tr('search.global.recentlyOpened', 'Zuletzt geöffnet')}</span>
+                    <button type="button" className="search-bar-clear-recent" onClick={clearRecent}>{tr('search.global.clearRecent', 'Verlauf leeren')}</button>
+                  </div>
+                  {recent.map(r => option(r, r.display, hitDetail(r, t) || ENTITY_LABELS[r.entity_type], ENTITY_ICON_MAP[r.entity_type]))}
+                </div>
+              );
+            }
+            return (
+              <>
+                {pageMatches.length > 0 && (
+                  <div>
+                    <div className="search-bar-group-header">{tr('search.global.pages', 'Seiten')}</div>
+                    {pageMatches.map(page => option(page, page.label, page.section, page.icon))}
+                  </div>
+                )}
+                {actionMatches.length > 0 && (
+                  <div>
+                    <div className="search-bar-group-header">{tr('search.global.actions', 'Aktionen')}</div>
+                    {actionMatches.map(action => option(action, action.label, action.pageLabel, PlusIcon))}
+                  </div>
+                )}
+                {awaitingResults && <div className="search-bar-loading" role="status">{t('ui.table.loading')}</div>}
+                {!awaitingResults && currentResults.length === 0 && pageMatches.length === 0 && actionMatches.length === 0 && <div className="search-bar-empty" role="status">{t('search.global.noResults')}</div>}
+                {!awaitingResults && Object.entries(groupedResults).map(([type, items]) => (
+                  <div key={type}>
+                    <div className="search-bar-group-header">
+                      {ENTITY_LABELS[type] || type}
+                      {groups[type]?.total > items.length && (
+                        <span className="search-bar-group-count"> · {t('search.global.shownOf', { shown: items.length, total: groups[type].total })}</span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            ));
+                    {items.map(r => option(r, r.display, hitDetail(r, t), ENTITY_ICON_MAP[r.entity_type]))}
+                    {groups[type]?.next_cursor && (
+                      <button
+                        type="button"
+                        className="search-bar-load-more"
+                        onClick={(e) => { e.stopPropagation(); loadMore(type); }}
+                        disabled={loadingMore !== null}
+                      >
+                        {loadingMore === type ? t('ui.table.loading') : t('search.global.loadMore')}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </>
+            );
           })()}
         </div>
       )}

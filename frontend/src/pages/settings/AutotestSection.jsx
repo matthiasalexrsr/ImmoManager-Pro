@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 export default function AutotestSection() {
   const [autotestRunning, setAutotestRunning] = useState(false);
   const [autotestResult, setAutotestResult] = useState(null);
@@ -25,13 +23,9 @@ export default function AutotestSection() {
 
   const handleDownloadReport = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/autotest/report/markdown`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const text = await res.text();
-      const blob = new Blob([text], { type: 'text/markdown' });
+      const current = api.captureSession();
+      const blob = await api.getBlob('/autotest/report/markdown');
+      current();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

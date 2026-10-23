@@ -66,7 +66,8 @@ def test_schema_validate_and_config_masking_endpoint():
     update = client.put(
         "/api/v1/integrations/whatsapp/config",
         headers=headers,
-        json={"config": {"phone_number_id": "123", "api_token": "abc"}},
+        json={"config": {"phone_number_id": "123", "api_token": "abc", 'graph_version': 'v26.0',
+                         'app_secret': 'synthetic-app', 'verify_token': 'synthetic-verify'}},
     )
     assert update.status_code == 200
     assert update.json()["config"]["api_token"] == "***"
@@ -76,7 +77,8 @@ def test_schema_validate_and_config_masking_endpoint():
     assert detail.json()["configured"] is True
     assert detail.json()["config"]["api_token"] == "***"
 
-    integration_manager.update_config("whatsapp", {"phone_number_id": None, "api_token": None})
+    integration_manager.update_config("whatsapp", {key: None for key in (
+        'phone_number_id', 'api_token', 'graph_version', 'app_secret', 'verify_token')})
 
 
 def test_metrics_and_history_clear_endpoint():

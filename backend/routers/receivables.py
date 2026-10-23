@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Receivable, ReceivableCreate, ReceivablePatch
+from ..services.deletion_guard import ensure_deletable
+from ..services.receivable_residuals import ensure_claim_unchanged
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/receivables", tags=["Forderungen"])
@@ -15,8 +17,9 @@ def list_receivables(
     status_filter: str | None = Query(None, alias="status"),
     sort_by: str | None = Query(None),
     sort_order: str = Query("asc"),
+    statement_id: str | None = None,
 ) -> list[Receivable]:
-    filters = {"contract_id": contract_id, "status": status_filter}
+    filters = {"contract_id": contract_id, "status": status_filter, "statement_id": statement_id}
     results = store._list_paginated(
         entity_type="receivable",
         skip=skip,
@@ -47,6 +50,7 @@ def get_receivable(receivable_id: str) -> Receivable:
 @router.put("/{receivable_id}", response_model=Receivable)
 def update_receivable(receivable_id: str, payload: ReceivableCreate) -> Receivable:
     try:
+        ensure_claim_unchanged(store, receivable_id, payload.model_dump())
         return store.update_receivable(receivable_id, payload)
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
@@ -56,6 +60,7 @@ def update_receivable(receivable_id: str, payload: ReceivableCreate) -> Receivab
 @router.patch("/{receivable_id}", response_model=Receivable)
 def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable:
     try:
+        ensure_claim_unchanged(store, receivable_id, payload.model_dump(exclude_unset=True))
         return store._patch_entity("receivable", receivable_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -64,6 +69,8 @@ def patch_receivable(receivable_id: str, payload: ReceivablePatch) -> Receivable
 @router.delete("/{receivable_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_receivable(receivable_id: str) -> None:
     try:
+        store.get_receivable(receivable_id)
+        ensure_deletable(store, "receivable", receivable_id)     # offset or created by a deposit settlement
         store.delete_receivable(receivable_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

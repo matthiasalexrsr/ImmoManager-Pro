@@ -11,13 +11,14 @@ import time
 from uuid import uuid4
 
 from fastapi import Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .audit import log_action
 from .config import settings
-from .dependencies import cleanup_session
-from .logging_config import request_id_var
+from .dependencies import begin_request_scope, end_request_scope
+from .logging_config import request_id_var, safe_query
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
             }
-            query = str(request.url.query) if request.url.query else None
+            query = safe_query(str(request.url.query)) if request.url.query else None
             if query:
                 extra["query"] = query
             client = request.client
@@ -127,6 +128,9 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # The scope travels with the request into the worker thread of a sync
+        # endpoint (context variables are copied), so this removes its session.
+        token = begin_request_scope()
         try:
             response = await call_next(request)
             if response.status_code >= 500:
@@ -142,12 +146,13 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
             )
             raise
         finally:
-            cleanup_session()
+            end_request_scope(token)
 
 
 # ─── Audit Middleware ────────────────────────────────────────────────────────
 
 _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_READ_ONLY_POST_PATHS = frozenset({"/api/v1/work-center/duplicates/check"})
 _METHOD_TO_ACTION = {"POST": "create", "PUT": "update", "PATCH": "patch", "DELETE": "delete"}
 _API_PATH_RE = re.compile(r"/api/v1/(\w[\w-]*)(?:/([^/]+))?")
 _SKIP_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"}
@@ -182,14 +187,17 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Pre-resolve user identity for audit attribution
-        if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
-            uid, uname = self._extract_user_from_token(request)
+        # Token checks and the audit entry use the database: never on the event loop.
+        mutation = request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS and not (
+            request.method == "POST" and request.url.path in _READ_ONLY_POST_PATHS)
+        if mutation:
+            uid, uname = await run_in_threadpool(self._extract_user_from_token, request)
             request.state.audit_user_id = uid
             request.state.audit_username = uname
 
         response: Response = await call_next(request)
 
-        if request.method in _WRITE_METHODS and request.url.path not in _SKIP_PATHS:
+        if mutation:
             match = _API_PATH_RE.match(request.url.path)
             if match and 200 <= response.status_code < 300:
                 entity_type = match.group(1).replace("-", "_")
@@ -199,8 +207,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 user_id = getattr(request.state, "audit_user_id", None)
                 username = getattr(request.state, "audit_username", None)
 
+                # This middleware wraps RequestLoggingMiddleware. Its contextvar
+                # changes do not propagate outward across BaseHTTPMiddleware;
+                # the shared request state carries the correlation ID instead.
+                audit_context = request_id_var.set(getattr(request.state, "request_id", None))
                 try:
-                    log_action(
+                    await run_in_threadpool(
+                        log_action,
                         action=action,
                         entity_type=entity_type,
                         entity_id=entity_id,
@@ -212,6 +225,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         "Audit log failed for %s %s (non-fatal)",
                         action, entity_type, exc_info=True,
                     )
+                finally:
+                    request_id_var.reset(audit_context)
 
         return response
 
@@ -229,33 +244,56 @@ _RBAC_SKIP_PATHS = {
 
 
 class RBACWriteGuardMiddleware(BaseHTTPMiddleware):
-    """Blocks write operations from users with the 'readonly' role.
+    """Blocks writes a role may not make (see backend.permissions).
 
-    Readonly users can access GET/HEAD/OPTIONS endpoints, but any
-    POST/PUT/PATCH/DELETE on protected API routes is rejected with 403.
-
-    This acts as a defence-in-depth layer — individual endpoints can
-    apply finer-grained role checks via require_role().
+    Reading stays open to every signed-in user. Requests without a valid token pass
+    through: the endpoints answer them with 401. Endpoints can add finer checks.
     """
 
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if request.method == "POST" and path in _READ_ONLY_POST_PATHS:
+            # A potentially large private candidate belongs in the body, not URL
+            # logs. Authentication and source scope remain enforced by the endpoint.
+            return await call_next(request)
         if (
             request.method in _RBAC_WRITE_METHODS
-            and request.url.path.startswith("/api/v1/")
-            and not any(request.url.path.startswith(p) for p in _RBAC_SKIP_PATHS)
+            and path.startswith("/api/v1/")
+            and not path.startswith("/api/v1/updates")
+            and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
         ):
-            role = self._get_user_role(request)
-            if role == "readonly":
-                logger.warning(
-                    "RBAC blocked: readonly user attempted %s %s",
-                    request.method, request.url.path,
-                )
+            # While an update runs (and after it, until the restart) nothing may be saved:
+            # a failed step restores the database as it was at the start (backend.updater)
+            from .updater import writes_blocked
+
+            reason = writes_blocked()
+            if reason:
+                return JSONResponse(status_code=503, content={"detail": reason}, headers={"Retry-After": "60"})
+        if (
+            request.method in _RBAC_WRITE_METHODS
+            and path.startswith("/api/v1/")
+            and not any(path.startswith(p) for p in _RBAC_SKIP_PATHS)
+        ):
+            from .permissions import ROLE_LABELS, may_write
+
+            role = await run_in_threadpool(self._get_user_role, request)
+            if role is not None and not may_write(role, path[len("/api/v1"):]):
+                logger.warning("RBAC blocked: %s attempted %s %s", role, request.method, path)
+                label = ROLE_LABELS.get(role, role)
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Lesezugriff-Rolle hat keine Schreibberechtigung"},
+                    content={"detail": f"Die Rolle „{label}“ darf hier nichts ändern"},
                 )
 
-        return await call_next(request)
+        if request.method not in _RBAC_WRITE_METHODS:
+            return await call_next(request)
+        from .concurrency import note_write
+
+        note_write()        # shared report results are stale from now on (backend.concurrency)
+        try:
+            return await call_next(request)
+        finally:
+            note_write()
 
     @staticmethod
     def _get_user_role(request: Request) -> str | None:

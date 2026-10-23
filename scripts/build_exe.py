@@ -28,7 +28,7 @@ def check_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", ".[build]"])
 
 
-def build_frontend():
+def build_frontend(with_document_tools=False):
     """Install npm deps and build the frontend."""
     frontend_dir = ROOT / "frontend"
     if not (frontend_dir / "package.json").is_file():
@@ -37,7 +37,8 @@ def build_frontend():
 
     import shutil
 
-    if shutil.which("npm") is None:
+    npm = shutil.which("npm.cmd" if sys.platform == "win32" else "npm")
+    if npm is None:
         if (frontend_dir / "dist").is_dir():
             print("Frontend dist/ bereits vorhanden (npm nicht verfuegbar).")
         else:
@@ -46,9 +47,13 @@ def build_frontend():
         return
 
     print("Installiere Frontend-Abhaengigkeiten...")
-    subprocess.check_call(["npm", "install"], cwd=str(frontend_dir))
+    subprocess.check_call([npm, "ci"], cwd=str(frontend_dir))
+    if with_document_tools:
+        editor_dir = ROOT / "optional" / "document-editor"
+        subprocess.check_call([npm, "ci"], cwd=str(editor_dir))
+        subprocess.check_call([npm, "run", "build"], cwd=str(editor_dir))
     print("Baue Frontend...")
-    subprocess.check_call(["npm", "run", "build"], cwd=str(frontend_dir))
+    subprocess.check_call([npm, "run", "build"], cwd=str(frontend_dir))
 
 
 def build_exe(clean=False):
@@ -79,7 +84,7 @@ def main():
     print("=" * 60)
 
     check_dependencies()
-    build_frontend()
+    build_frontend(with_document_tools="--with-document-tools" in sys.argv)
     build_exe(clean=clean)
 
     print()

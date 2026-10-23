@@ -26,6 +26,9 @@ class IntegrationManifest:
     capabilities: list[str] = field(default_factory=list)
     required_config_keys: list[str] = field(default_factory=list)
     secret_config_keys: list[str] = field(default_factory=list)
+    config_fields: list[dict] = field(default_factory=list)
+    actions: list[dict] = field(default_factory=list)
+    default_action: str | None = None
 
 
 @dataclass

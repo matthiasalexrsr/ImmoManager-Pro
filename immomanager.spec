@@ -13,6 +13,7 @@ Result: dist/ImmoManager-Pro/ directory containing the executable and all depend
 """
 import os
 import sys
+from importlib.util import find_spec
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
@@ -73,7 +74,7 @@ _THIRD_PARTY_PACKAGES = [
     'anyio',
     'sniffio',
     'h11',
-    'jose',
+    'jwt',
     'cffi',
     'cryptography',
     'multipart',
@@ -84,11 +85,21 @@ _THIRD_PARTY_PACKAGES = [
     'jinja2',
     'markupsafe',
     'reportlab',
+    'pypdf',
     'httpx',
     'httpcore',
 ]
 
+# Optional engines use runtime imports and native libraries that static import
+# analysis cannot infer. Include only installed, explicitly chosen components.
+# Their own upstream PyInstaller hooks collect native data/binaries.
+_THIRD_PARTY_PACKAGES += [name for name in ('pymupdf', 'fints', 'mt940', 'sepaxml', 'xmlschema', 'bleach')
+                          if find_spec(name) is not None]
+
 collected_hiddenimports = []
+# All backend modules (services, routers, the test version …): imports inside functions are
+# easy to miss, and a module missing from the bundle fails only when it is first used.
+collected_hiddenimports += collect_submodules('backend', filter=lambda name: '.tests' not in name)
 for pkg in _THIRD_PARTY_PACKAGES:
     try:
         mods = collect_submodules(pkg)
@@ -187,10 +198,7 @@ _EXPLICIT_THIRD_PARTY = [
     'anyio._backends._asyncio',
     'sniffio',
     'h11',
-    'jose',
-    'jose.jwt',
-    'jose.jws',
-    'jose.backends',
+    'jwt',
     'cffi',
     'cryptography',
     'cryptography.fernet',
@@ -219,6 +227,11 @@ _EXPLICIT_THIRD_PARTY = [
 # ---------------------------------------------------------------------------
 backend_data = list(collected_datas)
 
+# Public, pinned DE/EN model data; the local PDF worker needs no separate Tesseract installation.
+tessdata_dir = os.path.join(ROOT, 'backend', 'resources', 'tessdata')
+for name in ('deu.traineddata', 'eng.traineddata', 'LICENSE', 'SOURCES.json'):
+    backend_data.append((os.path.join(tessdata_dir, name), 'backend/resources/tessdata'))
+
 # Include i18n locale files
 i18n_dir = os.path.join(ROOT, 'i18n')
 if os.path.isdir(i18n_dir):
@@ -226,6 +239,11 @@ if os.path.isdir(i18n_dir):
         src = os.path.join(i18n_dir, f)
         if os.path.isfile(src):
             backend_data.append((src, 'i18n'))
+
+# Version number (backend.config reads it from pyproject.toml when the package metadata is missing)
+pyproject = os.path.join(ROOT, 'pyproject.toml')
+if os.path.isfile(pyproject):
+    backend_data.append((pyproject, '.'))
 
 # Include alembic config and migrations
 alembic_ini = os.path.join(ROOT, 'alembic.ini')
@@ -236,15 +254,29 @@ if os.path.isfile(alembic_ini):
 migrations_dir = os.path.join(ROOT, 'backend', 'db', 'migrations')
 if os.path.isdir(migrations_dir):
     for dirpath, dirnames, filenames in os.walk(migrations_dir):
+        # Ship authoritative sources, not interpreter-specific caches. Cache
+        # names also needlessly exceed Windows path limits in longer releases.
+        dirnames[:] = [name for name in dirnames if name != '__pycache__']
         for f in filenames:
+            if f.endswith(('.pyc', '.pyo')):
+                continue
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
 
+# Fonts of generated PDFs (Wohnungsgeberbestätigung): bundled, never the system's
+fonts_dir = os.path.join(ROOT, 'backend', 'assets', 'fonts')
+if os.path.isdir(fonts_dir):
+    for f in os.listdir(fonts_dir):
+        backend_data.append((os.path.join(fonts_dir, f), os.path.join('backend', 'assets', 'fonts')))
+
 # Include Mietvertrag wizard package assets/templates/static
 if os.path.isdir(WIZARD_ROOT):
     for dirpath, dirnames, filenames in os.walk(WIZARD_ROOT):
+        dirnames[:] = [name for name in dirnames if name != '__pycache__']
         for f in filenames:
+            if f.endswith(('.pyc', '.pyo')):
+                continue
             src = os.path.join(dirpath, f)
             rel = os.path.relpath(dirpath, ROOT)
             backend_data.append((src, rel))
@@ -262,11 +294,6 @@ if os.path.isdir(frontend_dist):
 seed_file = os.path.join(ROOT, 'seed_data.py')
 if os.path.isfile(seed_file):
     backend_data.append((seed_file, '.'))
-
-# Include db/schema.sql
-db_schema = os.path.join(ROOT, 'db', 'schema.sql')
-if os.path.isfile(db_schema):
-    backend_data.append((db_schema, 'db'))
 
 a = Analysis(
     ['backend/__main__.py'],
@@ -310,7 +337,6 @@ a = Analysis(
         'backend.services',
         'backend.services.email_service',
         'backend.services.file_storage',
-        'backend.services.iban_encryption',
         'backend.services.portal_adapter',
         'backend.services.ocr_service',
         'backend.services.task_queue',
@@ -388,7 +414,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # not needed by the desktop program (SQLite; images without AVIF): keeps the package small enough to e-mail
+    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'],
     noarchive=False,
 )
 
@@ -405,7 +432,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=True,
-    icon=None,  # Add icon path here: 'assets/icon.ico'
+    icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
 )
 
 coll = COLLECT(

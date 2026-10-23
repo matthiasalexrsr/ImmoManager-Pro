@@ -1,0 +1,2 @@
+# Keep the pinned OCR assets and their provenance byte-identical on every platform.
+backend/resources/tessdata/* -text

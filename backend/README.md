@@ -1,6 +1,7 @@
 # ImmoManager Pro Backend
 
-FastAPI backend for ImmoManager Pro with SQLAlchemy persistence, JWT auth, and 45+ API routers.
+FastAPI backend for ImmoManager Pro with SQLAlchemy persistence, JWT auth, and 50+ API routers.
+How it is built and how to extend it: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) (German).
 
 ## Setup
 
@@ -30,7 +31,7 @@ The store is selected at startup in `dependencies.py`:
 
 ### Authentication
 
-JWT-based authentication with access/refresh token pairs. Role-based access control (admin/user). Registration rate-limited per IP. Managed via `/api/v1/auth/*` endpoints.
+JWT-based authentication with access/refresh token pairs. Roles (Eigentümer, Verwalter, Buchhaltung, Technik, Nur Lesen) with write areas in `permissions.py` and portfolio access per account (`services/portfolio_scope.py`). Registration rate-limited per IP. Managed via `/api/v1/auth/*` endpoints.
 
 ### Key Modules
 
@@ -87,4 +88,4 @@ TEST_STORE_BACKEND=sql pytest backend/tests -q
 pytest backend/tests -q --cov=backend --cov-report=term-missing
 ```
 
-33 test files, 780+ tests, covering CRUD operations, domain engines, billing workflows, e2e flows, auth, and reports.
+116 test files, about 1,850 tests, each run against the memory and the SQL store in CI, plus a PostgreSQL gate without skipped tests.

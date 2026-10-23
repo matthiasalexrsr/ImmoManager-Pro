@@ -1,0 +1,3 @@
+# The installer itself, so CI, release builds and the Docker image resolve with the same pip.
+# Install it first:   python -m pip install -r requirements-pip.txt
+pip==26.2.1

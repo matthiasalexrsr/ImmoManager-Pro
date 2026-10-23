@@ -5,7 +5,6 @@ TOTP 2FA, task queue, file storage, portal adapters, and email service.
 """
 
 import io
-from pathlib import Path
 
 import pytest
 
@@ -22,7 +21,6 @@ from backend.auth import (
 )
 from backend.services.email_service import EmailConfig, send_email
 from backend.services.file_storage import LocalStorage
-from backend.services.iban_encryption import decrypt_iban, encrypt_iban, mask_iban
 from backend.services.portal_adapter import (
     ImmobilienScout24Adapter,
     ImmoweltAdapter,
@@ -34,52 +32,7 @@ from backend.services.portal_adapter import (
 from backend.services.task_queue import SyncQueue
 
 # ---------------------------------------------------------------------------
-# 1. IBAN Encryption
-# ---------------------------------------------------------------------------
-
-
-class TestIBANEncryption:
-    """Tests for IBAN encrypt / decrypt / mask round-trips."""
-
-    def test_encrypt_returns_enc_prefix(self):
-        encrypted = encrypt_iban("DE89370400440532013000")
-        assert encrypted.startswith("enc:")
-
-    def test_round_trip_encrypt_decrypt(self):
-        original = "DE89370400440532013000"
-        encrypted = encrypt_iban(original)
-        assert encrypted != original
-        decrypted = decrypt_iban(encrypted)
-        assert decrypted == original
-
-    def test_decrypt_plain_value_returned_as_is(self):
-        plain = "DE89370400440532013000"
-        assert decrypt_iban(plain) == plain
-
-    def test_decrypt_empty_string(self):
-        assert decrypt_iban("") == ""
-
-    def test_decrypt_none_returns_none(self):
-        assert decrypt_iban(None) is None
-
-    def test_encrypt_empty_string(self):
-        assert encrypt_iban("") == ""
-
-    def test_mask_iban_shows_last_four(self):
-        result = mask_iban("DE89370400440532013000")
-        assert result == "****3000"
-
-    def test_mask_iban_short_value(self):
-        result = mask_iban("AB")
-        assert result == "****"
-
-    def test_mask_iban_empty(self):
-        result = mask_iban("")
-        assert result == "****"
-
-
-# ---------------------------------------------------------------------------
-# 2. Password Policy
+# 1. Password Policy
 # ---------------------------------------------------------------------------
 
 
@@ -113,7 +66,7 @@ class TestPasswordPolicy:
 
 
 # ---------------------------------------------------------------------------
-# 3. Login Rate Limiting
+# 2. Login Rate Limiting
 # ---------------------------------------------------------------------------
 
 
@@ -167,7 +120,7 @@ class TestLoginRateLimiting:
 
 
 # ---------------------------------------------------------------------------
-# 4. TOTP Two-Factor Authentication
+# 3. TOTP Two-Factor Authentication
 # ---------------------------------------------------------------------------
 
 
@@ -211,7 +164,7 @@ class TestTOTP:
 
 
 # ---------------------------------------------------------------------------
-# 5. Task Queue (SyncQueue)
+# 4. Task Queue (SyncQueue)
 # ---------------------------------------------------------------------------
 
 
@@ -244,7 +197,7 @@ class TestSyncQueue:
             raise ValueError("boom")
         result = q.enqueue(bad)
         assert result.status == "failed"
-        assert "boom" in result.error
+        assert result.error is not None and "boom" in result.error
 
     def test_cancel_pending_not_applicable(self):
         """SyncQueue executes immediately, so cancel on a completed task returns False."""
@@ -254,7 +207,7 @@ class TestSyncQueue:
 
 
 # ---------------------------------------------------------------------------
-# 6. File Storage (LocalStorage)
+# 5. File Storage (LocalStorage)
 # ---------------------------------------------------------------------------
 
 
@@ -293,9 +246,9 @@ class TestLocalStorage:
 
     def test_windows_traversal_key_stays_under_base_dir(self, storage):
         malicious_key = r"..\..\Windows\system32\drivers\etc\hosts"
-        saved_path = Path(storage.save(malicious_key, io.BytesIO(b"safe"))).resolve()
-        assert saved_path.is_relative_to(storage.base_dir.resolve())
-        assert storage.get(malicious_key) == b"safe"
+        with pytest.raises(ValueError, match='Dateischlüssel'):
+            storage.save(malicious_key, io.BytesIO(b"safe"))
+        assert not list(storage.base_dir.rglob('*'))
 
     def test_save_nested_key(self, storage):
         storage.save("a/b/c.txt", io.BytesIO(b"nested"))
@@ -303,7 +256,7 @@ class TestLocalStorage:
 
 
 # ---------------------------------------------------------------------------
-# 7. Portal Adapter
+# 6. Portal Adapter
 # ---------------------------------------------------------------------------
 
 
@@ -350,7 +303,7 @@ class TestPortalAdapter:
 
 
 # ---------------------------------------------------------------------------
-# 8. Email Service
+# 7. Email Service
 # ---------------------------------------------------------------------------
 
 
@@ -371,13 +324,13 @@ class TestEmailService:
         assert cfg.is_configured is True
 
     def test_send_email_not_configured_does_not_raise(self):
-        # Default config is not configured, should just log and return True
+        # Logging a request does not mean SMTP accepted a delivery.
         result = send_email(
             to="test@example.com",
             subject="Test",
             body_html="<p>Hello</p>",
         )
-        assert result is True
+        assert result is False
 
     def test_send_email_with_body_text(self):
         result = send_email(
@@ -386,4 +339,4 @@ class TestEmailService:
             body_html="<p>Hello</p>",
             body_text="Hello",
         )
-        assert result is True
+        assert result is False

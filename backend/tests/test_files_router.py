@@ -10,7 +10,9 @@ def test_file_url_to_key_variants():
     assert _file_url_to_key('/uploads/documents/x.pdf') == 'documents/x.pdf'
     assert _file_url_to_key('https://example.com/uploads/documents/x.pdf') == 'documents/x.pdf'
     assert _file_url_to_key('https://example.com/uploads/documents/x.pdf?token=abc') == 'documents/x.pdf'
-    assert _file_url_to_key('s3://bucket/documents/x.pdf') == 'documents/x.pdf'
+    # Foreign buckets cannot be interpreted as local keys. The configured S3
+    # binding path is covered by the real storage adapter contract tests.
+    assert _file_url_to_key('s3://foreign-bucket/documents/x.pdf') == ''
 
 
 def test_ocr_key_from_file_key():

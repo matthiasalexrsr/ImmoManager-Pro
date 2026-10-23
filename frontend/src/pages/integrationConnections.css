@@ -1,0 +1,37 @@
+.connection-workspace, .connection-workspace * { box-sizing: border-box; }
+.connection-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.connection-heading h1, .connection-heading h2 { overflow-wrap: anywhere; }
+.connection-layout { display: grid; grid-template-columns: minmax(220px, 310px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.connection-layout > * { min-width: 0; }
+.connection-card, .connection-run-row { display: grid; gap: .35rem; width: 100%; text-align: left; border: 1px solid var(--color-border); border-radius: .6rem; padding: .9rem; margin-block: .5rem; background: var(--color-bg-card, var(--color-surface)); color: var(--color-text); overflow-wrap: anywhere; }
+.connection-card[aria-pressed="true"] { border-color: var(--color-primary); box-shadow: inset 3px 0 var(--color-primary); }
+.connection-card:focus-visible, .connection-run-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.connection-detail { border: 1px solid var(--color-border); border-radius: .75rem; padding: 1.25rem; }
+.connection-action-form, .connection-run-detail { border-top: 1px solid var(--color-border); margin-top: 1.25rem; padding-block: 1rem; }
+.connection-field { display: grid; gap: .4rem; margin-block: .8rem; width: 100%; min-width: 0; }
+.connection-field input, .connection-field select, .connection-field textarea { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--color-border); border-radius: .35rem; color: var(--color-text); background: var(--color-bg-input, var(--color-surface)); font: inherit; font-size: var(--text-base); font-weight: 400; }
+.connection-field textarea { min-height: 110px; resize: vertical; }
+.connection-field small { color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.connection-check { display: flex; align-items: start; gap: .6rem; margin-block: 1rem; }
+.connection-check input { flex: 0 0 auto; min-width: 18px; min-height: 18px; margin-top: .15rem; }
+.connection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.connection-actions .btn { min-height: 44px; white-space: normal; }
+.connection-workspace fieldset, .connection-dialog fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
+.connection-facts { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(0, 1.3fr); gap: .5rem 1rem; }
+.connection-facts div { display: contents; }
+.connection-facts dt { font-weight: 600; }
+.connection-facts dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.connection-dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 1.5rem; }
+@media (max-width: 800px) {
+  .connection-layout { grid-template-columns: minmax(0, 1fr); }
+  .connection-detail { padding: .85rem; }
+  .connection-dialog { padding: 1rem; }
+  .connection-field input, .connection-field select, .connection-field textarea { font-size: var(--text-lg); }
+  .connection-facts { grid-template-columns: minmax(0, 1fr); }
+  .connection-facts dd { margin-bottom: .5rem; }
+  .connection-workspace .page-title { font-size: clamp(1.5rem, 7vw, 2rem); }
+}
+
+.connection-evidence { border-top: 1px solid var(--color-border); padding-top: 1rem; margin-top: 1rem; }
+.connection-result-json { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 26rem; overflow: auto; padding: .75rem; background: var(--color-bg); }
+.connection-proof { min-width: 0; }

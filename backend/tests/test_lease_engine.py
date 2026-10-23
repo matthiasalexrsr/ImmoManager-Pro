@@ -307,8 +307,8 @@ def test_build_dunning_campaign_from_lease_dashboard() -> None:
 
     assert campaign.total_cases == 2
     assert campaign.total_principal == Decimal("1600.00")
-    assert campaign.total_fees == Decimal("12.50")
-    assert campaign.total_claim == Decimal("1612.50")
+    assert campaign.total_fees == Decimal("5.00")         # R12-18: 2.50 € per letter
+    assert campaign.total_claim == Decimal("1605.00")
     assert campaign.lines[0].receivable_id == "2024-02-01"
     assert campaign.lines[0].level == 3
 
@@ -327,3 +327,55 @@ def test_build_dunning_campaign_returns_empty_for_fully_paid() -> None:
     assert campaign.total_principal == Decimal("0.00")
     assert campaign.total_fees == Decimal("0.00")
     assert campaign.total_claim == Decimal("0.00")
+
+
+# ─── Rent history: due dates and changes within a month ─────────────────────
+
+def _steps(*rows):
+    from backend.domain.lease_engine import RentStep
+    return [RentStep(datetime.date.fromisoformat(day), ChargeConfig(cold_rent=Decimal(cold),
+                     service_charge_advance=Decimal("100"))) for day, cold in rows]
+
+
+def test_rent_is_due_by_the_third_working_day_without_saturdays_and_holidays() -> None:
+    """§ 556b Abs. 1 BGB; Saturdays do not count for paying rent (BGH VIII ZR 291/09)."""
+    lines = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2026, 1, 1), contract_end=None, rent_steps=_steps(("2026-01-01", "700")),
+        until_including=datetime.date(2026, 5, 31))
+
+    assert [line.due_date for line in lines] == [
+        datetime.date(2026, 1, 6),    # 1.1. holiday, Fri 2., Mon 5., Tue 6.
+        datetime.date(2026, 2, 4),    # Sun 1., Mon 2., Tue 3., Wed 4.
+        datetime.date(2026, 3, 4),
+        datetime.date(2026, 4, 7),    # Good Friday 3.4. and Easter Monday 6.4.
+        datetime.date(2026, 5, 6),    # 1 May
+    ]
+
+
+def test_the_first_rent_is_not_due_before_moving_in() -> None:
+    lines = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2026, 2, 15), contract_end=None, rent_steps=_steps(("2026-02-15", "700")),
+        until_including=datetime.date(2026, 3, 31))
+
+    # moving in on Sunday 15.2.: Mon 16., Tue 17., Wed 18.
+    assert [line.due_date for line in lines] == [datetime.date(2026, 2, 18), datetime.date(2026, 3, 4)]
+    assert lines[0].total_amount == Decimal("400.00")                 # 14 of 28 days of 800
+    # a fixed day stays a calendar day, but never before moving in
+    fixed = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2026, 2, 15), contract_end=None, rent_steps=_steps(("2026-02-15", "700")),
+        until_including=datetime.date(2026, 3, 31), due_day=3)
+    assert [line.due_date for line in fixed] == [datetime.date(2026, 2, 15), datetime.date(2026, 3, 3)]
+
+
+def test_a_rent_change_within_a_month_is_charged_by_its_days() -> None:
+    lines = LeaseEngine.build_monthly_receivables(
+        contract_start=datetime.date(2026, 1, 1), contract_end=None,
+        rent_steps=_steps(("2026-01-01", "700"), ("2026-03-15", "800")), until_including=datetime.date(2026, 4, 30))
+
+    march = lines[2]
+    # 14 days × 700 / 31 + 17 days × 800 / 31 = 316.129 + 438.710
+    assert march.cold_rent == Decimal("754.84")
+    assert march.service_charge_advance == Decimal("100.00")
+    assert march.total_amount == Decimal("854.84")
+    assert [line.cold_rent for line in lines] == [Decimal("700.00"), Decimal("700.00"), Decimal("754.84"),
+                                                  Decimal("800.00")]

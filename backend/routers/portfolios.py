@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Portfolio, PortfolioCreate, PortfolioPatch
+from ..services.deletion_guard import ensure_deletable
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -58,6 +59,7 @@ def patch_portfolio(portfolio_id: str, payload: PortfolioPatch) -> Portfolio:
 @router.delete("/{portfolio_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_portfolio(portfolio_id: str) -> None:
     try:
+        ensure_deletable(store, "portfolio", portfolio_id)
         store.delete_portfolio(portfolio_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

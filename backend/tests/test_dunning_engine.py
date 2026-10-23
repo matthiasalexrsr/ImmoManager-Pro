@@ -150,10 +150,11 @@ def test_campaign_builds_claim_totals_with_fees() -> None:
 
     assert campaign.total_cases == 2
     assert campaign.total_principal == Decimal("600.00")
-    assert campaign.total_fees == Decimal("12.50")
-    assert campaign.total_claim == Decimal("612.50")
+    # R12-18: the actual cost of a letter on every level, no rising flat fees
+    assert campaign.total_fees == Decimal("5.00")
+    assert campaign.total_claim == Decimal("605.00")
     assert campaign.lines[0].receivable_id == "r-2"
-    assert campaign.lines[0].dunning_fee == Decimal("7.50")
+    assert campaign.lines[0].dunning_fee == Decimal("2.50")
 
 
 def test_reject_invalid_input() -> None:
@@ -194,7 +195,7 @@ def test_build_notice_drafts_default_template() -> None:
     assert len(drafts) == 1
     assert "r-1" in drafts[0].subject
     assert "250.00" in drafts[0].body
-    assert "257.50" in drafts[0].body
+    assert "252.50" in drafts[0].body
 
 
 def test_build_notice_drafts_custom_template() -> None:
@@ -216,7 +217,7 @@ def test_build_notice_drafts_custom_template() -> None:
     drafts = DunningEngine.build_notice_drafts(campaign, template=template)
 
     assert drafts[0].subject == "[2] r-2"
-    assert "105.00" in drafts[0].body
+    assert "102.50" in drafts[0].body
 
 
 
@@ -243,7 +244,7 @@ def test_build_notice_packages_adds_sender_and_payment_deadline() -> None:
     assert packages[0].sender_name == "Hausverwaltung Beispiel"
     assert packages[0].payment_due_date == datetime.date(2024, 4, 30)
     assert "Zahlungsziel: 2024-04-30" in packages[0].body
-    assert "Offene Gesamtforderung: 207.50 EUR" in packages[0].body
+    assert "Offene Gesamtforderung: 202.50 EUR" in packages[0].body
 
 
 def test_build_notice_packages_rejects_invalid_deadline() -> None:

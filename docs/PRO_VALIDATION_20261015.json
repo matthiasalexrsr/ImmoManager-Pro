@@ -1,0 +1,111 @@
+{
+  "date": "2026-10-15",
+  "base_commit": "04021da57e009419ae8d07346ad890fdabad6533",
+  "code_commit": "ae44ab930fd1d1379ae546759d65d2ca47563cf2",
+  "branch": "pro/interfaces-20261015",
+  "scope": "partial_backend_delivery_not_release",
+  "files": {
+    "backend/auth.py": "e5218352cadafd3cde11e073ec90c2d35311871424aeb21684c8e36e61644cd2",
+    "backend/routers/auth.py": "c3aec9cdf6cb9c5351cc45fb8844837201cd6bff1ea1204ffab8bc59668ea2f6",
+    "backend/services/portfolio_http.py": "2a53fe28109f02a36c690ea3964ce85642b0af9f08847132d366c30a5ca469ef",
+    "backend/routers/messages.py": "78bf583995b4eac12eacfeab48ffaccb2999529b11fc5079bdb78b9598c2a6ee",
+    "backend/tests/test_auth_failclosed.py": "9aa87946ca235f82f24a2a4be30827b54331c89a0cc3156c338533c735253271",
+    "backend/tests/test_message_thread_boundary.py": "161e9a710d0a5b7182a953426aa24ba6186e939cf21ac89fc7aeec4daee290cf"
+  },
+  "test_runs": [
+    {
+      "directory": "artifacts/pro-tests/auth-fixed-memory-6a13aa605b89460199386c18b3b6f60f",
+      "reported_head": "04021da57e009419ae8d07346ad890fdabad6533",
+      "backend": "memory",
+      "exit_code": 0,
+      "provenance": "historical_working_tree",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 15
+    },
+    {
+      "directory": "artifacts/pro-tests/auth-regression-memory-d2a8a58870d943f09deb0b5cd8d65fba",
+      "reported_head": "04021da57e009419ae8d07346ad890fdabad6533",
+      "backend": "memory",
+      "exit_code": 0,
+      "provenance": "historical_working_tree",
+      "tests": 93,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 93
+    },
+    {
+      "directory": "artifacts/pro-tests/auth-regression-sql-bc269929ed9840f6af0c56ef8b5d62df",
+      "reported_head": "04021da57e009419ae8d07346ad890fdabad6533",
+      "backend": "sql",
+      "exit_code": 0,
+      "provenance": "historical_working_tree",
+      "tests": 93,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 93
+    },
+    {
+      "directory": "artifacts/pro-tests/baseline-memory-7bda58ca808a4d46b8b331c3e46af562",
+      "reported_head": "04021da57e009419ae8d07346ad890fdabad6533",
+      "backend": "memory",
+      "exit_code": 1,
+      "provenance": "historical_working_tree",
+      "tests": 15,
+      "failures": 11,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 4
+    },
+    {
+      "directory": "artifacts/pro-tests/committed-boundaries-memory-1c179af3e59946be8c17b1b71dbbaefd",
+      "reported_head": "ae44ab930fd1d1379ae546759d65d2ca47563cf2",
+      "backend": "memory",
+      "exit_code": 0,
+      "provenance": "committed_code",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 17
+    },
+    {
+      "directory": "artifacts/pro-tests/committed-boundaries-sql-c32e6ed14f9b4eb09c547b809f901523",
+      "reported_head": "ae44ab930fd1d1379ae546759d65d2ca47563cf2",
+      "backend": "sql",
+      "exit_code": 0,
+      "provenance": "committed_code",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 17
+    }
+  ],
+  "frontend_unfixed_baseline": {
+    "total": 6,
+    "passed": 0,
+    "failed": 6,
+    "specification": "docs/MessagesBoundary.test.jsx.proposed",
+    "implementation_write_blocked": true
+  },
+  "static_checks": {
+    "ruff_backend": "passed",
+    "mypy_linux_backend": "passed_after_two_test_typing_fixes",
+    "mypy_files": 419
+  },
+  "not_run": [
+    "full_backend_coverage_matrix",
+    "native_postgresql",
+    "browser_change_acceptance",
+    "portable_restore",
+    "new_scale_benchmark",
+    "external_adapter_acceptance"
+  ],
+  "clean_npm_ci_verified": false,
+  "production_migration_or_deployment": false
+}

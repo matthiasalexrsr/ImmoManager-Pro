@@ -7,16 +7,30 @@ Includes request context injection via RequestContextFilter.
 import json
 import logging
 import logging.handlers
+import re
 import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode
 
 from .config import settings
 
 # Context variables for request-scoped data
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 request_user_var: ContextVar[str | None] = ContextVar("request_user", default=None)
+
+
+def safe_query(query: str) -> str:
+    """Keep diagnostic filters while excluding credential-like query values."""
+    sensitive = {"token", "secret", "password", "passphrase", "authorization", "credential",
+                 "apikey", "signature", "code", "challenge", "assertion"}
+    pairs = []
+    for name, value in parse_qsl(query, keep_blank_values=True):
+        words = set(re.sub(r"([a-z])([A-Z])", r"\1_\2", name).lower().replace("-", "_").replace(".", "_").split("_"))
+        private = bool(words & sensitive) or name.lower() in {"api_key", "apikey", "key", "sig"}
+        pairs.append((name, "[REDACTED]" if private else value))
+    return urlencode(pairs)
 
 
 class RequestContextFilter(logging.Filter):

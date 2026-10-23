@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,47 +6,85 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toast';
+import { useCanWrite } from '../contexts/AuthContext';
+import { formatMoney, formatPercent } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
 
 const COLUMNS = [
-  { key: 'contract_number', label: 'Vertrag', filterType: 'text' },
+  { key: 'contract_number', label: 'Vertrag', filterType: 'text', link: 'contract' },
   { key: 'adjustment_type', label: 'Art', filterType: 'select',
-    render: v => v === 'index' ? 'Indexmiete' : v === 'stepped' ? 'Staffelmiete' : v || '—' },
+    render: v => codeLabel(v) || '—' },
   { key: 'effective_date', label: 'Wirksamkeit', type: 'date', filterType: 'dateRange' },
   { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
-  { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
+    render: v => formatMoney(v) },
+  { key: 'increase_percent', label: 'Änderung (%)', type: 'number', align: 'right',
+    render: v => formatPercent(v) },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
 ];
 
+function CalculatedIncrease(props) {
+  return <input id={props.id} type="text" readOnly value={formatPercent(props.value)} disabled={props.disabled}
+    aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']} />;
+}
+
+function rentChange(values) {
+  const previous = Number(String(values.previous_rent ?? '').replace(',', '.'));
+  const next = Number(String(values.new_rent ?? '').replace(',', '.'));
+  return { increase_percent: previous > 0 && values.new_rent !== '' && values.new_rent != null && Number.isFinite(next)
+    ? Math.round((next - previous) / previous * 1000000) / 10000 : '' };
+}
+
 export default function RentAdjustments() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const toast = useToast();
+  const canWrite = useCanWrite();
   const store = useDataStore();
-  const { items: contracts } = useEntities('contracts', '/contracts');
+  const contractState = useEntities('contracts', '/contracts');
+  const contracts = contractState.items;
   const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const choicesReady = !contractState.loading && !contractState.error;
 
-  const refreshData = () => {
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    const request = new AbortController();
     setLoading(true);
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdj]', err.message); return []; })
-      .then(adj => setAdjustments(adj || []))
-      .finally(() => setLoading(false));
+    api.list('/rent-adjustments', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Mietanpassungen konnten nicht vollständig gelesen werden.');
+      setAdjustments(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Mietanpassungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
+
+  // Applying writes the new rent into the contract's rent history from its effective date.
+  const runAction = async (row, action) => {
+    try {
+      const res = await api.post(`/rent-adjustments/${row.id}/${action}`, {});
+      (res?.warnings || []).forEach(w => toast.warning(w));
+      toast.success(action === 'apply' ? 'Mietanpassung angewendet' : 'Mietanpassung zurückgenommen');
+      refreshData();
+      if (store) store.invalidateRelated('rent_adjustments', 'contracts');
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/rent-adjustments').catch(err => { console.warn('[RentAdjustments] adjustments:', err.message); return []; })
-      .then(data => { if (!cancelled) setAdjustments(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[RentAdjustments] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+  const columns = [...COLUMNS, { key: 'actions', label: '', render: (_, row) => !canWrite || !choicesReady ? null : (row.status === 'applied'
+    ? <button className="btn btn-sm btn-secondary" onClick={() => runAction(row, 'revert')}>Zurücknehmen</button>
+    : row.status !== 'rejected' && (
+      <button className="btn btn-sm btn-primary" onClick={() => runAction(row, 'apply')}>Anwenden</button>)) }];
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const enriched = adjustments.map(a => ({
@@ -60,11 +98,15 @@ export default function RentAdjustments() {
     { key: 'adjustment_type', label: 'Art', required: true, type: 'select', options: [
       { value: 'index', label: 'Indexmiete' },
       { value: 'stepped', label: 'Staffelmiete' },
-    ]},
+      { value: 'comparative', label: 'Vergleichsmiete (§ 558 BGB)' },
+      { value: 'modernization', label: 'Modernisierung (§ 559 BGB)' },
+      { value: 'agreement', label: 'Vereinbarung mit dem Mieter (§ 557 BGB)' },
+    ], hint: 'Erhöhungen wegen Modernisierung zählen für die Fristen und die Kappungsgrenze einer Mieterhöhung nach § 558 BGB nicht.' },
     { key: 'effective_date', label: 'Wirksamkeitsdatum', type: 'date', required: true },
     { key: 'previous_rent', label: 'Bisherige Miete (€)', type: 'number', required: true },
     { key: 'new_rent', label: 'Neue Miete (€)', type: 'number', required: true },
-    { key: 'increase_percent', label: 'Erhöhung (%)', type: 'number' },
+    { key: 'increase_percent', label: 'Änderung (%)', type: 'number', component: CalculatedIncrease,
+      hint: 'Wird aus bisheriger und neuer Kaltmiete berechnet.' },
     { key: 'index_base_year', label: 'Index-Basisjahr', type: 'number' },
     { key: 'index_value', label: 'Indexwert', type: 'number' },
     { key: 'status', label: 'Status', type: 'select', default: 'pending', options: [
@@ -76,6 +118,7 @@ export default function RentAdjustments() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Vertragsauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/rent-adjustments', data);
     } else {
@@ -86,7 +129,7 @@ export default function RentAdjustments() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.contract_number}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/rent-adjustments/${row.id}`);
@@ -97,10 +140,17 @@ export default function RentAdjustments() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Mietanpassungen konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {contractState.error && <p className="alert-error" role="alert">Die Vertragsauswahl ist nicht verfügbar. {contractState.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={contractState.reload}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -109,16 +159,17 @@ export default function RentAdjustments() {
       )}
       <DataTable
         title="Mietanpassungen"
-        columns={COLUMNS}
+        columns={columns}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Mietanpassung erstellen' : 'Mietanpassung bearbeiten'}
           fields={fields}
+          derive={rentChange}
           initial={modal === 'create' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}

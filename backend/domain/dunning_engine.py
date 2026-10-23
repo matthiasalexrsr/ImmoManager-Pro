@@ -53,9 +53,10 @@ class DunningPolicy:
     level_1_after_days: int = 1
     level_2_after_days: int = 14
     level_3_after_days: int = 30
+    # actual cost per letter, as the dunning stages (domain.dunning_process.REMINDER_FEE, R12-18)
     fee_level_1: Decimal = Decimal("2.50")
-    fee_level_2: Decimal = Decimal("5.00")
-    fee_level_3: Decimal = Decimal("7.50")
+    fee_level_2: Decimal = Decimal("2.50")
+    fee_level_3: Decimal = Decimal("2.50")
 
     def __post_init__(self) -> None:
         if not (0 <= self.level_1_after_days <= self.level_2_after_days <= self.level_3_after_days):

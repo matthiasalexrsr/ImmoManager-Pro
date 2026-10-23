@@ -1,0 +1,24 @@
+/* Keep the exact contract and its dunning file distinct, and usable in narrow tables. */
+.receivable-record-links {
+  display: grid;
+  justify-items: start;
+  gap: .15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receivable-record-links a { max-width: 100%; text-underline-offset: .15em; overflow-wrap: anywhere; }
+.receivable-record-links a:focus-visible {
+  outline: 2px solid var(--color-primary, #326cbd);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.receivable-record-links__secondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--color-text-secondary, #667085);
+  font-size: .78rem;
+}
+@media (max-width: 480px) {
+  .receivable-record-links a { display: inline-flex; align-items: center; min-height: 44px; }
+}

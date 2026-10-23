@@ -1,0 +1,32 @@
+.statement-letter-overlay { z-index: 270; padding: 1rem; }
+.statement-letter-dialog { position: relative; display: flex; flex-direction: column; width: min(1280px, 100%); max-height: 94dvh; min-width: 0; background: var(--color-surface); border-radius: 12px; box-shadow: var(--shadow-lg); }
+.statement-letter-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-border); }
+.statement-letter-header h2 { margin: 0; font-size: var(--text-lg); }
+.statement-letter-header p { margin: .35rem 0 0; color: var(--color-text-secondary); }
+.statement-letter-body { overflow: auto; min-height: 0; padding: 1rem 1.25rem; }
+.statement-letter-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 1rem; align-items: start; }
+.statement-letter-fields { min-width: 0; }
+.statement-letter-fields fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; padding: 0; margin: 0 0 .8rem; border: 0; }
+.statement-letter-fields legend { margin-bottom: .6rem; font-weight: 600; }
+.statement-letter-field { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.statement-letter-fields label { margin: 0; font-size: var(--text-sm); }
+.statement-letter-fields :is(input, textarea) { width: 100%; min-width: 0; }
+.statement-letter-wide { grid-column: 1 / -1; }
+.statement-letter-preview { display: flex; flex-direction: column; height: 680px; max-height: 75dvh; min-width: 0; padding: .75rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; }
+.statement-letter-preview h3 { margin: 0 0 .7rem; font-size: var(--text-sm); }
+.statement-letter-preview .pdf-preview { min-height: 0; flex: 1; }
+.statement-letter-warning, .statement-letter-error, .statement-letter-success { margin: 0 0 .9rem; padding: .75rem; border: 1px solid var(--color-border); border-radius: 7px; overflow-wrap: anywhere; }
+ul.statement-letter-warning { padding-left: 1.8rem; }
+.statement-letter-error { color: var(--color-danger); }
+.statement-letter-history { margin-top: 1rem; }
+.statement-letter-history h3 { font-size: var(--text-base); }
+.statement-letter-history ul { list-style: none; padding: 0; }
+.statement-letter-history li { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .9rem; padding: .5rem 0; border-bottom: 1px solid var(--color-border); }
+.statement-letter-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem; padding: .9rem 1.25rem; border-top: 1px solid var(--color-border); }
+.statement-letter-footer > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem; max-width: 100%; }
+.statement-letter-confirm { display: flex; flex-direction: row; align-items: flex-start; gap: .5rem; font-size: var(--text-sm); max-width: 420px; }
+.statement-letter-confirm input { flex-shrink: 0; margin-top: .15rem; }
+.statement-letter-leave { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: center; padding: 1.5rem; background: var(--color-surface); border-radius: inherit; overflow: auto; }
+.statement-letter-leave > div:last-child { display: flex; flex-wrap: wrap; gap: .5rem; }
+@media (max-width: 900px) { .statement-letter-columns { grid-template-columns: minmax(0, 1fr); } .statement-letter-preview { height: 560px; max-height: 70dvh; } }
+@media (max-width: 480px) { .statement-letter-overlay { padding: .5rem; } .statement-letter-header, .statement-letter-body, .statement-letter-footer { padding: .75rem; } .statement-letter-fields fieldset { grid-template-columns: minmax(0, 1fr); } .statement-letter-footer .btn { min-height: 44px; white-space: normal; } }

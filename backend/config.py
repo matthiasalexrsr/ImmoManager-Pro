@@ -6,26 +6,37 @@ All environment variables are consolidated here. Import `settings` to use them.
 import enum
 import importlib.metadata
 import json
+import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+SETTING_ORIGINS: dict[str, str] = {}
+SETTING_ORIGIN_FILES: dict[str, str] = {}
 
-def _get_version() -> str:
-    """Read version from package metadata, falling back to pyproject.toml."""
+
+def _get_version(pyproject: Path | None = None) -> str:
+    """The version of the running code: pyproject.toml next to it, else the package metadata.
+
+    A checkout (also an editable install) and the Windows package carry pyproject.toml. The metadata
+    of an editable install keeps the version of its installation: after an update it would still name
+    the old version, and the update check would offer the installed update again.
+    """
+    import tomllib
+
+    pyproject = pyproject or Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        version = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {}).get("version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+    except (OSError, ValueError):
+        pass
     try:
         return importlib.metadata.version("immomanager-pro")
     except importlib.metadata.PackageNotFoundError:
-        pass
-    # Fallback: parse pyproject.toml directly
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    if pyproject.exists():
-        for line in pyproject.read_text().splitlines():
-            if line.strip().startswith("version"):
-                return line.split("=")[1].strip().strip('"').strip("'")
-    return "0.0.0"
+        return "0.0.0"
 
 
 class Environment(str, enum.Enum):
@@ -61,10 +72,31 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", str(Path(os.environ["DATA_DIR"]) / ".env")) if os.environ.get("DATA_DIR") else ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings):
+        def tracked(source, origin):
+            def read():
+                values = source()
+                for name in values:
+                    if name not in SETTING_ORIGINS:
+                        SETTING_ORIGINS[name] = origin
+                        if origin == "dotenv_file":
+                            from dotenv import dotenv_values
+                            files = source.env_file
+                            files = [files] if isinstance(files, (str, Path)) else files or []
+                            for path in files:
+                                if name.lower() in {key.lower() for key in dotenv_values(path)}:
+                                    SETTING_ORIGIN_FILES[name] = str(Path(path).resolve())
+                return values
+            return read
+        return tuple(tracked(source, origin) for source, origin in (
+            (init_settings, "explicit"), (env_settings, "process_env"),
+            (dotenv_settings, "dotenv_file"), (file_secret_settings, "secret_file")))
 
     # --- Environment profile ---
     # Set to "production" to enable strict safety checks at startup.
@@ -116,9 +148,56 @@ class Settings(BaseSettings):
 
     # --- Plugins ---
     plugin_dirs: Annotated[list[str], NoDecode] = []
+    immo_restore_probe: bool = False
+
+    file_storage_backend: Literal["local", "s3"] = "local"
+    s3_endpoint_url: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "immomanager"
+    s3_region: str = "eu-central-1"
+
+    # --- Scheduled jobs ---
+    # Every process ticks; durable runs and leases keep one worker per job.
+    job_scheduler_enabled: bool = True
+    job_scheduler_interval_seconds: float = 60.0
+    # "latest": only the newest missed occurrence of a series becomes a task; "all": every one
+    recurring_catch_up: Literal["latest", "all"] = "latest"
 
     # --- Auto-migration ---
+    # Ignored since the explicit upgrade (python -m backend.upgrade); kept so old .env files load.
     auto_migrate: bool = False
+
+    # --- Secrets at rest ---
+    # Key file for integration secrets (default: <DATA_DIR>/secrets/keyring.json, created on first use).
+    secret_key_file: str = ""
+    # Alternative: comma-separated base64url 32-byte keys, the first one active (never written to disk).
+    secret_keys: str = ""
+
+    # Optional official account clients. Leave empty for discovery on this
+    # server; no API key or operator-global credential directory is used.
+    assistant_codex_cli: str = ""
+    assistant_claude_cli: str = ""
+    assistant_max_attachment_bytes: int | None = Field(default=None, gt=0)
+    assistant_request_attachment_bytes: int = Field(default=128 * 1024 * 1024, gt=0)
+
+    # --- Full backups and restore probes ---
+    # Daily full backup and monthly restore probe as durable jobs (Europe/Berlin).
+    backup_schedule_enabled: bool = True
+    backup_daily_at: str = "01:30"
+    restore_probe_day: int = 1
+    restore_probe_at: str = "03:30"
+    backup_keep_daily: int = 14
+    backup_keep_monthly: int = 6
+    backup_keep_pre_upgrade: int = 3
+    # Second target (e.g. a network share); every copy is verified by SHA-256.
+    backup_second_target: str = ""
+    # Optional: protects the key file and .env inside the archive (scrypt + AES-256-GCM).
+    backup_passphrase: str = ""
+    # PostgreSQL: directory of pg_dump/pg_restore when not on PATH, and an optional admin URL of a
+    # disposable server for full restore probes (a database is created and dropped there).
+    pg_bin_dir: str = ""
+    restore_probe_postgres_url: str = ""
 
     # --- Persistence toggles ---
     # SQLite uses SQLAlchemyStore by default for real data persistence.
@@ -134,12 +213,23 @@ class Settings(BaseSettings):
     # Defaults to False; must be explicitly enabled (e.g. for demo images).
     auto_seed_demo_data: bool = False
 
+    # --- Test version ---
+    # Package sent to testers: realistic data set (15 properties) and master logins on
+    # the first start (backend.testversion); the UI shows a "Testversion" badge.
+    immo_testversion: bool = False
+
+    # --- Accounts ---
+    # The very first account is always created as owner (initial setup).
+    # Afterwards, public self-registration stays closed unless enabled here;
+    # self-registered accounts are always read-only.
+    allow_self_registration: bool = False
+
     # --- File upload limits ---
     max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
 
     # --- Updates ---
-    # GitHub repository URL for checking updates (e.g. "https://github.com/owner/repo")
-    update_repo_url: str = ""
+    # GitHub repository whose releases the update check reads (only when someone clicks "Jetzt prüfen")
+    update_repo_url: str = "https://github.com/matthiasalexrsr/ImmoManager-Pro"
     # "stable" = only released versions; "preview" = include pre-releases
     update_channel: str = "stable"
     # Optional GitHub personal access token for private repos / higher rate limits
@@ -153,6 +243,8 @@ class Settings(BaseSettings):
 
     # --- Integrations ---
     integration_state_file: str | None = None
+    # Per-command processing budget, not a cap on a connection or its history.
+    integration_step_max_bytes: int = 4 * 1024 * 1024
 
     # --- AI / Hugging Face ---
     ai_enabled: bool = True  # Master toggle for AI features
@@ -176,5 +268,13 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment == Environment.production
 
+    @property
+    def developer_tools_enabled(self) -> bool:
+        """Diagnostics, autotest and dev notes: on outside production,
+        in production only with DIAGNOSTICS_ALLOW_IN_PRODUCTION=true."""
+        return not self.is_production or self.diagnostics_allow_in_production
+
+
+MIN_JWT_SECRET_LENGTH = 32
 
 settings = Settings()

@@ -19,7 +19,7 @@ export default function TaxRates() {
     { key: 'name', label: t('pages.taxRates.form.name') || 'Bezeichnung', required: true, placeholder: t('pages.taxRates.form.namePlaceholder') || 'z.B. Regelsteuersatz' },
     { key: 'rate', label: t('pages.taxRates.form.rate') || 'Steuersatz (%)', type: 'number', required: true, placeholder: t('pages.taxRates.form.ratePlaceholder') || 'z.B. 19.0' },
     { key: 'description', label: t('pages.taxRates.form.description') || 'Beschreibung' },
-    { key: 'is_default', label: t('pages.taxRates.form.isDefault') || 'Standard', type: 'select', options: [
+    { key: 'is_default', label: t('pages.taxRates.form.isDefault') || 'Standard', type: 'select', default: 'false', options: [
       { value: 'true', label: t('pages.taxRates.form.yes') || 'Ja' },
       { value: 'false', label: t('pages.taxRates.form.no') || 'Nein' },
     ]},

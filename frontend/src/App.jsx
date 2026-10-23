@@ -1,14 +1,21 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect, lazy, Suspense, Fragment } from 'react';
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 import Layout from './components/Layout';
+import './components/notificationInbox.css';
 import DevModeOverlay from './components/DevModeOverlay';
 import LoadingSpinner from './components/LoadingSpinner';
+// Static: the notification bell in the layout uses the inbox on every page anyway.
+import NotificationInbox from './components/NotificationInbox';
+import { NavigationProtectionProvider } from './components/UnsavedNavigationGuard';
+import { usePreferences } from './contexts/PreferencesContext';
 import { useAuth } from './contexts/AuthContext';
 import { useDevMode } from './contexts/DevModeContext';
 import Login from './pages/Login';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Assistant = lazy(() => import('./pages/Assistant'));
+const Reports = lazy(() => import('./pages/Reports'));
 const Portfolios = lazy(() => import('./pages/Portfolios'));
 const Properties = lazy(() => import('./pages/Properties'));
 const Units = lazy(() => import('./pages/Units'));
@@ -19,21 +26,35 @@ const Accounts = lazy(() => import('./pages/Accounts'));
 const Bookings = lazy(() => import('./pages/Bookings'));
 const Invoices = lazy(() => import('./pages/Invoices'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
+const MaintenanceDetail = lazy(() => import('./pages/MaintenanceDetail'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Documents = lazy(() => import('./pages/Documents'));
+const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 const RentOverview = lazy(() => import('./pages/RentOverview'));
 const Meters = lazy(() => import('./pages/Meters'));
 const Contacts = lazy(() => import('./pages/Contacts'));
 const Statements = lazy(() => import('./pages/Statements'));
+const NotificationLanding = lazy(() => import('./pages/NotificationLanding'));
 const Messages = lazy(() => import('./pages/Messages'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PropertyDetail = lazy(() => import('./pages/PropertyDetail'));
 const Categories = lazy(() => import('./pages/Categories'));
 const Deposits = lazy(() => import('./pages/Deposits'));
 const Insurances = lazy(() => import('./pages/Insurances'));
+const ServiceContracts = lazy(() => import('./pages/ServiceContracts'));
+const ServiceContractDetail = lazy(() => import('./pages/ServiceContractDetail'));
+const InvoiceReview = lazy(() => import('./pages/InvoiceReview'));
+const InvoiceReviewDetail = lazy(() => import('./pages/InvoiceReviewDetail'));
+const Dunning = lazy(() => import('./pages/Dunning'));
+const DunningCase = lazy(() => import('./pages/DunningCase'));
+const TaxExports = lazy(() => import('./pages/TaxExports'));
 const Integrations = lazy(() => import('./pages/Integrations'));
+const IntegrationConnections = lazy(() => import('./pages/IntegrationConnections'));
+const Teha = lazy(() => import('./pages/Teha'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Leads = lazy(() => import('./pages/Leads'));
+const Reletting = lazy(() => import('./pages/Reletting'));
+const RelettingProject = lazy(() => import('./pages/RelettingProject'));
 const Listings = lazy(() => import('./pages/Listings'));
 const Viewings = lazy(() => import('./pages/Viewings'));
 const RentAdjustments = lazy(() => import('./pages/RentAdjustments'));
@@ -41,38 +62,74 @@ const Budgets = lazy(() => import('./pages/Budgets'));
 const TaxRates = lazy(() => import('./pages/TaxRates'));
 const ContractWizard = lazy(() => import('./pages/ContractWizard'));
 const Receivables = lazy(() => import('./pages/Receivables'));
+const TenantAccount = lazy(() => import('./pages/TenantAccount'));
+const ReviewList = lazy(() => import('./pages/ReviewList'));
+const WorkCenter = lazy(() => import('./features/workCenter/WorkCenter'));
+const DocumentIntakeQueue = lazy(() => import('./features/workCenter/DocumentIntakeQueue'));
+const DuplicateFinder = lazy(() => import('./features/workCenter/DuplicateFinder'));
 const RentCharges = lazy(() => import('./pages/RentCharges'));
 const EscalationRules = lazy(() => import('./pages/EscalationRules'));
 const NotificationTemplates = lazy(() => import('./pages/NotificationTemplates'));
+const LetterTemplates = lazy(() => import('./pages/LetterTemplates'));
 const History = lazy(() => import('./pages/History'));
 const AllocationKeys = lazy(() => import('./pages/AllocationKeys'));
 const HandoverProtocols = lazy(() => import('./pages/HandoverProtocols'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
+function StartPage() {
+  const preferences = usePreferences();
+  if (preferences?.error) return <div className="page" role="alert">{preferences.error} <button onClick={preferences.reload}>Erneut laden</button></div>;
+  if (preferences && !preferences.ready) return <LoadingSpinner />;
+  const target = preferences?.prefs?.start_page || '/';
+  return ['/', '/work-center', '/properties', '/tasks', '/notifications'].includes(target) && target !== '/'
+    ? <Navigate to={target} replace /> : <Dashboard />;
+}
+
 function ProtectedRoute({ children }) {
   const [status, setStatus] = useState(isLoggedIn() ? 'validating' : 'unauthenticated');
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const auth = useAuth();
 
   useEffect(() => {
+    const synchronize = () => {
+      setStatus(isLoggedIn() ? 'validating' : 'unauthenticated');
+      setAttempt(value => value + 1);
+    };
+    window.addEventListener('workspace-logout', synchronize);
+    return () => window.removeEventListener('workspace-logout', synchronize);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     if (!isLoggedIn()) {
       setStatus('unauthenticated');
       auth?.clearUser();
       return;
     }
+    setStatus('validating');
+    setError(null);
     // Validate the session against the backend before rendering
-    api.get('/auth/me')
+    api.get('/auth/me', { sessionBootstrap: true })
       .then((userData) => {
+        if (!active) return;
         auth?.updateUser(userData);
         setStatus('authenticated');
       })
-      .catch(() => {
-        // Token is invalid/expired and refresh failed — clear tokens
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        auth?.clearUser();
-        setStatus('unauthenticated');
+      .catch((failure) => {
+        if (!active) return;
+        if (isLoggedIn()) {
+          setError(failure.message);
+          setStatus('error');
+        } else {
+          auth?.clearUser();
+          setStatus('unauthenticated');
+        }
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { active = false; };
+  }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (status === 'error') return <div className="page"><div role="alert" className="alert-error"><p>Die Anmeldung konnte nicht geprüft werden.</p><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>Erneut versuchen</button></div></div>;
 
   if (status === 'validating') {
     return (
@@ -84,7 +141,7 @@ function ProtectedRoute({ children }) {
   if (status === 'unauthenticated') {
     return <Navigate to="/login" />;
   }
-  return children;
+  return <Fragment key={auth?.user?.id || 'session'}>{children}</Fragment>;
 }
 
 function DevModeWrapper({ children }) {
@@ -98,27 +155,39 @@ function DevModeWrapper({ children }) {
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <DevModeWrapper>
-      <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
+  // History is an owned effect: StrictMode's rehearsal and an actual app
+  // unmount both dispose their listeners, and imports have no side effects.
+  const [router, setRouter] = useState(null);
+  useEffect(() => {
+    const instance = createBrowserRouter(createRoutesFromElements(
+      <Route element={<NavigationProtectionProvider><DevModeWrapper><Suspense fallback={<LoadingSpinner />}><Outlet /></Suspense></DevModeWrapper></NavigationProtectionProvider>}>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<StartPage />} />
           <Route path="portfolios" element={<Portfolios />} />
           <Route path="properties" element={<Properties />} />
           <Route path="properties/:id" element={<PropertyDetail />} />
           <Route path="units" element={<Units />} />
           <Route path="units/:id" element={<UnitOverview />} />
           <Route path="tenants" element={<Tenants />} />
+          <Route path="tenants/:id/account" element={<TenantAccount />} />
+          <Route path="review" element={<ReviewList />} />
+          <Route path="work-center" element={<WorkCenter />} />
+          <Route path="document-queue" element={<DocumentIntakeQueue />} />
+          <Route path="duplicate-check" element={<DuplicateFinder />} />
           <Route path="contracts" element={<Contracts />} />
           <Route path="accounts" element={<Accounts />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="assistant" element={<Assistant />} />
           <Route path="bookings" element={<Bookings />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="maintenance" element={<Maintenance />} />
+          <Route path="maintenance/:id" element={<MaintenanceDetail />} />
+          <Route path="notifications" element={<NotificationInbox />} />
+          <Route path="notifications/open/:id" element={<NotificationLanding />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="documents/:documentId" element={<DocumentDetail />} />
           <Route path="rent-overview" element={<RentOverview />} />
           <Route path="meters" element={<Meters />} />
           <Route path="contacts" element={<Contacts />} />
@@ -127,8 +196,19 @@ export default function App() {
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />
           <Route path="insurances" element={<Insurances />} />
+          <Route path="service-contracts" element={<ServiceContracts />} />
+          <Route path="service-contracts/:id" element={<ServiceContractDetail />} />
+          <Route path="invoice-review" element={<InvoiceReview />} />
+          <Route path="invoice-review/:id" element={<InvoiceReviewDetail />} />
+          <Route path="dunning" element={<Dunning />} />
+          <Route path="dunning/contracts/:contractId" element={<DunningCase />} />
+          <Route path="tax-exports" element={<TaxExports />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="integration-connections" element={<IntegrationConnections />} />
+          <Route path="teha" element={<Teha />} />
           <Route path="calendar" element={<Calendar />} />
+          <Route path="reletting" element={<Reletting />} />
+          <Route path="reletting/:id" element={<RelettingProject />} />
           <Route path="leads" element={<Leads />} />
           <Route path="listings" element={<Listings />} />
           <Route path="viewings" element={<Viewings />} />
@@ -140,15 +220,17 @@ export default function App() {
           <Route path="rent-charges" element={<RentCharges />} />
           <Route path="escalation-rules" element={<EscalationRules />} />
           <Route path="notification-templates" element={<NotificationTemplates />} />
+          <Route path="letter-templates" element={<LetterTemplates />} />
           <Route path="history" element={<History />} />
           <Route path="allocation-keys" element={<AllocationKeys />} />
           <Route path="handover-protocols" element={<HandoverProtocols />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>
-      </Routes>
-      </Suspense>
-      </DevModeWrapper>
-    </BrowserRouter>
-  );
+      </Route>
+    ));
+    setRouter(instance);
+    return () => instance.dispose();
+  }, []);
+  return router ? <RouterProvider router={router} /> : <LoadingSpinner />;
 }

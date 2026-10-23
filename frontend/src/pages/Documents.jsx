@@ -1,14 +1,32 @@
+import ChannelPanel from '../features/channels/ChannelPanel';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
-import FileViewer from '../components/FileViewer';
+import CurrentDocumentViewer from '../features/documentDetail/CurrentDocumentViewer';
 import { PlusIcon } from '../components/Icons';
+import { Eye, FileText, Mail, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
+import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
+import { useAuth, useCanWrite } from '../contexts/AuthContext';
+import { documentTypeLabel, documentTypeOptions } from '../utils/documentType';
+import { formatDate } from '../utils/format';
+import { entityHref } from '../utils/entityLinks';
+import { expiryState } from '../utils/documentExpiry';
+import AktenwerkDialog from '../features/aktenwerk/AktenwerkDialog';
+import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
+import KpiAction from '../components/KpiAction';
+import MoreMenu from '../components/MoreMenu';
+import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
+import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
+import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
+import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
+import { deriveDocumentAssociations, documentAssociationFields, resolveDocumentContext } from '../features/documentDetail/documentAssociations';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
+const CONTEXT_KEYS = ['property_id', 'unit_id', 'contract_id'];
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -27,9 +45,28 @@ function guessDocType(filename) {
 }
 
 export default function Documents() {
+  const [searchParams] = useSearchParams();
+  // A party change starts a new workspace, including forms and in-flight upload UI.
+  // Pending requests retain their original party and cannot release a newer upload.
+  return <DocumentsWorkspace key={['tenant_id', ...CONTEXT_KEYS].map(key => searchParams.get(key) || '').join('|')} />;
+}
+
+function DocumentsWorkspace() {
   const { t } = useTranslation();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const store = useDataStore();
+  const canWrite = useCanWrite('/documents');
+  const auth = useAuth();
+  const canOverrideRetention = auth?.role === 'eigentuemer' || auth?.role === 'verwalter';
+  const [retention, setRetention] = useState(null);
+  const [lockTarget, setLockTarget] = useState(null);
+  const party = usePartyWorkspace();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tenantId = searchParams.get('tenant_id') || '';
+  const contextQuery = tenantId ? '' : new URLSearchParams(CONTEXT_KEYS.filter(key => searchParams.get(key)).map(key => [key, searchParams.get(key)])).toString();
+  const contextValues = Object.fromEntries(new URLSearchParams(contextQuery));
+  const { items: tenants } = useEntities('tenants_all', '/tenants?include_archived=true');
   const { items: properties } = useEntities('properties', '/properties');
   const { items: units } = useEntities('units', '/units');
   const { items: contracts } = useEntities('contracts', '/contracts');
@@ -37,82 +74,161 @@ export default function Documents() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [viewerFile, setViewerFile] = useState(null);
+  const [postDocument, setPostDocument] = useState(null);
+  const toolId = searchParams.get('tool_id');
+  const closeTools = useCallback(() => setSearchParams(previous => {
+    const next = new URLSearchParams(previous); next.delete('tool_id'); return next;
+  }), [setSearchParams]);
+  const [aktenwerkOpen, setAktenwerkOpen] = useState(false);
+  const aktenwerkReady = useAktenwerkReady();
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
   const [ocrResult, setOcrResult] = useState(null);
   const [filter, setFilter] = useState('all');
-  const fileRef = useRef(null);
-
-  const DOC_TYPES = useMemo(() => [
-    { value: 'Mietvertrag', label: t('pages.documents.docTypes.mietvertrag') || 'Mietvertrag' },
-    { value: 'Rechnung', label: t('pages.documents.docTypes.rechnung') || 'Rechnung' },
-    { value: 'Nebenkostenabrechnung', label: t('pages.documents.docTypes.nebenkostenabrechnung') || 'Nebenkostenabrechnung' },
-    { value: 'Protokoll', label: t('pages.documents.docTypes.protokoll') || 'Protokoll' },
-    { value: 'Versicherung', label: t('pages.documents.docTypes.versicherung') || 'Versicherung' },
-    { value: 'Grundbuchauszug', label: t('pages.documents.docTypes.grundbuchauszug') || 'Grundbuchauszug' },
-    { value: 'Energieausweis', label: t('pages.documents.docTypes.energieausweis') || 'Energieausweis' },
-    { value: 'Betriebskostenabrechnung', label: t('pages.documents.docTypes.betriebskostenabrechnung') || 'Betriebskostenabrechnung' },
-    { value: 'Mahnung', label: t('pages.documents.docTypes.mahnung') || 'Mahnung' },
-    { value: 'Kündigung', label: t('pages.documents.docTypes.kuendigung') || 'Kündigung' },
-    { value: 'Übergabeprotokoll', label: t('pages.documents.docTypes.uebergabeprotokoll') || 'Übergabeprotokoll' },
-    { value: 'Handwerkerrechnung', label: t('pages.documents.docTypes.handwerkerrechnung') || 'Handwerkerrechnung' },
-    { value: 'Steuerbescheid', label: t('pages.documents.docTypes.steuerbescheid') || 'Steuerbescheid' },
-    { value: 'Sonstiges', label: t('pages.documents.docTypes.sonstiges') || 'Sonstiges' },
-  ], [t]);
-
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/documents').catch(() => [])
-      .then(data => setDocuments(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
+  const [drilldown, setDrilldown] = useState(0);
+  const [pageSource, setPageSource] = useState(null);
+  const openSources = value => {
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; });
+    setDrilldown(number => number + 1);
+    if (tenantId) { setFilter('all'); setPageSource(value === 'all' ? null : value); if (value === 'all') setSkip(0); }
+    else setFilter(value);
   };
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [partyOverview, setPartyOverview] = useState(null);
+  const [documentPage, setDocumentPage] = useState(null);
+  const [skip, setSkip] = useState(0);
+  const [search, setSearch] = useState('');
+  const [docType, setDocType] = useState('');
+  const [createInitial, setCreateInitial] = useState(null);
+  const overview = partyOverview?.tenant.id === tenantId ? partyOverview : null;
+  const fileRef = useRef(null);
+  const uploadBusy = useRef(false);
+  const uploadGeneration = useRef(0);
+  const exportRequest = useRef(null);
+  useEffect(() => () => { uploadGeneration.current += 1; }, [tenantId]);
+  useEffect(() => () => exportRequest.current?.abort(), []);
+
+  const DOC_TYPES = useMemo(() => documentTypeOptions(t), [t]);
+
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
 
   useEffect(() => {
     let cancelled = false;
-    api.get('/documents').catch(() => [])
-      .then(data => { if (!cancelled) setDocuments(Array.isArray(data) ? data : []); })
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setLoading(true); setError(null);
+    const params = new URLSearchParams({ skip: String(skip), limit: '25', q: search, document_type: docType });
+    const request = tenantId
+      ? Promise.all([api.get(`/tenants/${encodeURIComponent(tenantId)}/documents?${params}`, options), api.get(`/tenants/${encodeURIComponent(tenantId)}/overview`, options)])
+      : api.list(`/documents${contextQuery ? `?${contextQuery}` : ''}`, options).then(items => [{ items }, null]);
+    Promise.resolve().then(() => retentionService.load(options)).then(value => { if (!cancelled) setRetention(value); })
+      .catch(() => { if (!cancelled) setRetention(null); });   // the list works without it; deleting still asks the server
+    request.then(([page, overview]) => {
+      if (!Array.isArray(page?.items) || (tenantId && (!Number.isInteger(page.total) || page.total < 0))) throw new Error('Die Dokumentquelle konnte nicht vollständig gelesen werden.');
+      if (!cancelled) { setDocuments(page.items); setDocumentPage(tenantId ? page : null); setPartyOverview(overview); }
+    }).catch(err => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; controller.abort(); };
+  }, [tenantId, skip, search, docType, revision, contextQuery]);
 
   // Lookup maps
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c.contract_number]));
+  const tenantMap = Object.fromEntries(tenants.map(person => [person.id, person.full_name]));
+  if (overview) tenantMap[overview.tenant.id] = overview.tenant.full_name;
+  const contractTenantMap = Object.fromEntries(contracts.map(c => [c.id, c.tenant_id]));
+  const unitRecords = useMemo(() => Object.fromEntries(units.map(row => [row.id, row])), [units]);
+  const contractRecords = useMemo(() => Object.fromEntries(contracts.map(row => [row.id, row])), [contracts]);
 
-  const enriched = documents.map(doc => ({
+  const enrichDocument = doc => {
+    const context = resolveDocumentContext(doc, unitRecords, contractRecords);
+    return {
     ...doc,
-    property_name: propMap[doc.property_id] || '—',
-    unit_label: unitMap[doc.unit_id] || '—',
+    context,
+    property_name: propMap[context.property_id] || '—',
+    unit_label: unitMap[context.unit_id] || '—',
     contract_label: contractMap[doc.contract_id] || '—',
+    party_id: doc.tenant_id || contractTenantMap[doc.contract_id] || (tenantId || null),
+    party_name: tenantMap[doc.tenant_id || contractTenantMap[doc.contract_id] || tenantId] || '—',
     has_file: !!doc.file_url,
-  }));
+    retention: retention?.items?.[doc.id] || null,
+    retention_label: retentionCell(retention?.items?.[doc.id]),
+    };
+  };
+  const enriched = documents.map(enrichDocument);
+
+  const loadPartyExport = async () => {
+    const controller = new AbortController();
+    exportRequest.current?.abort();
+    exportRequest.current = controller;
+    const result = [];
+    const ids = new Set();
+    let expectedTotal;
+    try {
+      let offset = 0;
+      while (true) {
+        const params = new URLSearchParams({ skip: String(offset), limit: '500', q: search, document_type: docType });
+        const page = await api.get(`/tenants/${encodeURIComponent(tenantId)}/documents?${params}`, { signal: controller.signal });
+        if (controller.signal.aborted) throw new Error('Export abgebrochen.');
+        expectedTotal ??= page.total;
+        if (page.total !== expectedTotal || page.items.some(item => ids.has(item.id)) || (page.has_more && !page.items.length)) {
+          throw new Error('Der Dokumentbestand hat sich während des Exports geändert. Bitte starten Sie den Export erneut.');
+        }
+        for (const item of page.items) { ids.add(item.id); result.push(enrichDocument(item)); }
+        offset += page.items.length;
+        if (!page.has_more) break;
+      }
+      if (result.length !== expectedTotal) throw new Error('Die Dokumentliste konnte nicht vollständig exportiert werden. Bitte versuchen Sie es erneut.');
+      return result;
+    } finally {
+      if (exportRequest.current === controller) exportRequest.current = null;
+    }
+  };
 
   const filtered = useMemo(() => {
+    if (tenantId) return enriched;
     if (filter === 'all') return enriched;
-    if (filter === 'no_assignment') return enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id);
+    if (filter === 'no_assignment') return enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id && !d.tenant_id);
     if (filter === 'ocr_open') return enriched.filter(d => d.ocr_status === 'processing' || (!d.ocr_status && d.file_url));
+    if (filter === 'with_file') return enriched.filter(d => d.file_url);
+    if (filter === 'ocr_completed') return enriched.filter(d => d.ocr_status === 'completed');
+    if (filter === 'expiring') return enriched.filter(d => ['expired', 'due'].includes(expiryState(d)));
+    if (filter === 'retention_ended') return enriched.filter(d => d.retention?.state === 'ended');
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, tenantId]);
 
   // Summary stats
   const withFile = enriched.filter(d => d.file_url).length;
-  const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id).length;
+  const noAssignment = enriched.filter(d => !d.property_id && !d.unit_id && !d.contract_id && !d.tenant_id).length;
+  const expiring = enriched.filter(d => ['expired', 'due'].includes(expiryState(d))).length;
+  const retentionEnded = enriched.filter(d => d.retention?.state === 'ended').length;
   const ocrCompleted = enriched.filter(d => d.ocr_status === 'completed').length;
 
   const columns = [
-    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-    { key: 'contract_label', label: 'Vertrag', filterType: 'text' },
+    { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text', link: 'document' },
+    { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
+    { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
+    { key: 'property_name', label: 'Immobilie', filterType: 'text', render: (value, row) => row.context.property_id
+      ? <Link to={entityHref('property', row.context.property_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Immobilie öffnen' : value}</Link> : value },
+    { key: 'unit_label', label: 'Einheit', filterType: 'text', render: (value, row) => row.context.unit_id
+      ? <Link to={entityHref('unit', row.context.unit_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Einheit öffnen' : value}</Link> : value },
+    { key: 'contract_label', label: 'Vertrag', filterType: 'text', link: 'contract' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
+    { key: 'valid_until', label: 'Gültig bis', type: 'date', filterType: 'dateRange', render: (value, row) => {
+      if (!value) return '—';
+      const state = expiryState(row);
+      return <span className={`document-expiry document-expiry-${state}`}>{formatDate(value)}{state === 'expired' ? ' · abgelaufen' : state === 'due' ? ' · läuft ab' : ''}</span>;
+    } },
+    { key: 'retention_label', label: 'Aufbewahrung', filterType: 'text',
+      render: (value, row) => <span className={`document-retention document-retention-${row.retention?.state || 'none'}`} title={row.retention?.text}>{value}</span> },
     { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
     { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
       render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
-    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'OCR', render: v => {
+    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'Texterkennung', render: v => {
       if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
       if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
       if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';
@@ -121,26 +237,31 @@ export default function Documents() {
   ];
 
   const uploadFile = useCallback(async (file) => {
-    if (!file) return;
+    if (!file || !canWrite || uploadBusy.current) return;
+    uploadBusy.current = true;
+    const generation = uploadGeneration.current;
     setUploading(true);
     setOcrResult(null);
+    setUploadedUrl('');
+    setError(null);
     try {
+      const current = api.captureSession();
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/files/upload?folder=documents`, {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(t('pages.documents.upload.failed') || 'Upload fehlgeschlagen');
-      const data = await res.json();
-      if (data.file_url) setUploadedUrl(data.file_url);
+      const data = await api.upload('/files/upload?folder=documents', formData);
+      current();
+      if (generation !== uploadGeneration.current) return;
+      if (!data.file_url) throw new Error('Der Server hat keine Datei zurückgegeben.');
+      setUploadedUrl(data.file_url);
+      let suggestedType = guessDocType(file.name);
 
       const ext = file.name.split('.').pop().toLowerCase();
       if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
         try {
           const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
+          current();
+          if (generation !== uploadGeneration.current) return;
+          suggestedType = ocrRes.guessedType || ocrRes.document_type || suggestedType;
           setOcrResult({
             success: Boolean(ocrRes.success ?? ocrRes.analyzed),
             ...ocrRes,
@@ -148,28 +269,69 @@ export default function Documents() {
             extracted_text: ocrRes.extracted_text || ocrRes.summary || null,
           });
         } catch {
+          if (generation !== uploadGeneration.current) return;
           setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
         }
       } else {
         setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
       }
+      current();
+      if (generation !== uploadGeneration.current) return;
+      setCreateInitial({ ...Object.fromEntries(new URLSearchParams(contextQuery)), title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url,
+        document_type: DOC_TYPES.some(type => type.value === suggestedType) ? suggestedType : 'Sonstiges', tenant_id: tenantId || null });
+      setModal('create');
     } catch (err) {
-      setOcrResult({ success: false, guessedType: 'Sonstiges', message: `${t('pages.documents.upload.failed') || 'Upload fehlgeschlagen'}: ${err.message}` });
+      if (generation === uploadGeneration.current) setError(err.message);
     } finally {
-      setUploading(false);
+      uploadBusy.current = false;
+      if (generation === uploadGeneration.current) setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
-  }, [t]);
+  }, [t, canWrite, tenantId, DOC_TYPES, contextQuery]);
 
   const handleMultiUpload = useCallback(async (files) => {
+    if (!canWrite || uploadBusy.current) return;
+    uploadBusy.current = true;
+    const generation = uploadGeneration.current;
     const fileList = Array.from(files);
+    setUploading(true); setError(null); setUploadedUrl(''); setOcrResult(null);
     setUploadQueue(fileList.map(f => ({ name: f.name, status: 'pending' })));
-    for (let i = 0; i < fileList.length; i++) {
-      setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'uploading' } : q));
-      await uploadFile(fileList[i]);
-      setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'done' } : q));
+    let current;
+    let sessionValid = true;
+    try {
+      current = api.captureSession();
+      for (let i = 0; i < fileList.length; i++) {
+        current();
+        if (generation !== uploadGeneration.current) break;
+        setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'uploading' } : q));
+        try {
+          const file = fileList[i];
+          const body = new FormData();
+          body.append('file', file);
+          body.append('title', file.name.replace(/\.[^.]+$/, ''));
+          body.append('document_type', guessDocType(file.name));
+          if (tenantId) body.append('tenant_id', tenantId);
+          for (const [key, value] of new URLSearchParams(contextQuery)) body.append(key, value);
+          await api.upload('/documents/import', body);
+          current();
+          if (generation === uploadGeneration.current) setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'done' } : q));
+        } catch (err) {
+          // A rejected owner fence stops the entire batch, including the next file.
+          current();
+          if (generation === uploadGeneration.current) setUploadQueue(prev => prev.map((q, j) => j === i ? { ...q, status: 'failed', error: err.message } : q));
+        }
+      }
+    } catch (err) {
+      sessionValid = false;
+      if (generation === uploadGeneration.current) setError(err.message);
+    } finally {
+      try { current?.(); } catch { sessionValid = false; }
+      uploadBusy.current = false;
+      if (generation === uploadGeneration.current) { setUploading(false); if (sessionValid) refreshData(); }
+      if (fileRef.current) fileRef.current.value = '';
+      if (sessionValid) store?.invalidateRelated('documents');
     }
-    setTimeout(() => setUploadQueue([]), 3000);
-  }, [uploadFile]);
+  }, [canWrite, tenantId, refreshData, store, contextQuery]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -182,22 +344,23 @@ export default function Documents() {
     }
   }, [uploadFile, handleMultiUpload]);
 
-  const fields = [
+  const fields = useMemo(() => [
     { key: 'title', label: t('pages.documents.form.title') || 'Titel', required: true },
     { key: 'document_type', label: t('pages.documents.form.docType') || 'Dokumententyp', type: 'select', options: DOC_TYPES },
     { key: 'document_date', label: t('pages.documents.form.date') || 'Datum', type: 'date' },
-    { key: 'property_id', label: t('pages.documents.form.property') || 'Immobilie', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...properties.map(p => ({ value: p.id, label: p.name }))] },
-    { key: 'unit_id', label: t('pages.documents.form.unit') || 'Einheit', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
-    { key: 'contract_id', label: t('pages.documents.form.contract') || 'Vertrag', type: 'select',
-      options: [{ value: '', label: t('pages.documents.form.noContract') || '— Kein —' }, ...contracts.map(c => ({ value: c.id, label: c.contract_number }))] },
+    ...documentAssociationFields({ properties, units, contracts: tenantId ? (overview?.contracts || []) : contracts, tenants, tenantId }),
+    { key: 'valid_until', label: 'Gültig bis', type: 'date',
+      hint: 'z. B. Energieausweis 10 Jahre, Rauchmelder- oder Wartungsnachweis 1 Jahr, Police bis zum Ablauf. Das Programm erinnert vorher mit einer Aufgabe.' },
+    { key: 'reminder_days', label: 'Erinnern (Tage vorher)', type: 'number', step: '1', min: 0, max: 730, hint: 'leer: 30 Tage' },
+    { key: 'retention_class', label: 'Aufbewahrung', type: 'select', options: retentionOptions(retention?.rules),
+      hint: 'Solange die Frist läuft, lässt sich das Dokument nicht löschen. Automatisch: Rechnungen und Abrechnungen 8 Jahre, Briefe 6 Jahre, Verträge bis 3 Jahre nach Vertragsende.' },
     { key: 'description', label: t('pages.documents.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'tags', label: t('pages.documents.form.tags') || 'Tags', placeholder: t('pages.documents.form.tagsPlaceholder') || 'kommagetrennt' },
     { key: 'file_url', type: 'hidden', required: true, default: uploadedUrl },
-  ];
+  ], [t, DOC_TYPES, tenantId, tenants, properties, units, contracts, overview, uploadedUrl, retention]);
 
-  const handleSave = async (data) => {
+  const handleSave = async (values) => {
+    const data = { ...values, retention_class: values.retention_class || null };   // empty: by document type
     if (modal === 'create') {
       await api.post('/documents', data);
     } else {
@@ -205,69 +368,121 @@ export default function Documents() {
     }
     refreshData();
     if (store) store.invalidateRelated('documents');
+    setUploadedUrl(''); setOcrResult(null); setCreateInitial(null);
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
-    await api.del(`/documents/${row.id}`);
-    refreshData();
-    if (store) store.invalidateRelated('documents');
+    if (row.retention?.locked) { setLockTarget(row); return; }
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
+    try {
+      await api.del(`/documents/${encodeURIComponent(row.id)}`);
+      refreshData();
+      if (store) store.invalidateRelated('documents');
+    } catch (err) { setError(err.message); }
   };
 
-  if (loading) return <div className="page-loading">Lade Dokumente...</div>;
-
   return (
-    <div className="page">
-      <h1 className="page-title">{t('pages.documents.title') || 'Dokumente'}</h1>
+    <div className="page documents-page">
+      <div className="page-header">
+        <h1>{t('pages.documents.title') || 'Dokumente'}</h1>
+        <div className="page-header-actions">
+          <Link className="btn btn-secondary" to="/document-queue">Dokumenteneingang & Dubletten</Link>
+          <MoreMenu items={[
+            { key: 'aktenwerk', label: 'Aktenwerk …', onSelect: () => setAktenwerkOpen(true),
+              description: 'Verträge, Rechnungen und Belege als Paket für ein Dokumentenmanagementsystem bereitstellen oder dorthin übergeben.' },
+            { key: 'teha', label: 'TEHA-Empfang und Originalhistorie', to: '/teha',
+              description: 'Abrechnungsdaten und Originale vom Messdienst TEHA ansehen und übernehmen.' },
+          ]} />
+        </div>
+      </div>
+      {contextQuery && <div className="filter-chips" aria-label="Dokumentauswahl">
+        <span>Dokumente für:</span>
+        {contextValues.property_id && <Link to={`/properties/${encodeURIComponent(contextValues.property_id)}?tab=documents`}>{propMap[contextValues.property_id] || 'Immobilie öffnen'}</Link>}
+        {contextValues.unit_id && <Link to={`/units/${encodeURIComponent(contextValues.unit_id)}`}>{unitMap[contextValues.unit_id] || 'Einheit öffnen'}</Link>}
+        {contextValues.contract_id && <Link to={`/contracts?contract_id=${encodeURIComponent(contextValues.contract_id)}`}>{contractMap[contextValues.contract_id] || 'Vertrag öffnen'}</Link>}
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setSearchParams(current => {
+          const next = new URLSearchParams(current); CONTEXT_KEYS.forEach(key => next.delete(key)); return next;
+        })}>Objektfilter aufheben</button>
+      </div>}
+      <div className="toolbar">
+        <div className="documents-filter-field documents-party-field">
+        <label htmlFor="document-party">Mieter / Partei</label>
+        <select id="document-party" value={tenantId} disabled={uploading} onChange={event => {
+          setSkip(0); setSearch(''); setDocType(''); setFilter('all'); setUploadedUrl(''); setOcrResult(null); setModal(null);
+          setSearchParams(event.target.value ? { tenant_id: event.target.value } : {});
+        }}>
+          <option value="">Alle Dokumente</option>
+          {tenants.map(person => <option key={person.id} value={person.id}>{person.full_name}{person.archived ? ' (archiviert)' : ''}</option>)}
+        </select>
+        </div>
+        {tenantId && party && <button className="btn btn-secondary" onClick={() => party.openParty(tenantId)}>Parteienkarte öffnen</button>}
+      </div>
+      {aktenwerkOpen && <AktenwerkDialog ready={aktenwerkReady} onClose={() => setAktenwerkOpen(false)} />}
+      {tenantId && <p className="text-muted">Dokumente von {overview?.tenant.full_name || 'dieser Partei'} und ihren Mietverträgen. Neue Uploads werden dieser Partei zugeordnet.</p>}
+      {searchParams.get('create') === '1' && canWrite && <p role="status">Wählen Sie unten eine oder mehrere Dateien. Bei einer Datei können Sie die Angaben vor dem Speichern prüfen.</p>}
+      {error && <div role="alert" className="alert alert-error">{error} <button className="btn btn-sm btn-secondary" onClick={refreshData}>Erneut laden</button></div>}
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{enriched.length}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{withFile}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Mit Datei</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{ocrCompleted}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>OCR erkannt</div>
-        </div>
-        {noAssignment > 0 && (
-          <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '120px', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{noAssignment}</div>
-            <div className="text-muted" style={{ fontSize: '0.8rem' }}>Ohne Zuordnung</div>
-          </div>
-        )}
-      </div>
+      {!loading && !error && <div className="kpi-row">
+        <KpiAction label="Gesamt" value={documentPage?.total ?? enriched.length} onClick={() => openSources('all')} />
+        <KpiAction label={`Mit Datei${tenantId ? ' auf dieser Seite' : ''}`} value={withFile} onClick={() => openSources('with_file')} />
+        <KpiAction label={`Texterkennung abgeschlossen${tenantId ? ' auf dieser Seite' : ''}`} value={ocrCompleted} onClick={() => openSources('ocr_completed')} />
+        {noAssignment > 0 && <KpiAction label={`Ohne Zuordnung${tenantId ? ' auf dieser Seite' : ''}`} value={noAssignment} color="var(--warning)" onClick={() => openSources('no_assignment')} />}
+        {expiring > 0 && !tenantId && <KpiAction label="Läuft ab oder abgelaufen" value={expiring} color="var(--warning)" onClick={() => openSources('expiring')} />}
+        {retentionEnded > 0 && !tenantId && <KpiAction label="Aufbewahrung abgelaufen" value={retentionEnded} onClick={() => openSources('retention_ended')} />}
+      </div>}
+
+      {!tenantId && <DocumentContentSearch onOpen={setViewerFile} places={propMap} canWrite={canWrite} scope={contextValues} />}
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      {!tenantId && <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'no_assignment', label: 'Ohne Zuordnung' },
-          { key: 'ocr_open', label: 'OCR offen' },
+          { key: 'ocr_open', label: 'Texterkennung offen' },
+          { key: 'with_file', label: 'Mit Datei' },
+          { key: 'ocr_completed', label: 'Texterkennung abgeschlossen' },
+          { key: 'expiring', label: 'Läuft ab oder abgelaufen' },
+          { key: 'retention_ended', label: 'Aufbewahrung abgelaufen' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}
-      </div>
+      </div>}
+      {tenantId && <div className="toolbar" style={{ flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div className="documents-filter-field">
+        <label htmlFor="party-document-search">Dokumente durchsuchen</label>
+        <input id="party-document-search" type="search" placeholder="Titel, Beschreibung oder Schlagwort" value={search}
+          onChange={event => { setSearch(event.target.value); setSkip(0); }} />
+        </div>
+        <div className="documents-filter-field">
+        <label htmlFor="party-document-type">Dokumententyp</label>
+        <select id="party-document-type" value={docType} onChange={event => { setDocType(event.target.value); setSkip(0); }}>
+          <option value="">Alle Typen</option>
+          {(overview?.document_types || []).map(type => <option key={type} value={type}>{documentTypeLabel(type)}</option>)}
+        </select>
+        </div>
+      </div>}
 
       {/* Upload zone */}
-      <div style={{ marginBottom: '1rem' }}>
+      {canWrite && <div style={{ marginBottom: '1rem' }}>
         <div
           className={`photo-drop-zone ${dragActive ? 'drag-active' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
+          role="button" tabIndex={0} aria-label="Dokumente hochladen" aria-disabled={uploading}
+          onClick={() => { if (!uploading) fileRef.current?.click(); }}
+          onKeyDown={event => { if (!uploading && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); fileRef.current?.click(); } }}
         >
           <input
             ref={fileRef}
             type="file"
             multiple
+            disabled={uploading}
+            aria-label="Dokumentdateien wählen"
+            onClick={event => event.stopPropagation()}
             style={{ display: 'none' }}
             accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.doc,.docx,.xls,.xlsx"
             onChange={e => {
@@ -278,19 +493,24 @@ export default function Documents() {
           />
           <PlusIcon size={24} />
           <span>{uploading ? (t('pages.documents.upload.uploading') || 'Wird hochgeladen...') : (t('pages.documents.upload.dropHint') || 'Dokumente hierher ziehen oder klicken (mehrere Dateien möglich)')}</span>
-          <span className="text-muted" style={{ fontSize: '0.8rem' }}>
-            {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — Auto-OCR für Bilddateien und PDFs'}
+          <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
+            {t('pages.documents.upload.supportedFormats') || 'Unterstützt: PDF, PNG, JPG, TIFF, DOC, DOCX, XLS, XLSX — bei Bildern und PDFs wird der Text automatisch erkannt'}
+          </span>
+          <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
+            Eine Datei: Angaben prüfen und speichern. Mehrere Dateien: Jede Datei wird als eigenes Dokument mit ihrem Dateinamen importiert.
           </span>
           {uploadedUrl && <span className="text-muted">{t('pages.documents.upload.uploaded') || 'Hochgeladen:'} {uploadedUrl}</span>}
         </div>
-      </div>
+      </div>}
 
       {/* Upload queue */}
       {uploadQueue.length > 0 && (
-        <div style={{ marginBottom: '0.5rem' }}>
+        <div role="status" style={{ marginBottom: '0.5rem' }}>
           {uploadQueue.map((q, i) => (
-            <div key={i} className="text-muted" style={{ fontSize: '0.85rem' }}>
-              {q.status === 'uploading' ? '⏳' : q.status === 'done' ? '✓' : '○'} {q.name}
+            <div key={i} className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
+              {q.status === 'uploading' ? '⏳' : q.status === 'done' ? '✓' : q.status === 'failed' ? '✗' : '○'} {q.name}
+              {q.status === 'done' && ' — Gespeichert'}
+              {q.error && <span className="text-red"> — {q.error}. Vor erneutem Import prüfen, ob die Datei bereits gespeichert wurde.</span>}
             </div>
           ))}
         </div>
@@ -318,26 +538,67 @@ export default function Documents() {
         </div>
       )}
 
-      <DataTable
+      {loading && <p role="status">Dokumente werden geladen …</p>}
+      {tenantId && pageSource && !loading && !error && <section aria-label="Kennzahlquelle auf dieser Dokumentseite" className="panel">
+        <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'Texterkennung abgeschlossen' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
+          <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPageSource(null)}>Quellansicht schließen</button></div>
+        <DataTable title="Dokumente auf dieser Seite" settingsKey="documents-page-source" columns={columns}
+          data={enriched.filter(row => pageSource === 'with_file' ? Boolean(row.file_url) : pageSource === 'ocr_completed' ? row.ocr_status === 'completed' : !row.property_id && !row.unit_id && !row.contract_id && !row.tenant_id)}
+          drilldownKey={drilldown} onRowClick={row => row.file_url && setViewerFile(row)} />
+      </section>}
+      {!loading && !error && <DataTable
         title={t('pages.documents.title') || 'Dokumente'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
+        drilldownKey={drilldown}
+        serverPaged={Boolean(tenantId)}
+        viewAnchor={tenantId ? { kind: 'tenant', id: tenantId } : undefined}
+        viewConfig={tenantId ? { search, column_filters: { document_type: docType, document_filter: filter } } : { column_filters: { document_filter: filter } }}
+        onApplyView={tenantId ? config => {
+          setSearch(typeof config.search === 'string' ? config.search : '');
+          setDocType(typeof config.column_filters?.document_type === 'string' ? config.column_filters.document_type : '');
+          setFilter('all'); setPageSource(null);
+          setSkip(0);
+        } : config => setFilter(['all', 'no_assignment', 'ocr_open', 'with_file', 'ocr_completed', 'expiring'].includes(config.column_filters?.document_filter) ? config.column_filters.document_filter : 'all')}
+        loadExportData={tenantId ? loadPartyExport : undefined}
+        onAdd={() => fileRef.current?.click()}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
-        onRowClick={row => row.file_url && setViewerFile(row.file_url)}
-      />
+        onRowClick={row => row.file_url && setViewerFile(row)}
+        rowActions={row => [{ label: 'Dokumentseite öffnen', icon: <FileText size={15} aria-hidden="true" />, onClick: () => navigate(`/documents/${encodeURIComponent(row.id)}`) },
+          ...(row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
+          { label: 'Brief und Frankatur', icon: <Mail size={15} aria-hidden="true" />, onClick: () => setPostDocument(row) },
+          { label: 'Dokumentwerkzeuge', icon: <Wrench size={15} aria-hidden="true" />, onClick: () => setSearchParams(previous => {
+            const next = new URLSearchParams(previous); next.set('tool_id', row.id); return next;
+          }) }] : [])]}
+        rowName={row => row.title || row.id}
+        bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : []}
+      />}
+      {tenantId && documentPage && !loading && !error && <nav aria-label="Dokumentseiten" className="toolbar" style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <button className="btn btn-secondary" disabled={skip === 0} onClick={() => setSkip(value => Math.max(0, value - 25))}>Vorherige Dokumente</button>
+        <span>{documentPage.total === 0 ? 'Keine Dokumente' : `${skip + 1}–${skip + documents.length} von ${documentPage.total}`}</span>
+        <button className="btn btn-secondary" disabled={!documentPage.has_more} onClick={() => setSkip(value => value + 25)}>Weitere Dokumente</button>
+      </nav>}
 
       {modal && (
         <FormModal
           title={modal === 'create' ? 'Dokument erstellen' : 'Dokument bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          derive={deriveDocumentAssociations(units, tenantId ? (overview?.contracts || []) : contracts)}
+          initial={modal === 'create' ? createInitial : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />
       )}
-      {viewerFile && <FileViewer key={viewerFile} fileUrl={viewerFile} onClose={() => setViewerFile(null)} />}
+      {lockTarget?.retention && <RetentionLockDialog document={lockTarget} retention={lockTarget.retention}
+        canOverride={canWrite && canOverrideRetention} onClose={() => setLockTarget(null)}
+        onDeleted={() => { setLockTarget(null); refreshData(); if (store) store.invalidateRelated('documents'); }} />}
+      {viewerFile && <CurrentDocumentViewer key={viewerFile.id} document={viewerFile} onClose={() => setViewerFile(null)} />}
+      {postDocument && <section className="panel" aria-label="Brief und Frankatur">
+        <button type="button" className="btn btn-secondary" onClick={() => setPostDocument(null)}>Briefvorbereitung schließen</button>
+        <ChannelPanel key={postDocument.id} sourceId={postDocument.id} mode="post" />
+      </section>}
+      {toolId && <DocumentWorkbench key={toolId} documentId={toolId} onClose={closeTools} />}
     </div>
   );
 }

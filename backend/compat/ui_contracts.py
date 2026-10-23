@@ -8,13 +8,10 @@ from typing import Any, Optional
 from pydantic import BaseModel, create_model
 from sqlalchemy import Column, Date, ForeignKey, Numeric, String, Text
 
-from .. import models as model_module
-from ..db import orm_models
-
 _APPLIED = False
 
 
-def _extend_model(name: str, fields: dict[str, tuple[Any, Any]]) -> None:
+def _extend_model(model_module: Any, name: str, fields: dict[str, tuple[Any, Any]]) -> None:
     model_cls = getattr(model_module, name)
     if not issubclass(model_cls, BaseModel):
         return
@@ -23,7 +20,7 @@ def _extend_model(name: str, fields: dict[str, tuple[Any, Any]]) -> None:
     if not missing:
         return
 
-    extended = create_model(
+    extended = create_model(  # type: ignore[call-overload]
         name,
         __base__=model_cls,
         __module__=model_cls.__module__,
@@ -43,6 +40,10 @@ def ensure_ui_contracts() -> None:
     global _APPLIED
     if _APPLIED:
         return
+    # Imported lazily: backend.models calls this function at the end of its
+    # own import, so a module-level import here would be circular.
+    from .. import models as model_module
+    from ..db import orm_models
 
     receivable_fields = {"description": (Optional[str], None)}
     invoice_fields = {
@@ -57,11 +58,11 @@ def ensure_ui_contracts() -> None:
     }
 
     for name in ("ReceivableCreate", "Receivable", "ReceivablePatch"):
-        _extend_model(name, receivable_fields)
+        _extend_model(model_module, name, receivable_fields)
     for name in ("InvoiceCreate", "Invoice", "InvoicePatch"):
-        _extend_model(name, invoice_fields)
+        _extend_model(model_module, name, invoice_fields)
     for name in ("MeterCreate", "Meter", "MeterPatch"):
-        _extend_model(name, meter_fields)
+        _extend_model(model_module, name, meter_fields)
 
     _append_column(orm_models.ReceivableORM, "description", Column(Text))
     _append_column(orm_models.ReceivableORM, "statement_id", Column(String))

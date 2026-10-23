@@ -1,16 +1,26 @@
-# React + Vite
+# ImmoManager Pro – Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React und Vite, gemeinsam mit dem FastAPI-Backend im übergeordneten Verzeichnis.
 
-Currently, two official plugins are available:
+## Voraussetzungen
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Zum Entwickeln und Bauen ist Node.js 24 oder neuer erforderlich. Die CI und das Windows-Paket verwenden Node.js **24.21.0**. Nutzer des fertigen Server-/Windows-Pakets benötigen keine separate Node-Installation.
 
-## React Compiler
+```sh
+npm ci
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Prüfungen und Produktionsbuild
 
-## Expanding the ESLint configuration
+```sh
+npm run lint
+npm run test -- --maxWorkers=1
+npm run build
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Ein einzelner Testworker vermeidet auf dem gemeinsam genutzten Windows-Rechner ressourcenbedingte Zeitüberschreitungen. Die normalen Testzeitlimits bleiben unverändert.
+
+Die Ausgabe unter `dist/` muss vollständig ausgeliefert werden. Dazu gehören die lokal gebündelten PDF.js-Ressourcen und ihre Lizenzdateien. Der PDF-Betrachter benötigt zur Laufzeit keinen CDN-Zugriff und keinen externen Renderingdienst. Große Dokumente werden seitenweise dargestellt; Datei- und Renderfehler müssen in der Oberfläche erkennbar bleiben.
+
+API-Basis, Zugang und Datenhaltung werden vom Backend bereitgestellt. Keine Zugangsdaten oder privaten Dokumente in das Frontend-Bundle aufnehmen. Weitere Einrichtung: [Projekt-README](../README.md).

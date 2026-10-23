@@ -1,0 +1,13 @@
+# Additional complete FinTS 5.0.1 dependency closure. Base pins remain in constraints.txt.
+bleach==6.4.0
+elementpath==5.1.4
+enum-tools==0.12.0
+fints==5.0.1
+lxml==6.1.3
+mt-940==5.1.1
+requests==2.34.2
+sepaxml==2.7.0
+text-unidecode==1.3
+urllib3==2.8.0
+webencodings==0.6.1
+xmlschema==4.3.2

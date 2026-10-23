@@ -1,12 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
-import { useToast } from '../components/Toast';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import { History } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate, formatNumber } from '../utils/format';
+import KpiAction from '../components/KpiAction';
+import MeterHistory from '../features/meters/MeterHistory';
+import { useCanWrite } from '../contexts/AuthContext';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -16,15 +21,23 @@ const METER_TYPE_LABELS = {
   gas: 'Gas',
 };
 
-const METER_COLUMNS = [
-  { key: 'serial_number', label: 'Seriennr.', filterType: 'text' },
-  { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+// Units the utility statement converts only by an exact factor (MWh -> kWh, l -> m³).
+const MEASURE_UNITS = ['m³', 'l', 'kWh', 'MWh', 'Wh', 'HKV'].map(value => ({ value, label: value }));
+
+// The meter number opens its history (readings, consumption per year, supply contract and portal).
+const meterColumns = onOpen => [
+  { key: 'serial_number', label: 'Seriennr.', filterType: 'text',
+    render: (v, row) => <button type="button" className="entity-link link-button" title="Zählerverlauf öffnen"
+      onClick={event => { event.stopPropagation(); onOpen(row); }}>{v || row.id.slice(0, 8)}</button> },
+  { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+  { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
   { key: 'meter_type', label: 'Typ', filterType: 'select',
     render: v => METER_TYPE_LABELS[v] || v },
-  { key: 'location', label: 'Standort' },
-  { key: 'supplier', label: 'Versorger', filterType: 'text' },
-  { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
+  { key: 'location', hidden: true, label: 'Standort' },
+  { key: 'supplier', hidden: true, label: 'Versorger', filterType: 'text', link: 'contact' },
+  { key: 'measure_unit', hidden: true, label: 'Einheit der Ablesung' },
+  { key: 'installation_date', hidden: true, label: 'Einbaudatum', type: 'date' },
+  { key: 'removal_date', hidden: true, label: 'Ausbaudatum', type: 'date' },
   { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date',
     render: (v) => {
       if (!v || v === '—') return '—';
@@ -32,95 +45,81 @@ const METER_COLUMNS = [
       const now = new Date();
       const diffDays = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
       const color = diffDays < 0 ? 'var(--danger)' : diffDays < 30 ? 'var(--warning)' : 'inherit';
-      return <span style={{ color, fontWeight: diffDays < 30 ? 600 : 'normal' }}>{v}</span>;
+      return <span style={{ color, fontWeight: diffDays < 30 ? 600 : 'normal' }}>{formatDate(v)}</span>;
     }},
   { key: 'last_reading_value', label: 'Letzter Stand', type: 'number', align: 'right',
-    render: v => v != null && v !== '—' ? Number(v).toFixed(2) : '—' },
+    render: v => v !== '—' ? formatNumber(v, 2) : '—' },
   { key: 'last_reading_date', label: 'Letzte Ablesung', type: 'date' },
   { key: 'is_active', label: 'Status',
     render: v => v === false ? <StatusBadge status="inactive" /> : <StatusBadge status="active" /> },
 ];
 
-const READING_COLUMNS = [
-  { key: 'reading_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
-  { key: 'value', label: 'Zählerstand', type: 'number', align: 'right',
-    render: v => v != null ? Number(v).toFixed(2) : '—' },
-  { key: 'consumption', label: 'Verbrauch', type: 'number', align: 'right',
-    render: v => v != null ? v.toFixed(2) : '—' },
-  { key: 'recorded_by', label: 'Erfasst von', filterType: 'text' },
-  { key: 'notes', label: 'Notizen' },
-];
-
 export default function Meters() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const toast = useToast();
   const store = useDataStore();
   const { items: units } = useEntities('units', '/units');
   const { items: properties } = useEntities('properties', '/properties');
   const [meters, setMeters] = useState([]);
-  const [selectedMeter, setSelectedMeter] = useState(null);
-  const [readings, setReadings] = useState([]);
+  const focusedMeter = searchParams.get('focus_id');
+  const previousFocus = useRef(focusedMeter);
+  const [historyOf, setHistoryOf] = useState(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const canWrite = useCanWrite('/meters');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
 
-  const refreshData = useCallback(() => {
-    const unitMap = Object.fromEntries(units.map(x => [x.id, x]));
-    const propMap = Object.fromEntries(properties.map(x => [x.id, x]));
+  const [loadError, setLoadError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [drilldown, setDrilldown] = useState(0);
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setHistoryOf(null); setDrilldown(number => number + 1); };
+  const inspectionSoon = meter => meter.next_inspection && Math.ceil((new Date(meter.next_inspection) - new Date()) / 86400000) < 30;
+  const visibleMeters = meters.filter(meter => focusedMeter || sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
+    : sourceFilter === 'inspection' ? inspectionSoon(meter) : meter.meter_type === sourceFilter.slice(5)));
 
-    api.get('/meters').catch(() => []).then(m => {
-      const enriched = (m || []).map(meter => {
-        const unit = unitMap[meter.unit_id];
-        const prop = unit?.property_id ? propMap[unit.property_id] : null;
-        return {
-          ...meter,
-          unit_label: unit?.label || meter.unit_id || '—',
-          property_name: prop?.name || '—',
-          property_id: unit?.property_id || null,
-          last_reading_value: '—',
-          last_reading_date: '—',
-        };
-      });
-
-      api.get('/meters/readings/all').then(allReadings => {
-        const readingsByMeter = {};
-        (allReadings || []).forEach(r => {
-          if (!readingsByMeter[r.meter_id]) readingsByMeter[r.meter_id] = [];
-          readingsByMeter[r.meter_id].push(r);
+  useEffect(() => {
+    const request = new AbortController(); setLoading(true); setLoadError(null);
+    Promise.allSettled(['/meters', '/meters/readings/all'].map(path => api.list(path, { signal: request.signal }))).then(([result, readingResult]) => {
+      if (request.signal.aborted) return;
+      const failures = [];
+      if (result.status !== 'fulfilled' || !Array.isArray(result.value)) {
+        setLoadError(result.reason?.message || 'Die Zähler konnten nicht gelesen werden.'); return;
+      }
+      const unitMap = Object.fromEntries(units.map(row => [row.id, row]));
+      const propMap = Object.fromEntries(properties.map(row => [row.id, row]));
+      const latest = new Map();
+      if (readingResult.status === 'fulfilled' && Array.isArray(readingResult.value)) {
+        readingResult.value.forEach(reading => {
+          if (!latest.has(reading.meter_id) || reading.reading_date > latest.get(reading.meter_id).reading_date) latest.set(reading.meter_id, reading);
         });
-
-        enriched.forEach(meter => {
-          const meterReadings = readingsByMeter[meter.id] || [];
-          if (meterReadings.length > 0) {
-            const sorted = meterReadings.sort((a, b) =>
-              (b.reading_date || '').localeCompare(a.reading_date || '')
-            );
-            meter.last_reading_value = sorted[0].value;
-            meter.last_reading_date = sorted[0].reading_date;
-          }
-        });
-
-        setMeters([...enriched]);
-      }).catch(() => setMeters(enriched));
-    }).catch(() => { toast.error('Zählerstände konnten nicht geladen werden'); }).finally(() => setLoading(false));
-  }, [units, properties, toast]);
-
-  useEffect(() => { refreshData(); }, [refreshData]);
-
-  const handleSelectMeter = (meter) => {
-    setSelectedMeter(meter);
-    api.get(`/meters/${meter.id}/readings`).then(r => {
-      const sorted = (r || []).sort((a, b) =>
-        (a.reading_date || '').localeCompare(b.reading_date || '')
-      );
-      const withConsumption = sorted.map((rd, i) => ({
-        ...rd,
-        consumption: i > 0 ? rd.value - sorted[i - 1].value : null,
+      } else failures.push(readingResult.reason?.message || 'Die Ablesungen konnten nicht gelesen werden.');
+      setMeters(result.value.map(meter => { const unit = unitMap[meter.unit_id]; const reading = latest.get(meter.id);
+        return { ...meter, unit_label: unit?.label || meter.unit_id || '—', property_id: unit?.property_id || null,
+          property_name: propMap[unit?.property_id]?.name || '—', last_reading_value: reading?.value ?? '—', last_reading_date: reading?.reading_date || '—' };
       }));
-      setReadings(withConsumption);
-    }).catch(() => setReadings([]));
-  };
+      if (failures.length) setLoadError(failures.join(' · '));
+    }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision, units, properties]);
+
+  const noticeMeter = focusedMeter;
+  useEffect(() => {
+    // Back to an ordinary list must leave the URL-opened history. A manually
+    // opened history has no URL focus and remains open during a data refresh.
+    if (previousFocus.current && !focusedMeter) setHistoryOf(null);
+    previousFocus.current = focusedMeter;
+  }, [focusedMeter]);
+  useEffect(() => {
+    if (noticeMeter && !loading && historyOf?.id !== noticeMeter) {
+      const meter = meters.find(row => row.id === noticeMeter); if (meter) setHistoryOf(meter);
+    }
+  // The source changes only with the loaded meter set or navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noticeMeter, loading, meters]);
 
   const meterFields = [
     { key: 'unit_id', label: 'Einheit', type: 'select', required: true,
@@ -132,13 +131,18 @@ export default function Meters() {
       { value: 'electricity', label: 'Strom' },
       { value: 'gas', label: 'Gas' },
     ]},
+    { key: 'measure_unit', label: t('pages.meters.measureUnit'), type: 'select', options: MEASURE_UNITS,
+      hint: t('pages.meters.measureUnitHint') },
     { key: 'serial_number', label: 'Seriennummer' },
     { key: 'location', label: 'Standort' },
-    { key: 'installation_date', label: 'Einbaudatum', type: 'date' },
+    { key: 'installation_date', label: 'Einbaudatum', type: 'date', hint: t('pages.meters.installationDateHint') },
+    { key: 'removal_date', label: t('pages.meters.removalDate'), type: 'date', hint: t('pages.meters.removalDateHint') },
     { key: 'next_inspection', label: 'Nächste Prüfung', type: 'date' },
     { key: 'supplier', label: 'Versorger' },
     { key: 'contract_number', label: 'Vertragsnummer' },
     { key: 'contract_end_date', label: 'Vertragslaufzeit bis', type: 'date' },
+    { key: 'portal_url', label: 'Kundenportal (Link)', placeholder: 'https://kundenportal.anbieter.de',
+      hint: 'Die Anmeldeseite des Versorgers zu diesem Zähler; im Zählerverlauf als Link.' },
   ];
 
   const readingFields = [
@@ -157,6 +161,7 @@ export default function Meters() {
       await api.put(`/meters/${modal.id}`, data);
     }
     refreshData();
+    setHistoryRevision(value => value + 1);
     if (store) store.invalidateRelated('meters', 'units');
   };
 
@@ -164,27 +169,24 @@ export default function Meters() {
     const meterId = data.meter_id;
     await api.post(`/meters/${meterId}/readings`, data);
     refreshData();
+    setHistoryRevision(value => value + 1);
     if (store) store.invalidateRelated('meters', 'units');
-    if (selectedMeter) handleSelectMeter(selectedMeter);
   };
 
   const handleDeleteMeter = async (row) => {
-    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/meters/${row.id}`);
-    if (selectedMeter?.id === row.id) {
-      setSelectedMeter(null);
-      setReadings([]);
-    }
+    if (historyOf?.id === row.id) setHistoryOf(null);
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
   };
 
   // Group meters
   const getGroupedMeters = () => {
-    if (groupBy === 'none') return [{ label: null, meters }];
+    if (focusedMeter || groupBy === 'none' || !visibleMeters.length) return [{ label: null, meters: visibleMeters }];
 
     const groups = {};
-    meters.forEach(m => {
+    visibleMeters.forEach(m => {
       let key;
       if (groupBy === 'property') key = m.property_name || 'Ohne Immobilie';
       else if (groupBy === 'type') key = METER_TYPE_LABELS[m.meter_type] || m.meter_type || 'Unbekannt';
@@ -202,48 +204,31 @@ export default function Meters() {
   const stats = {
     total: meters.length,
     active: meters.filter(m => m.is_active !== false).length,
-    dueInspection: meters.filter(m => {
-      if (!m.next_inspection) return false;
-      const d = new Date(m.next_inspection);
-      const now = new Date();
-      return Math.ceil((d - now) / (1000 * 60 * 60 * 24)) < 30;
-    }).length,
+    dueInspection: meters.filter(inspectionSoon).length,
     types: Object.entries(
       meters.reduce((acc, m) => { acc[m.meter_type] = (acc[m.meter_type] || 0) + 1; return acc; }, {})
     ),
   };
 
-  if (loading) return <div className="page-loading">Laden...</div>;
+  if (loading && !modal) return <div className="page-loading">Laden...</div>;
 
   const grouped = getGroupedMeters();
 
   return (
     <div className="page">
+      {loadError && <p role="alert">{loadError} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
+      {!focusedMeter && sourceFilter === 'inspection' && <p className="text-muted">Prüftermine in weniger als 30 Tagen, einschließlich überfälliger Termine und inaktiver Zähler.</p>}
       {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>{stats.total}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Zähler gesamt</div>
-        </div>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>{stats.active}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Aktiv</div>
-        </div>
-        <div className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: stats.dueInspection > 0 ? 'var(--warning)' : 'var(--text-secondary)' }}>{stats.dueInspection}</div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Prüfung fällig</div>
-        </div>
-        {stats.types.map(([type, count]) => (
-          <div key={type} className="panel" style={{ padding: '1rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{count}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{METER_TYPE_LABELS[type] || type}</div>
-          </div>
-        ))}
+      <div className="kpi-row">
+        <KpiAction label="Zähler gesamt" value={loadError && !meters.length ? '—' : stats.total} onClick={() => openSources('all')} />
+        <KpiAction label="Aktiv" value={loadError && !meters.length ? '—' : stats.active} color="var(--success)" onClick={() => openSources('active')} />
+        <KpiAction label="Prüfung fällig" value={loadError && !meters.length ? '—' : stats.dueInspection} color={stats.dueInspection ? 'var(--warning)' : undefined} onClick={() => openSources('inspection')} />
+        {stats.types.map(([type, count]) => <KpiAction key={type} label={METER_TYPE_LABELS[type] || type} value={count} onClick={() => openSources(`type:${type}`)} />)}
       </div>
 
       {/* Group-by controls */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gruppieren nach:</span>
+      <div className="toolbar">
+        <span className="toolbar-label">Gruppieren nach:</span>
         {[
           { value: 'none', label: 'Keine' },
           { value: 'property', label: 'Immobilie' },
@@ -252,9 +237,9 @@ export default function Meters() {
         ].map(opt => (
           <button
             key={opt.value}
-            className={`btn btn-sm ${groupBy === opt.value ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${(focusedMeter ? 'none' : groupBy) === opt.value ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setGroupBy(opt.value)}
-            style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+            style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
           >
             {opt.label}
           </button>
@@ -265,61 +250,39 @@ export default function Meters() {
       {grouped.map((group, gi) => (
         <div key={gi} style={{ marginBottom: group.label ? '2rem' : 0 }}>
           {group.label && (
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', borderBottom: '2px solid var(--primary)', paddingBottom: '0.25rem' }}>
               {group.label} ({group.meters.length})
             </h3>
           )}
           <DataTable
             title={group.label ? '' : 'Zähler'}
-            columns={METER_COLUMNS}
+            columns={meterColumns(setHistoryOf)}
             data={group.meters}
-            onEdit={handleSelectMeter}
+            drilldownKey={drilldown}
+            emptyText={loadError && !meters.length ? 'Zähler noch nicht verfügbar.' : undefined}
+            viewConfig={{ column_filters: { meter_filter: sourceFilter } }}
+            onApplyView={config => setSourceFilter(config.column_filters?.meter_filter || 'all')}
+            onEdit={row => setModal(row)}
+            rowActions={row => [{ label: 'Verlauf', icon: <History size={15} aria-hidden="true" />, onClick: () => setHistoryOf(row) }]}
             onAdd={gi === 0 ? () => setModal('create-meter') : undefined}
             onDelete={handleDeleteMeter}
           />
         </div>
       ))}
 
-      {/* Selected meter readings */}
-      {selectedMeter && (
-        <div style={{ marginTop: '1.5rem' }}>
-          <div className="panel" style={{ padding: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <h3 style={{ margin: 0 }}>
-                  Ablesungen — {selectedMeter.serial_number || selectedMeter.id.slice(0, 8)} ({METER_TYPE_LABELS[selectedMeter.meter_type] || selectedMeter.meter_type})
-                </h3>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  {selectedMeter.property_name !== '—' && <span>{selectedMeter.property_name} &rarr; </span>}
-                  {selectedMeter.unit_label}
-                  {selectedMeter.supplier && <span> | Versorger: {selectedMeter.supplier}</span>}
-                  {selectedMeter.contract_number && <span> | Vertrag: {selectedMeter.contract_number}</span>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => setModal('create-reading')}>
-                  + Ablesung erfassen
-                </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => setModal(selectedMeter)}>
-                  Zähler bearbeiten
-                </button>
-                <button className="btn btn-sm btn-secondary" onClick={() => { setSelectedMeter(null); setReadings([]); }}>
-                  Schließen
-                </button>
-              </div>
-            </div>
-          </div>
-          <DataTable
-            title=""
-            columns={READING_COLUMNS}
-            data={readings}
-          />
-        </div>
+      {historyOf && (
+        <MeterHistory meterId={historyOf.id} meterLabel={historyOf.serial_number || historyOf.id.slice(0, 8)}
+          unitLabel={historyOf.unit_label !== '—' ? historyOf.unit_label : null}
+          propertyName={historyOf.property_name !== '—' ? historyOf.property_name : null} propertyId={historyOf.property_id}
+          revision={historyRevision} covered={Boolean(modal)} canWrite={canWrite}
+          onClose={() => setHistoryOf(null)} onRecord={() => setModal('create-reading')}
+          onEdit={() => setModal(meters.find(row => row.id === historyOf.id) || historyOf)} />
       )}
 
       {modal === 'create-meter' && (
         <FormModal
           title="Zähler anlegen"
+          repeatKeep={['unit_id', 'meter_type', 'measure_unit', 'installation_date']}
           fields={meterFields}
           initial={null}
           onSave={handleSaveMeter}
@@ -337,9 +300,12 @@ export default function Meters() {
       )}
       {modal === 'create-reading' && (
         <FormModal
+          draftContext="readings"
+          draftAnchor={historyOf ? { kind: 'meter', id: historyOf.id } : undefined}
           title="Ablesung erfassen"
+          repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
-          initial={selectedMeter ? { meter_id: selectedMeter.id } : null}
+          initial={historyOf ? { meter_id: historyOf.id } : null}
           onSave={handleSaveReading}
           onClose={() => setModal(null)}
         />

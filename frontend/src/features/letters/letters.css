@@ -1,0 +1,111 @@
+/* Letters: letterhead settings, template management and the letter dialog. */
+.letters-intro, .letterhead-intro { max-width: 90ch; margin: 0 0 var(--space-4); color: var(--color-text-secondary); }
+.letters-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.letters-error, .letters-notice {
+  display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3);
+  border: 1px solid var(--color-border); border-radius: var(--radius); overflow-wrap: anywhere;
+}
+.letters-error { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border)); }
+.letters-notice { color: var(--color-success, var(--color-text)); }
+.letters-error-text { color: var(--color-danger); font-size: var(--text-sm); }
+.letters-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.letters-check { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); }
+.letters-check input { flex-shrink: 0; margin-top: .15rem; }
+.letters-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); min-width: 0; margin: 0; padding: 0; border: 0; }
+.letters-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.letters-field label { margin: 0; font-size: var(--text-sm); font-weight: 550; }
+.letters-field :is(input, select, textarea) { width: 100%; min-width: 0; }
+.letters-field textarea { font-family: inherit; line-height: 1.45; resize: vertical; }
+.letters-field small { color: var(--color-text-muted); font-size: var(--text-xs); }
+.letters-field-wide { grid-column: 1 / -1; }
+.letters-heading { margin: var(--space-5) 0 var(--space-3); font-size: var(--text-md); }
+.letters-heading-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+
+/* Settings → Briefkopf */
+.letterhead-body { display: grid; gap: var(--space-3); }
+.letterhead-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--space-5); align-items: start; }
+.letterhead-form { display: grid; gap: var(--space-4); min-width: 0; }
+.letterhead-form fieldset { display: grid; gap: var(--space-3); margin: 0; padding: 0; border: 0; min-width: 0; }
+.letterhead-form fieldset > .btn { justify-self: start; }
+.letterhead-logo { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.letterhead-logo h3 { margin: 0; font-size: var(--text-base); }
+.letterhead-logo img { max-width: min(100%, 18rem); max-height: 6rem; object-fit: contain; justify-self: start;
+  padding: var(--space-2); background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-sm, 6px); }
+.letterhead-upload { cursor: pointer; }
+.letterhead-preview { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 22rem; height: 760px; max-height: 80dvh;
+  padding: var(--space-3); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.letterhead-preview .pdf-preview { flex: 1; min-height: 0; }
+
+/* Briefvorlagen */
+.letter-templates-page .page-header-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.letter-template-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.letter-template-card { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-3); min-width: 0;
+  padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.letter-template-card > div:first-child { display: grid; gap: var(--space-1); }
+.letter-template-card span { color: var(--color-text-muted); font-size: var(--text-sm); }
+.letter-template-card.is-archived { opacity: .7; }
+.letter-template-card .btn { display: inline-flex; align-items: center; gap: .35rem; }
+.letter-template-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); gap: var(--space-5); align-items: start; }
+.letter-template-form { display: grid; gap: var(--space-3); min-width: 0; }
+.letter-template-form .letters-heading { margin-top: 0; }
+.letter-template-form textarea { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-sm); }
+.letter-placeholders { position: sticky; top: var(--space-4); display: grid; gap: var(--space-2); max-height: calc(100dvh - 8rem); overflow: auto;
+  padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.letter-placeholders h3 { margin: var(--space-2) 0 0; font-size: var(--text-base); }
+.letter-placeholders ul { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.letter-placeholders button { display: grid; gap: 2px; width: 100%; padding: var(--space-2); text-align: left; color: inherit;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); cursor: pointer; }
+.letter-placeholders button:not(:disabled):hover { background: var(--color-bg); border-color: var(--color-border); }
+.letter-placeholders button:disabled { cursor: default; }
+.letter-placeholders code { font-size: var(--text-xs); overflow-wrap: anywhere; }
+.letter-placeholders span { color: var(--color-text-muted); font-size: var(--text-xs); }
+
+/* Brief schreiben */
+.contract-letter-overlay { z-index: 270; padding: 1rem; }
+.contract-letter-dialog { position: relative; display: flex; flex-direction: column; width: min(1320px, 100%); max-height: 94dvh; min-width: 0;
+  background: var(--color-surface); border-radius: 12px; box-shadow: var(--shadow-lg); }
+.contract-letter-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-border); }
+.contract-letter-header h2 { margin: 0; font-size: var(--text-lg); }
+.contract-letter-header p { margin: .35rem 0 0; color: var(--color-text-secondary); }
+.contract-letter-body { overflow: auto; min-height: 0; padding: 1rem 1.25rem; }
+.contract-letter-step { display: grid; gap: var(--space-3); padding: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
+.contract-letter-step h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-md); }
+.letter-step-number { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--color-primary); color: var(--color-on-primary, #fff); font-size: var(--text-sm); font-weight: 700; }
+.contract-letter-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--space-4); align-items: start; }
+.contract-letter-preview { position: sticky; top: 0; display: flex; flex-direction: column; height: 760px; max-height: 78dvh; min-width: 0;
+  padding: .75rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 8px; }
+.contract-letter-preview h4 { margin: 0 0 .6rem; font-size: var(--text-sm); }
+.contract-letter-preview .pdf-preview { flex: 1; min-height: 0; }
+.letter-checks { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: 0; list-style: none; }
+.letter-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--color-border); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.letter-check svg { flex-shrink: 0; margin-top: 2px; }
+.letter-check-error { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); }
+.letter-check-warning svg { color: var(--color-warning); }
+.letter-check-info svg { color: var(--color-primary); }
+.contract-letter-history { padding-top: var(--space-4); }
+.contract-letter-history h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
+.contract-letter-history ul { margin: 0; padding: 0; list-style: none; }
+.contract-letter-history li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; padding: .5rem 0; border-bottom: 1px solid var(--color-border); }
+.contract-letter-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem; padding: .9rem 1.25rem; border-top: 1px solid var(--color-border); }
+.contract-letter-footer > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem; max-width: 100%; }
+.contract-letter-leave { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: var(--space-3);
+  padding: 1.5rem; background: var(--color-surface); border-radius: inherit; }
+.contract-letter-leave h3, .contract-letter-leave p { margin: 0; }
+
+@media (max-width: 1000px) {
+  .letterhead-columns, .contract-letter-columns, .letter-template-editor { grid-template-columns: minmax(0, 1fr); }
+  .letter-placeholders { position: static; max-height: none; }
+  .contract-letter-preview, .letterhead-preview { position: static; height: 600px; }
+}
+@media (max-width: 560px) {
+  .letters-grid { grid-template-columns: minmax(0, 1fr); }
+  .contract-letter-overlay { padding: .5rem; }
+  .contract-letter-header, .contract-letter-body, .contract-letter-footer { padding: .75rem; }
+  .contract-letter-footer .btn { min-height: 44px; white-space: normal; }
+}
+
+.price-index-section { margin-top: var(--space-6); max-width: 70ch; }
+.price-index-form { display: grid; gap: var(--space-3); }
+.price-index-form textarea { font-family: var(--font-mono, monospace); }

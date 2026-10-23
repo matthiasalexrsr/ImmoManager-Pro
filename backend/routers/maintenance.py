@@ -1,12 +1,19 @@
 from datetime import date
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import require_auth
 from ..dependencies import store
-from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch
+from ..models import MaintenanceCase, MaintenanceCaseCreate, MaintenanceCasePatch, UserRead
+from ..services import maintenance_projects as projects
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/maintenance", tags=["Instandhaltung"])
+
+# Writes go through the project service: the status change is recorded in the change
+# history in the same transaction and passes the project's gates (open work packages,
+# active orders); a case without project data behaves as before.
 
 
 @router.get("", response_model=list[MaintenanceCase])
@@ -19,38 +26,32 @@ def list_maintenance_cases(
     sort_order: str = Query("asc"),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    workflow_filter: Literal["escalation"] | None = Query(None),
 ) -> list[MaintenanceCase]:
+    if workflow_filter == "escalation":
+        from ..services.business_kpi_sources import escalation_cases
+        return escalation_cases(store, skip=skip, limit=limit, property_id=property_id, status_filter=status_filter,
+            sort_by=sort_by, descending=sort_order == "desc", date_from=date_from, date_to=date_to)
     filters = {"property_id": property_id, "status": status_filter}
-    has_date_filter = isinstance(date_from, date) or isinstance(date_to, date)
-    results = store._list_paginated(
+    return store._list_paginated(
         entity_type="maintenance",
-        skip=0 if has_date_filter else skip,
-        limit=10000 if has_date_filter else limit,
+        skip=skip,
+        limit=limit,
         filters=filters,
         order_by=sort_by,
         order_desc=(sort_order == "desc"),
+        range_filters={"due_date": (
+            date_from if isinstance(date_from, date) else None,
+            date_to if isinstance(date_to, date) else None,
+        )},
     )
-    if isinstance(date_from, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date >= date_from
-        ]
-    if isinstance(date_to, date):
-        results = [
-            r for r in results
-            if getattr(r, 'due_date', None)
-            and r.due_date <= date_to
-        ]
-    if has_date_filter:
-        results = results[skip : skip + limit]
-    return results
 
 
 @router.post("", response_model=MaintenanceCase, status_code=status.HTTP_201_CREATED)
-def create_maintenance_case(payload: MaintenanceCaseCreate) -> MaintenanceCase:
+def create_maintenance_case(payload: MaintenanceCaseCreate,
+                            actor: UserRead = Depends(require_auth)) -> MaintenanceCase:
     try:
-        return store.create_maintenance_case(payload)
+        return projects.create_case(store, payload, projects.actor_of(actor))
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -64,25 +65,28 @@ def get_maintenance_case(case_id: str) -> MaintenanceCase:
 
 
 @router.put("/{case_id}", response_model=MaintenanceCase)
-def update_maintenance_case(case_id: str, payload: MaintenanceCaseCreate) -> MaintenanceCase:
+def update_maintenance_case(case_id: str, payload: MaintenanceCaseCreate,
+                            actor: UserRead = Depends(require_auth)) -> MaintenanceCase:
     try:
-        return store.update_maintenance_case(case_id, payload)
+        return projects.update_case(store, case_id, payload.model_dump(), projects.actor_of(actor))
     except (NotFoundError, ValidationError) as exc:
         status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.patch("/{case_id}", response_model=MaintenanceCase)
-def patch_maintenance_case(case_id: str, payload: MaintenanceCasePatch) -> MaintenanceCase:
+def patch_maintenance_case(case_id: str, payload: MaintenanceCasePatch,
+                           actor: UserRead = Depends(require_auth)) -> MaintenanceCase:
     try:
-        return store._patch_entity("maintenance", case_id, payload)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return projects.update_case(store, case_id, payload.model_dump(exclude_unset=True), projects.actor_of(actor))
+    except (NotFoundError, ValidationError) as exc:
+        status_code = status.HTTP_404_NOT_FOUND if isinstance(exc, NotFoundError) else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_maintenance_case(case_id: str) -> None:
+def delete_maintenance_case(case_id: str, actor: UserRead = Depends(require_auth)) -> None:
     try:
-        store.delete_maintenance_case(case_id)
+        projects.delete_case(store, case_id, projects.actor_of(actor))
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

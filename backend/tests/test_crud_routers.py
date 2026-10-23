@@ -8,6 +8,7 @@ skip/limit and filter params must always be passed explicitly.
 """
 
 import datetime
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -296,11 +297,18 @@ def _list_deposits(**kw):
 
 
 def _list_notifications(**kw):
+    from backend import auth
+    actor = auth.get_user_by_username('crud-notice-owner')
+    if actor is None:
+        auth.register_user('crud-notice-owner', 'crud-notice@example.test', 'Hinweise', 'Secret123', 'eigentuemer')
+        actor = auth.get_user_by_username('crud-notice-owner')
+    assert actor is not None
     return notifications.list_notifications(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         status_filter=kw.get("status_filter"),
         notification_type=kw.get("notification_type"),
         severity=kw.get("severity"),
+        actor=auth._to_user_read(actor),
     )
 
 
@@ -619,14 +627,17 @@ class TestContracts:
         )
         self.tenant = store.create_tenant(TenantCreate(full_name="Mieter"))
 
-    def _make_payload(self, number: str = "C-1") -> ContractCreate:
+    def _make_payload(self, number: str = "C-1", unit_id: str | None = None) -> ContractCreate:
         return ContractCreate(
             contract_number=number,
             property_id=self.prop.id,
-            unit_id=self.unit.id,
+            unit_id=unit_id or self.unit.id,
             tenant_id=self.tenant.id,
             start_date=datetime.date(2025, 1, 1),
         )
+
+    def _second_unit(self) -> str:
+        return store.create_unit(UnitCreate(property_id=self.prop.id, label="2", unit_type="Wohnung")).id
 
     def test_create_contract(self) -> None:
         c = contracts.create_contract(self._make_payload())
@@ -642,7 +653,7 @@ class TestContracts:
             ContractCreate(
                 contract_number="C-2",
                 property_id=self.prop.id,
-                unit_id=self.unit.id,
+                unit_id=self._second_unit(),
                 tenant_id=t2.id,
                 start_date=datetime.date(2025, 2, 1),
             )
@@ -652,7 +663,7 @@ class TestContracts:
 
     def test_list_contracts_pagination(self) -> None:
         contracts.create_contract(self._make_payload("C-1"))
-        contracts.create_contract(self._make_payload("C-2"))
+        contracts.create_contract(self._make_payload("C-2", unit_id=self._second_unit()))
         assert len(_list_contracts(skip=0, limit=1)) == 1
 
     def test_get_contract(self) -> None:
@@ -1829,7 +1840,7 @@ class TestViewings:
         self.dt = datetime.datetime(2025, 6, 15, 14, 0)
 
     def _make(self, **overrides):
-        data = dict(lead_id=self.lead.id, unit_id=self.unit.id, scheduled_at=self.dt)
+        data: dict[str, Any] = dict(lead_id=self.lead.id, unit_id=self.unit.id, scheduled_at=self.dt)
         data.update(overrides)
         return ViewingAppointmentCreate(**data)
 
@@ -2025,11 +2036,19 @@ class TestBillingPeriods:
             BillingPeriodCreate(
                 property_id=self.prop.id, label="BK 2024 Final",
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
-                status="finalized",
             ),
         )
         assert updated.label == "BK 2024 Final"
-        assert updated.status == "finalized"
+        assert updated.status == "draft"
+        # Regression: an edit set 'finalized' without statements, preflight or snapshot hash.
+        with pytest.raises(HTTPException) as exc_info:
+            billing.update_billing_period(bp.id, BillingPeriodCreate(
+                property_id=self.prop.id, label="BK 2024 Final",
+                start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
+                status="finalized",
+            ))
+        assert exc_info.value.status_code == 400
+        assert store.get_billing_period(bp.id).status == "draft"
 
     def test_create_bad_dates_400(self) -> None:
         with pytest.raises((HTTPException, Exception)):
@@ -2072,9 +2091,12 @@ class TestBillingPeriods:
                 start_date=datetime.date(2024, 1, 1), end_date=datetime.date(2024, 12, 31),
             )
         )
-        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
-        assert patched.status == "finalized"
-        assert patched.label == "BK 2024"
+        patched = billing.patch_billing_period(bp.id, BillingPeriodPatch(label="BK 2024 neu"))
+        assert patched.status == "draft"
+        assert patched.label == "BK 2024 neu"
+        with pytest.raises(HTTPException) as exc_info:  # status only through the workflow
+            billing.patch_billing_period(bp.id, BillingPeriodPatch(status="finalized"))
+        assert exc_info.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -2348,12 +2370,16 @@ class TestGenerateUtilityStatements:
         billing.generate_utility_statements(self.bp.id)
         assert len(_list_utility_statements()) == 2  # Still 2, not 4
 
-    def test_generate_excludes_inactive_contracts(self) -> None:
+    def test_generate_bills_ended_contracts_for_their_days_but_not_drafts(self) -> None:
+        """Regression: only 'active' contracts were billed, so a tenant who moved out got no statement."""
+        unit3 = store.create_unit(UnitCreate(property_id=self.prop.id, label="3", unit_type="Wohnung",
+                                             area_sqm=50))
         terminated = store.create_contract(
             ContractCreate(
                 contract_number="V-3", property_id=self.prop.id,
-                unit_id=self.unit1.id, tenant_id=self.tenant1.id,
-                start_date=datetime.date(2024, 1, 1), status="terminated",
+                unit_id=unit3.id, tenant_id=self.tenant1.id,
+                start_date=datetime.date(2023, 1, 1), end_date=datetime.date(2024, 6, 30),
+                status="terminated",
             )
         )
         draft = store.create_contract(
@@ -2370,10 +2396,32 @@ class TestGenerateUtilityStatements:
             )
         )
         stmts = billing.generate_utility_statements(self.bp.id)
-        statement_contract_ids = {s.contract_id for s in stmts}
-        assert terminated.id not in statement_contract_ids
-        assert draft.id not in statement_contract_ids
-        assert statement_contract_ids == {self.contract1.id, self.contract2.id}
+        by_contract = {s.contract_id: s for s in stmts}
+        assert draft.id not in by_contract
+        assert set(by_contract) == {self.contract1.id, self.contract2.id, terminated.id, None}
+        moved_out = by_contract[terminated.id]
+        assert (moved_out.usage_start, moved_out.usage_end, moved_out.usage_days) == (
+            datetime.date(2024, 1, 1), datetime.date(2024, 6, 30), 182)
+        vacancy = by_contract[None]
+        assert vacancy.party == "vacancy" and vacancy.usage_days == 184 and vacancy.advance_paid == 0
+        # 50 m² of 150 m² is 333.33 €, split by days between the tenant and the landlord
+        assert moved_out.total_cost + vacancy.total_cost == pytest.approx(333.33, abs=0.01)
+        assert sum(s.total_cost for s in stmts) == pytest.approx(1000.0)
+
+    def test_generate_rejects_terminated_contract_without_end_date(self) -> None:
+        unit3 = store.create_unit(UnitCreate(property_id=self.prop.id, label="3", unit_type="Wohnung",
+                                             area_sqm=50))
+        store.create_contract(ContractCreate(
+            contract_number="V-3", property_id=self.prop.id, unit_id=unit3.id, tenant_id=self.tenant1.id,
+            start_date=datetime.date(2023, 1, 1), status="terminated"))
+        store.create_cost_item(CostItemCreate(billing_period_id=self.bp.id, description="Wasser",
+                                              amount=1000.0, allocation_key_id=self.ak_area.id))
+
+        with pytest.raises(HTTPException) as exc_info:
+            billing.generate_utility_statements(self.bp.id)
+
+        assert exc_info.value.status_code == 400
+        assert "ohne Enddatum" in exc_info.value.detail
 
     def test_generate_no_contracts_400(self) -> None:
         # Remove all contracts
@@ -2770,14 +2818,15 @@ class TestNotifications:
         n = notifications.create_notification(self._make())
         assert n.status == "unread"
         assert n.read_at is None
-        read = notifications.mark_notification_read(n.id)
-        assert read.status == "read"
-        assert read.read_at is not None
+        with pytest.raises(HTTPException) as rejected:
+            notifications.mark_notification_read(n.id)
+        assert rejected.value.status_code == 409
+        assert store.get_notification(n.id).status == 'unread'
 
     def test_mark_read_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             notifications.mark_notification_read("nonexistent")
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.status_code == 409
 
     def test_delete_notification(self) -> None:
         n = notifications.create_notification(self._make())
@@ -2792,9 +2841,10 @@ class TestNotifications:
     def test_filter_by_status(self) -> None:
         n = notifications.create_notification(self._make(title="A"))
         notifications.create_notification(self._make(title="B"))
-        notifications.mark_notification_read(n.id)
-        assert len(_list_notifications(status_filter="unread")) == 1
-        assert len(_list_notifications(status_filter="read")) == 1
+        # A legacy global status is not a personal read receipt.
+        store._patch_entity('notification', n.id, NotificationPatch(status='read'))
+        assert len(_list_notifications(status_filter="unread")) == 2
+        assert len(_list_notifications(status_filter="read")) == 0
 
     def test_filter_by_type(self) -> None:
         notifications.create_notification(self._make(notification_type="overdue_payment"))
@@ -2808,13 +2858,16 @@ class TestNotifications:
 
     def test_patch_notification(self) -> None:
         n = notifications.create_notification(self._make())
-        patched = notifications.patch_notification(n.id, NotificationPatch(status="archived"))
-        assert patched.status == "archived"
-        assert patched.title == "Test"
+        patched = notifications.patch_notification(n.id, NotificationPatch(title='Neuer Titel'))
+        assert patched.status == "unread"
+        assert patched.title == "Neuer Titel"
+        with pytest.raises(HTTPException) as rejected:
+            notifications.patch_notification(n.id, NotificationPatch(status='archived'))
+        assert rejected.value.status_code == 409
 
     def test_patch_notification_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
-            notifications.patch_notification("nonexistent", NotificationPatch(status="archived"))
+            notifications.patch_notification("nonexistent", NotificationPatch(title='Neuer Titel'))
         assert exc_info.value.status_code == 404
 
 

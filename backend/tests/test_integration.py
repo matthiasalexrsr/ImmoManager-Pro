@@ -89,7 +89,7 @@ class TestAuthEnforcement:
 class TestAuthEndpoints:
     """Verify auth endpoints work without prior authentication."""
 
-    def test_register(self, client):
+    def test_first_registration_becomes_owner(self, client):
         resp = client.post("/api/v1/auth/register", json={
             "username": "newuser",
             "email": "new@example.com",
@@ -99,21 +99,34 @@ class TestAuthEndpoints:
         assert resp.status_code == 201
         data = resp.json()
         assert data["username"] == "newuser"
-        assert data["role"] == "readonly"
+        assert data["role"] == "eigentuemer"
 
-    def test_register_role_restriction(self, client):
-        """Self-registration should restrict role to readonly/techniker."""
+    def test_registration_closed_after_setup(self, client):
+        register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
         resp = client.post("/api/v1/auth/register", json={
             "username": "attacker",
             "email": "attacker@example.com",
             "full_name": "Attacker",
             "password": "Pass1234",
-            "role": "eigentuemer",
+            "role": "techniker",
         })
-        assert resp.status_code == 201
-        data = resp.json()
-        # Should be downgraded to readonly
-        assert data["role"] == "readonly"
+        assert resp.status_code == 403
+
+    def test_open_registration_is_readonly(self, client, monkeypatch):
+        """Self-registration can never pick a role, not even techniker."""
+        from backend.config import settings
+        monkeypatch.setattr(settings, "allow_self_registration", True)
+        register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
+        for requested in ("eigentuemer", "techniker"):
+            resp = client.post("/api/v1/auth/register", json={
+                "username": f"self_{requested}",
+                "email": f"{requested}@example.com",
+                "full_name": "Self",
+                "password": "Pass1234",
+                "role": requested,
+            })
+            assert resp.status_code == 201
+            assert resp.json()["role"] == "readonly"
 
     def test_login(self, client):
         register_user("loginuser", "login@example.com", "Login User", "Pass1234")
@@ -225,8 +238,20 @@ class TestRouteCollisionFix:
 
 class TestCORS:
     def test_cors_headers(self, client):
+        from backend.config import settings
+
+        # Check the configured server, rather than assuming a particular local
+        # frontend port. Isolated release checks use their own allowed origin.
+        origin = next((value for value in settings.cors_origins if value != "*"), "https://cors-test.invalid")
         resp = client.options("/api/v1/portfolios", headers={
-            "Origin": "http://localhost:3000",
+            "Origin": origin,
             "Access-Control-Request-Method": "GET",
         })
-        assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+        assert resp.headers.get("access-control-allow-origin") == origin
+        if "*" not in settings.cors_origins:
+            rejected = client.options("/api/v1/portfolios", headers={
+                "Origin": "https://untrusted-cors-test.invalid",
+                "Access-Control-Request-Method": "GET",
+            })
+            assert rejected.status_code == 400
+            assert "access-control-allow-origin" not in rejected.headers

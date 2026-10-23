@@ -1,6 +1,7 @@
 """SQLAlchemy 2.0 declarative ORM models.
 
-Maps to the PostgreSQL schema in db/schema.sql. Also works with SQLite for dev/test.
+The schema of SQLite and PostgreSQL databases: new installations create it from these models
+(schema_state.initialise_empty), existing ones reach it through the migrations (backend/db/migrations).
 """
 
 import uuid
@@ -20,8 +21,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
 )
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -127,6 +130,10 @@ class TenantORM(Base):
     country: Mapped[str | None] = mapped_column(Text)
     payment_method: Mapped[str | None] = mapped_column(Text)
     sepa_mandate: Mapped[str | None] = mapped_column(Text)
+    sepa_iban: Mapped[str | None] = mapped_column(String(34))
+    sepa_bic: Mapped[str | None] = mapped_column(String(11))
+    sepa_account_holder: Mapped[str | None] = mapped_column(Text)
+    sepa_mandate_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
@@ -148,6 +155,10 @@ class ContractORM(Base):
     deposit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     index_rent: Mapped[str | None] = mapped_column(Text)
     service_charge_settlement: Mapped[str | None] = mapped_column(Text)
+    persons: Mapped[int | None] = mapped_column(Integer)
+    # running tenancy taken over: account kept from this month on, with the balance of that day
+    ledger_start: Mapped[date | None] = mapped_column(Date)
+    carried_balance: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -173,6 +184,7 @@ class AccountORM(Base):
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
     opening_balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
     balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    owner_contact_id: Mapped[str | None] = mapped_column(String(36))   # held by one owner alone (opening balance)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -212,12 +224,21 @@ class BookingORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     payment_text: Mapped[str | None] = mapped_column(Text)
     receipt_url: Mapped[str | None] = mapped_column(Text)
+    # a reversal (Storno) names the booking it cancels (domain.booking_reversal)
+    reverses_booking_id: Mapped[str | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
+    # § 11 Abs. 1 Satz 2 EStG: the year a payment around the turn of the year belongs to (None: its date's)
+    tax_year: Mapped[int | None] = mapped_column(Integer)
+    # the owner the whole booking belongs to (a contact; no foreign key: the API refuses deleting it)
+    owner_contact_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_bookings_account", "account_id"),
         Index("idx_bookings_account_date", "account_id", "booking_date"),
+        Index("idx_bookings_date", "booking_date"),
+        Index("idx_bookings_tenant", "tenant_id"),
+        Index("idx_bookings_reverses", "reverses_booking_id"),
         CheckConstraint("amount != 0", name="ck_bookings_amount_nonzero"),
     )
 
@@ -236,6 +257,7 @@ class ReceivableORM(Base):
     dunning_level: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     statement_id: Mapped[str | None] = mapped_column(String)
+    kind: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -252,6 +274,8 @@ class InvoiceORM(Base):
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     supplier: Mapped[str] = mapped_column(Text, nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
+    performance_start: Mapped[date | None] = mapped_column(Date)
+    performance_end: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date)
     net_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     vat_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
@@ -292,13 +316,19 @@ class DocumentORM(Base):
     __table_args__ = (
         Index("idx_documents_property", "property_id"),
         Index("idx_documents_contract", "contract_id"),
+        Index("idx_documents_tenant", "tenant_id"),
+        Index("idx_documents_valid_until", "valid_until"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     property_id: Mapped[str | None] = mapped_column(ForeignKey("properties.id", ondelete="SET NULL"))
     unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
     contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    valid_until: Mapped[date | None] = mapped_column(Date)            # expiry (d8a1c3e5f7b9)
+    reminder_days: Mapped[int | None] = mapped_column(Integer)        # reminder lead time in days
+    retention_class: Mapped[str | None] = mapped_column(String(20))  # f4c6e8a0b2d3; empty = by document type
     document_type: Mapped[str | None] = mapped_column(Text)
     document_date: Mapped[date | None] = mapped_column(Date)
     tags: Mapped[str | None] = mapped_column(Text)
@@ -313,6 +343,25 @@ class DocumentORM(Base):
     ai_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+
+class DocumentTextORM(Base):
+    """The text of a document's file for the full-text search (migration e2b4d6f8a0c1).
+
+    Derived data: the indexing job fills and refreshes it from the file or the archived
+    original; it is not part of the JSON export and can always be rebuilt. `source_ref`
+    names what was read (the file URL or the archived version), `source` how (pdf_text,
+    ocr, plain, office, none), `search_text` is the lower-cased text the search compares.
+    """
+    __tablename__ = "document_texts"
+
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    source_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    search_text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    characters: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    indexed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
 
 
 class TaskORM(Base):
@@ -409,10 +458,27 @@ class LeadORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="new")
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     notes: Mapped[str | None] = mapped_column(Text)
+    # an applicant of a re-letting project (migration c6e8a0b2d4f3). No foreign key: projects are
+    # closed, never deleted, and SQLite can then drop the column in place on a downgrade.
+    project_id: Mapped[str | None] = mapped_column(String(36))
+    household_size: Mapped[int | None] = mapped_column(Integer)
+    net_income: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    employment: Mapped[str | None] = mapped_column(String(20))
+    move_in_date: Mapped[date | None] = mapped_column(Date)
+    pets: Mapped[str | None] = mapped_column(String(200))
+    doc_self_disclosure: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_income: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_credit_report: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    doc_landlord_reference: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                         server_default="0")
+    doc_id_checked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    rating: Mapped[int | None] = mapped_column(Integer)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        Index("idx_leads_project", "project_id"),
         Index("idx_leads_listing", "listing_id"),
         Index("idx_leads_unit", "unit_id"),
         Index("idx_leads_status", "status"),
@@ -429,6 +495,7 @@ class ViewingAppointmentORM(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="scheduled")
     agent: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[int | None] = mapped_column(Integer)          # impression after the viewing (c6e8a0b2d4f3)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -436,6 +503,70 @@ class ViewingAppointmentORM(Base):
         Index("idx_viewings_lead", "lead_id"),
         Index("idx_viewings_unit", "unit_id"),
     )
+
+
+class RelettingProjectORM(Base):
+    """Re-letting a vacant unit: the offer, its applicants and the tenancy it ends in (c6e8a0b2d4f3)."""
+
+    __tablename__ = "reletting_projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    unit_id: Mapped[str] = mapped_column(ForeignKey("units.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    available_from: Mapped[date | None] = mapped_column(Date)
+    target_rent: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    service_charge: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    heating_charge: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    deposit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    income_factor: Mapped[float] = mapped_column(Numeric(4, 2, asdecimal=False), nullable=False, default=3,
+                                                 server_default="3")
+    max_persons: Mapped[int | None] = mapped_column(Integer)
+    pets: Mapped[str | None] = mapped_column(String(20))
+    headline: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    location_text: Mapped[str | None] = mapped_column(Text)
+    features_text: Mapped[str | None] = mapped_column(Text)
+    energy_certificate: Mapped[str | None] = mapped_column(String(20))
+    energy_value: Mapped[float | None] = mapped_column(Numeric(8, 1, asdecimal=False))
+    energy_class: Mapped[str | None] = mapped_column(String(4))
+    energy_carrier: Mapped[str | None] = mapped_column(String(60))
+    heating_type: Mapped[str | None] = mapped_column(String(60))
+    year_built: Mapped[int | None] = mapped_column(Integer)
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    contact_phone: Mapped[str | None] = mapped_column(String(60))
+    contact_email: Mapped[str | None] = mapped_column(String(200))
+    listing_id: Mapped[str | None] = mapped_column(ForeignKey("listings.id", ondelete="SET NULL"))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id", ondelete="SET NULL"))
+    contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="SET NULL"))
+    deleted_applicants: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (
+        Index("idx_reletting_projects_unit", "unit_id"),
+        # one open project per unit
+        Index("uq_reletting_projects_open_unit", "unit_id", unique=True,
+              sqlite_where=sql_text("status = 'open'"), postgresql_where=sql_text("status = 'open'")),
+        CheckConstraint("status IN ('open', 'closed', 'cancelled')", name="ck_reletting_projects_status"),
+    )
+
+
+class LeadAttachmentORM(Base):
+    """A document or photo of an applicant; deleted with the applicant (c6e8a0b2d4f3)."""
+
+    __tablename__ = "lead_attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    lead_id: Mapped[str] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="document")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    size: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+
+    __table_args__ = (Index("idx_lead_attachments_lead", "lead_id"),)
 
 
 class BillingPeriodORM(Base):
@@ -447,10 +578,18 @@ class BillingPeriodORM(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
+    # A correction is a new version: it names the version it corrects (no FK, so an
+    # SQLite downgrade can drop the column without rebuilding referenced tables).
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    corrects_period_id: Mapped[str | None] = mapped_column(String)
+    revision_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (Index("idx_billing_periods_property", "property_id"),)
+    __table_args__ = (
+        Index("idx_billing_periods_property", "property_id"),
+        Index("idx_billing_periods_corrects", "corrects_period_id"),
+    )
 
 
 class AllocationKeyORM(Base):
@@ -461,6 +600,8 @@ class AllocationKeyORM(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     key_type: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    meter_type: Mapped[str | None] = mapped_column(Text)
+    measure_unit: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -481,12 +622,20 @@ class CostItemORM(Base):
     vat_rate: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     net_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     gross_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    # the service contract bill this cost came from (no FK: an SQLite downgrade drops the column in place);
+    # unique per period, so a bill reaches one statement once, also through a correction's copy
+    service_contract_invoice_id: Mapped[str | None] = mapped_column(String(36))
+    # HeizkostenV § 7: the share by consumption (50–70 %) and the key of the fixed costs (no FK, as above)
+    consumption_share: Mapped[float | None] = mapped_column(Numeric(5, 2, asdecimal=False))
+    fixed_key_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("idx_cost_items_period", "billing_period_id"),
         Index("idx_cost_items_key", "allocation_key_id"),
+        Index("uq_cost_items_service_contract_invoice", "billing_period_id", "service_contract_invoice_id",
+              unique=True),
     )
 
 
@@ -495,8 +644,13 @@ class UtilityStatementORM(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     billing_period_id: Mapped[str] = mapped_column(ForeignKey("billing_periods.id", ondelete="CASCADE"), nullable=False)
-    contract_id: Mapped[str] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
+    # NULL on vacancy rows: the landlord's share for days without a tenancy
+    contract_id: Mapped[str | None] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), nullable=True)
     unit_id: Mapped[str] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), nullable=False)
+    party: Mapped[str] = mapped_column(Text, nullable=False, default="tenant", server_default="tenant")
+    usage_start: Mapped[date | None] = mapped_column(Date)
+    usage_end: Mapped[date | None] = mapped_column(Date)
+    usage_days: Mapped[int | None] = mapped_column(Integer)
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     advance_paid: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
     balance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=False)
@@ -509,6 +663,8 @@ class UtilityStatementORM(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivery_channel: Mapped[str | None] = mapped_column(Text)
     snapshot_hash: Mapped[str | None] = mapped_column(String)
+    advance_sections: Mapped[list | None] = mapped_column(JSON)
+    final_document: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -516,6 +672,33 @@ class UtilityStatementORM(Base):
         Index("idx_utility_statements_period", "billing_period_id"),
         Index("idx_utility_statements_contract", "contract_id"),
     )
+
+
+class BillingObjectionORM(Base):
+    """A tenant's objection against an issued statement; answered by a correction."""
+
+    __tablename__ = "billing_objections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    billing_period_id: Mapped[str] = mapped_column(
+        ForeignKey("billing_periods.id", ondelete="CASCADE"), nullable=False, index=True)
+    statement_id: Mapped[str | None] = mapped_column(ForeignKey("utility_statements.id", ondelete="CASCADE"))
+    received_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    correction_period_id: Mapped[str | None] = mapped_column(ForeignKey("billing_periods.id", ondelete="SET NULL"))
+    # Only metadata describing an immutable decision is appended. The issued
+    # UtilityStatement and the original objection reason are never modified.
+    decision_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    decision_actor_id: Mapped[str | None] = mapped_column(String(36))
+    decision_key: Mapped[str | None] = mapped_column(String(120))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    decision_source_sha256: Mapped[str | None] = mapped_column(String(64))
+    source_period_status: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("ux_billing_objection_decision_key", "decision_key", unique=True),)
 
 
 class DepositORM(Base):
@@ -530,6 +713,26 @@ class DepositORM(Base):
     deductions: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
     deduction_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Deposit file (migration 3c7e9a1d5f20, db/deposit_models.py): form of the security, the reason for an
+    # amount above three net cold rents, where the money is held, and for a guarantee or a pledged savings
+    # book when it was provided and released (with proof). References are checked by the service.
+    form: Mapped[str] = mapped_column(String(20), nullable=False, default="transfer", server_default="transfer")
+    cap_reason: Mapped[str | None] = mapped_column(Text)
+    account_id: Mapped[str | None] = mapped_column(String(36))
+    institution: Mapped[str | None] = mapped_column(Text)
+    account_reference: Mapped[str | None] = mapped_column(Text)
+    account_holder: Mapped[str | None] = mapped_column(Text)
+    provided_on: Mapped[date | None] = mapped_column(Date)
+    proof_document_id: Mapped[str | None] = mapped_column(String(36))
+    released_on: Mapped[date | None] = mapped_column(Date)
+    release_document_id: Mapped[str | None] = mapped_column(String(36))
+    release_note: Mapped[str | None] = mapped_column(Text)
+    # Takeover (migration a7d3c5e9f2b1): a deposit paid before this app's bookings begin. On `carried_on`
+    # the app takes over `carried_amount` received and `carried_interest` credited until then.
+    carried_on: Mapped[date | None] = mapped_column(Date)
+    carried_amount: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    carried_interest: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False))
+    carried_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -554,6 +757,8 @@ class NotificationORM(Base):
     __table_args__ = (
         Index("idx_notifications_status", "status"),
         Index("idx_notifications_type", "notification_type"),
+        Index('idx_notifications_inbox_order', 'created_at', 'id'),
+        Index('idx_notifications_inbox_filter', 'entity_type', 'severity', 'created_at', 'id'),
     )
 
 
@@ -600,6 +805,52 @@ class RentAdjustmentORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class ContractRentPeriodORM(Base):
+    __tablename__ = "contract_rent_periods"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "valid_from", name="uq_contract_rent_periods_contract_date"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    cold_rent: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    service_charge_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    heating_advance: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    rent_adjustment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rent_adjustments.id"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class ContractOccupancyORM(Base):
+    """Persons living in a contract's flat from a date on (dated occupants)."""
+
+    __tablename__ = "contract_occupancies"
+    __table_args__ = (
+        UniqueConstraint("contract_id", "valid_from", name="uq_contract_occupancies_contract_date"),
+        CheckConstraint("persons >= 0", name="ck_contract_occupancies_persons"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    persons: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class PaymentAllocationORM(Base):
+    __tablename__ = "payment_allocations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(36), ForeignKey("bookings.id"), index=True)
+    contract_id: Mapped[str] = mapped_column(String(36), ForeignKey("contracts.id"), index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False))
+    source: Mapped[str] = mapped_column(String(10), default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class HandoverProtocolORM(Base):
     __tablename__ = "handover_protocols"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -618,8 +869,18 @@ class HandoverProtocolORM(Base):
     tenant_signature: Mapped[str | None] = mapped_column(Text)
     landlord_signature: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    # Finalization (migration a4d8e2f6c1b9): the archived PDF original, and the
+    # finalized protocol this one corrects. Once finalized_at is set the protocol
+    # and its parts are immutable (triggers in db/handover_guards.py).
+    correction_of_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_protocols.id"))
+    document_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("documents.id"))
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finalized_by: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_protocols_contract", "contract_id"),
+                      Index("idx_handover_protocols_unit", "unit_id"))
 
 
 class MeterReadingORM(Base):
@@ -632,8 +893,106 @@ class MeterReadingORM(Base):
     unit: Mapped[str] = mapped_column(String(10), default="kWh")
     photo_url: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # the unit's meter read at the handover, and the reading the finalization recorded for it
+    meter_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("meters.id"))
+    standalone_reading_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("standalone_meter_readings.id"))
+    position: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("idx_meter_readings_meter", "meter_id"),
+                      Index("idx_meter_readings_standalone", "standalone_reading_id"))
+
+
+class HandoverRoomORM(Base):
+    """A room of a handover protocol and its condition."""
+    __tablename__ = "handover_rooms"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    condition: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_rooms_protocol", "protocol_id", "position"),)
+
+
+class HandoverDefectORM(Base):
+    """A defect found at the handover: who answers for it, what was agreed, until when.
+
+    resolved_at and resolution_note are the follow-up: they stay editable after
+    the protocol is finalized, every other column does not.
+    """
+    __tablename__ = "handover_defects"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_rooms.id", ondelete="SET NULL"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    responsible: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    remedy: Mapped[str | None] = mapped_column(Text)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    resolved_at: Mapped[date | None] = mapped_column(Date)
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        Index("idx_handover_defects_protocol", "protocol_id", "position"),
+        CheckConstraint("responsible IN ('tenant','landlord','open')", name="ck_handover_defects_responsible"),
+    )
+
+
+class HandoverKeyORM(Base):
+    """Keys of one kind: how many were handed over (move-in) or are due back, and how many came back."""
+    __tablename__ = "handover_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    key_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    handed_over: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    returned: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        Index("idx_handover_keys_protocol", "protocol_id", "position"),
+        CheckConstraint("handed_over >= 0 AND (returned IS NULL OR returned >= 0)", name="ck_handover_keys_counts"),
+    )
+
+
+class HandoverPhotoORM(Base):
+    """A photo taken at the handover, bound to the protocol (and optionally a room, defect or meter reading).
+
+    The file lives in the upload storage; sha256 fixes its content, the
+    finalized PDF names and embeds it.
+    """
+    __tablename__ = "handover_photos"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    protocol_id: Mapped[str] = mapped_column(String(36), ForeignKey("handover_protocols.id", ondelete="CASCADE"),
+                                             nullable=False)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_rooms.id", ondelete="SET NULL"))
+    defect_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("handover_defects.id", ondelete="SET NULL"))
+    meter_reading_id: Mapped[str | None] = mapped_column(String(36),
+                                                         ForeignKey("meter_readings.id", ondelete="SET NULL"))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    caption: Mapped[str | None] = mapped_column(Text)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (Index("idx_handover_photos_protocol", "protocol_id", "position"),)
 
 
 class BudgetORM(Base):
@@ -645,6 +1004,7 @@ class BudgetORM(Base):
     planned_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False))
     actual_amount: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0)
     notes: Mapped[str | None] = mapped_column(Text)
+    booking_category_ids: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
@@ -666,6 +1026,10 @@ class EscalationRuleORM(Base):
 
 class ChangeHistoryORM(Base):
     __tablename__ = "change_history"
+    __table_args__ = (
+        Index("idx_change_history_cursor", "changed_at", "id"),
+        Index("idx_change_history_entity", "entity_type", "entity_id"),   # the history of one record
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[str] = mapped_column(String(36))
@@ -780,16 +1144,63 @@ class ContactORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class OwnershipShareORM(Base):
+    """An owner's share of a property, or of one of its units, for a period (services/ownership.py)."""
+    __tablename__ = "ownership_shares"
+    __table_args__ = (
+        Index("idx_ownership_shares_property", "property_id"),
+        Index("idx_ownership_shares_owner", "owner_contact_id"),
+        CheckConstraint("share_percent > 0 AND share_percent <= 100", name="ck_ownership_share_percent"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"), nullable=False)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id"))
+    share_percent: Mapped[float] = mapped_column(Numeric(7, 4, asdecimal=False), nullable=False)
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_to: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class OwnershipTransferORM(Base):
+    """The journal of owner changes (services/ownership.record_transfer); the shares carry the result."""
+    __tablename__ = "ownership_transfers"
+    __table_args__ = (Index("idx_ownership_transfers_property", "property_id", "effective_date"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("units.id"))
+    scope: Mapped[str] = mapped_column(String(10), nullable=False)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    from_owner_contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"), nullable=False)
+    fraction_percent: Mapped[float] = mapped_column(Numeric(7, 4, asdecimal=False), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    receivers: Mapped[list] = mapped_column(JSON, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    changes: Mapped[dict | None] = mapped_column(JSON)          # shares ended, removed and created (to undo)
+    reverted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reverted_by: Mapped[str | None] = mapped_column(String)
+
+
 class MeterORM(Base):
     __tablename__ = "meters"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"))
     meter_type: Mapped[str] = mapped_column(String(30))
+    measure_unit: Mapped[str | None] = mapped_column(String(20))
     serial_number: Mapped[str | None] = mapped_column(String(100))
     location: Mapped[str | None] = mapped_column(String(200))
     installation_date: Mapped[date | None] = mapped_column(Date)
+    removal_date: Mapped[date | None] = mapped_column(Date)
     next_inspection: Mapped[date | None] = mapped_column(Date)
     supplier: Mapped[str | None] = mapped_column(String(200))
+    # the landlord's own supply contract for this meter (migration b4d6f8a0c2e1)
+    contract_number: Mapped[str | None] = mapped_column(String(100))
+    contract_end_date: Mapped[date | None] = mapped_column(Date)
+    portal_url: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
@@ -833,6 +1244,8 @@ class MessageORM(Base):
     body: Mapped[str] = mapped_column(Text)
     attachment_ids: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    __table_args__ = (Index("ix_messages_thread_sent_id", "thread_id", "sent_at", "id"),)
 
 
 class RentChargeORM(Base):
@@ -899,3 +1312,16 @@ class LoginAttemptORM(Base):
         Index("idx_login_attempts_username", "username"),
         Index("idx_login_attempts_time", "attempted_at"),
     )
+
+
+def _handover_guards_after_create(target, connection, **_):
+    """create_all(): install the triggers of finalized handover protocols once all their tables exist."""
+    from sqlalchemy import inspect
+
+    from .handover_guards import GUARDED_TABLES, install_handover_guards
+
+    if set(GUARDED_TABLES) <= set(inspect(connection).get_table_names()):
+        install_handover_guards(connection)
+
+
+event.listen(Base.metadata, "after_create", _handover_guards_after_create)

@@ -26,7 +26,8 @@ def test_secret_config_is_masked_in_output_and_persisted():
     manager = IntegrationManager(store=store)
     manager.register(WhatsAppIntegrationProvider())
 
-    manager.update_config("whatsapp", {"phone_number_id": "123", "api_token": "secret"})
+    manager.update_config("whatsapp", {"phone_number_id": "123", "api_token": "secret", 'graph_version': 'v26.0',
+                                        'app_secret': 'synthetic-app', 'verify_token': 'synthetic-verify'})
     details = manager.get_integration("whatsapp")
 
     assert details["configured"] is True
@@ -36,15 +37,16 @@ def test_secret_config_is_masked_in_output_and_persisted():
     assert raw["config"]["whatsapp"]["api_token"] == "secret"
 
 
-def test_listing_portal_provider_update_requires_listing_id():
+def test_listing_portal_provider_refuses_the_legacy_unbound_update_action():
     manager = IntegrationManager()
     manager.register(ListingPortalProvider())
     manager.set_enabled("listing-portals", True)
-    manager.update_config("listing-portals", {"default_portal": "Immowelt"})
 
     result = manager.run("listing-portals", {"action": "update", "listing": {"title": "L1"}})
     assert result["success"] is False
-    assert "portal_listing_id" in result["message"]
+    assert result['details']['code'] == 'invalid_payload'
+    assert result['details']['errors']['action'] == 'Nicht unterstützte Aktion'
+    assert manager.list_history('listing-portals')[0]['success'] is False
 
 
 def test_metrics_counts_runs():

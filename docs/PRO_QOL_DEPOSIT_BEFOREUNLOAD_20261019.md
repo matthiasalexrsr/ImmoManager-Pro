@@ -1,0 +1,26 @@
+# ImmoManager Pro – QoL: Kautionsänderungen beim Neuladen schützen (19.10.2026)
+
+**Isolierter Frontend-Checkpoint, nicht ausgerollt.** Ausgangspunkt `pro/full-handover-20261016`, Commit `130d94cb`. Kein Backend-, Integrations- oder Installationsänderungsumfang.
+
+## Befund und umgesetzte Verbesserung
+
+- Die vorige Kautions-QoL-Stufe sichert einen **Link-/Schließen-Vorgang innerhalb von `DepositFile`** mit einer expliziten Bestätigung. Ein **Browser-Neuladen**, **Tab-Schließen** oder eine andere echte Seitenentladung löst diesen internen Dialog aber nicht aus und konnte noch ungespeicherte lokale Eingaben verlieren.
+- Die bestehende gemeinsame `hasUnsaved`-/`hasPendingAction`-Berechnung aktiviert jetzt nur in diesen beiden Fällen einen `beforeunload`-Listener auf `window`. Der Handler ruft `preventDefault()` auf und setzt `returnValue`, analog zum vorhandenen Schutz normaler `FormModal`-Dialoge. Der Browser kann daraufhin **seine eigene Sicherheitsabfrage** zeigen; Text und letztliche Anzeige kontrolliert der Browser, nicht die App.
+- **Geschützte Eingabebereiche:** Änderungen an Vereinbarung, Zinssätzen, Sicherheiten, noch nicht zugeordneten Zahlungsanteilen und an der Kautionsabrechnung. Ein laufender Geschäftsvorgang löst dieselbe Schutzanforderung aus, auch ohne bereits geänderte Eingaben. Ein **ungewisses Abschlussresultat** wird weiterhin als noch nicht abgeschlossen gewertet.
+- **Kein unnötiges Warnen:** Eine unveränderte Akte oder das bloße Öffnen der Vereinbarungsbearbeitung aktiviert die Sperre nicht. Nach bewusstem Abbrechen, bestätigtem Abschluss, Verlassen der Akte oder deren Unmount wird der Listener automatisch entfernt. Eine fehlgeschlagene Speicherung hebt den Schutz **nicht** auf.
+- Keine neue Geschäftsaktion oder automatische Wiederholung: `DepositFile` verwendet weiterhin die bestehende serverseitige Revisions-/Idempotenzverwaltung für Kautionsabrechnungen. Der neue Handler führt keine Speicherung aus.
+
+## Qualitätsnachweise
+
+- `npm.cmd run test -- src/test/DepositFile.test.jsx src/test/DepositsPage.test.jsx src/test/FormModal.test.jsx --maxWorkers=1 --no-file-parallelism`: **49/49 Tests bestanden**, 3 Dateien.
+- Erweiterte Regression: `npm.cmd run test -- src/test/DepositFile.test.jsx src/test/DepositsPage.test.jsx src/test/EntityLinks.test.jsx src/test/RelatedPageLinks.test.jsx src/test/FinancePackagesV2.test.jsx src/test/FinancePrecision.test.jsx src/test/RentPayments.test.jsx src/test/TenantAccount.test.jsx src/test/BookingReviewWorkflow.test.jsx src/test/BookingReviewIndependent.test.jsx src/test/PropertyDossier.test.jsx src/test/PartyUnitNavigation.test.jsx src/test/ShellNavigation.test.jsx src/test/WorkspaceNavigation.test.jsx src/test/Dunning.test.jsx src/test/MaintenanceProject.test.jsx src/test/ServiceContracts.test.jsx src/test/FormModal.test.jsx src/test/translations.test.js --maxWorkers=1 --no-file-parallelism`: **181/181 bestanden**, 19 Dateien.
+- Fünf neue direkte Schutztests prüfen Aktivierung erst nach Änderung, Erhalt beim Abbrechen, spätere Deaktivierung, Schutz während einer laufenden Geschäftsaktion, Erhalt nach fehlgeschlagener Speicherung, anhaltenden Schutz nach ungewissem Abschluss sowie saubere Unmount-Listenerentfernung. Bestehende parametrische Tests für Zinssätze, Sicherheiten, Zahlungsanteile und Abrechnungen prüfen zusätzlich den `beforeunload`-Schutz.
+- Tatsächlich gerendertes `DepositFile`/React-Router im isolierten **Microsoft Edge Chromium Headless** mit synthetischem Kautionsdatensatz: Nach echten Eingabeereignissen war der **programmatisch ausgelöste** `beforeunload`-Event `defaultPrevented`; bei leerem/sauberem Formular und nach Abbruch bzw. der endgültigen Navigation nicht. Die aktuelle Bearbeitung blieb nach Escape bestehen. Kein fachlicher Speicheraufruf; die temporären Dateien sowie Browser- und Testserver-Prozesse wurden entfernt.
+- **Nicht getestet:** Das tatsächliche native Browser-Popup beim realen `Reload` oder Tab-Schließen. Der Smoke validiert den aktiven Handler und das Verhindern des Ereignisdefaults, **nicht** die Browser-UI. Browser können die native Nachfrage beispielsweise ohne vorherige Nutzerinteraktion unterdrücken.
+- ESLint, Produktionsbuild und `git diff --cached --check` wurden vor Commit ausgeführt; bekannte nicht blockierende `NotificationInbox.jsx`-Dynamic-Import-Warnung bleibt bestehen.
+
+## Grenzen vor einer Releasefreigabe
+
+- React Router ist im Projekt als **deklarativer `BrowserRouter`** eingebunden. Der unterstützte `useBlocker` der installierten React-Router-Version ist an einen **Data-Router** gebunden; eine App-weite Router-Migration wurde nicht vorgenommen. **Browser-Zurück/Vorwärts innerhalb der SPA, programmgesteuerte interne Navigation außerhalb des Dialogs oder reines Query-Parameter-Navigieren** werden durch `beforeunload` nicht vollständig geschützt. Dafür ist ein gesondert geplanter Router-Navigationsschutz nötig.
+- Keine volle echte Backend-/PostgreSQL-End-to-End-Abnahme, keine manuelle NVDA-/JAWS-/VoiceOver-Prüfung. Bekannte ältere React-`act()`-Testwarnungen bleiben unberührt.
+- Die fünf vorher vorhandenen fremden Backend-Migrations-/Testdateien sowie der zentrale Integrationszweig bleiben unangetastet. **Kein Merge und kein Deployment**.

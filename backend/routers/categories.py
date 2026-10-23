@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from ..dependencies import store
 from ..models import Category, CategoryCreate, CategoryPatch
+from ..services.deletion_guard import ensure_deletable
+from ..services.portfolio_scope import scope_context
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -62,6 +64,9 @@ def patch_category(category_id: str, payload: CategoryPatch) -> Category:
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(category_id: str) -> None:
     try:
+        store.get_category(category_id)
+        with scope_context(None):   # bookings of other portfolios count too (the database would detach them)
+            ensure_deletable(store, "category", category_id)
         store.delete_category(category_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,71 +7,109 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatDate, formatDateTime, formatMoney } from '../utils/format';
+import { localDateTimeInput, saveLocalDateTime } from '../utils/dateTimeInput';
+import ObjectScope from '../components/ObjectScope';
+import { scopeDefaults } from '../utils/objectScope';
+import { bulkDelete } from '../utils/bulkActions';
+import KpiAction from '../components/KpiAction';
 
-const TODAY = new Date();
-TODAY.setHours(0, 0, 0, 0);
+const FILTERS = ['all', 'open', 'in_progress', 'completed', 'cancelled', 'overdue', 'urgent', 'no_appointment', 'no_assignee', 'age_basis', 'escalation'];
+const today = () => { const value = new Date(); value.setHours(0, 0, 0, 0); return value; };
 
 function ageDays(createdAt) {
   if (!createdAt) return null;
-  return Math.floor((TODAY - new Date(createdAt)) / (1000 * 60 * 60 * 24));
+  return Math.floor((today() - new Date(createdAt)) / (1000 * 60 * 60 * 24));
 }
 
 function isOverdue(row) {
   if (!row.due_date) return false;
   const due = new Date(row.due_date);
   due.setHours(0, 0, 0, 0);
-  return due < TODAY && (row.status === 'open' || row.status === 'in_progress');
+  return due < today() && ['open', 'in_progress', 'pending', 'review'].includes(String(row.status || '').toLowerCase());
 }
 
 export default function Maintenance() {
+  const [params, setParams] = useSearchParams();
+  const requestedFilter = params.get('status') || params.get('filter') || 'all';
+  const linkedFilter = FILTERS.includes(requestedFilter) ? requestedFilter : 'all';
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: properties } = useEntities('properties', '/properties');
-  const { items: units } = useEntities('units', '/units');
+  const propertySource = useEntities('properties', '/properties');
+  const unitSource = useEntities('units', '/units');
+  const properties = propertySource.items;
+  const units = unitSource.items;
+  const choicesReady = !propertySource.loading && !unitSource.loading && !propertySource.error && !unitSource.error;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
-  const [filter, setFilter] = useState('all');
-
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/maintenance').catch(() => [])
-      .then(data => setItems(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
+  // values a New form starts with when opened from elsewhere (the property page's "Einheit anlegen")
+  const [prefill, setPrefill] = useState(null);
+  const [filter, setFilter] = useState(linkedFilter);
+  const [drilldown, setDrilldown] = useState(0);
+  const [error, setError] = useState(null);
+  const [source, setSource] = useState({ items: [], loading: false, error: null });
+  const [sourceAttempt, setSourceAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
+  const openSources = key => {
+    setFilter(key); setDrilldown(value => value + 1);
+    setParams(current => { const next = new URLSearchParams(current); ['filter', 'status', 'focus_id', 'suche'].forEach(name => next.delete(name));
+      if (key !== 'all') next.set(['open', 'in_progress', 'completed', 'cancelled'].includes(key) ? 'status' : 'filter', key); return next; });
   };
+  useEffect(() => { setFilter(linkedFilter); setDrilldown(value => value + 1); }, [linkedFilter, params]);
+
+  const refreshData = useCallback(() => {
+    setAttempt(value => value + 1); setSourceAttempt(value => value + 1);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    api.get('/maintenance').catch(() => [])
-      .then(data => { if (!cancelled) setItems(Array.isArray(data) ? data : []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController(); setLoading(true); setError(null);
+    api.list('/maintenance', { signal: request.signal })
+      .then(data => { if (!Array.isArray(data)) throw new Error('Die Wartungsfälle konnten nicht gelesen werden.'); if (!request.signal.aborted) setItems(data); })
+      .catch(failure => { if (!request.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [attempt]);
+  useEffect(() => {
+    if (filter !== 'escalation') return;
+    const request = new AbortController(); setSource(current => ({ ...current, loading: true, error: null }));
+    api.list('/maintenance?workflow_filter=escalation', { signal: request.signal }).then(data => {
+      if (!Array.isArray(data)) throw new Error('Die Eskalationsquelle konnte nicht gelesen werden.');
+      if (!request.signal.aborted) setSource({ items: data, loading: false, error: null });
+    }).catch(failure => { if (!request.signal.aborted) setSource(current => ({ ...current, loading: false, error: failure.message })); });
+    return () => request.abort();
+  }, [filter, sourceAttempt]);
 
   // Lookup maps
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u.label]));
 
   // Enrich data
-  const enriched = items.map(row => ({
+  const enrich = rows => rows.filter(row => (!params.get('property_id') || row.property_id === params.get('property_id'))
+    && (!params.get('unit_id') || row.unit_id === params.get('unit_id'))).map(row => ({
     ...row,
     property_name: propMap[row.property_id] || '—',
     unit_label: unitMap[row.unit_id] || '—',
     age_days: ageDays(row.created_at),
   }));
+  const enriched = enrich(items);
+  const escalations = enrich(source.items);
 
   // Filter logic
   const filtered = useMemo(() => {
     if (filter === 'all') return enriched;
     if (filter === 'open') return enriched.filter(r => r.status === 'open');
     if (filter === 'in_progress') return enriched.filter(r => r.status === 'in_progress');
+    if (filter === 'completed' || filter === 'cancelled') return enriched.filter(r => r.status === filter);
+    if (filter === 'age_basis') return enriched.filter(r => r.status === 'open' || r.status === 'in_progress');
+    if (filter === 'escalation') return escalations;
     if (filter === 'overdue') return enriched.filter(r => isOverdue(r));
     if (filter === 'urgent') return enriched.filter(r => r.priority === 'urgent' || r.priority === 'high');
     if (filter === 'no_appointment') return enriched.filter(r => !r.appointment_at);
     if (filter === 'no_assignee') return enriched.filter(r => !r.assignee);
     return enriched;
-  }, [enriched, filter]);
+  }, [enriched, filter, escalations]);
 
   // Summary stats
   const totalCount = enriched.length;
@@ -80,41 +119,46 @@ export default function Maintenance() {
 
   const openOrInProgress = enriched.filter(r => r.status === 'open' || r.status === 'in_progress');
   const avgAge = openOrInProgress.length > 0
-    ? Math.round(openOrInProgress.reduce((sum, r) => sum + (r.age_days || 0), 0) / openOrInProgress.length)
+    ? Math.max(0, Math.round(openOrInProgress.reduce((sum, r) => sum + Math.max(0, r.age_days || 0), 0) / openOrInProgress.length))
     : 0;
 
   const columns = [
-    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text' },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text' },
-    { key: 'category', label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
+    { key: 'title', label: t('pages.maintenance.columns.title') || 'Titel', filterType: 'text',
+      // the case is the project file: work packages, quotes, orders, invoices, protocols
+      render: (v, row) => <Link to={`/maintenance/${encodeURIComponent(row.id)}`}>{v || row.id}</Link> },
+    { key: 'property_name', hidden: true, label: 'Immobilie', filterType: 'text' },
+    { key: 'unit_label', subKey: 'property_name', label: 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
+    { key: 'category', hidden: true, label: t('pages.maintenance.columns.category') || 'Kategorie', filterType: 'select' },
     { key: 'priority', label: t('pages.maintenance.columns.priority') || 'Priorität', type: 'status', filterType: 'select' },
-    { key: 'assignee', label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },
+    { key: 'assignee', hidden: true, label: t('pages.maintenance.columns.assignee') || 'Zuständig', filterType: 'text' },
     { key: 'contractor', label: t('pages.maintenance.form.contractor') || 'Handwerker', filterType: 'text' },
-    { key: 'reported_by', label: t('pages.maintenance.form.reportedBy') || 'Gemeldet von', filterType: 'text' },
+    { key: 'reported_by', hidden: true, label: t('pages.maintenance.form.reportedBy') || 'Gemeldet von', filterType: 'text' },
     { key: 'due_date', label: t('pages.maintenance.columns.dueDate') || 'Fällig am', type: 'date', filterType: 'dateRange',
       render: (v, row) => {
         if (!v) return '—';
-        const display = new Date(v).toLocaleDateString('de-DE');
+        const display = formatDate(v);
         if (isOverdue(row)) {
           return <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{display}</span>;
         }
         return display;
       }},
-    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange' },
-    { key: 'age_days', label: 'Alter (Tage)', type: 'number', align: 'right',
+    { key: 'appointment_at', hidden: true, label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date', filterType: 'dateRange', render: value => formatDateTime(value) },
+    { key: 'age_days', hidden: true, label: 'Alter (Tage)', type: 'number', align: 'right',
       render: v => v != null ? `${v} T` : '—' },
     { key: 'estimated_cost', label: t('pages.maintenance.columns.cost') || 'Kosten (€)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+      render: v => formatMoney(v) },
     { key: 'status', label: t('pages.maintenance.columns.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
 
   const fields = [
-    { key: 'property_id', label: t('pages.maintenance.form.property') || 'Immobilie', required: true, type: 'select',
+    { key: 'property_id', label: t('pages.maintenance.form.property') || 'Immobilie', required: true, type: 'select', clearOnChange: ['unit_id'],
       options: properties.map(p => ({ value: p.id, label: p.name })) },
     { key: 'unit_id', label: t('pages.maintenance.form.unit') || 'Einheit', type: 'select',
-      options: [{ value: '', label: t('pages.maintenance.form.noneOption') || '— Keine —' }, ...units.map(u => ({ value: u.id, label: u.label }))] },
+      options: values => [{ value: '', label: t('pages.maintenance.form.noneOption') || '— Keine —' }, ...units
+        .filter(unit => unit.property_id === values.property_id).map(unit => ({ value: unit.id, label: unit.label }))],
+      validate: (value, values) => value && units.find(unit => unit.id === value)?.property_id !== values.property_id
+        ? 'Bitte eine Einheit der ausgewählten Immobilie wählen.' : null },
     { key: 'title', label: t('pages.maintenance.form.title') || 'Titel', required: true },
     { key: 'description', label: t('pages.maintenance.form.description') || 'Beschreibung', type: 'textarea' },
     { key: 'category', label: t('pages.maintenance.form.category') || 'Kategorie', type: 'select', options: [
@@ -135,8 +179,9 @@ export default function Maintenance() {
     { key: 'assignee', label: t('pages.maintenance.form.assignee') || 'Zuständig' },
     { key: 'contractor', label: t('pages.maintenance.form.contractor') || 'Handwerker' },
     { key: 'due_date', label: t('pages.maintenance.form.dueDate') || 'Fällig am', type: 'date' },
-    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'date' },
-    { key: 'estimated_cost', label: t('pages.maintenance.form.estimatedCost') || 'Geschätzte Kosten (€)', type: 'number' },
+    { key: 'appointment_at', label: t('pages.maintenance.form.appointment') || 'Termin', type: 'datetime-local', step: 1,
+      validate: value => { try { saveLocalDateTime(value, modal?.appointment_at); return null; } catch (failure) { return failure.message; } } },
+    { key: 'estimated_cost', label: t('pages.maintenance.form.estimatedCost') || 'Geschätzte Kosten (€)', type: 'number', min: 0 },
     { key: 'status', label: t('pages.maintenance.form.status') || 'Status', type: 'select', default: 'open', options: [
       { value: 'open', label: t('pages.maintenance.status.open') || 'Offen' },
       { value: 'in_progress', label: t('pages.maintenance.status.inProgress') || 'In Bearbeitung' },
@@ -146,64 +191,64 @@ export default function Maintenance() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Immobilien- und Einheitenauswahl erneut laden.');
+    data = { ...data, appointment_at: saveLocalDateTime(data.appointment_at, modal?.appointment_at) };
     if (modal === 'create') {
       await api.post('/maintenance', data);
     } else {
       await api.put(`/maintenance/${modal.id}`, data);
     }
     refreshData();
-    if (store) store.invalidateRelated('maintenance', 'properties', 'units');
+    if (store) store.invalidateRelated('maintenance', 'properties', 'units', 'calendar');
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/maintenance/${row.id}`);
     refreshData();
     if (store) store.invalidateRelated('maintenance', 'properties', 'units');
   };
 
-  if (loading) return <div className="page-loading">Lade Wartungsaufträge...</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && items.length === 0 && !error && !modal) return <div className="page-loading">Lade Wartungsaufträge...</div>;
 
   return (
     <div className="page">
       <h1 className="page-title">{t('pages.maintenance.title') || 'Wartung & Instandhaltung'}</h1>
+      <ObjectScope params={params} setParams={setParams} properties={properties} units={units} />
+      {[propertySource, unitSource].filter(source => source.error).map((source, index) => <p className="alert-error" role="alert" key={index}>
+        Die Objektauswahl konnte nicht geladen werden. {source.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={source.reload}>Auswahl erneut laden</button></p>)}
+      {error && <p role="alert">{error} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
+      {filter === 'escalation' && <><p className="text-muted">Fälle mit aktiver Instandhaltungsregel, erreichtem Überfälligkeitsgrenzwert und Status offen, in Bearbeitung, ausstehend oder Prüfung.</p>
+        {source.loading && <p role="status">Eskalationsfälle werden geladen…</p>}
+        {source.error && <p role="alert">{source.error} <button type="button" onClick={() => setSourceAttempt(value => value + 1)}>Eskalationsquelle erneut laden</button></p>}</>}
 
       {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{totalCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Gesamt</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--info, #2196f3)' }}>{openCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Offen</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--warning)' }}>{inProgressCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>In Bearbeitung</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>{overdueCount}</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>Überfällig</div>
-        </div>
-        <div className="panel" style={{ padding: '0.75rem 1rem', minWidth: '140px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 700 }}>{avgAge} T</div>
-          <div className="text-muted" style={{ fontSize: '0.8rem' }}>&Oslash; Alter offener Fälle</div>
-        </div>
+      <div className="kpi-row">
+        <KpiAction label="Gesamt" value={error && !items.length ? '—' : totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Offen" value={error && !items.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
+        <KpiAction label="In Bearbeitung" value={error && !items.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
+        <KpiAction label="Überfällig" value={error && !items.length ? '—' : overdueCount} color="var(--danger)" onClick={() => openSources('overdue')} />
+        <KpiAction label="Ø Alter (offen / in Bearbeitung)" value={error && !items.length ? '—' : `${avgAge} Tage`} onClick={() => openSources('age_basis')} />
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="filter-chips">
         {[
           { key: 'all', label: 'Alle' },
           { key: 'open', label: 'Offen' },
           { key: 'in_progress', label: 'In Bearbeitung' },
+          { key: 'completed', label: 'Erledigt' },
+          { key: 'cancelled', label: 'Abgebrochen' },
           { key: 'overdue', label: 'Überfällig' },
+          { key: 'escalation', label: 'Eskalationsfälle' },
+          { key: 'age_basis', label: 'Basis Durchschnittsalter' },
           { key: 'urgent', label: 'Dringend' },
           { key: 'no_appointment', label: 'Ohne Termin' },
           { key: 'no_assignee', label: 'Ohne Zuständigen' },
         ].map(f => (
-          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilter(f.key)}>
+          <button key={f.key} className={`btn btn-sm ${filter === f.key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => openSources(f.key)}>
             {f.label}
           </button>
         ))}
@@ -213,8 +258,18 @@ export default function Maintenance() {
         title={t('pages.maintenance.title') || 'Wartung & Instandhaltung'}
         columns={columns}
         data={filtered}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        drilldownKey={drilldown}
+        emptyText={filter === 'escalation' && (source.loading || source.error) ? 'Eskalationsquelle noch nicht verfügbar.' : undefined}
+        viewConfig={{ column_filters: { workflow_filter: filter, property_id: params.get('property_id') || '', unit_id: params.get('unit_id') || '' } }}
+        onApplyView={config => { const saved = config.column_filters || {}; setFilter(FILTERS.includes(saved.workflow_filter) ? saved.workflow_filter : 'all');
+          setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'suche'].forEach(key => next.delete(key));
+            if (FILTERS.includes(saved.workflow_filter) && saved.workflow_filter !== 'all') next.set('filter', saved.workflow_filter);
+            ['property_id', 'unit_id'].forEach(key => { if (saved[key]) next.set(key, saved[key]); else next.delete(key); }); return next; }); }}
+        rowName={row => row.title || row.id}
+        bulkActions={[bulkDelete({ one: 'Wartungsauftrag', many: 'Wartungsaufträge', remove: row => api.del(`/maintenance/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('maintenance', 'properties', 'units'); } })]}
+        onAdd={choicesReady ? values => { setPrefill({ ...scopeDefaults(params, units), ...values }); setModal('create'); } : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
       />
 
@@ -222,7 +277,7 @@ export default function Maintenance() {
         <FormModal
           title={modal === 'create' ? 'Wartungsauftrag erstellen' : 'Wartungsauftrag bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? prefill : { ...modal, appointment_at: localDateTimeInput(modal.appointment_at) }}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />
