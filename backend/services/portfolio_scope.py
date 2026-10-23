@@ -218,6 +218,10 @@ def _parents(table):
             # Likewise a contract's visibility derives from its locations, not the other way round.
             if table.name == SERVICE_CONTRACT_LOCATIONS and parent == SERVICE_CONTRACTS:
                 continue
+            # An address book entry is read by every account: it neither places a record in a portfolio
+            # nor keeps it out of one (an owner's share belongs to its property). Writes still check it.
+            if parent in SHARED_READ:
+                continue
             result[column.name] = parent
     return result
 
