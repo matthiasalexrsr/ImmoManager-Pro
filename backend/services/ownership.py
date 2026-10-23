@@ -74,6 +74,18 @@ class Ownership:
             self._unit_property[unit.id] = unit.property_id
         self._cache: dict[tuple, dict[Optional[str], Decimal]] = {}
         self._changes: dict[str, list[date]] = {}
+        self._store = store
+        self._reversed: dict[str, Optional[date]] = {}
+
+    def split_day(self, reverses_booking_id: Optional[str], day: date) -> date:
+        """The day a booking is split by. A reversal takes back the parts of the booking it cancels, so it
+        is split on that booking's day: after an owner change, by the owners then, not those of its own day."""
+        if not reverses_booking_id:
+            return day
+        if reverses_booking_id not in self._reversed:
+            original = Rows.reading(self._store).get("bookings", reverses_booking_id)
+            self._reversed[reverses_booking_id] = original.booking_date if original else None
+        return self._reversed[reverses_booking_id] or day
 
     def _direct(self, property_id: str, unit_id: Optional[str], day: date) -> Optional[dict[Optional[str], Decimal]]:
         active = [share for share in self._shares.get((property_id, unit_id), ()) if active_on(share, day)]
@@ -179,8 +191,9 @@ class Ownership:
         return self._allocate(amount, self.period_weights(property_id, unit_id, first, last))
 
     def booking_split(self, booking: Any, amount: Any = None) -> dict[Optional[str], Decimal]:
+        day = self.split_day(getattr(booking, "reverses_booking_id", None), booking.booking_date)
         return self.split(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
-                          booking.booking_date, getattr(booking, "owner_contact_id", None))
+                          day, getattr(booking, "owner_contact_id", None))
 
     def has_shares(self, property_id: str) -> bool:
         """Whether any share names the property or one of its units."""
@@ -210,8 +223,9 @@ class OwnerView:
         return self.ownership.part(self.owner, amount, property_id, unit_id, day, booking_owner)
 
     def booking(self, booking: Any, amount: Any = None) -> Decimal:
-        return self.part(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
-                         booking.booking_date, getattr(booking, "owner_contact_id", None))
+        if self.ownership is None:
+            return money(booking.amount if amount is None else amount)
+        return self.ownership.booking_split(booking, amount).get(self.owner, ZERO)
 
     def contract(self, contract: Any, amount: Any, day: date) -> Decimal:
         return self.part(amount, contract.property_id, contract.unit_id, day)

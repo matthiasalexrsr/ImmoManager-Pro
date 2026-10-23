@@ -24,6 +24,7 @@ Code: `backend/services/ownership.py` (Regeln, Aufteilung, Wechsel, Verlauf), `b
 | Betrag einer Einheit (Miete, Reparatur WE 3, Forderung, Rechnung) | die Anteile an der Einheit; hat sie keine eigenen, die Anteile am Objekt |
 | Betrag des ganzen Objekts (Gebäudeversicherung, Grundsteuer) | die Anteile am Objekt. Ohne solche Anteile: die Eigentümer der Einheiten nach Wohnfläche. Fehlt bei einer Einheit die Fläche, zählt jede Einheit gleich. |
 | Betrag ohne Objekt (Kontoführung) | „Ohne Eigentümer“ |
+| Storno | wie die stornierte Buchung, also mit den Anteilen an deren Tag: nach einem Wechsel nimmt es den Teil der damaligen Eigentümer zurück, nicht den der neuen |
 
 Beispiel: Haus mit WE 1 (50 m², Matthias), WE 2 (70 m², Linda), WE 3 (80 m², je 50 %). Die Gebäudeversicherung von 200 € teilt sich nach Fläche: Matthias 50 + 40 = 90 m² (45 %), Linda 70 + 40 = 110 m² (55 %), also 90 € und 110 €.
 

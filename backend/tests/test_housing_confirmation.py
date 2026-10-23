@@ -302,12 +302,15 @@ def test_title_edits_keep_the_evidence_and_the_document_stays(client, lease):
 def test_damaged_evidence_is_reported_not_served(client, lease):
     result = _publish(client, lease["contract"].id)
     if SQL:
+        # read before the guards are dropped: on PostgreSQL that transaction locks the table for other connections
+        snapshot = _snapshot(result["version_id"])
+        shared.db.rollback()
         with shared.db.get_bind().begin() as connection:
             from archive_helpers import drop_guards
             drop_guards(connection)
             connection.execute(text("UPDATE document_versions SET metadata_snapshot = :value WHERE id = :id"), {
                 "id": result["version_id"],
-                "value": __import__("json").dumps({**_snapshot(result["version_id"]), "document_date": "2020-01-01"}),
+                "value": __import__("json").dumps({**snapshot, "document_date": "2020-01-01"}),
             })
             install_guards(connection)
         with shared.db.get_bind().connect() as connection:

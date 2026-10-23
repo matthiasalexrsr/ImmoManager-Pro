@@ -95,6 +95,26 @@ def test_matthias_sells_everything_to_linda_and_the_month_of_the_sale_is_split_b
     assert (rows["Matthias"]["rent_due"], rows["Linda"]["rent_due"]) == (483.87, 516.13)
 
 
+def test_a_reversal_after_the_sale_takes_back_the_part_of_the_seller(estate):
+    """A booking of June reversed in August, Matthias sold in July: the reversal is his, as the booking was."""
+    estate["share"]("Matthias", 100, "WE 1")
+    estate["transfer"]("Matthias", [("Linda", 100)], "2026-07-16", "WE 1", kind="purchase")
+    post, unit = estate["post"], estate["units"]["WE 1"]
+    account = post("/accounts", {"portfolio_id": estate["pf"], "name": "Konto", "account_type": "bank"})["id"]
+    repair = post("/bookings", {"account_id": account, "property_id": estate["house"], "unit_id": unit,
+                                "booking_date": "2026-06-10", "amount": -300, "payment_text": "Reparatur"})
+    post(f"/bookings/{repair['id']}/reverse", {"booking_date": "2026-08-05"})
+    m, linda = estate["people"]["Matthias"], estate["people"]["Linda"]
+    owned = {owner: estate["call"]("GET", f"/bookings?owner_contact_id={owner}") for owner in (m, linda)}
+    assert sorted(b["owner_part"] for b in owned[m]) == [-300, 300] and owned[linda] == []
+    year = "date_from=2026-01-01&date_to=2026-12-31"
+    rows = {row["name"]: row for row in estate["call"]("GET", f"/reports/owner-results?{year}")["owners"]}
+    assert [row["costs"] for name, row in rows.items() if name in ("Matthias", "Linda")] in ([], [0], [0, 0])
+    for owner in (m, linda):
+        assert estate["call"]("GET", f"/reports/period-result?{year}&owner_contact_id={owner}")["totals"]["costs"] == 0
+        assert estate["call"]("GET", f"/reports/cashflow?{year}&owner_contact_id={owner}")["expenseTotal"] == 0
+
+
 def test_sebastian_shares_his_house_with_linda_half_and_half_and_the_budget_year_is_split(estate):
     estate["share"]("Sebastian", 100, prop=estate["other"])
     estate["transfer"]("Sebastian", [("Linda", 100)], "2026-04-01", prop=estate["other"], fraction_percent=50, kind="division")

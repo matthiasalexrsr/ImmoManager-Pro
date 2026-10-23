@@ -209,8 +209,8 @@ def compile_projection(store, profile, command, *, parent=None):
                         continue
                     effective = cash if kind == "income" else -cash
                     unit = entry.get("unit_id") if part["property_id"] == entry.get("property_id") else None
-                    for owner, share in ownership.split(Decimal(effective) / 100, part["property_id"], unit,
-                                                        date.fromisoformat(entry["booking_date"]),
+                    day = ownership.split_day(entry.get("reverses_booking_id"), date.fromisoformat(entry["booking_date"]))
+                    for owner, share in ownership.split(Decimal(effective) / 100, part["property_id"], unit, day,
                                                         entry.get("owner_contact_id")).items():
                         owner_split[(owner or "", part["property_id"] or "", kind, part["form_line"] or "")] += int(share * 100)
                     totals[kind + "_cents"] += effective
