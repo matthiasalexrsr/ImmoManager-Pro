@@ -11,6 +11,15 @@ The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 ha
 - **Second backup target in the app:** the owner sets the folder every full backup is copied to (USB drive, NAS) under Einstellungen → System → Betrieb. Before it is kept, the folder is created and a test file written; a relative path, the data folder itself or a file is refused with a sentence. `BACKUP_SECOND_TARGET` still wins and is shown as fixed. The overview now tells a target that is waiting for its first copy from a failed copy, and warns when the target is on the same drive as the data. The passphrase notice names the file to put `BACKUP_PASSPHRASE` in.
 - The Aktenwerk manifest preview no longer carries a fresh timestamp, so the same data gives the same answer (it made the portfolio-scope comparison of all read endpoints fail at random).
 
+## Unreleased — 2026-10-23 Round 18: check before the beta
+
+Everything checked once more before the beta release: both store backends, PostgreSQL for the owner, scope and letter tests, every page in the browser at 1440 and 390 px, every read endpoint of the test version, and the owner sums on its data. Fixed:
+
+- **Restricted accounts and owners:** the address book is read by every account, but the scope took an owner contact for a portfolio anchor. On the memory store a restricted account saw no shares; on SQL it could not change a share or record or undo an owner change once the owner contact was not bound to its portfolio. An address book entry now neither places a record in a portfolio nor keeps it out (`services/portfolio_scope._parents`); test `test_ownership_scope.py`.
+- **A reversal after an owner change** is split like the booking it cancels, on that booking's day: it takes back the seller's part instead of charging the buyer (`Ownership.split_day`; reports, bookings list, balances, DATEV, tax split).
+- **Update check:** a pre-release came out equal to or newer than its release ("2.0.0-beta.1" read as 2.0.0.1), so a beta installation was never offered 2.0.0. Versions now compare dev < alpha < beta < rc < release; the preview channel takes the highest listed version and skips drafts.
+- **Tests on PostgreSQL:** the housing confirmation test waited for its own lock, the letter tests passed a literal `%` to the driver.
+
 ## Unreleased — 2026-10-22 Round 17: owners wired through
 
 The gaps left by round 16 are closed: [docs/OWNERSHIP_20261022.md](docs/OWNERSHIP_20261022.md). One migration adds four optional columns (`e1a3c5e7f9b2`: `accounts.owner_contact_id`; `ownership_transfers.changes`, `reverted_at`, `reverted_by`).
