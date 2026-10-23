@@ -91,6 +91,27 @@ def test_a_checkout_of_another_repository_is_not_offered_an_update_it_cannot_fet
     assert not refused["success"] and refused["message"] == result["download_hint"] and not refused["steps"]
 
 
+def test_a_pre_release_comes_before_its_release():
+    order = ["1.9.9", "2.0.0-dev1", "2.0.0-alpha", "2.0.0b1", "v2.0.0-beta.2", "2.0.0-rc1", "2.0.0", "2.0.1-beta.1",
+             "2.0.1", "2.1.0-rc.1", "v2.1", "2.10.0"]
+    for older, newer in zip(order, order[1:]):
+        assert updater.is_newer_version(newer, older) and not updater.is_newer_version(older, newer), (older, newer)
+    assert not updater.is_newer_version("v2.0.0", "2.0") and not updater.is_newer_version("2.0.0+build.7", "2.0.0")
+
+
+def test_a_beta_installation_is_offered_the_release_and_the_next_beta(github, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(settings, "app_version", "2.0.0-beta.1")
+    github["answer"]["json"] = release("v2.0.0")
+    assert updater.check_for_updates()["update_available"] is True
+    # the preview channel lists the releases newest first by date: the highest version counts
+    monkeypatch.setattr(settings, "update_channel", "preview")
+    github["answer"]["json"] = [release("v1.9.2"), release("v2.0.0-beta.2"), {**release("v2.0.0-rc1"), "draft": True}]
+    result = updater.check_for_updates()
+    assert github["calls"][-1] == "https://api.github.com/repos/o/r/releases?per_page=5"
+    assert (result["update_available"], result["latest_version"]) == (True, "2.0.0-beta.2")
+
+
 def test_no_release_yet_is_reported_plainly(github, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     github["answer"].update(status=404, json={"message": "Not Found"})

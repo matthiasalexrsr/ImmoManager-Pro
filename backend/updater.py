@@ -49,16 +49,25 @@ _HTTP_TIMEOUT = 30.0
 
 # ─── Version Comparison ──────────────────────────────────────────────────────
 
-def _parse_version(version_str: str) -> tuple[int, ...]:
-    """Parse a semver string like '1.2.3' into a comparable tuple."""
-    cleaned = version_str.lstrip("vV").strip()
-    parts = []
-    for part in cleaned.split("."):
-        try:
-            parts.append(int(part.split("-")[0].split("+")[0]))
-        except ValueError:
-            parts.append(0)
-    return tuple(parts)
+_VERSION = re.compile(r"(\d+(?:\.\d+)*)(?:[-.]?([a-zA-Z]+)[-.]?(\d*))?")
+# a pre-release comes before its release: 2.0.0-dev < -alpha < -beta.1 < -beta.2 < -rc1 < 2.0.0
+_PHASES = {"dev": 0, "a": 1, "alpha": 1, "b": 2, "beta": 2, "c": 3, "rc": 3, "pre": 3, "preview": 3}
+_RELEASED = 4
+
+
+def _parse_version(version_str: str) -> tuple[tuple[int, ...], int, int]:
+    """'1.2.3', 'v2.1.0-rc1', '2.0.0-beta.2' or '2.0.0b2' as a comparable key; '+build' does not count."""
+    cleaned = version_str.strip().lstrip("vV").split("+")[0]
+    match = _VERSION.match(cleaned)
+    if not match:
+        return ((), 0, 0)
+    numbers = [int(number) for number in match.group(1).split(".")]
+    while len(numbers) > 1 and numbers[-1] == 0:      # 2.0 is 2.0.0
+        numbers.pop()
+    phase = match.group(2)
+    if phase is None:
+        return (tuple(numbers), _RELEASED, 0)
+    return (tuple(numbers), _PHASES.get(phase.lower(), 0), int(match.group(3) or 0))
 
 
 def is_newer_version(remote: str, local: str) -> bool:
@@ -276,11 +285,13 @@ def check_for_updates() -> dict:
         if channel == "stable":
             release = data
         else:
-            # data is a list; pick the first (newest)
-            if not data:
+            # data is a list, newest first by date; the highest version wins (a fix of an older line
+            # published after a pre-release does not hide it)
+            published = [item for item in data if not item.get("draft")]
+            if not published:
                 result["error"] = "Keine Releases gefunden"
                 return result
-            release = data[0]
+            release = max(published, key=lambda item: _parse_version(item.get("tag_name", "")))
 
         tag = release.get("tag_name", "")
         result["latest_version"] = tag.lstrip("vV")
