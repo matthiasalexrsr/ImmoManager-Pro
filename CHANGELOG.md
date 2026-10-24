@@ -2,6 +2,15 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## 2.0.0-beta.1 — first beta (2026-10-24)
+
+The version is now `2.0.0-beta.1`: the scope of 2.0.0 is complete and tried by users before the release. It contains everything below (the 2.0.0 release candidate and rounds 1–18 since), and round 19:
+
+- **Lists on a monitor (1280–1920 px, every page, tab and form measured):** from 1366 px no list scrolls sideways. Secondary columns are hidden by default and can be shown under "Spalten anpassen"; context stands beneath the main value (contract under tenant in bookings, unit under property in insurances and calendar, invoice number under supplier, origin under the description of a receivable). Names and addresses are no longer squeezed to their longest word, e-mail addresses break only after the "@", sort arrows stay beside their heading, "Summe (n)" no longer widens the first column, percent and area values carry a no-break space ("98 %", "68,50 m²"). Row actions that showed text got icons; the receivable residual is compact. Below 1440 px the sidebar, margins and cell padding are a little narrower; file tabs fit at 1280 px. Dashboard tiles of a row are equally high with aligned figures; one chevron per collapsible area; the current menu entry is scrolled into view; the assistant no longer cuts its empty chat in a short window; viewings show German dates.
+- **Saved column settings and updates:** saved views and list settings record the columns hidden by default when they were saved (`hidden_defaults`, accepted by the server). A saved value that differs from that default is the person's choice and stays; every other column takes today's default, so a column an update hides reaches lists saved before it. Columns stand in the program's order (no list lets a person move one).
+- **Release workflow:** it first waits for the CI run of the same commit and stops unless it passed. Besides a tag `v*`, a push that changes the packaging (`release.yml`, `immomanager.spec`, `packaging/`, `requirements-build.txt`) builds and tries the package as an artifact, publishing nothing (a manual start needs the workflow on the repository's default branch).
+- **Dependencies:** pypdf 6.21.2 (crafted PDFs could cause long runtimes), undici 7.30.1 and zod 4.6.7 (test and lint tools).
+
 ## 2.0.0 — release candidate (2026-10-14)
 
 The version is now 2.0.0 (`pyproject.toml`; it was still 1.0.0 although 1.2.0 had been released). Everything under "Unreleased" below is part of it; the German release notes for users are in [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).

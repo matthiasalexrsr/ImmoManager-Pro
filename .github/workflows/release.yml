@@ -5,13 +5,26 @@ name: Release (Windows)
 # update from the previous release's package), and publishes it as a GitHub release. The app's
 # update check (Einstellungen → System → Updates) reads these releases.
 # The tag must match the version in pyproject.toml. Without a tag nothing is published: a manual
-# run builds and tries the package and keeps it as a workflow artifact only.
+# run, or a push that changes the packaging, builds and tries the package and keeps it as a workflow
+# artifact only. (A manual run needs this file on the repository's default branch.)
 # Only a commit the full CI (ci.yml: frontend, backend, PostgreSQL, document tools, E2E) passed is packaged.
 on:
   push:
     tags:
       - 'v*'
+    branches:
+      - '**'
+    # paths apply to branch pushes only; a tag always builds
+    paths:
+      - '.github/workflows/release.yml'
+      - 'immomanager.spec'
+      - 'packaging/**'
+      - 'requirements-build.txt'
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
   contents: write

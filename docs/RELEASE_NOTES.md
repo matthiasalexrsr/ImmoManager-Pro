@@ -1,4 +1,6 @@
-# ImmoManager Pro 2.0.0
+# ImmoManager Pro 2.0.0-beta.1
+
+**Erste Beta von 2.0.0.** Der Funktionsumfang von 2.0.0 ist vollständig; die Beta dient der Erprobung mit echten Daten vor dem endgültigen Release. Vorher bitte ein Vollbackup anlegen (Einstellungen → System → Betrieb). Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.
 
 Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal unter Windows (oder als Server). Es gibt keine Cloud, und das Programm versendet nichts von selbst.
 
@@ -88,7 +90,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Suche, Filter und Seite bleiben beim Zurückkehren erhalten;
   - Einstellungen je Liste;
   - CSV für deutsche Tabellenprogramme.
-- **Listen passen auf den Bildschirm:** Lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste breiter als das Fenster, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol oder ihre Beschriftung.
+- **Listen passen auf den Bildschirm:** Ab 1366 Pixel Fensterbreite (übliche Monitore) zeigt jede Liste alle Spalten ohne seitliches Scrollen. Seltener gebrauchte Spalten sind dafür zunächst ausgeblendet und lassen sich unter „Spalten anpassen“ wieder einblenden; Zusatzangaben stehen als zweite Zeile unter der Hauptangabe (der Vertrag unter dem Mieter, die Einheit unter der Immobilie, die Rechnungsnummer unter dem Lieferanten). Eigene Spaltenauswahl bleibt erhalten. Namen und Adressen brechen nicht mehr mitten im Wort um, E-Mail-Adressen nur nach dem „@“; lange Texte stehen auf höchstens zwei Zeilen (der ganze Text erscheint beim Darüberfahren), IBANs in Vierergruppen. Ist eine Liste in einem schmalen Fenster breiter, bleiben die Aktionen am rechten Rand sichtbar. Jede Zeilenaktion hat ein Symbol.
 - **Ablaufdaten für Dokumente:** Energieausweis, Wartungsnachweis oder Police bekommen „Gültig bis“ und einen Vorlauf. Rechtzeitig vorher entstehen eine Aufgabe und eine Benachrichtigung, je Ablaufdatum genau einmal. Die Dokumentliste zeigt, was bald abläuft oder abgelaufen ist.
 - **Aufbewahrungsfristen:** Jedes Dokument hat eine Aufbewahrungsfrist nach seinem Typ (Rechnungen und Abrechnungen 8 Jahre, Briefe 6 Jahre, Steuerunterlagen 10 Jahre, Verträge bis 3 Jahre nach Vertragsende) oder nach eigener Wahl. Solange sie läuft, lässt sich das Dokument nicht versehentlich löschen; Eigentümer und Verwaltung können es mit Begründung trotzdem löschen, der Grund wird protokolliert. Ein Filter zeigt, was gelöscht werden darf.
 - **Seite je Dokument:** Ein Klick auf den Titel öffnet Vorschau, Angaben, Zuordnung, Aufbewahrung, alle Fassungen und den gelesenen Text. Eine korrigierte oder neu eingescannte Datei wird dort als **neue Fassung** desselben Dokuments abgelegt statt als zweites Dokument; frühere Fassungen bleiben unverändert und herunterladbar.
