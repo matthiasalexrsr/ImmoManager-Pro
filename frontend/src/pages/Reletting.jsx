@@ -73,7 +73,7 @@ export default function Reletting() {
     { key: 'property_name', label: 'Objekt', filterType: 'text',
       render: (value, row) => <Link to={`/properties/${encodeURIComponent(row.property_id)}`}>{value}</Link> },
     { key: 'unit_type', label: 'Art', render: value => codeLabel(value) || '—' },
-    { key: 'area_sqm', label: 'Fläche', type: 'number', align: 'right', render: value => (value ? `${formatNumber(value, 1)} m²` : '—') },
+    { key: 'area_sqm', label: 'Fläche', type: 'number', align: 'right', render: value => (value ? `${formatNumber(value, 1)}\u00a0m²` : '—') },
     { key: 'rooms', label: 'Zimmer', type: 'number', align: 'right', render: value => (value ? formatNumber(value, 1) : '—') },
     { key: 'cold_rent', label: 'Bisherige Kaltmiete', type: 'number', align: 'right', render: value => (value ? formatMoney(value) : '—') },
     { key: 'vacant_since', label: 'Frei', render: (value, row) => (row.free_from ? `ab ${formatDate(row.free_from)} (Mietende)`

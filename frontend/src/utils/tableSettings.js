@@ -42,3 +42,12 @@ export function writeTableView(key, view) {
   if (!key) return;
   try { window.sessionStorage.setItem(privateStorageKey(VIEW_PREFIX + key), JSON.stringify(view)); } catch { /* not kept */ }
 }
+
+// A saved column setting is the person's choice only where it differed from the column's default of its time
+// (savedDefaults: the columns hidden by default then); elsewhere the column takes today's default, so an update
+// that hides a secondary column (to keep a list on screen) reaches lists saved before it. Settings saved before
+// defaults were recorded count as made when every column was shown: a column hidden in them stays hidden.
+export function columnHidden(col, savedHidden, savedDefaults) {
+  const hiddenThen = Array.isArray(savedDefaults) && savedDefaults.includes(col.key);
+  return savedHidden !== hiddenThen ? savedHidden : Boolean(col.hidden);
+}

@@ -288,6 +288,13 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => setViewer({ fileUrl: row.receipt_url, title: `Beleg: ${row.payment_text || formatDate(row.booking_date)}` })}>Beleg öffnen</button>
     : <span className="text-muted">{row.receipt_url?.trim() ? 'Belegadresse ist ungültig.' : 'Kein Beleg hinterlegt.'}</span>;
   const selectedAllocation = selected ? allocationInfo(selected) : null;
+  const allocation = row => (
+    <span className="cell-inline" title={row.allocation_detail}>
+      <span>{row.allocation_label}</span>
+      {row.unassigned !== null && row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
+      {canSplit && !row.reverses_booking_id && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
+    </span>
+  );
 
   const columns = [
     { key: 'booking_date', label: t('finance.bookings.form.date') || 'Datum', type: 'date', filterType: 'dateRange' },
@@ -307,21 +314,15 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true, link: 'unit' },
-    // the payer: a click opens the party file (contracts, account, documents)
+    // the payer: a click opens the party file (contracts, account, documents); beneath it the contract the payment
+    // went to, so the list fits a monitor without a column of its own (that one can still be shown)
     { key: 'tenant_name', label: t('tenantsContracts.tenants.title') || 'Mieter', filterType: 'text',
-      render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
-    { key: 'allocation_label', label: 'Vertrag', filterType: 'text',
-      render: (v, row) => (row.tenant_id
-        ? (
-          <span className="cell-inline" title={row.allocation_detail}>
-            <span>{v}</span>
-            {row.unassigned !== null && row.unassigned !== 0 && <span className="badge badge-yellow">offen {formatMoney(row.unassigned)}</span>}
-            {canSplit && !row.reverses_booking_id && <button className="btn btn-sm btn-ghost btn-link" onClick={() => openSplit(row)}>Aufteilen</button>}
-          </span>
-        )
+      render: (v, row) => (row.tenant_id && v !== '—'
+        ? <span className="cell-stack"><PartyLink tenantId={row.tenant_id}>{v}</PartyLink><span className="td-sub">{allocation(row)}</span></span>
         : v) },
-    { key: 'has_receipt', label: 'Beleg', filterType: 'text', render: (_value, row) => receiptAction(row) },
-    { key: 'status', label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
+    { key: 'allocation_label', hidden: true, label: 'Vertrag', filterType: 'text', render: (v, row) => (row.tenant_id ? allocation(row) : v) },
+    { key: 'has_receipt', hidden: true, label: 'Beleg', filterType: 'text', render: (_value, row) => receiptAction(row) },
+    { key: 'status', hidden: true, label: t('ui.form.status') || 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
   ];
 

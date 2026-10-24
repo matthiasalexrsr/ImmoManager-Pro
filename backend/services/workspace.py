@@ -31,7 +31,8 @@ from .portfolio_scope import scope_context, scope_from_user
 
 MODELS: dict[str, Any] = {"drafts": WorkspaceDraftORM, "views": WorkspaceViewORM, "recents": WorkspaceRecentORM,
           "favorites": WorkspaceFavoriteORM, "view-state": WorkspaceViewStateORM, "deferrals": WorkspaceDeferralORM}
-VIEW_KEYS = {"search", "column_filters", "sort", "visible_columns", "hidden_columns", "column_order", "page_size"}
+VIEW_KEYS = {"search", "column_filters", "sort", "visible_columns", "hidden_columns", "hidden_defaults", "column_order",
+             "page_size"}
 STATE_KEYS = VIEW_KEYS | {"page_cursor", "page", "scroll_top", "scroll_left", "row_mark"}
 
 
@@ -202,7 +203,7 @@ def _validate_view(unit, config: dict, *, state: bool = False, read: bool = Fals
     if not isinstance(filters, dict) or any(not isinstance(key, str) or not contexts.IDENTIFIER.fullmatch(key) for key in filters):
         raise HTTPException(422, "Ungültige Spaltenfilter.")
     contexts.validate_references(unit.store, filters, unit.actor_id)
-    for key in ("visible_columns", "hidden_columns", "column_order"):
+    for key in ("visible_columns", "hidden_columns", "hidden_defaults", "column_order"):
         columns = config.get(key, [])
         if not isinstance(columns, list) or len(columns) > 250 or any(
                 not isinstance(column, str) or not contexts.IDENTIFIER.fullmatch(column) for column in columns):

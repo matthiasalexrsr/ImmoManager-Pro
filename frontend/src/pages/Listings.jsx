@@ -19,7 +19,7 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       `🏠 ${listing.title}`,
       '',
-      unit?.area_sqm ? `Wohnfläche: ${unit.area_sqm} m²` : '',
+      unit?.area_sqm ? `Wohnfläche: ${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
       unit?.floor ? `Etage: ${unit.floor}` : '',
       listing.target_rent ? `Kaltmiete: ${formatMoney(listing.target_rent)}` : '',
@@ -43,7 +43,7 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       listing.title,
       '---',
-      unit?.area_sqm ? `Fläche: ${unit.area_sqm} m²` : '',
+      unit?.area_sqm ? `Fläche: ${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
       listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} (kalt)` : '',
       listing.service_charge ? `NK: ${formatMoney(listing.service_charge)}` : '',
@@ -58,7 +58,7 @@ const PORTAL_TEMPLATES = {
       listing.title,
       '',
       listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} kalt` : '',
-      unit?.area_sqm ? `${unit.area_sqm} m²` : '',
+      unit?.area_sqm ? `${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `${unit.rooms} Zimmer` : '',
       listing.available_from ? `Frei ab ${listing.available_from}` : '',
       '',

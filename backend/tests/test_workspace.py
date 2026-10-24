@@ -257,6 +257,17 @@ def test_named_views_and_same_area_table_state_keep_distinct_identities(estate):
         assert len(listed) == 1 and listed[0]["config"]["search"] == search
 
 
+def test_view_settings_record_the_columns_hidden_by_default(estate):
+    # a list compares them on load: a column whose default an update changed takes the new default
+    _, owner = client("column-defaults")
+    columns = {"visible_columns": ["title"], "hidden_defaults": ["status", "tags"], "column_order": ["title", "status", "tags"]}
+    assert owner.put(f"{API}/view-state/tasks%23defaults", json=command(state=columns)).status_code == 200
+    assert owner.get(f"{API}/view-state/tasks%23defaults").json()["state"]["hidden_defaults"] == ["status", "tags"]
+    assert owner.put(f"{API}/views/{uuid4()}", json=command(context="tasks#defaults", name="Kurz", config=columns)).status_code == 200
+    for wrong in ("status", ["no column!"], [1]):
+        assert owner.put(f"{API}/view-state/tasks%23defaults", json=command(1, state={"hidden_defaults": wrong})).status_code == 422
+
+
 def test_first_visit_view_state_is_null_with_missing_ok_and_404_without(estate):
     _, owner = client("first-visit")
     path = f"{API}/view-state/tasks%23first-visit"

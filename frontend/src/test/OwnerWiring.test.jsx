@@ -44,7 +44,7 @@ afterEach(cleanup);
 describe('owners in the lists and on the contact', () => {
   it('names a sole owner without the percent and co-owners with theirs', () => {
     expect(ownersLabel([{ name: 'Linda', percent: 100 }])).toBe('Linda');
-    expect(ownersLabel(current.properties.p1)).toBe('Linda 55 %, Matthias 45 %');
+    expect(ownersLabel(current.properties.p1)).toBe('Linda 55\u00a0%, Matthias 45\u00a0%');
     expect(ownersLabel([])).toBe('');
   });
 

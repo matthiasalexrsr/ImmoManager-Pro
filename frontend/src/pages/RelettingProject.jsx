@@ -131,7 +131,7 @@ function Overview({ data, done, canWrite, onEdit, onGo }) {
     ['Kaution', project.deposit_amount != null && <>{formatMoney(project.deposit_amount)}{depositRatio != null
       && <span className={depositRatio > 3 ? 'reletting-warning' : 'text-muted'}> · {formatNumber(depositRatio, 1)} Kaltmieten
         {depositRatio > 3 ? ' – mehr als drei (§ 551 BGB)' : ''}</span>}</>],
-    ['Wohnfläche', unit.area_sqm && `${String(unit.area_sqm).replace('.', ',')} m²`],
+    ['Wohnfläche', unit.area_sqm && `${String(unit.area_sqm).replace('.', ',')}\u00a0m²`],
     ['Zimmer', unit.rooms && String(unit.rooms).replace('.', ',')],
     ['Etage', unit.floor],
     ['Einkommensvorgabe', `mindestens ${String(project.income_factor).replace('.', ',')}-fache Warmmiete`],

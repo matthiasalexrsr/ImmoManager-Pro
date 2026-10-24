@@ -89,13 +89,16 @@
 .dashboard-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .dashboard-toolbar .dashboard-view-switch { margin-bottom: 0; }
 .dashboard-owner { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
-.dashboard-tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 22px 22px; align-items: start; grid-auto-flow: row dense; }
+.dashboard-tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 22px 22px; align-items: stretch; grid-auto-flow: row dense; }
 .dashboard-tile { min-width: 0; grid-column: span 12; }
 .dashboard-tile--wide { grid-column: span 7; }
 .dashboard-tile--narrow { grid-column: span 5; }
 .dashboard-tile--third { grid-column: span 4; }
 .dashboard-tile > * { margin-top: 0; margin-bottom: 0; }
 .dashboard-tile > .dashboard-activity { height: 100%; }
+/* cards side by side end on one line; their footer links sit at the bottom */
+.dashboard-tile > :is(.dashboard-finance, .dashboard-attention) { height: 100%; }
+.dashboard-finance { display: flex; flex-direction: column; }
 .dashboard-tile:empty { display: none; }
 .dashboard-hidden-note { margin: 18px 0 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
 .dashboard-hidden-note button { padding: 0; border: 0; background: none; color: var(--color-primary); font: inherit; font-weight: 600; cursor: pointer; }

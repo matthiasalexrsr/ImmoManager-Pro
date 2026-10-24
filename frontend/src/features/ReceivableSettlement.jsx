@@ -72,13 +72,18 @@ export default function ReceivableSettlement({ receivable, onChanged }) {
   const undo = id => execute({ path: `/receivables/${receivable.id}/settlements/${id}/reverse`, request: { expected_revision: state.revision,
     idempotency_key: key, effective_date: day, reason } });
   const cash = value => formatMoney(value, { currency: state?.currency || 'EUR' });
-  return <div>{state ? <><strong>{cash(state.residual)}</strong>
-    {(state.unresolved_legacy || state.undated_legacy_closed) && <p>Altbestand ohne vollständigen datierten Zahlungsnachweis</p>}
-    <button type="button" onClick={show}>Rest / Ausgleich</button></> : <span>Rest wird geladen …</span>}
+  const legacy = state && (state.unresolved_legacy || state.undated_legacy_closed)
+    ? 'Altbestand ohne vollständigen datierten Zahlungsnachweis' : '';
+  // in the list: the amount (a legacy claim marked, the whole sentence on hover and when opened), its button beneath
+  return <div className="receivable-settlement">{state ? <><span className="receivable-settlement__line"><strong>{cash(state.residual)}</strong>
+    {legacy && <span className="badge badge-gray" title={legacy}>Altbestand</span>}</span>
+    <button type="button" className="btn btn-sm btn-secondary" onClick={show}>Rest / Ausgleich</button></>
+    : <span>Rest wird geladen …</span>}
     {state && pending && <p role="status">Ein Ausgleich wartet auf Bestätigung. Eingaben bleiben bis zur Klärung gesperrt.
       <button type="button" disabled={busy || !canEdit || !canBook} onClick={() => execute(pending)}>Ausgleich prüfen und fortsetzen</button></p>}
     {error && <p role="alert">{error} <button type="button" onClick={() => setRevision(r => r + 1)}>Stand neu laden</button></p>}
-    {open && <div><button type="button" onClick={() => setOpen(false)}>Schließen</button>
+    {open && <div className="receivable-settlement__panel"><button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(false)}>Schließen</button>
+      {legacy && <p>{legacy}</p>}
       <label>Rest zum <input type="date" required value={asOf} onChange={e => setAsOf(e.target.value)} /></label>
       <ul>{state?.evidence.map((e, i) => <li key={i}>{e.date}: {cash(e.amount)} ({e.kind === 'deposit' ? 'Kaution' : e.kind === 'reversal' ? 'Storno' : e.kind === 'allocation_reversal' ? 'Rücknahme' : e.kind === 'credit' ? 'Guthaben' : 'Zahlung'}) {e.url && <Link to={e.url}>Quelle öffnen</Link>}</li>)}</ul>
       {canEdit && canBook && state?.allocations?.length > 0 && <fieldset><legend>Zuordnung begründet zurücknehmen</legend>

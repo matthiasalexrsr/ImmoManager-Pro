@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
+import { PieChart } from 'lucide-react';
 import { SearchIcon } from '../components/Icons';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -19,7 +20,7 @@ const COLUMNS = [
     }},
   { key: 'email', label: 'E-Mail', filterType: 'text' },
   { key: 'phone', label: 'Telefon' },
-  { key: 'city', label: 'Stadt', filterType: 'text' },
+  { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
   { key: 'company_name', label: 'Firma', filterType: 'text' },
 ];
 
@@ -55,7 +56,7 @@ function OwnerHoldings({ owner, onClose }) {
       .catch(error => { if (active) setState({ status: 'error', data: null, error: error.message || 'Die Anteile konnten nicht geladen werden.' }); });
     return () => { active = false; };
   }, [owner.id]);
-  const percent = value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 4 })} %`;
+  const percent = value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 4 })}\u00a0%`;
   return <section className="panel" aria-label={`Anteile von ${owner.display_name}`} style={{ marginTop: '1rem' }}>
     <div className="panel-header">Anteile von {owner.display_name}</div>
     <div className="panel-body">
@@ -179,7 +180,7 @@ export default function Contacts() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={row => [
-          ...(row.contact_type === 'owner' ? [{ label: 'Anteile anzeigen', onClick: owner => setHoldings(owner) }] : []),
+          ...(row.contact_type === 'owner' ? [{ label: 'Anteile anzeigen', icon: <PieChart size={14} />, onClick: owner => setHoldings(owner) }] : []),
           { label: 'Dubletten prüfen', icon: <SearchIcon size={14} />, onClick: row => navigate(`/duplicate-check?kind=contact&id=${encodeURIComponent(row.id)}`) }]}
       />
       {holdings && <OwnerHoldings key={holdings.id} owner={holdings} onClose={() => setHoldings(null)} />}

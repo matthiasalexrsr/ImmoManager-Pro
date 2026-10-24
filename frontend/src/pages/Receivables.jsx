@@ -76,8 +76,10 @@ export default function Receivables() {
       && (!params.get('date_to') || row.due_date <= params.get('date_to'));
   });
 
+  const origin = row => (row.statement_id
+    ? <Link to={`/statements?${new URLSearchParams({ statement_id: row.statement_id })}`}>Einzelabrechnung öffnen</Link>
+    : row.kind === 'other' ? 'Sonstige Forderung' : 'Direkte Forderung');
   const COLUMNS = [
-    { key: 'residual', label: 'Belegbarer Rest', render: (_, row) => <ReceivableSettlement receivable={row} onChanged={() => store.invalidateRelated('bookings', 'receivables', 'deposits', 'contracts')} /> },
     { key: 'contract_label', label: t('tenantsContracts.contracts.title'), filterType: 'text',
       render: (value, row) => value !== '—' && row.contract_id
         ? <span className="receivable-record-links">
@@ -87,15 +89,17 @@ export default function Receivables() {
         </span> : value || '—' },
     { key: 'tenant_name', label: 'Mieter', filterType: 'text',
       render: (v, row) => row.tenant_id && v !== '—' ? <PartyLink tenantId={row.tenant_id}>{v}</PartyLink> : v },
-    { key: 'statement_id', label: 'Herkunft', render: (value, row) => value
-      ? <Link to={`/statements?${new URLSearchParams({ statement_id: value })}`}>Einzelabrechnung öffnen</Link>
-      : row.kind === 'other' ? 'Sonstige Forderung' : 'Direkte Forderung' },
+    // what the claim is for, its origin beneath (the origin's own column can still be shown)
+    { key: 'description', label: t('ui.form.description'), filterType: 'text', render: (value, row) => <span className="cell-stack">
+      <span className="cell-text" title={value?.length > 24 ? value : undefined}>{value || '—'}</span>
+      <span className="td-sub">{origin(row)}</span></span> },
+    { key: 'statement_id', hidden: true, label: 'Herkunft', render: (_, row) => origin(row) },
     { key: 'amount_due', label: t('finance.bookings.amount'), type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
+    { key: 'residual', label: 'Belegbarer Rest', render: (_, row) => <ReceivableSettlement receivable={row} onChanged={() => store.invalidateRelated('bookings', 'receivables', 'deposits', 'contracts')} /> },
     { key: 'due_date', label: t('finance.receivables.dueDate'), type: 'date', filterType: 'dateRange' },
     { key: 'status', label: 'Status', type: 'status', filterType: 'select',
       render: v => <StatusBadge status={v} /> },
-    { key: 'description', label: t('ui.form.description'), wrap: true },
   ];
 
   const fields = [
@@ -150,7 +154,7 @@ export default function Receivables() {
           const next = new URLSearchParams(current); next.delete('statement_id'); return next;
         })}>Abrechnungsfilter entfernen</button></p>}
       {canDebit && <div className="toolbar receivables-toolbar">
-        <button type="button" className="btn btn-secondary" onClick={() => setSepaOpen(true)}>SEPA-Lastschriftdatei …</button>
+        <button type="button" className="btn btn-secondary" onClick={() => setSepaOpen(true)}>SEPA-Lastschriftdatei erstellen</button>
         <span className="text-muted">Datei für das Online-Banking mit den offenen Mieten der Lastschriftzahler.</span>
       </div>}
       {sepaOpen && <SepaDebitDialog onClose={() => setSepaOpen(false)} />}

@@ -56,7 +56,7 @@ describe('estate lists', () => {
     sources.data.units = { items: [units[0], ...Array.from({ length: 9 }, (_, i) => ({ ...units[1], id: 'b' + i }))] };
     render(<MemoryRouter><Properties /></MemoryRouter>);
     const card = await screen.findByRole('button', { name: 'Vermietungsquote: Quellvorgänge anzeigen' });
-    expect(card).toHaveTextContent('10%');
+    expect(card).toHaveTextContent(/10\s%/);
     const row = screen.getByRole('row', { name: /Haus B/ });
     expect(within(row).queryByText('0,00 €')).not.toBeInTheDocument();
   });

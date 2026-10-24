@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Check, RotateCcw } from 'lucide-react';
+import { Check, CircleStop, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -428,7 +428,7 @@ export default function Tasks() {
           icon: isFinished(row.status) ? <RotateCcw size={15} /> : <Check size={15} />,
           onClick: toggleCompleted,
         }, ...(row.recurrence_rule && !row.parent_task_id && !['cancelled', 'canceled', 'archived'].includes(row.status) ? [{
-          label: 'Serie beenden', write: true, onClick: () => runAction(row.id, async () => {
+          label: 'Serie beenden', write: true, icon: <CircleStop size={15} />, onClick: () => runAction(row.id, async () => {
             if (!await confirm('Die Serie beenden? Es werden keine neuen Folgeaufgaben erzeugt. Bereits angelegte Aufgaben bleiben erhalten.')) return;
             const saved = await api.patch(`/tasks/${row.id}`, { status: 'cancelled', updated_at: row.updated_at });
             setTasks(current => current.map(task => task.id === row.id ? saved : task));

@@ -102,7 +102,7 @@ function Inventory({ source, stats }) {
     { label: 'Immobilien', value: stats.properties, detail: `${formatNumber(stats.portfolios)} Portfolios`, to: '/properties' },
     { label: 'Einheiten', value: stats.units, detail: `${formatNumber(stats.unitsOccupied)} vermietet · ${formatNumber(stats.unitsReserved)} reserviert`, to: '/units' },
     { label: 'Aktive Verträge', value: stats.contractsActive, detail: `${formatNumber(stats.tenants)} Parteien im Bestand`, to: '/contracts?status=active' },
-    { label: 'Belegung', value: occupancy === null ? '—' : `${occupancy} %`, detail: stats.units > 0 ? `${formatNumber(Math.max(0, stats.units - stats.unitsOccupied - stats.unitsReserved))} freie Einheiten` : 'Noch keine Einheiten', to: '/units?status=occupied' },
+    { label: 'Belegung', value: occupancy === null ? '—' : `${occupancy}\u00a0%`, detail: stats.units > 0 ? `${formatNumber(Math.max(0, stats.units - stats.unitsOccupied - stats.unitsReserved))} freie Einheiten` : 'Noch keine Einheiten', to: '/units?status=occupied' },
   ];
   return <section className="dashboard-inventory" aria-label="Bestand im Überblick">
     <div className="dashboard-metrics">{metrics.map(metric => <Link key={metric.label} to={metric.to} className="dashboard-metric">

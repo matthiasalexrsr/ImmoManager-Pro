@@ -32,10 +32,10 @@ const COLUMNS = [
     render: v => <StatusBadge status={v} /> },
   { key: 'event_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'event_time', label: 'Uhrzeit' },
-  { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
+  { key: 'property_name', subKey: 'unit_label', label: 'Immobilie', filterType: 'text', link: 'property', subLink: 'unit' },
+  { key: 'unit_label', hidden: true, label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'location', label: 'Ort', filterType: 'text' },
-  { key: 'participants', label: 'Teilnehmer' },
+  { key: 'participants', hidden: true, label: 'Teilnehmer' },
 ];
 
 export default function Calendar() {

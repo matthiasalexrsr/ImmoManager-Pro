@@ -8,13 +8,13 @@ export default function Insurances() {
 
   const COLUMNS = [
     { key: 'provider', label: t('pages.insurances.columns.provider') || 'Versicherer', filterType: 'text' },
-    { key: 'property_label', label: 'Immobilie', filterType: 'text', link: 'property' },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
+    { key: 'property_label', subKey: 'unit_label', label: 'Immobilie', filterType: 'text', link: 'property', subLink: 'unit' },
+    { key: 'unit_label', hidden: true, label: 'Einheit', filterType: 'text', link: 'unit' },
     { key: 'insurance_type', label: t('pages.insurances.columns.type') || 'Art', filterType: 'select' },
     { key: 'policy_number', label: t('pages.insurances.columns.policyNumber') || 'Policennr.', filterType: 'text' },
     { key: 'premium_amount', label: t('pages.insurances.columns.premium') || 'Prämie (€)', type: 'number', align: 'right',
       render: v => formatMoney(v) },
-    { key: 'premium_interval', label: t('pages.insurances.columns.interval') || 'Intervall' },
+    { key: 'premium_interval', hidden: true, label: t('pages.insurances.columns.interval') || 'Intervall' },
     { key: 'end_date', label: t('pages.insurances.columns.endDate') || 'Ablauf', type: 'date', filterType: 'dateRange' },
     { key: 'status', label: t('pages.insurances.columns.status') || 'Status', type: 'status', filterType: 'select' },
   ];

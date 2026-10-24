@@ -33,6 +33,19 @@
 .data-table-workspace table.data-table td .cell-inline { flex-wrap: wrap; row-gap: 4px; }
 /* an IBAN wraps between its groups of four but is never cut */
 .data-table-workspace table.data-table td .cell-iban { display: inline-block; min-width: 9.5rem; white-space: normal; font-variant-numeric: tabular-nums; }
+/* On a monitor a name, an address or a title is never squeezed to its longest word: a short one stays on one
+   line ("Zschochersche Straße 12", "Christian Richter"), a long one wraps within a readable width, and a last
+   line never holds a lone word or house number. */
+@media (min-width: 1100px) {
+  main table td :is(.party-link, .entity-link),
+  .data-table-workspace table.data-table td > a:not(.btn) {
+    display: inline-block; width: max-content; max-width: 11rem; white-space: normal; text-wrap: pretty; vertical-align: middle;
+  }
+  .data-table-workspace .cell-text { width: max-content; max-width: 11rem; text-wrap: pretty; }
+  main table td .cell-text :is(.party-link, .entity-link) { display: inline; width: auto; max-width: none; }
+  .data-table-workspace table.data-table td .cell-iban { white-space: nowrap; }
+  main table td { text-wrap: pretty; }
+}
 .data-table-workspace table.data-table th.th-actions,
 .data-table-workspace table.data-table td.action-cell {
   position: sticky; right: 0; z-index: 1; background: var(--color-surface);
@@ -92,6 +105,8 @@
 
 /* Totals of money columns over every filtered row */
 .data-table tfoot .table-totals td { border-top: 2px solid var(--color-border); font-weight: 700; background: var(--color-bg); white-space: nowrap; }
+/* "Summe (7433)" never widens the first column: the count goes beneath when the column is narrower */
+.data-table tfoot .table-totals td.table-totals-label { white-space: normal; }
 .bulk-bar-sum { color: var(--color-text-secondary); font-size: var(--text-sm); }
 
 /* An empty list says why and offers the next step (first entry, or showing every row again). */

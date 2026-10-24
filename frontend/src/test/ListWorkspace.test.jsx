@@ -40,7 +40,7 @@ describe('accessible list workspace', () => {
       { key: 'rent', label: 'Miete', sum: true },
     ]} data={[{ id: 'a', name: 'A', area: 100.123, rent: .1 }, { id: 'b', name: 'B', area: .007, rent: .2 }]} /></MemoryRouter>);
     const total = screen.getByRole('row', { name: /Summe/ });
-    expect(within(total).getByRole('cell', { name: '100,13 m²' })).toBeInTheDocument();
+    expect(within(total).getByRole('cell', { name: '100,13\u00a0m²' })).toBeInTheDocument();
     expect(within(total).getByRole('cell', { name: /^0,30\s€$/ })).toBeInTheDocument();
   });
   it('does not invoke a row action when its own controls are clicked', () => {

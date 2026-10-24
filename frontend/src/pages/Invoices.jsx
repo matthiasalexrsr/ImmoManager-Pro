@@ -13,7 +13,7 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { SearchIcon } from '../components/Icons';
 import { formatDate, formatMoney, formatPercent } from '../utils/format';
-import { Copy as CopyIcon } from 'lucide-react';
+import { Banknote, Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
 import { aktenwerkBulkAction, documentExchangeId, useAktenwerkReady } from '../features/aktenwerk/aktenwerkApi';
 
@@ -37,7 +37,7 @@ const COLUMNS = [
   { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
   { key: 'category', hidden: true, label: 'Kategorie', filterType: 'select',
     render: v => CATEGORY_LABELS[v] || v || '—' },
-  { key: 'invoice_date', label: 'Datum', type: 'date', filterType: 'dateRange' },
+  { key: 'invoice_date', hidden: true, label: 'Datum', type: 'date', filterType: 'dateRange' },
   { key: 'payment_due_on', label: 'Fällig am', type: 'date', filterType: 'dateRange',
     render: (v, row) => {
       if (!v) return '—';
@@ -50,7 +50,7 @@ const COLUMNS = [
     render: (_, row) => row.vat_rate != null ? `${formatMoney(row.vat_amount)} (${formatPercent(row.vat_rate)})` : '—' },
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
-  { key: 'paid_amount', label: 'Zugeordnet bezahlt (€)', type: 'number', sum: true, align: 'right', render: formatMoney },
+  { key: 'paid_amount', hidden: true, label: 'Zugeordnet bezahlt (€)', type: 'number', sum: true, align: 'right', render: formatMoney },
   { key: 'open_amount', label: 'Restbetrag (€)', type: 'number', align: 'right', render: value => value == null ? 'Ungeklärt' : formatMoney(value) },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
   { key: 'payment_status', label: 'Zahlungsstand', filterType: 'select', render: (value, row) => <span title={row.payment_summary.note || undefined}>
@@ -287,7 +287,7 @@ export default function Invoices() {
           onClick: () => { setPrefill(duplicateOf(row, ['invoice_number', 'status', 'source_document_id', 'payment_reference'])); setModal('create'); },
         }, ...(!['paid', 'cancelled', 'rejected', 'credit_note', 'overpaid'].includes(row.payment_status) ? [{
           label: 'Zahlung zuordnen',
-          write: true,
+          write: true, icon: <Banknote size={15} />,
           onClick: () => navigate(`/invoice-review/${encodeURIComponent(row.id)}#ir-payment`),
         }] : [])]}
       />

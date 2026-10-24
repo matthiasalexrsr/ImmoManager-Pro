@@ -61,14 +61,14 @@ export function formatPercent(v, digits = null, { blank = '—' } = {}) {
   if (isBlank(v)) return blank;
   if (digits == null) {
     const text = formatter('pct', () => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 })).format(Number(v));
-    return `${text} %`;
+    return `${text}\u00a0%`;
   }
-  return `${formatNumber(v, digits)} %`;
+  return `${formatNumber(v, digits)}\u00a0%`;
 }
 
 export function formatArea(v, { blank = '—' } = {}) {
   if (isBlank(v)) return blank;
-  return `${formatNumber(v, Number(v) % 1 ? 2 : 0)} m²`;
+  return `${formatNumber(v, Number(v) % 1 ? 2 : 0)}\u00a0m²`;
 }
 
 // ISO dates ("2025-01-03") are calendar days: format them without a time zone shift.

@@ -11,7 +11,7 @@ import RowActionMenu from './RowActionMenu';
 import { formatDate, formatMoney, formatNumber, plainLabel } from '../utils/format';
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
-import { readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
+import { columnHidden, readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
 import { NEW_ENTRY_EVENT, takeNewEntry } from '../utils/newEntry';
 import './DataTable.css';
 import NamedViews from './NamedViews';
@@ -265,10 +265,15 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const sortKey = !serverPaged && columns.some(c => c.key === stored.sortKey && c.sortable !== false) ? stored.sortKey : null;
   const sortDir = stored.sortDir === 'desc' ? 'desc' : 'asc';
   const pageSize = PAGE_SIZES.includes(stored.pageSize) ? stored.pageSize : 25;
+  // Saved settings record the columns hidden by default when they were saved (see columnHidden).
+  const defaultHidden = useMemo(() => columns.filter(col => col.hidden).map(col => col.key), [columns]);
   const hiddenCols = useMemo(() => {
     const hidden = {
       ...Object.fromEntries(columns.filter(c => c.hidden).map(c => [c.key, true])),
-      ...Object.fromEntries(Object.entries(stored.hiddenCols || {}).filter(([, value]) => typeof value === 'boolean')),
+      ...Object.fromEntries(Object.entries(stored.hiddenCols || {}).filter(([, value]) => typeof value === 'boolean').map(([key, value]) => {
+        const col = columns.find(c => c.key === key);
+        return [key, col ? columnHidden(col, value, stored.hiddenDefaults) : value];
+      })),
     };
     // Old saved views or imported layouts may hide every column. Recover
     // a visible column without erasing any of the other stored preferences.
@@ -276,13 +281,13 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       hidden[(columns.find(col => !col.hidden) || columns[0]).key] = false;
     }
     return hidden;
-  }, [columns, stored.hiddenCols]);
+  }, [columns, stored.hiddenCols, stored.hiddenDefaults]);
   const setSort = (key, dir) => setStored(current => ({ ...current, sortKey: key, sortDir: dir }));
   const setPageSize = size => setStored(current => ({ ...current, pageSize: size }));
   const toggleColumn = key => {
     // A stored view must never render a table without any data column.
     if (!hiddenCols[key] && columns.filter(col => !hiddenCols[col.key]).length <= 1) return;
-    setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] } }));
+    setStored(current => ({ ...current, hiddenCols: { ...hiddenCols, [key]: !hiddenCols[key] }, hiddenDefaults: defaultHidden }));
   };
   const [page, setPage] = useState(() => ((!linkedOnMount || restoreLocationState) && Number.isInteger(savedView?.page) && savedView.page > 0 ? savedView.page : 0));
   const [columnFilters, setColumnFilters] = useState(() => {
@@ -326,7 +331,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   const viewScope = viewAnchor ? `${storageKey}:${viewAnchor.kind}:${viewAnchor.id}` : storageKey;
   const viewContext = storageKey && formContext(pathname) ? `${formContext(pathname)}#${keyHash(viewScope)}` : null;
   const namedConfig = { search, sort: sortKey ? { key: sortKey, direction: sortDir } : null,
-    visible_columns: columns.filter(col => !hiddenCols[col.key]).map(col => col.key), column_order: stored.columnOrder || columns.map(col => col.key), page_size: pageSize,
+    visible_columns: columns.filter(col => !hiddenCols[col.key]).map(col => col.key), hidden_defaults: defaultHidden,
+    column_order: stored.columnOrder || columns.map(col => col.key), page_size: pageSize,
     ...viewConfig, column_filters: { ...columnFilters, ...viewConfig?.column_filters } };
   const applyView = config => {
     if (!serverPaged) {
@@ -342,7 +348,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       // a column the view did not know when it was saved (added by an update) keeps its default
       hiddenCols: Object.fromEntries(columns.map(col => [col.key, Array.isArray(config.visible_columns)
         && !(Array.isArray(config.column_order) && !config.column_order.includes(col.key))
-        ? !config.visible_columns.includes(col.key) : Boolean(col.hidden)])),
+        ? columnHidden(col, !config.visible_columns.includes(col.key), config.hidden_defaults) : Boolean(col.hidden)])),
+      hiddenDefaults: defaultHidden,
       columnOrder: Array.isArray(config.column_order) ? config.column_order.filter(key => columns.some(col => col.key === key)) : columns.map(col => col.key),
     }));
     setPage(0);
@@ -376,16 +383,9 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKey, sortDir]);
 
-  const visibleColumns = useMemo(
-    () => {
-      const order = Array.isArray(stored.columnOrder) ? stored.columnOrder : [];
-      return columns.filter(col => !hiddenCols[col.key]).sort((a, b) => {
-        const ai = order.indexOf(a.key), bi = order.indexOf(b.key);
-        return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
-      });
-    },
-    [columns, hiddenCols, stored.columnOrder]
-  );
+  // The columns stand in the program's order: no list lets a person move a column, so a saved order only froze
+  // the order of its time (it still tells which columns a saved view knew).
+  const visibleColumns = useMemo(() => columns.filter(col => !hiddenCols[col.key]), [columns, hiddenCols]);
 
   // Filter
   const filtered = useMemo(() => {
@@ -971,7 +971,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
               <tr className="table-totals">
                 {selectable && <td />}
                 {visibleColumns.map((col, index) => (
-                  <td key={col.key} className={cellClass(col)}>
+                  <td key={col.key} className={col.sum ? cellClass(col) : 'table-totals-label'}>
                     {col.sum ? sumLabel(col, totals[col.key])
                       : index === 0 ? tr('comp.dataTable.total', 'Summe ({{count}})').replace('{{count}}', sorted.length) : null}
                   </td>

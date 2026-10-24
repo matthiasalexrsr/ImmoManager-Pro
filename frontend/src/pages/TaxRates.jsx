@@ -7,7 +7,7 @@ export default function TaxRates() {
   const COLUMNS = [
     { key: 'name', label: t('pages.taxRates.columns.name') || 'Bezeichnung', filterType: 'text' },
     { key: 'rate', label: t('pages.taxRates.columns.rate') || 'Satz (%)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
+      render: v => v != null ? `${Number(v).toFixed(1).replace('.', ',')}\u00a0%` : '—' },
     { key: 'description', label: t('pages.taxRates.columns.description') || 'Beschreibung' },
     { key: 'is_default', label: t('pages.taxRates.columns.isDefault') || 'Standard',
       render: v => v ? (t('pages.taxRates.columns.yes') || 'Ja') : (t('pages.taxRates.columns.no') || 'Nein') },

@@ -62,7 +62,7 @@ function Proposal({ owner, proposal, attachments, perform, disabled, onChanged }
     if (['property_id', 'unit_id'].includes(key)) return sourceList.find(source => source.kind === key.replace('_id', '') && source.id === value)?.title || 'Zuordnung im Fachformular prüfen';
     if (key.endsWith('_amount')) return formatMoney(value, { currency: 'EUR' });
     if (key === 'priority') return { low: 'Niedrig', medium: 'Mittel', high: 'Hoch' }[value] || value;
-    if (key === 'vat_rate') return `${value} %`;
+    if (key === 'vat_rate') return `${String(value).replace('.', ',')}\u00a0%`;
     if (['due_date', 'invoice_date', 'performance_start', 'performance_end'].includes(key)) return formatDate(value);
     return String(value);
   };

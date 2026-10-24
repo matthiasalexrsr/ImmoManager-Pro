@@ -22,3 +22,11 @@
 @media (max-width: 480px) {
   .receivable-record-links a { display: inline-flex; align-items: center; min-height: 44px; }
 }
+
+/* The residual of a receivable: the amount (a legacy claim marked) and its button beneath; opened, its evidence and form stack. */
+.receivable-settlement { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.receivable-settlement__line { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.receivable-settlement__line strong { font-variant-numeric: tabular-nums; }
+.receivable-settlement__panel { display: grid; gap: 8px; justify-items: start; min-width: 20rem; margin-top: 6px; white-space: normal; }
+.receivable-settlement__panel label { display: grid; gap: 4px; font-size: var(--text-sm); }
+.receivable-settlement__panel ul { margin: 0; padding-left: 18px; }

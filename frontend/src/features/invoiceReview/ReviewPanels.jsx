@@ -43,7 +43,7 @@ export function Summary({ view }) {
         {review && <Fact label={tx.receivedOn}>{formatDate(review.received_on)}</Fact>}
         <Fact label={tx.dueOn}>{s.due_on ? formatDate(s.due_on) : null}</Fact>
         {s.skonto_until && <Fact label={tx.skontoUntil}>{formatDate(s.skonto_until)} ({s.skonto_amount > 0
-          ? formatMoney(s.skonto_amount) : `${review?.skonto_percent} %`})</Fact>}
+          ? formatMoney(s.skonto_amount) : `${String(review?.skonto_percent).replace('.', ',')}\u00a0%`})</Fact>}
         <Fact label={tx.assignment}>
           {tx[`assign_${assignment.kind || 'none'}`]}
           {assignment.kind === 'maintenance_order' && <> · <Link to={`/maintenance/${encodeURIComponent(assignment.case_id)}`}>

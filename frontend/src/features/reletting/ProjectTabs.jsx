@@ -42,7 +42,7 @@ export function ApplicantsTab({ data, path, canWrite, onChanged }) {
     { key: 'household_size', label: 'Personen', type: 'number', align: 'right', render: value => value ?? '—' },
     { key: 'net_income', label: 'Nettoeinkommen', type: 'number', align: 'right', render: value => (value == null ? '—' : formatMoney(value)) },
     { key: 'rent_share', label: 'Mietbelastung', type: 'number', align: 'right',
-      render: value => (value == null ? '—' : `${String(value).replace('.', ',')} %`) },
+      render: value => (value == null ? '—' : `${String(value).replace('.', ',')}\u00a0%`) },
     { key: 'move_in_date', label: 'Einzug', render: value => formatDate(value) },
     { key: 'documents', label: 'Unterlagen', type: 'number', align: 'right', render: value => `${value} / ${DOCUMENTS.length}` },
     { key: 'met', label: 'Kriterien erfüllt', type: 'number', align: 'right',
@@ -258,7 +258,7 @@ export function ComparisonTab({ data, path, canWrite, onChanged, onGo }) {
             })}</tr>)}
           <tr><th scope="row">Beschäftigung</th>{rows.map(row => <td key={row.id}>{EMPLOYMENT[row.employment] || '—'}</td>)}</tr>
           <tr><th scope="row">Mietbelastung</th>{rows.map(row => <td key={row.id}>
-            {row.rent_share == null ? '—' : `${String(row.rent_share).replace('.', ',')} %`}</td>)}</tr>
+            {row.rent_share == null ? '—' : `${String(row.rent_share).replace('.', ',')}\u00a0%`}</td>)}</tr>
           <tr><th scope="row">Eindruck bei der Besichtigung</th>{rows.map(row => <td key={row.id}>{stars(row.viewing_rating)}</td>)}</tr>
           <tr><th scope="row">Eigene Bewertung</th>{rows.map(row => <td key={row.id}>{stars(row.rating)}</td>)}</tr>
           <tr className="reletting-compare-total"><th scope="row">Kriterien erfüllt</th>

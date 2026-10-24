@@ -1420,17 +1420,17 @@ export default function Statements() {
                         {ocrDraft.ocr_fields.supplier && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Lieferant</td>
                             <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.supplier}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.description || 0) * 100)}%</td></tr>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.description || 0) * 100)}{'\u00a0%'}</td></tr>
                         )}
                         {ocrDraft.ocr_fields.total_amount != null && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Betrag</td>
                             <td style={{ padding: '4px 8px' }}>{formatMoney(ocrDraft.ocr_fields.total_amount)}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}%</td></tr>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}{'\u00a0%'}</td></tr>
                         )}
                         {ocrDraft.ocr_fields.cost_category && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Kostenart</td>
                             <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.cost_category}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.cost_category || 0) * 100)}%</td></tr>
+                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.cost_category || 0) * 100)}{'\u00a0%'}</td></tr>
                         )}
                         {ocrDraft.ocr_fields.invoice_number && (
                           <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Rechnungsnr.</td>

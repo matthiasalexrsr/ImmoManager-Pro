@@ -212,23 +212,24 @@ function DocumentsWorkspace() {
     { key: 'title', label: t('pages.documents.columns.title') || 'Titel', filterType: 'text', link: 'document' },
     { key: 'document_type', label: t('pages.documents.columns.type') || 'Typ', filterType: 'select', render: documentTypeLabel },
     { key: 'party_name', label: 'Mieter / Partei', filterType: 'text', render: (value, row) => <PartyLink tenantId={row.party_id}>{value}</PartyLink> },
-    { key: 'property_name', label: 'Immobilie', filterType: 'text', render: (value, row) => row.context.property_id
+    // in a tenant's file the contract tells more than the property
+    { key: 'property_name', hidden: Boolean(tenantId), label: 'Immobilie', filterType: 'text', render: (value, row) => row.context.property_id
       ? <Link to={entityHref('property', row.context.property_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Immobilie öffnen' : value}</Link> : value },
-    { key: 'unit_label', label: 'Einheit', filterType: 'text', render: (value, row) => row.context.unit_id
+    { key: 'unit_label', hidden: true, label: 'Einheit', filterType: 'text', render: (value, row) => row.context.unit_id
       ? <Link to={entityHref('unit', row.context.unit_id)} onClick={event => event.stopPropagation()}>{value === '—' ? 'Einheit öffnen' : value}</Link> : value },
-    { key: 'contract_label', label: 'Vertrag', filterType: 'text', link: 'contract' },
+    { key: 'contract_label', hidden: !tenantId, label: 'Vertrag', filterType: 'text', link: 'contract' },
     { key: 'document_date', label: t('pages.documents.columns.date') || 'Datum', type: 'date', filterType: 'dateRange' },
     { key: 'valid_until', label: 'Gültig bis', type: 'date', filterType: 'dateRange', render: (value, row) => {
       if (!value) return '—';
       const state = expiryState(row);
       return <span className={`document-expiry document-expiry-${state}`}>{formatDate(value)}{state === 'expired' ? ' · abgelaufen' : state === 'due' ? ' · läuft ab' : ''}</span>;
     } },
-    { key: 'retention_label', label: 'Aufbewahrung', filterType: 'text',
+    { key: 'retention_label', hidden: true, label: 'Aufbewahrung', filterType: 'text',
       render: (value, row) => <span className={`document-retention document-retention-${row.retention?.state || 'none'}`} title={row.retention?.text}>{value}</span> },
-    { key: 'tags', label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
-    { key: 'has_file', label: t('pages.documents.columns.file') || 'Datei',
+    { key: 'tags', hidden: true, label: t('pages.documents.columns.tags') || 'Tags', filterType: 'text' },
+    { key: 'has_file', hidden: true, label: t('pages.documents.columns.file') || 'Datei',
       render: v => v ? (t('pages.documents.columns.filePresent') || '✓ Vorhanden') : '—' },
-    { key: 'ocr_status', label: t('pages.documents.columns.ocr') || 'Texterkennung', render: v => {
+    { key: 'ocr_status', hidden: true, label: t('pages.documents.columns.ocr') || 'Texterkennung', render: v => {
       if (v === 'completed') return t('pages.documents.ocr.completed') || '✓ Erkannt';
       if (v === 'processing') return t('pages.documents.ocr.processing') || '⏳ Läuft...';
       if (v === 'failed') return t('pages.documents.ocr.failed') || '✗ Fehler';

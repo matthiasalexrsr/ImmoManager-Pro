@@ -146,7 +146,7 @@ export default function Properties() {
       render: (v, row) => {
         if (!row.unit_count) return <span className="text-muted" title="Noch keine Einheiten">—</span>;
         const color = v >= 80 ? 'var(--color-success)' : v >= 50 ? 'var(--color-warning)' : 'var(--color-danger)';
-        return <span className="list-occupancy"><span style={{ color, fontWeight: 600 }}>{v}%</span><span className="list-occupancy-track" aria-hidden="true"><span style={{ width: `${v}%`, background: color }} /></span></span>;
+        return <span className="list-occupancy"><span style={{ color, fontWeight: 600 }}>{`${v}\u00a0%`}</span><span className="list-occupancy-track" aria-hidden="true"><span style={{ width: `${v}%`, background: color }} /></span></span>;
       }},
     { key: 'total_rent', label: 'Plan-Kaltmiete', type: 'number', align: 'right',
       render: (v, row) => <span title={row.missing_rent_count ? `Für ${row.missing_rent_count} Einheiten fehlt die Plan-Kaltmiete.` : undefined}>{formatMoney(v)}{row.missing_rent_count && v != null ? ' (unvollständig)' : ''}</span> },
@@ -199,7 +199,7 @@ export default function Properties() {
         <KpiAction label="Immobilien gesamt" value={totalCount} onClick={() => openSources('all')} />
         <KpiAction label="Aktiv" value={activeCount} onClick={() => openSources('active')} />
         <KpiAction label="Mit Leerstand" value={vacancyCount} onClick={() => openSources('vacancy')} />
-        <KpiAction label="Vermietungsquote" value={unitCount ? `${avgOccupancy}%` : '—'} onClick={() => openSources('all')} />
+        <KpiAction label="Vermietungsquote" value={unitCount ? `${avgOccupancy}\u00a0%` : '—'} onClick={() => openSources('all')} />
       </div>
 
       {/* Filter tabs */}

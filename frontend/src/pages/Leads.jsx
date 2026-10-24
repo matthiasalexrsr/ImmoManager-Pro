@@ -31,14 +31,14 @@ const COLUMNS = [
   { key: 'full_name', label: 'Name', filterType: 'text' },
   { key: 'email', label: 'E-Mail', filterType: 'text' },
   { key: 'phone', label: 'Telefon' },
-  { key: 'source', label: 'Quelle', filterType: 'select' },
+  { key: 'source', hidden: true, label: 'Quelle', filterType: 'select' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
   { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   // an inquiry for a unit that is being re-let belongs to its project (comparison, viewings, decision)
   { key: 'project_label', label: 'Neuvermietung', filterType: 'select',
     render: (value, row) => (row.project_id ? <Link to={`/reletting/${encodeURIComponent(row.project_id)}?tab=applicants`}>Projekt öffnen</Link> : '—') },
-  { key: 'created_at', label: 'Erstellt', type: 'date',
+  { key: 'created_at', hidden: true, label: 'Erstellt', type: 'date',
     render: v => formatDate(v) },
 ];
 

@@ -7,7 +7,7 @@ import FormModal from '../../components/FormModal';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { formatDate } from '../../utils/format';
 
-const percent = value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 4 })} %`;
+const percent = value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 4 })}\u00a0%`;
 const owned = rows => rows.map(row => `${row.name} ${percent(row.percent)}`).join(', ');
 const KINDS = [['purchase', 'Kauf'], ['gift', 'Schenkung'], ['inheritance', 'Erbschaft'], ['division', 'Teilung'],
   ['sale_external', 'Verkauf an Dritte'], ['other', 'Sonstiger Wechsel']];

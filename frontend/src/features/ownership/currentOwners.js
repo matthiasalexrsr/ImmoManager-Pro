@@ -7,7 +7,7 @@ const EMPTY = { properties: {}, units: {} };
 export function ownersLabel(owners) {
   if (!owners?.length) return '';
   if (owners.length === 1 && owners[0].percent >= 100) return owners[0].name;
-  return owners.map(owner => `${owner.name} ${Number(owner.percent).toLocaleString('de-DE', { maximumFractionDigits: 4 })} %`).join(', ');
+  return owners.map(owner => `${owner.name} ${Number(owner.percent).toLocaleString('de-DE', { maximumFractionDigits: 4 })}\u00a0%`).join(', ');
 }
 
 /** The recorded owners of every property and unit today (backend: /ownership-shares/current). */
