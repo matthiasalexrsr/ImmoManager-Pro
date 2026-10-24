@@ -53,7 +53,10 @@ const COLUMNS = [
   { key: 'gross_amount', label: 'Brutto (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
     render: v => v != null ? <strong>{formatMoney(v)}</strong> : '—' },
   { key: 'paid_amount', hidden: true, label: 'Zugeordnet bezahlt (€)', type: 'number', sum: true, align: 'right', render: formatMoney },
-  { key: 'open_amount', label: 'Restbetrag (€)', type: 'number', align: 'right', render: value => value == null ? 'Ungeklärt' : formatMoney(value) },
+  // the assigned payments beneath the rest once something is paid (their own column can still be shown)
+  { key: 'open_amount', label: 'Restbetrag (€)', type: 'number', align: 'right', render: (value, row) => value == null ? 'Ungeklärt'
+    : <span className="cell-stack"><span>{formatMoney(value)}</span>
+      {Number(row.paid_amount) > 0 && <span className="td-sub">{formatMoney(row.paid_amount)} zugeordnet</span>}</span> },
   { key: 'payment_reference', hidden: true, label: 'Zahlungsreferenz' },
   { key: 'payment_status', label: 'Zahlungsstand', filterType: 'select', render: (value, row) => <span title={row.payment_summary.note || undefined}>
     {value === 'unclear' ? <span className="badge badge-yellow">Ungeklärt</span>

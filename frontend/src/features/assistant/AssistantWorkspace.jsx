@@ -46,6 +46,7 @@ export default function AssistantWorkspace({ owner }) {
   const local = state.provider === 'local';
   const models = state.connection?.models || capability?.models || [];
   const providerReady = Boolean(capability?.available && state.connection?.connected);
+  const onboarding = !local && !providerReady && Boolean(state.capabilities);
   const sending = activeRun(state.run);
   const locked = state.loading || state.busy || Boolean(state.pending) || Boolean(state.editPending) || Boolean(state.record?.archived) || Boolean(state.selectedId && !state.record);
   const chats = state.conversations.filter(chat => Boolean(chat.archived) === showArchived && chat.title.toLocaleLowerCase().includes(filter.toLocaleLowerCase()))
@@ -121,7 +122,9 @@ export default function AssistantWorkspace({ owner }) {
         {state.editPending && <p className="assistant-alert" role="status">Eine Chatänderung ist unbestätigt. <button type="button" className="btn btn-secondary btn-sm" disabled={state.busy} onClick={() => state.editConversation(null, true)}>Chatänderung abgleichen</button></p>}
         {state.pending && <div className="assistant-alert" role="status"><span>Eine Übermittlung ist unbestätigt. Ihre Eingabe bleibt erhalten; der ursprüngliche Auftrag wird mit derselben Kennung abgeglichen.</span><button type="button" className="btn btn-sm btn-secondary" disabled={state.busy} onClick={() => state.pending.kind === 'create' ? state.startConversation() : state.submit(true)}>Übermittlung abgleichen</button></div>}
         <section className="assistant-transcript" ref={transcript} aria-label="Chatverlauf" aria-busy={state.loading} onScroll={event => { const element = event.currentTarget; scroll.current.follow = element.scrollHeight - element.clientHeight - element.scrollTop < 80; }}>
-          {state.loading ? <p role="status">Private Unterhaltung wird geladen …</p> : !state.messages.length && !response ? <div className="assistant-empty"><Sparkles size={32} aria-hidden="true" /><h2>Was möchten Sie klären?</h2><p>Fügen Sie einen Beleg oder eine Akte hinzu. Der Assistent unterstützt Sie beim Verstehen und bereitet überprüfbare Entwürfe vor.</p>
+          {/* an empty chat greets only once an assistant is ready; before, the banner above says what to do and the
+              chat area stays free (in a window of 900 px it had no room for both) */}
+          {state.loading ? <p role="status">Private Unterhaltung wird geladen …</p> : !state.messages.length && !response ? onboarding ? null : <div className="assistant-empty"><Sparkles size={32} aria-hidden="true" /><h2>Was möchten Sie klären?</h2><p>Fügen Sie einen Beleg oder eine Akte hinzu. Der Assistent unterstützt Sie beim Verstehen und bereitet überprüfbare Entwürfe vor.</p>
             {/* without a connected account the banner above leads; the starters need a connected assistant */}
             {(local || providerReady) && <div className="assistant-starters">{local ? <><button type="button" onClick={() => document.getElementById('assistant-context')?.setAttribute('open', '')}><FolderSearch size={18} /> Grundlagen für die Regelprüfung wählen</button><Link to={canTask ? '/tasks?neu=1' : '/tasks'}><Plus size={18} />{canTask ? 'Aufgabe im Fachformular anlegen' : 'Aufgaben ansehen'}</Link><Link to="/reports"><ChartNoAxesCombined size={18} /> Zahlen lokal auswerten</Link></> : <>
               <button type="button" onClick={() => { setBody('Prüfe die Mietrückstände anhand aktueller Verträge, Forderungen und Zahlungen. Frage nach dem Bezug oder Zeitraum, falls diese nicht eindeutig sind.'); composer.current?.focus(); }}><ChartNoAxesCombined size={18} /> Mietrückstände verstehen</button>
