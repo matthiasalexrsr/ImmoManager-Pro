@@ -6,6 +6,7 @@ name: Release (Windows)
 # update check (Einstellungen → System → Updates) reads these releases.
 # The tag must match the version in pyproject.toml. Without a tag nothing is published: a manual
 # run builds and tries the package and keeps it as a workflow artifact only.
+# Only a commit the full CI (ci.yml: frontend, backend, PostgreSQL, document tools, E2E) passed is packaged.
 on:
   push:
     tags:
@@ -16,8 +17,34 @@ permissions:
   contents: write
 
 jobs:
+  ci-gate:
+    name: CI auf diesem Commit erfolgreich
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for a successful CI run of this commit
+        run: |
+          # a run still in progress is waited for; a failed or cancelled one alone stops the release
+          for attempt in $(seq 1 110); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<< "$runs" > /dev/null; then
+              echo "CI ist auf $GITHUB_SHA erfolgreich."; exit 0
+            fi
+            if ! jq -e 'any(.[]; .status != "completed")' <<< "$runs" > /dev/null; then
+              echo "::error::Kein erfolgreicher CI-Lauf auf $GITHUB_SHA: $runs"; exit 1
+            fi
+            echo "CI läuft noch auf $GITHUB_SHA (Abfrage $attempt) …"; sleep 60
+          done
+          echo "::error::CI auf $GITHUB_SHA ist nicht rechtzeitig fertig geworden."; exit 1
+
   windows:
     name: Windows-Paket bauen, prüfen und veröffentlichen
+    needs: ci-gate
     runs-on: windows-latest
     timeout-minutes: 60
     env:
