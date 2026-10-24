@@ -188,7 +188,7 @@ try {
     await row(contract.contract_number).getByRole('button', { name: 'Bearbeiten', exact: true }).click();
     let dialog = page.getByRole('dialog', { name: 'Mietanpassung bearbeiten' });
     await dialog.getByLabel('Neue Miete (€)', { exact: false }).fill('660');
-    await expect(dialog.getByLabel('Änderung (%)')).toHaveValue('10 %');
+    await expect(dialog.getByLabel('Änderung (%)')).toHaveValue('10\u00a0%');
     await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     const saved = await call('GET', `/rent-adjustments/${adjustment.id}`);

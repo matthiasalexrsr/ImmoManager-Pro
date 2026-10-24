@@ -142,7 +142,7 @@
 .assistant-conversation-title { flex: 1 1 160px; min-width: 0; }
 .assistant-conversation-title h2 { overflow-wrap: anywhere; margin-bottom: .3rem; }
 .assistant-provider { gap: .4rem; }
-.assistant-provider select { max-width: 185px; font-size: var(--text-xs); padding: .4rem; }
+.assistant-provider select { max-width: 215px; font-size: var(--text-xs); padding: .4rem; }
 .assistant-provider .btn { font-size: var(--text-2xs); }
 .assistant-mode-note { margin: 0; padding: .65rem 1.15rem; color: var(--color-text-muted); font-size: var(--text-xs); background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
 .assistant-onboarding { display: flex; gap: .75rem; padding: 1rem 1.15rem; background: var(--color-bg); border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
@@ -150,6 +150,8 @@
 .assistant-onboarding p { color: var(--color-text-muted); margin: .4rem 0 .7rem; }
 .assistant-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .assistant-empty { padding: 1.3rem .5rem; min-height: 260px; }
+/* in a short window the empty chat scrolls from its top instead of being cut above and below */
+.assistant-empty { flex: 1 0 auto; align-content: safe center; }
 .assistant-transcript { min-height: 200px; max-height: 60dvh; padding: 1.2rem clamp(.8rem, 3vw, 2rem); }
 .assistant-message-body { white-space: normal; }
 .assistant-message-body p, .assistant-message-body pre { white-space: pre-wrap; }
@@ -191,7 +193,7 @@
 .assistant-workbasket > summary { font-size: var(--text-sm); font-weight: 600; color: var(--assistant-accent); }
 .assistant-workbasket .assistant-proposal { margin-top: .6rem; }
 .assistant-scope-row { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; font-size: var(--text-2xs); }
-.assistant-scope-row > label { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.assistant-scope-row > label { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: .5rem; }
 .assistant-scope-row select { max-width: 100%; font-size: var(--text-xs); padding: .4rem; }
 .assistant-scope-help p { max-width: 600px; line-height: 1.6; }
 .assistant-scope-help summary { cursor: pointer; color: var(--color-text-muted); }
@@ -217,7 +219,8 @@
 .assistant-provider select { font-size: var(--text-xs); }
 .assistant-context-search select { min-width: 0; max-width: 34%; font-size: var(--text-2xs); }
 .assistant-run details { font-size: var(--text-2xs); }
-@media (min-width: 1100px) and (min-height: 750px) {
+/* a window tall enough holds the chat at its height; a shorter one lets the page flow, so nothing is cut */
+@media (min-width: 1100px) and (min-height: 960px) {
   .assistant-layout { height: calc(100dvh - 220px); min-height: 0; }
   .assistant-main, .assistant-sidebar { min-height: 0; }
   .assistant-sidebar { overflow-y: auto; }

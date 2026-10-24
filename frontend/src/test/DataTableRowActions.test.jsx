@@ -76,7 +76,8 @@ describe('Spalteninhalt', () => {
   it('setzt den Sortierpfeil einer Zahlenspalte vor die Überschrift', () => {
     render(<DataTable title="Mieten" columns={[{ key: 'name', label: 'Mieter' }, { key: 'rent', label: 'Vereinbarte Miete', type: 'currency' }]}
       data={[{ id: 'c1', name: 'A', rent: 500 }]} />);
-    expect(screen.getByRole('columnheader', { name: 'Vereinbarte Miete' }).textContent).toBe('↕ Vereinbarte Miete');
-    expect(screen.getByRole('columnheader', { name: 'Mieter' }).textContent).toBe('Mieter ↕');
+    // a no-break space keeps the arrow beside its word when the heading wraps
+    expect(screen.getByRole('columnheader', { name: 'Vereinbarte Miete' }).textContent).toBe('↕\u00a0Vereinbarte Miete');
+    expect(screen.getByRole('columnheader', { name: 'Mieter' }).textContent).toBe('Mieter\u00a0↕');
   });
 });

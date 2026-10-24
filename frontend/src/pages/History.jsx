@@ -89,7 +89,7 @@ export default function History() {
       <span>{row.record_href ? <Link to={row.record_href} className="entity-link" title={`Datensatz ${row.entity_id} öffnen`}>{value}</Link> : value}</span>
       <span className="td-sub">{row.kind}</span>
     </span>, wrap: true },
-    { key: 'field', label: 'Feld' },
+    { key: 'field', narrow: true, label: 'Feld' },
     { key: 'before', label: 'Vorher', render: fullValue, wrap: true },
     { key: 'after', label: 'Nachher', render: fullValue, wrap: true },
     { key: 'author', label: 'Geändert von' },

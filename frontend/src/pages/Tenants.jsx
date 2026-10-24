@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
+import EmailText from '../components/EmailText';
 import FormModal from '../components/FormModal';
 import { TENANT_FIELDS } from '../features/tenants/tenantFields';
 import StatusBadge from '../components/StatusBadge';
@@ -153,7 +154,7 @@ export default function Tenants() {
       link: { kind: 'unit', idKey: 'link_unit_id' }, subLink: { kind: 'property', idKey: 'link_property_id' } },
     { key: 'contract_status', label: 'Vertragsstatus', filterType: 'select',
       render: v => v === 'kein Vertrag' ? <span className="badge badge-gray">Kein aktiver Vertrag</span> : <StatusBadge status={v} /> },
-    { key: 'email', label: 'E-Mail', filterType: 'text', render: value => value ? <a href={`mailto:${value}`}>{value}</a> : '—' },
+    { key: 'email', label: 'E-Mail', filterType: 'text', render: value => value ? <a href={`mailto:${value}`}><EmailText value={value} /></a> : '—' },
     { key: 'phone', label: 'Telefon', render: value => value ? <a href={`tel:${value.replace(/[^+\d]/g, '')}`}>{value}</a> : '—' },
     { key: 'city', hidden: true, label: 'Stadt', filterType: 'text' },
     { key: 'payment_label', hidden: true, label: 'Zahlungsart', filterType: 'select' },

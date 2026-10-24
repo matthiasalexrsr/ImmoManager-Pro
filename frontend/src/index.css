@@ -2662,6 +2662,10 @@ table.data-table tbody tr:last-child td {
 .detail-tab-content {
   min-height: 200px;
 }
+/* on a 1280–1439 px window every tab of a file stays in view */
+@media (min-width: 769px) and (max-width: 1439px) {
+  .detail-tab { padding-inline: .75rem; }
+}
 
 /* --- Overview Grid --- */
 .detail-overview-grid {

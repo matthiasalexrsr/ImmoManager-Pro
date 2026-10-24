@@ -301,7 +301,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     { key: 'account_name', hidden: true, label: t('finance.bookings.account') || 'Konto', filterType: 'text',
       render: (v, row) => (row.account_id ? <Link to={`/bookings?konto=${encodeURIComponent(row.account_id)}`} className="entity-link"
         onClick={e => e.stopPropagation()}>{v}</Link> : v) },
-    { key: 'category_name', label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
+    { key: 'category_name', narrow: true, label: t('finance.bookings.form.category') || 'Kategorie', filterType: 'text' },
     { key: 'amount', label: t('finance.bookings.form.amount') || 'Betrag (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: (v, row) => {
         const n = Number(v);
@@ -311,7 +311,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
       }},
     ...(parts ? [{ key: 'owner_part', label: 'Anteil des Eigentümers (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => <span className={Number(v) < 0 ? 'text-red' : 'text-green'}>{formatMoney(Number(v))}</span> }] : []),
-    { key: 'payment_text', label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
+    { key: 'payment_text', narrow: true, label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text', link: 'property' },
     { key: 'unit_label', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', hidden: true, link: 'unit' },
     // the payer: a click opens the party file (contracts, account, documents); beneath it the contract the payment

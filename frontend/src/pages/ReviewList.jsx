@@ -70,7 +70,7 @@ export default function ReviewList() {
           <div className="data-table-wrapper">
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Art</th><th>Hinweis</th><th /></tr></thead>
+                <thead><tr><th>Art</th><th>Hinweis</th><th className="text-right"><span className="sr-only">Aktion</span></th></tr></thead>
                 <tbody>
                   {shown.map(item => (
                     <tr key={`${item.kind}-${item.entity_id}`}>

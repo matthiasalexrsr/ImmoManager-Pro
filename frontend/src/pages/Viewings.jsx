@@ -8,6 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { bulkDelete } from '../utils/bulkActions';
+import { formatDateTime } from '../utils/format';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -181,6 +182,7 @@ export default function Viewings() {
     unit_label: unitMap[v.unit_id]?.label || '—',
     scheduled_at: v.scheduled_at?.slice(0, 16)?.replace('T', ' ') || '—',
     _raw_scheduled_at: v.scheduled_at,
+    scheduled_label: formatDateTime(v.scheduled_at),
   }));
 
   // Filter viewings for selected date
@@ -339,7 +341,7 @@ export default function Viewings() {
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
                             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                              {v.unit_label} &bull; {v.scheduled_at}
+                              {v.unit_label} &bull; {v.scheduled_label}
                             </div>
                             {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Betreuer: {v.agent}</div>}
                             {v.notes && <div style={{ fontSize: 'var(--text-xs)', marginTop: '0.25rem' }}>{v.notes}</div>}
@@ -373,7 +375,7 @@ export default function Viewings() {
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
                             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                              {v.unit_label} &bull; {v.scheduled_at}
+                              {v.unit_label} &bull; {v.scheduled_label}
                             </div>
                             {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Betreuer: {v.agent}</div>}
                           </div>

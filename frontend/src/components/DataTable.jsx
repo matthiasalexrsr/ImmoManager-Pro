@@ -12,6 +12,7 @@ import { formatDate, formatMoney, formatNumber, plainLabel } from '../utils/form
 import { codeLabel } from '../utils/codeLabels';
 import { buildCsv } from '../utils/tableCsv';
 import { columnHidden, readTableView, useStoredTableSettings, writeTableView } from '../utils/tableSettings';
+import EmailText from './EmailText';
 import { NEW_ENTRY_EVENT, takeNewEntry } from '../utils/newEntry';
 import './DataTable.css';
 import NamedViews from './NamedViews';
@@ -80,7 +81,7 @@ function linked(spec, row, text) {
 function cellContent(col, row) {
   const value = row[col.key];
   if (col.render) return col.render(value, row);
-  if (value == null || value === '') return '\u2014';
+  if ((value == null || value === '') && !(col.subKey && row[col.subKey])) return '\u2014';
   if (col.type === 'currency') return formatMoney(value);
   if (col.type === 'date') return formatDate(value);
   if (col.type === 'status') return <StatusBadge status={value} />;
@@ -88,7 +89,7 @@ function cellContent(col, row) {
   if (col.subKey) {
     // Two lines on purpose: the main value and its context (unit above, property below).
     const sub = row[col.subKey];
-    const hasMain = text !== '\u2014';
+    const hasMain = value != null && value !== '' && text !== '\u2014';
     return (
       <span className="cell-stack">
         <span className="cell-text">{hasMain ? linked(col.link, row, text) : linked(col.subLink, row, sub || text)}</span>
@@ -96,6 +97,7 @@ function cellContent(col, row) {
       </span>
     );
   }
+  if (/^[^@\s]+@[^@\s]+$/.test(text) && !col.link) return <span className="cell-text cell-email-text"><EmailText value={text} /></span>;
   // A single word up to 24 characters (a contract or invoice number, an IBAN group, a code) is never broken.
   const token = text.length <= 24 && !/\s/.test(text);
   return <span className={`cell-text${token ? ' cell-nowrap' : ''}`} title={text.length > 24 ? text : undefined}>
@@ -158,6 +160,7 @@ function cellClass(col) {
   return [
     isRight(col) ? 'text-right td-num' : '',
     col.wrap ? 'td-wrap' : '',
+    col.narrow ? 'td-narrow' : '',
   ].filter(Boolean).join(' ') || undefined;
 }
 
@@ -770,9 +773,9 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
                 >
                   {!serverPaged && col.sortable !== false ? <button type="button" className="table-sort-button">
                     {/* a number column's heading ends over its numbers, so its arrow comes first */}
-                    {isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? '↑ ' : '↓ ') : '↕ '}</span>}
+                    {isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? '↑\u00a0' : '↓\u00a0') : '↕\u00a0'}</span>}
                     {plainLabel(col.label)}
-                    {!isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>}
+                    {!isRight(col) && <span className="sort-indicator" aria-hidden="true">{sortKey === col.key ? (sortDir === 'asc' ? '\u00a0↑' : '\u00a0↓') : '\u00a0↕'}</span>}
                   </button> :
                   <span className="th-content">
                     {plainLabel(col.label)}

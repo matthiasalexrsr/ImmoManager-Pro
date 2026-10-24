@@ -32,8 +32,10 @@ const CATEGORY_LABELS = {
 
 const COLUMNS = [
   // the number opens the invoice's review: checks, decision, payments, history
-  { key: 'invoice_number', label: 'Rechnungs-Nr.', filterType: 'text', link: { kind: 'invoiceReview', idKey: 'id' } },
-  { key: 'supplier', label: 'Lieferant', filterType: 'text', link: 'contact' },
+  // the supplier with the invoice number beneath (the number's own column can still be shown)
+  { key: 'supplier', subKey: 'invoice_number', label: 'Lieferant', filterType: 'text', link: 'contact',
+    subLink: { kind: 'invoiceReview', idKey: 'id' } },
+  { key: 'invoice_number', hidden: true, label: 'Rechnungs-Nr.', filterType: 'text', link: { kind: 'invoiceReview', idKey: 'id' } },
   { key: 'property_name', label: 'Immobilie', filterType: 'text', link: 'property' },
   { key: 'category', hidden: true, label: 'Kategorie', filterType: 'select',
     render: v => CATEGORY_LABELS[v] || v || '—' },

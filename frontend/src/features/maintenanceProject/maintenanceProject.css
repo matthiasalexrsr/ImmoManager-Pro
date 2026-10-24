@@ -18,6 +18,7 @@
 
 .mp-tabs { scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
 .mp-tabs .detail-tab { padding: 0.7rem 0.85rem; min-height: 44px; }
+@media (min-width: 769px) and (max-width: 1439px) { .mp-tabs .detail-tab { padding-inline: .55rem; } }
 .mp-tabs .detail-tab:focus-visible { outline: 2px solid var(--color-primary, #326cbd); outline-offset: -4px; border-radius: 4px; }
 
 .mp-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }

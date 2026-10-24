@@ -31,6 +31,9 @@
 .data-table-workspace table.data-table td .cell-nowrap,
 .data-table-workspace table.data-table td .cell-nowrap .entity-link { white-space: nowrap; overflow-wrap: normal; }
 .data-table-workspace table.data-table td .cell-inline { flex-wrap: wrap; row-gap: 4px; }
+/* an e-mail address: one line where there is room, else broken after its "@" only */
+.data-table-workspace .cell-text.cell-email-text { width: auto; max-width: none; overflow: visible; }
+.cell-email > span { white-space: nowrap; }
 /* an IBAN wraps between its groups of four but is never cut */
 .data-table-workspace table.data-table td .cell-iban { display: inline-block; min-width: 9.5rem; white-space: normal; font-variant-numeric: tabular-nums; }
 /* On a monitor a name, an address or a title is never squeezed to its longest word: a short one stays on one
@@ -39,12 +42,24 @@
 @media (min-width: 1100px) {
   main table td :is(.party-link, .entity-link),
   .data-table-workspace table.data-table td > a:not(.btn) {
-    display: inline-block; width: max-content; max-width: 11rem; white-space: normal; text-wrap: pretty; vertical-align: middle;
+    display: inline-block; width: max-content; max-width: 12rem; white-space: normal; text-wrap: pretty; vertical-align: middle;
   }
-  .data-table-workspace .cell-text { width: max-content; max-width: 11rem; text-wrap: pretty; }
+  .data-table-workspace .cell-text { width: max-content; max-width: 12rem; text-wrap: pretty; }
   main table td .cell-text :is(.party-link, .entity-link) { display: inline; width: auto; max-width: none; }
+  /* free text that is cut after two lines anyway (a booking text) leaves the width to names */
+  .data-table-workspace table.data-table td.td-narrow .cell-text { max-width: 9.5rem; }
+  /* a long compound word there breaks at a syllable ("Nebenkosten-vorauszahlung") rather than widening the column */
+  .data-table-workspace table.data-table td.td-narrow .cell-text.cell-nowrap { white-space: normal; hyphens: auto; }
+  /* an IBAN, a number or an e-mail address stays whole on one line */
   .data-table-workspace table.data-table td .cell-iban { white-space: nowrap; }
+  .data-table-workspace .cell-text.cell-nowrap { max-width: none; }
+  .data-table-workspace table.data-table td > a[href^="mailto:"] { display: inline; width: auto; max-width: none; }
   main table td { text-wrap: pretty; }
+}
+@media (min-width: 1100px) and (max-width: 1439px) {
+  .data-table-workspace table.data-table :is(th, td) { padding-left: .6rem; padding-right: .6rem; }
+  .data-table-workspace table.data-table :is(th, td):first-child { padding-left: 1rem; }
+  .data-table-workspace table.data-table :is(th, td):last-child { padding-right: 1rem; }
 }
 .data-table-workspace table.data-table th.th-actions,
 .data-table-workspace table.data-table td.action-cell {

@@ -122,6 +122,15 @@
   .workspace-shell.sidebar-collapsed .locale-switcher { margin-left: 0; flex-direction: column; }
   .workspace-shell.sidebar-collapsed .btn-logout { justify-content: center; }
 }
+/* up to 1600 px a list keeps 16 px more for its columns; below 1440 px (1366 × 768 monitors) the sidebar is a
+   little narrower too */
+@media (max-width: 1600px) {
+  .workspace-shell .main-content-body { padding: 28px 24px 44px; }
+}
+@media (min-width: 769px) and (max-width: 1439px) {
+  .workspace-shell { --sidebar-width: 224px; }
+  .workspace-shell .main-content-body { padding-inline: 20px; }
+}
 @media (max-width: 1180px) {
   .workspace-shell .shell-context,
   .workspace-shell .shell-context-divider { display: none; }
