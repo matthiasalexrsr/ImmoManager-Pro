@@ -44,10 +44,11 @@ MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maint
 # the factual check of an invoice: whether the work was ordered and done
 INVOICE_FACTUAL = (r"^/invoices/[^/]+/review/factual-check$",)
 BOOKKEEPING = ("/bank-imports", "/aktenwerk", "/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
-               "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/escalation/run", "/notifications/generate",
+               "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/billing/meter-documents", "/escalation/run", "/notifications/generate",
                r"^/contracts/[^/]+/dunning-campaign$", "/dunning", *MAINTENANCE_INVOICES,
                r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
-TECHNICAL = ("/maintenance", "/meters", "/handover-protocols", *INVOICE_FACTUAL)
+# a metering document: readings for the technician, costs for bookkeeping (checked by the endpoint)
+TECHNICAL = ("/maintenance", "/meters", "/billing/meter-documents", "/handover-protocols", *INVOICE_FACTUAL)
 # inside an area the role may write, these paths stay closed to it
 DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
                                       "buchhaltung": INVOICE_FACTUAL}

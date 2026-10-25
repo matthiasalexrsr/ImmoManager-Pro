@@ -1,0 +1,41 @@
+.meter-import { display: grid; gap: 12px; }
+.meter-drop {
+  display: grid; justify-items: center; gap: 6px; padding: 26px 18px; text-align: center; cursor: pointer;
+  border: 2px dashed var(--color-border); border-radius: var(--radius-lg, 10px); background: var(--color-bg); color: var(--color-text-secondary);
+}
+.meter-drop svg { color: var(--color-primary); }
+.meter-drop strong { color: var(--color-text); }
+.meter-drop:hover, .meter-drop:focus-visible, .meter-drop.is-dragging { border-color: var(--color-primary); background: var(--color-primary-50, var(--color-bg)); outline: none; }
+.meter-drop[aria-disabled="true"] { cursor: progress; opacity: .8; }
+.meter-readers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; padding: 0; border: 0; }
+.meter-readers legend { float: left; margin-right: 6px; font-weight: 600; }
+.meter-readers label { display: inline-flex; align-items: center; gap: 6px; }
+.meter-readers label.is-unavailable { color: var(--color-text-secondary); }
+.meter-readers p { flex: 1 1 100%; margin: 0; font-size: var(--text-sm); }
+.meter-review { display: grid; gap: 14px; }
+.meter-summary { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 22px; padding: 12px 14px; border: 1px solid var(--color-border-light, var(--color-border)); border-radius: var(--radius, 8px); background: var(--color-bg); }
+.meter-summary span { display: grid; gap: 2px; font-weight: 600; }
+.meter-summary small { font-weight: 400; color: var(--color-text-secondary); font-size: var(--text-xs, .75rem); }
+.meter-notes { margin: 0; padding: 10px 14px 10px 30px; border-radius: var(--radius, 8px); background: var(--color-warning-light, #fff7e6); }
+.meter-notes li + li { margin-top: 4px; }
+.meter-table caption { text-align: left; font-weight: 600; padding: 0 0 6px; }
+.meter-table td { vertical-align: top; }
+.meter-table input:not([type="checkbox"]), .meter-table select { width: 100%; min-width: 7rem; }
+.meter-table input.meter-number { min-width: 6.5rem; text-align: right; }
+.meter-table input.meter-share { min-width: 4.5rem; width: 5rem; text-align: right; }
+.meter-table tr.meter-unsure td { background: var(--color-warning-light, #fff7e6); }
+.meter-reason { display: block; margin-top: 3px; color: var(--color-text-secondary); font-size: var(--text-xs, .75rem); white-space: normal; max-width: 18rem; }
+.meter-problem { margin: 0; color: var(--color-danger); }
+.meter-actions { flex-wrap: wrap; gap: 8px; }
+.meter-reread { display: inline-flex; gap: 6px; align-items: center; }
+.meter-units summary { cursor: pointer; font-weight: 600; }
+.billing-meter-import, .meter-import-panel { margin-bottom: 14px; }
+.billing-meter-import > summary, .meter-import-panel > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.meter-import-panel { padding: 12px 16px; }
+.meter-import-property { display: inline-grid; gap: 4px; margin: 6px 0 12px; min-width: 18rem; font-size: var(--text-sm); color: var(--color-text-secondary); }
+.meter-costs td:nth-child(2) input { min-width: 14rem; }
+.meter-costs td:nth-child(4) select { min-width: 10.5rem; }
+.meter-costs td:nth-child(5) select { min-width: 13rem; }
+.meter-readings td:nth-child(3) select { min-width: 13rem; }
+.meter-readings input[type="date"] { min-width: 9.5rem; }
+.meter-line { display: block; max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

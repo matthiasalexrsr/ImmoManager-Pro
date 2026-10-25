@@ -11,6 +11,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { formatDate, formatNumber } from '../utils/format';
 import KpiAction from '../components/KpiAction';
 import MeterHistory from '../features/meters/MeterHistory';
+import MeterDocumentImport from '../features/meterDocuments/MeterDocumentImport';
 import { useCanWrite } from '../contexts/AuthContext';
 
 const METER_TYPE_LABELS = {
@@ -67,6 +68,7 @@ export default function Meters() {
   const [historyOf, setHistoryOf] = useState(null);
   const [historyRevision, setHistoryRevision] = useState(0);
   const canWrite = useCanWrite('/meters');
+  const [importProperty, setImportProperty] = useState('');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
@@ -225,6 +227,16 @@ export default function Meters() {
         <KpiAction label="Prüfung fällig" value={loadError && !meters.length ? '—' : stats.dueInspection} color={stats.dueInspection ? 'var(--warning)' : undefined} onClick={() => openSources('inspection')} />
         {stats.types.map(([type, count]) => <KpiAction key={type} label={METER_TYPE_LABELS[type] || type} value={count} onClick={() => openSources(`type:${type}`)} />)}
       </div>
+
+      {canWrite && <details className="panel meter-import-panel">
+        <summary>Ableseprotokoll des Messdienstes auswerten (ista, Techem, Brunata, Minol …)</summary>
+        <label className="meter-import-property">Immobilie
+          <select value={importProperty} onChange={event => setImportProperty(event.target.value)}>
+            <option value="">Bitte wählen</option>
+            {properties.map(property => <option key={property.id} value={property.id}>{property.name}</option>)}
+          </select></label>
+        {importProperty && <MeterDocumentImport key={importProperty} propertyId={importProperty} withCosts={false} onApplied={() => refreshData()} />}
+      </details>}
 
       {/* Group-by controls */}
       <div className="toolbar">

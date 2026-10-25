@@ -15,6 +15,7 @@ import { codeLabel } from '../utils/codeLabels';
 import { formatMoney } from '../utils/format';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, FolderOpen, ListChecks, Pencil } from 'lucide-react';
+import MeterDocumentImport from '../features/meterDocuments/MeterDocumentImport';
 import './statements.css';
 
 const sumMoney = (rows, key) => rows.reduce((sum, row) => sum + Math.round(Number(row[key] || 0) * 100), 0) / 100;
@@ -1386,6 +1387,11 @@ export default function Statements() {
               </label>
             </div>
           )}
+          {writableCosts && <details className="billing-meter-import">
+            <summary>Abrechnung oder Ableseprotokoll des Messdienstes auswerten (ista, Techem, Brunata, Minol …)</summary>
+            <MeterDocumentImport key={selectedPeriod.id} propertyId={selectedPeriod.property_id} periodId={selectedPeriod.id}
+              onApplied={() => loadData()} />
+          </details>}
           <DataTable
             title={t('pages.statements.costItems')}
             columns={COST_COLUMNS}

@@ -14,7 +14,8 @@ from ..storage import NotFoundError
 from .document_versions import begin_writer, memory_archive
 
 _ACTIVE = "billing_write_active"
-_TABLES = ("billing_periods", "cost_items", "utility_statements", "billing_objections", "receivables")
+_TABLES = ("billing_periods", "cost_items", "utility_statements", "billing_objections", "receivables",
+           "standalone_meter_readings")
 
 
 def commit_or_flush(db):
