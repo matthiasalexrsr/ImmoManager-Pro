@@ -62,3 +62,10 @@ def test_the_policy_can_be_replaced_or_switched_off(monkeypatch):
     assert client().get("/").headers["content-security-policy"] == "default-src 'self' https://files.example"
     monkeypatch.setattr(settings, "security_headers_enabled", False)
     assert "content-security-policy" not in client().get("/").headers
+
+
+def test_the_api_documentation_is_off_in_production_unless_asked_for():
+    from backend.config import Environment, Settings
+    assert Settings(environment=Environment.development).api_docs is True
+    assert Settings(environment=Environment.production, jwt_secret_key="x" * 64).api_docs is False
+    assert Settings(environment=Environment.production, jwt_secret_key="x" * 64, api_docs_enabled=True).api_docs is True

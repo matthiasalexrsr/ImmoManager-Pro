@@ -145,6 +145,12 @@ class Settings(BaseSettings):
     content_security_policy: str = ""
     # Strict-Transport-Security over HTTPS; 0 switches it off (e.g. while testing a new certificate)
     hsts_max_age: int = 31536000
+    # API documentation (/docs, /redoc, /openapi.json); unset: on, except with ENVIRONMENT=production
+    api_docs_enabled: bool | None = None
+
+    @property
+    def api_docs(self) -> bool:
+        return self.api_docs_enabled if self.api_docs_enabled is not None else self.environment != Environment.production
 
     # --- Logging ---
     log_level: str = "INFO"

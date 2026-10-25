@@ -122,6 +122,10 @@ i18n/                 # Locale files (de-DE, en-US, es-ES)
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:5173` | Allowed CORS origins |
 | `ALLOW_SELF_REGISTRATION` | `false` | Allow public sign-up after initial setup; self-registered accounts are always read-only. The first account on a fresh install is always created as owner, further accounts are created by an admin under *Settings → Users* (or `POST /api/v1/auth/users`) |
 | `DIAGNOSTICS_ALLOW_IN_PRODUCTION` | `false` | Enable developer tools (diagnostics, autotest, developer notes) in production |
+| `SECURITY_HEADERS_ENABLED` | `true` | Content-Security-Policy, X-Frame-Options, Referrer-Policy, Permissions-Policy, COOP/CORP and, over HTTPS, HSTS on every response |
+| `CONTENT_SECURITY_POLICY` | built in | Replaces the built-in Content-Security-Policy (only own origin, no inline script, no eval) |
+| `HSTS_MAX_AGE` | `31536000` | Strict-Transport-Security over HTTPS; `0` switches it off |
+| `API_DOCS_ENABLED` | on, off in production | Serves `/docs`, `/redoc` and `/openapi.json` |
 
 ## Testing
 
@@ -163,6 +167,7 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 - Local Windows builds use the PyInstaller spec and SQLite by default.
 - External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
+- Security: see [SECURITY.md](SECURITY.md) (reporting a vulnerability, supported versions, what the application protects and what the operator configures) and [docs/AI_READING_SECURITY_20261025.md](docs/AI_READING_SECURITY_20261025.md).
 - Schema updates are explicit: `python -m backend.upgrade` (Windows package: `ImmoManager-Pro.exe upgrade`) takes a verified full backup first, then runs the migrations. The normal start never changes an existing schema: it initialises an empty database and refuses one that is behind the Alembic head. The desktop launcher (`python -m backend`, the `.exe`, `start.bat`), the Docker entrypoint, `scripts/update.sh` and the in-app updater run the explicit step for you. Databases created by older desktop versions without Alembic are adopted by that step.
 - Full backups (database, uploads, configuration, keys), the monthly restore probe, the second backup target and key handling: [docs/OPERATIONS_BACKUP_SECRETS_20261008.md](docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 - Reproducible installs: `pip install -r requirements.txt -c constraints.txt`, `npm ci`; Docker base images are pinned by digest.

@@ -190,6 +190,10 @@ app = FastAPI(
     title=settings.app_title,
     version=settings.app_version,
     lifespan=lifespan,
+    # a public installation does not describe its API to everyone (API_DOCS_ENABLED=true shows it)
+    docs_url="/docs" if settings.api_docs else None,
+    redoc_url="/redoc" if settings.api_docs else None,
+    openapi_url="/openapi.json" if settings.api_docs else None,
 )
 
 # Register global exception handlers
