@@ -59,6 +59,17 @@ const documentRequests = () => api.get.mock.calls
   .filter(([path]) => new URL(path, 'http://example.test').pathname.endsWith('/documents'))
   .map(([path]) => new URL(path, 'http://example.test'));
 
+const readingOptions = {
+  readers: [{ id: 'local', label: 'Lokale Regeln', available: true, ai: false }, { id: 'claude', label: 'Claude', available: false, ai: true }],
+  default_reader: 'auto', ai_enabled: true, chat: true, confirm_mode: 'confirm',
+  surfaces: [{ id: 'document', label: 'Dokumentablage', may_use: true, ai_allowed: true, needs_ai: false,
+    fields: [{ name: 'title', label: 'Titel', kind: 'text' }, { name: 'tenant', label: 'Mieter', kind: 'tenant' }] }],
+};
+const reading = (values = {}) => ({ id: 'r1', revision: 1, surface: 'document', reader: 'local', reader_label: 'Lokale Regeln', status: 'open',
+  chat: false, values, changed: Object.keys(values), duplicates: [], decision: null, questions: [], notes: [], dropped: [], messages: [],
+  confirm_mode: 'confirm', file: { name: 'Brief.docx' } });
+const answer = values => path => Promise.resolve(path === '/ai/readings' ? reading(values) : path === '/documents' ? { id: 'd-new' } : {});
+
 function mount(url = '/documents?tenant_id=t1') {
   return render(<MemoryRouter initialEntries={[url]}>
     <Link to="/documents?tenant_id=t2">Zu Ben wechseln</Link><Documents />
@@ -76,10 +87,11 @@ beforeEach(() => {
       document: [direct, legacy].find(row => row.id === parsed.pathname.split('/')[2]), versions: { items: [] } });
     if (parsed.pathname.endsWith('/overview')) return Promise.resolve(overview(parsed.pathname.includes('/t2/') ? ben : anna));
     if (parsed.pathname.endsWith('/documents')) return Promise.resolve(page([direct, legacy]));
+    if (parsed.pathname === '/ai/readings/options') return Promise.resolve(readingOptions);
     return Promise.reject(new Error(`Unexpected GET ${path}`));
   });
   api.list.mockResolvedValue([direct, legacy]);
-  api.post.mockResolvedValue({});
+  api.post.mockImplementation(answer());
   api.put.mockResolvedValue({});
   vi.stubGlobal('fetch', vi.fn());
 });
@@ -143,28 +155,43 @@ describe('party documents page', () => {
     expect(screen.queryByText('Direkter Brief')).not.toBeInTheDocument();
   });
 
-  it('prefills an uploaded document for the selected tenant and saves the reviewed values with that file', async () => {
+  it('reads an uploaded document, keeps the selected tenant and saves the confirmed values with that file', async () => {
     api.upload.mockResolvedValueOnce({ file_url: '/uploads/brief-neu.docx' })
       .mockResolvedValueOnce({ file_url: '/uploads/zweiter.docx' });
+    api.post.mockImplementation(answer({ title: { value: 'Brief vom 3. Mai', evidence: 'Brief vom 3. Mai', confidence: 'medium', source: 'local' },
+      tenant: { value: { id: 't2', label: 'Ben Weber' }, evidence: 'Ben Weber', confidence: 'low', source: 'local' } }));
     mount();
     await screen.findByText('Direkter Brief');
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), {
       target: { files: [new File(['brief'], 'Brief.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })] },
     });
+    const read = await screen.findByRole('dialog', { name: 'Dokument einlesen' });
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ai/readings', expect.objectContaining({ surface: 'document',
+      file_url: '/uploads/brief-neu.docx', document_id: null, reader: 'local', params: { tenant_id: 't1' } })));   // the rules read at once
+    fireEvent.click(await within(read).findByRole('button', { name: 'In die Maske übernehmen' }));
     const dialog = await screen.findByRole('dialog', { name: 'Dokument erstellen' });
-    await waitFor(() => expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t1'));
-    expect(within(dialog).getByLabelText(/Titel/)).toHaveValue('Brief');
-    fireEvent.change(within(dialog).getByLabelText(/Titel/), { target: { value: 'Persönlicher Brief' } });
+    await waitFor(() => expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t1'));     // the page's party, not the read one
+    const title = within(dialog).getByLabelText(/^Titel/, { selector: 'input' });
+    expect(title).toHaveValue('Brief vom 3. Mai');
+    expect(within(dialog).getByText('1 noch zu bestätigen')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    expect(await within(dialog).findByText(/prüfen und bestätigen: Titel/)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalledWith('/documents', expect.anything());
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Titel: von der KI eingetragenen Wert bestätigen' }));
     fireEvent.change(within(dialog).getByLabelText('Tags'), { target: { value: 'Kontakt, geprüft' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/documents', expect.objectContaining({
-      tenant_id: 't1', file_url: '/uploads/brief-neu.docx', title: 'Persönlicher Brief', tags: 'Kontakt, geprüft', contract_id: null,
+      tenant_id: 't1', file_url: '/uploads/brief-neu.docx', title: 'Brief vom 3. Mai', tags: 'Kontakt, geprüft', contract_id: null,
     })));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ai/readings/r1/finish', expect.objectContaining({
+      outcome: 'taken_over', record_kind: 'document', record_id: 'd-new', expected_revision: 1 })));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.queryByText(/Hochgeladen:/)).not.toBeInTheDocument();
     expect(context.store.invalidateRelated).toHaveBeenCalledWith('documents');
 
+    api.post.mockImplementation(answer());
     fireEvent.change(screen.getByLabelText('Dokumentdateien wählen'), { target: { files: [new File(['neu'], 'Zweiter.docx')] } });
+    fireEvent.click(await within(await screen.findByRole('dialog', { name: 'Dokument einlesen' })).findByRole('button', { name: 'Ohne die Werte weiter' }));
     const next = await screen.findByRole('dialog', { name: 'Dokument erstellen' });
     await waitFor(() => expect(within(next).getByLabelText(/Titel/)).toHaveValue('Zweiter'));
     fireEvent.click(within(next).getByRole('button', { name: 'Speichern' }));
@@ -280,6 +307,7 @@ describe('party documents page', () => {
     expect(screen.queryByText(/\/uploads\/anna\.docx/)).not.toBeInTheDocument();
 
     await act(async () => benUpload.resolve({ file_url: '/uploads/ben.docx' }));
+    fireEvent.click(await within(await screen.findByRole('dialog', { name: 'Dokument einlesen' })).findByRole('button', { name: 'Ohne die Werte weiter' }));
     const dialog = await screen.findByRole('dialog', { name: 'Dokument erstellen' });
     await waitFor(() => expect(within(dialog).getByLabelText('Mieter / Partei')).toHaveValue('t2'));
     expect(within(dialog).getByLabelText(/Titel/)).toHaveValue('Ben');

@@ -65,6 +65,53 @@ export function readingToForm(reading, mapping) {
   return { initial, marks };
 }
 
+/** Several read fields in one form field (e.g. sender and summary in a description), each with its prefix. */
+export function combined(values, parts) {
+  const found = parts.map(([name, prefix]) => [values[name], prefix]).filter(([item]) => item?.value != null && item.value !== '');
+  if (!found.length) return null;
+  const text = item => (typeof item.value === 'object' ? item.value.label : String(item.value));
+  return { value: found.map(([item, prefix]) => (prefix ? `${prefix}: ${text(item)}` : text(item))).join('\n'),
+    evidence: found.map(([item]) => item.evidence).filter(Boolean).join(' … ') || null,
+    confidence: found.some(([item]) => item.confidence === 'low') ? 'low' : found[0][0].confidence || null, source: found[0][0].source };
+}
+
+/**
+ * A form's start values from what it already knows (`base`) and a reading: read values win, except for the
+ * `keep` fields the page itself set (the property or tenant the person is working in). Marks only for read values.
+ */
+export function formFromReading(base, reading, mapping, keep = []) {
+  const { initial, marks } = readingToForm(reading, mapping);
+  const values = { ...base };
+  const shown = {};
+  for (const [field, value] of Object.entries(initial)) {
+    if (keep.includes(field) && base?.[field] != null && base[field] !== '') continue;
+    values[field] = value;
+    shown[field] = marks[field];
+  }
+  return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
+    document: reading.document?.title || reading.file?.name || null } : null };
+}
+
+/** Read values for the empty fields of a record that already exists (the "add the read values" choice). */
+export function fillEmpty(record, reading, mapping) {
+  const { initial, marks } = readingToForm(reading, mapping);
+  const values = { ...record };
+  const shown = {};
+  for (const [field, value] of Object.entries(initial)) {
+    if (record?.[field] != null && record[field] !== '') continue;
+    values[field] = value;
+    shown[field] = marks[field];
+  }
+  return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
+    document: reading.document?.title || reading.file?.name || null } : null };
+}
+
+/** Reading fields for the document form. */
+export const DOCUMENT_FORM = {
+  title: 'title', document_type: 'document_type', document_date: 'document_date', valid_until: 'valid_until',
+  unit_id: 'unit', tenant_id: 'tenant', description: values => combined(values, [['sender', 'Absender'], ['description', '']]),
+};
+
 export const CHOICE_LABELS = {
   heating: 'Heizung', hot_water: 'Warmwasser', water: 'Wasser', sewage: 'Abwasser', electricity: 'Allgemeinstrom',
   waste: 'Müllabfuhr', street_cleaning: 'Straßenreinigung', cleaning: 'Gebäudereinigung', garden: 'Gartenpflege',

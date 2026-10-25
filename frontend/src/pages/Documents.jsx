@@ -28,8 +28,12 @@ import { printDocuments, skippedNote } from '../features/documentShare/documentS
 import { useToast } from '../components/Toast';
 import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
 import { deriveDocumentAssociations, documentAssociationFields, resolveDocumentContext } from '../features/documentDetail/documentAssociations';
+import AiReadingDialog from '../features/aiReading/AiReadingDialog';
+import AiReadingPanel from '../features/aiReading/AiReadingPanel';
+import { DOCUMENT_FORM, aiReadingApi, fillEmpty, formFromReading } from '../features/aiReading/aiReadingApi';
 
 const CONTEXT_KEYS = ['property_id', 'unit_id', 'contract_id'];
+const PLACE_KEYS = [...CONTEXT_KEYS, 'tenant_id'];
 
 function guessDocType(filename) {
   const lower = (filename || '').toLowerCase();
@@ -97,7 +101,9 @@ function DocumentsWorkspace() {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState([]);
-  const [ocrResult, setOcrResult] = useState(null);
+  const [readingSource, setReadingSource] = useState(null);       // an uploaded file being read for the form
+  const [formMarks, setFormMarks] = useState(null);
+  const formReading = useRef(null);                               // the reading the open form came from
   const [filter, setFilter] = useState('all');
   const [drilldown, setDrilldown] = useState(0);
   const [pageSource, setPageSource] = useState(null);
@@ -254,7 +260,7 @@ function DocumentsWorkspace() {
     uploadBusy.current = true;
     const generation = uploadGeneration.current;
     setUploading(true);
-    setOcrResult(null);
+    setReadingSource(null);
     setUploadedUrl('');
     setError(null);
     try {
@@ -266,33 +272,10 @@ function DocumentsWorkspace() {
       if (generation !== uploadGeneration.current) return;
       if (!data.file_url) throw new Error('Der Server hat keine Datei zurückgegeben.');
       setUploadedUrl(data.file_url);
-      let suggestedType = guessDocType(file.name);
-
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (['pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif'].includes(ext) && data.file_url) {
-        try {
-          const ocrRes = await api.post('/documents/ocr-analyze', { file_url: data.file_url });
-          current();
-          if (generation !== uploadGeneration.current) return;
-          suggestedType = ocrRes.guessedType || ocrRes.document_type || suggestedType;
-          setOcrResult({
-            success: Boolean(ocrRes.success ?? ocrRes.analyzed),
-            ...ocrRes,
-            guessedType: ocrRes.guessedType || ocrRes.document_type || guessDocType(file.name),
-            extracted_text: ocrRes.extracted_text || ocrRes.summary || null,
-          });
-        } catch {
-          if (generation !== uploadGeneration.current) return;
-          setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnavailable') || 'OCR nicht verfügbar' });
-        }
-      } else {
-        setOcrResult({ success: false, guessedType: guessDocType(file.name), message: t('pages.documents.upload.ocrUnsupported') || 'Dateityp nicht OCR-fähig' });
-      }
-      current();
-      if (generation !== uploadGeneration.current) return;
-      setCreateInitial({ ...Object.fromEntries(new URLSearchParams(contextQuery)), title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url,
-        document_type: DOC_TYPES.some(type => type.value === suggestedType) ? suggestedType : 'Sonstiges', tenant_id: tenantId || null });
-      setModal('create');
+      const suggestedType = guessDocType(file.name);
+      setReadingSource({ fileUrl: data.file_url, name: file.name, scope: tenantId || contextQuery, base: { ...Object.fromEntries(new URLSearchParams(contextQuery)),
+        title: file.name.replace(/\.[^.]+$/, ''), file_url: data.file_url, tenant_id: tenantId || null,
+        document_type: DOC_TYPES.some(type => type.value === suggestedType) ? suggestedType : 'Sonstiges' } });
     } catch (err) {
       if (generation === uploadGeneration.current) setError(err.message);
     } finally {
@@ -300,14 +283,14 @@ function DocumentsWorkspace() {
       if (generation === uploadGeneration.current) setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
     }
-  }, [t, canWrite, tenantId, DOC_TYPES, contextQuery]);
+  }, [canWrite, tenantId, DOC_TYPES, contextQuery]);
 
   const handleMultiUpload = useCallback(async (files) => {
     if (!canWrite || uploadBusy.current) return;
     uploadBusy.current = true;
     const generation = uploadGeneration.current;
     const fileList = Array.from(files);
-    setUploading(true); setError(null); setUploadedUrl(''); setOcrResult(null);
+    setUploading(true); setError(null); setUploadedUrl('');
     setUploadQueue(fileList.map(f => ({ name: f.name, status: 'pending' })));
     let current;
     let sessionValid = true;
@@ -374,14 +357,42 @@ function DocumentsWorkspace() {
 
   const handleSave = async (values) => {
     const data = { ...values, retention_class: values.retention_class || null };   // empty: by document type
-    if (modal === 'create') {
-      await api.post('/documents', data);
-    } else {
-      await api.put(`/documents/${modal.id}`, data);
-    }
+    const saved = modal === 'create' ? await api.post('/documents', data) : await api.put(`/documents/${modal.id}`, data);
+    const reading = formReading.current;
+    formReading.current = null;
+    if (reading) aiReadingApi.finish(reading, 'taken_over', { kind: 'document', id: saved?.id || modal.id }).catch(() => {});
     refreshData();
     if (store) store.invalidateRelated('documents');
-    setUploadedUrl(''); setOcrResult(null); setCreateInitial(null);
+    setUploadedUrl(''); setCreateInitial(null); setFormMarks(null);
+  };
+
+  const openForm = (initial, reading, marks) => {
+    formReading.current = reading;
+    setFormMarks(marks);
+    setReadingSource(null);
+    if (initial.id) setModal(initial);
+    else { setCreateInitial(initial); setModal('create'); }
+  };
+  const closeForm = () => {
+    const reading = formReading.current;
+    formReading.current = null;
+    if (reading) aiReadingApi.finish(reading, 'cancelled').catch(() => {});      // the values were not saved
+    setFormMarks(null); setModal(null);
+  };
+  const applyReading = reading => {
+    const { initial, aiMarks } = formFromReading(readingSource.base, reading, DOCUMENT_FORM, PLACE_KEYS);
+    if (!DOC_TYPES.some(type => type.value === initial.document_type)) initial.document_type = readingSource.base.document_type;
+    openForm(initial, reading, aiMarks);
+  };
+  const openExisting = (item, reading) => {
+    aiReadingApi.finish(reading, 'cancelled', item).catch(() => {});
+    setReadingSource(null);
+    navigate(item.href);
+  };
+  const completeExisting = async (item, reading) => {
+    const record = await api.get(`/documents/${encodeURIComponent(item.id)}`);
+    const { initial, aiMarks } = fillEmpty(record, reading, DOCUMENT_FORM);
+    openForm(initial, reading, aiMarks);
   };
 
   const handleDelete = async (row) => {
@@ -421,7 +432,7 @@ function DocumentsWorkspace() {
         <div className="documents-filter-field documents-party-field">
         <label htmlFor="document-party">Mieter / Partei</label>
         <select id="document-party" value={tenantId} disabled={uploading} onChange={event => {
-          setSkip(0); setSearch(''); setDocType(''); setFilter('all'); setUploadedUrl(''); setOcrResult(null); setModal(null);
+          setSkip(0); setSearch(''); setDocType(''); setFilter('all'); setUploadedUrl(''); setReadingSource(null); setModal(null);
           setSearchParams(event.target.value ? { tenant_id: event.target.value } : {});
         }}>
           <option value="">Alle Dokumente</option>
@@ -529,28 +540,6 @@ function DocumentsWorkspace() {
         </div>
       )}
 
-      {/* OCR result banner */}
-      {ocrResult && (
-        <div style={{ marginBottom: '1rem' }}>
-          <div className="panel" style={{ padding: '0.75rem 1rem', background: ocrResult.success ? 'var(--success-bg, #f0fdf4)' : 'var(--bg-secondary)' }}>
-            <strong>{t('pages.documents.aiAnalysis') || 'KI-Analyse:'}</strong>{' '}
-            {ocrResult.success ? (
-              <>
-                {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
-                {ocrResult.extracted_text && (
-                  <span className="text-muted"> — {ocrResult.extracted_text.slice(0, 150)}...</span>
-                )}
-              </>
-            ) : (
-              <>
-                {t('pages.documents.recognizedType') || 'Erkannter Typ:'} <strong>{ocrResult.guessedType}</strong>
-                <span className="text-muted"> — {ocrResult.message}</span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {loading && <p role="status">Dokumente werden geladen …</p>}
       {tenantId && pageSource && !loading && !error && <section aria-label="Kennzahlquelle auf dieser Dokumentseite" className="panel">
         <div className="panel-header">{pageSource === 'with_file' ? 'Mit Datei' : pageSource === 'ocr_completed' ? 'Texterkennung abgeschlossen' : 'Ohne Zuordnung'} · Quelle auf dieser Seite
@@ -603,9 +592,16 @@ function DocumentsWorkspace() {
           derive={deriveDocumentAssociations(units, tenantId ? (overview?.contracts || []) : contracts)}
           initial={modal === 'create' ? createInitial : modal}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={closeForm}
+          aiMarks={formMarks}
         />
       )}
+      {readingSource && readingSource.scope === (tenantId || contextQuery) && <AiReadingDialog title="Dokument einlesen" onClose={() => setReadingSource(null)}>
+        <AiReadingPanel surface="document" autoStart source={{ fileUrl: readingSource.fileUrl, name: readingSource.name }}
+          params={Object.fromEntries(PLACE_KEYS.map(key => [key, readingSource.base[key] || null]).filter(([, value]) => value))}
+          title="Was steht im Dokument?" onApply={applyReading} onSkip={() => openForm(readingSource.base, null, null)}
+          onCancel={() => setReadingSource(null)} onOpenExisting={openExisting} onUpdateExisting={completeExisting} />
+      </AiReadingDialog>}
       {lockTarget?.retention && <RetentionLockDialog document={lockTarget} retention={lockTarget.retention}
         canOverride={canWrite && canOverrideRetention} onClose={() => setLockTarget(null)}
         onDeleted={() => { setLockTarget(null); refreshData(); if (store) store.invalidateRelated('documents'); }} />}

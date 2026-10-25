@@ -67,6 +67,10 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
     const found = await service.finish(reading, 'cancelled');
     setReading(null); onCancel?.(found);
   });
+  const skipValues = () => run('skip', async () => {
+    if (reading.status === 'open') await service.finish(reading, 'cancelled');
+    onSkip();
+  });
 
   useEffect(() => {
     if (!autoStart || started.current || !options || !reader || reader !== 'local') return;
@@ -185,6 +189,8 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
         <div className="ai-reading-actions">
           {onApply && <button type="button" className="btn btn-primary" disabled={waiting || decided === 'cancel' || reading.status !== 'open' || Boolean(busy)}
             onClick={() => onApply(reading)}>{applyLabel}</button>}
+          {onSkip && <button type="button" className="btn btn-secondary" disabled={Boolean(busy) || decided === 'cancel'} onClick={skipValues}>
+            Ohne die Werte weiter</button>}
           <button type="button" className="btn btn-secondary" disabled={Boolean(busy)} onClick={() => setReading(null)}>Neu einlesen</button>
           <button type="button" className="btn btn-ghost" disabled={Boolean(busy) || reading.status !== 'open'} onClick={discard}>Verwerfen</button>
         </div>

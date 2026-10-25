@@ -299,10 +299,19 @@ try {
   await step('single real file upload opens metadata form and persists direct tenant ownership', async () => {
     await gotoDocuments(owner, tenant.id);
     await owner.getByLabel('Dokumentdateien wählen').setInputFiles(path.join(output, 'qa-single.pdf'));
+    const reading = owner.getByRole('dialog', { name: 'Dokument einlesen' });
+    await expect(reading).toBeVisible();
+    await expect(reading.getByRole('radio', { name: /Lokale Regeln/ })).toBeChecked();      // no AI account in the QA server
+    const apply = reading.getByRole('button', { name: 'In die Maske übernehmen' });
+    await expect(apply).toBeEnabled({ timeout: 15000 });
+    await apply.click();
+    await expect(reading).toHaveCount(0);
     const dialog = owner.getByRole('dialog', { name: 'Dokument erstellen' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Mieter / Partei', { exact: true })).toHaveValue(tenant.id);
     await dialog.getByLabel(/^Titel/).fill(`${marker} Browser Einzelupload`);
+    const confirmAll = dialog.getByRole('button', { name: 'Alle bestätigen' });
+    if (await confirmAll.count()) await confirmAll.click();
     const saveResponse = owner.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/documents' && response.request().method() === 'POST', { timeout: 10000 });
     await dialog.getByRole('button', { name: 'Speichern', exact: true }).click();
     const saved = await saveResponse;
