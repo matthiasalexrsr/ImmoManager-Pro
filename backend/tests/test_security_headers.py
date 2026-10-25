@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from backend.config import settings
 from backend.middleware import APP_CSP, SecurityHeadersMiddleware
+from backend.tests.test_daily_workflows import clean  # noqa: F401
+from backend.tests.test_daily_workflows import client as signed_in
 
 
 def client(base="http://testserver"):
@@ -69,3 +71,12 @@ def test_the_api_documentation_is_off_in_production_unless_asked_for():
     assert Settings(environment=Environment.development).api_docs is True
     assert Settings(environment=Environment.production, jwt_secret_key="x" * 64).api_docs is False
     assert Settings(environment=Environment.production, jwt_secret_key="x" * 64, api_docs_enabled=True).api_docs is True
+
+
+def test_the_settings_link_the_api_schema_only_while_the_documentation_is_on(monkeypatch):
+    _, browser = signed_in("schema-owner")
+    contract = "/api/v1/auth/users/me/settings/configuration-contract"
+    monkeypatch.setattr(settings, "api_docs_enabled", True)
+    assert browser.get(contract).json()["api"]["schema"] == "/openapi.json"
+    monkeypatch.setattr(settings, "api_docs_enabled", False)
+    assert browser.get(contract).json()["api"]["schema"] is None              # no link into the app's 404 page

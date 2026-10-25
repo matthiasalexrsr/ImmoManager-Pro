@@ -11,7 +11,8 @@ export default function ConfigurationContract() {
     return () => { live = false; };
   }, [attempt]);
   return <section aria-label="API und Erweiterungen"><h3>API und Erweiterungen</h3>
-    {data && <><p>{data.api.base} · <a href={data.api.schema}>Dokumentierter API-Vertrag</a></p><p>{data.api.authorization}</p><p>{data.api.commands}</p><p>{data.api.secret_policy}</p>
+    {data && <><p>{data.api.base} · {data.api.schema ? <a href={data.api.schema}>Dokumentierter API-Vertrag</a>
+      : 'Die API-Dokumentation ist in dieser Installation aus (API_DOCS_ENABLED=true schaltet sie ein).'}</p><p>{data.api.authorization}</p><p>{data.api.commands}</p><p>{data.api.secret_policy}</p>
       <p>{data.plugin_policy}</p>{data.plugins.length ? <ul>{data.plugins.map(plugin => <li key={plugin.name}>{plugin.name} · Version {plugin.version} · {plugin.description}</li>)}</ul> : <p>Keine Pythonplugins im laufenden Prozess geladen.</p>}</>}
     {error && <p role="alert">{error}<button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
     {!data && !error && <p role="status">API- und Pluginstatus werden geladen …</p>}

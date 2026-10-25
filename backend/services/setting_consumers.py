@@ -55,8 +55,10 @@ def configuration_contract(store, actor_id):
     with archive.work(store, actor_id) as unit:
         if not catalogue.setting_allowed(unit, 'preferred_connection'):
             raise HTTPException(403, 'API- und Pluginverwaltung benötigt Installationsrechte.')
+        from ..config import settings
         from ..plugins import get_plugins
-        return {'api': {'base': '/api/v1', 'schema': '/openapi.json',
+        # Without API docs (production default) there is no schema to link to.
+        return {'api': {'base': '/api/v1', 'schema': '/openapi.json' if settings.api_docs else None,
                         'authorization': 'Aktuelle Rolle und Objektgrants; keine zusätzlichen Pluginrechte.',
                         'commands': 'Neue Einstellungen: erwartete Revision und Idempotenzschlüssel. Alte Preferences: APIv1-Teilupdate, zusätzliche Antwortfelder bleiben additiv.',
                         'secret_policy': 'Keine Geheimniswerte in dieser Ansicht. Verbindungsdaten ausschließlich über ihre bestehende geschützte Verwaltung.'},
