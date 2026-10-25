@@ -48,14 +48,52 @@ def require_allowed_extension(filename: str | None, allowed: frozenset[str]) -> 
     return ext
 
 
+_ZIP, _OLE = b"PK\x03\x04", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def content_matches(ext: str, contents: bytes) -> bool:
+    """Whether the bytes are what the file name says (OWASP: check the signature, not only the extension).
+    Text formats have no signature; they are never shown inline."""
+    head = contents[:16]
+    if ext == "pdf":
+        return b"%PDF-" in contents[:1024]
+    if ext == "png":
+        return head.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext in ("jpg", "jpeg"):
+        return head.startswith(b"\xff\xd8\xff")
+    if ext == "gif":
+        return head[:6] in (b"GIF87a", b"GIF89a")
+    if ext == "webp":
+        return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    if ext == "bmp":
+        return head.startswith(b"BM")
+    if ext in ("tif", "tiff"):
+        return head[:4] in (b"II*\x00", b"MM\x00*")
+    if ext in ("heic", "heif"):
+        return head[4:8] == b"ftyp"
+    if ext in ("docx", "xlsx", "odt", "ods"):
+        return head.startswith(_ZIP)
+    if ext in ("doc", "xls"):
+        return head.startswith(_OLE)
+    if ext == "rtf":
+        return head.startswith(b"{\\rtf")
+    return True
+
+
 async def read_limited(file: UploadFile) -> bytes:
-    """Read an upload, enforcing MAX_UPLOAD_SIZE_BYTES."""
+    """Read an upload, enforcing MAX_UPLOAD_SIZE_BYTES and that its content matches its file type."""
     max_size = settings.max_upload_size_bytes
     contents = await file.read(max_size + 1)
     if len(contents) > max_size:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Datei überschreitet das Limit von {max_size // (1024 * 1024)} MB",
+        )
+    ext = file_extension(file.filename)
+    if contents and not content_matches(ext, contents):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Der Inhalt der Datei passt nicht zur Endung '.{ext}'. Bitte die Originaldatei hochladen.",
         )
     return contents
 

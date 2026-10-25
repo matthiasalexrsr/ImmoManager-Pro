@@ -43,20 +43,29 @@ def test_active_content_uploads_are_rejected(client, headers, route, extra, name
 
 def test_photos_accept_images_only(client, headers):
     route = UPLOAD_ROUTES[0][0]
-    assert client.post(route, headers=headers, files={"file": ("a.jpg", b"img", "image/jpeg")}).status_code == 201
-    assert client.post(route, headers=headers, files={"file": ("a.pdf", b"pdf", "application/pdf")}).status_code == 415
+    assert client.post(route, headers=headers, files={"file": ("a.jpg", b"\xff\xd8\xff\xe0img", "image/jpeg")}).status_code == 201
+    assert client.post(route, headers=headers, files={"file": ("a.pdf", b"%PDF-1.4 pdf", "application/pdf")}).status_code == 415
 
 
-@pytest.mark.parametrize("name,content_type", [("a.pdf", "application/pdf"), ("a.docx", "application/msword")])
-def test_documents_still_accept_office_and_pdf(client, headers, name, content_type):
-    resp = client.post("/api/v1/files/upload", headers=headers, files={"file": (name, b"data", content_type)})
+@pytest.mark.parametrize("name,content,content_type", [("a.pdf", b"%PDF-1.7\ndata", "application/pdf"),
+                                                      ("a.docx", b"PK\x03\x04data", "application/msword")])
+def test_documents_still_accept_office_and_pdf(client, headers, name, content, content_type):
+    resp = client.post("/api/v1/files/upload", headers=headers, files={"file": (name, content, content_type)})
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("name,content", [("rechnung.pdf", b"<html><script>steal()</script>"), ("foto.png", b"%PDF-1.4"),
+                                          ("brief.docx", b"plain text"), ("bild.jpg", b"GIF89a")])
+def test_a_file_whose_content_does_not_match_its_type_is_refused(client, headers, name, content):
+    resp = client.post("/api/v1/files/upload", headers=headers, files={"file": (name, content, "application/octet-stream")})
+    assert resp.status_code == 415
+    assert "passt nicht zur Endung" in resp.text
 
 
 def test_upload_size_limit_applies_to_photos(client, headers, monkeypatch):
     from backend.config import settings
     monkeypatch.setattr(settings, "max_upload_size_bytes", 10)
-    resp = client.post(UPLOAD_ROUTES[0][0], headers=headers, files={"file": ("a.jpg", b"x" * 11, "image/jpeg")})
+    resp = client.post(UPLOAD_ROUTES[0][0], headers=headers, files={"file": ("a.jpg", b"\xff\xd8\xff" + b"x" * 11, "image/jpeg")})
     assert resp.status_code == 413
 
 

@@ -21,6 +21,8 @@ from ..auth import (
     register_user,
     require_auth,
     require_role,
+    login_address_blocked,
+    record_failed_login_address,
     reserve_registration_attempt,
     revoke_token,
     set_user_password,
@@ -113,8 +115,15 @@ def login(
     response: Response = None,  # type: ignore[assignment]
 ) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
+    client_ip = request.client.host if request is not None and request.client else None
+    if login_address_blocked(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Zu viele fehlgeschlagene Anmeldungen von dieser Adresse. Bitte später erneut versuchen.",
+        )
     user = authenticate_user(payload.username, payload.password)
     if user is None:
+        record_failed_login_address(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültige Anmeldedaten",
@@ -128,6 +137,7 @@ def login(
                 headers={"X-2FA-Required": "true"},
             )
         if not verify_totp(user["totp_secret"], payload.totp_code):
+            record_failed_login_address(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ungültiger Zwei-Faktor-Code",

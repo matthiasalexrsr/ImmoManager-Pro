@@ -94,7 +94,7 @@ class TestAuthEndpoints:
             "username": "newuser",
             "email": "new@example.com",
             "full_name": "New User",
-            "password": "Pass1234",
+            "password": "Vault4821",
         })
         assert resp.status_code == 201
         data = resp.json()
@@ -107,7 +107,7 @@ class TestAuthEndpoints:
             "username": "attacker",
             "email": "attacker@example.com",
             "full_name": "Attacker",
-            "password": "Pass1234",
+            "password": "Vault4821",
             "role": "techniker",
         })
         assert resp.status_code == 403
@@ -122,17 +122,17 @@ class TestAuthEndpoints:
                 "username": f"self_{requested}",
                 "email": f"{requested}@example.com",
                 "full_name": "Self",
-                "password": "Pass1234",
+                "password": "Vault4821",
                 "role": requested,
             })
             assert resp.status_code == 201
             assert resp.json()["role"] == "readonly"
 
     def test_login(self, client):
-        register_user("loginuser", "login@example.com", "Login User", "Pass1234")
+        register_user("loginuser", "login@example.com", "Login User", "Vault4821")
         resp = client.post("/api/v1/auth/login", json={
             "username": "loginuser",
-            "password": "Pass1234",
+            "password": "Vault4821",
         })
         assert resp.status_code == 200
         data = resp.json()

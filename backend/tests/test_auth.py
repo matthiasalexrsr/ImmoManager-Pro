@@ -55,7 +55,7 @@ def _register_admin() -> UserRead:
 
 
 def _register_viewer() -> UserRead:
-    return register_user("viewer", "viewer@example.com", "View User", "Pass1234", "readonly")
+    return register_user("viewer", "viewer@example.com", "View User", "Vault4821", "readonly")
 
 
 
@@ -106,7 +106,7 @@ class TestUserManagement:
     def test_duplicate_username(self):
         _register_admin()
         with pytest.raises(HTTPException) as exc_info:
-            register_user("admin", "other@example.com", "Other", "Pass1234", "readonly")
+            register_user("admin", "other@example.com", "Other", "Vault4821", "readonly")
         assert exc_info.value.status_code == 409
 
     def test_authenticate_valid(self):
@@ -165,7 +165,7 @@ class TestAuthRouter:
         mock_request.client.host = "127.0.0.1"
         result = register(UserCreate(
             username="test", email="test@example.com",
-            full_name="Test User", password="Pass1234"
+            full_name="Test User", password="Vault4821"
         ), request=mock_request)
         assert result.username == "test"
 

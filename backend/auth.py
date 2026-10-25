@@ -8,6 +8,7 @@ Supports two user storage backends:
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import threading
 from abc import ABC, abstractmethod
@@ -108,6 +109,19 @@ _register_limiter = RateLimiter(
     max_attempts=MAX_REGISTER_ATTEMPTS,
     window_minutes=REGISTER_WINDOW_MINUTES,
 )
+# Failed sign-ins per client address across all user names (password spraying); the per-user lockout above
+# stays the main defence, this one is per server process.
+MAX_FAILED_LOGINS_PER_ADDRESS = 50
+_address_login_limiter = RateLimiter(max_attempts=MAX_FAILED_LOGINS_PER_ADDRESS, window_minutes=LOCKOUT_DURATION_MINUTES)
+
+
+def login_address_blocked(client_ip: str | None) -> bool:
+    return bool(client_ip) and _address_login_limiter.is_limited(hashlib.sha256(str(client_ip).encode()).hexdigest())
+
+
+def record_failed_login_address(client_ip: str | None) -> None:
+    if client_ip:
+        _address_login_limiter.record(hashlib.sha256(str(client_ip).encode()).hexdigest())
 
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)
@@ -126,11 +140,40 @@ _auth_session_factory: Callable[[], Any] | None = None
 _PBKDF2_ITERATIONS = 600_000
 
 
-def validate_password_strength(password: str) -> list[str]:
+MAX_PASSWORD_LENGTH = 128
+# Passwords that meet the character rules but head every list of leaked passwords (NIST SP 800-63B: refuse
+# known-compromised and expected values). Compared without case, spaces and trailing punctuation.
+COMMON_PASSWORDS = frozenset("""
+password1 password12 password123 password1234 passwort1 passwort12 passwort123 passwort1234 passw0rd p4ssw0rd
+pass1234 pass12345 welcome1 welcome12 welcome123 willkommen1 willkommen123 letmein1 changeme1 changeme123
+qwerty12 qwerty123 qwerty1234 qwertz12 qwertz123 qwertz1234 asdfgh12 yxcvbn12 abcd1234 abc12345 abcdef12
+admin123 admin1234 administrator1 root1234 test1234 test12345 testtest1 master123 monkey123 dragon123
+football1 iloveyou1 sunshine1 princess1 baseball1 superman1 starwars1 trustno11 hallo123 hallo1234
+deutschland1 berlin123 hamburg123 muenchen1 schalke04 bayern123 dortmund09 immobilie1 vermieter1 mieter123
+hausverwaltung1 verwaltung1 immomanager1 immomanager123 firma123 office123 start123 start1234 geheim123
+""".split())
+_SEASON_YEAR = re.compile(r"^(sommer|winter|herbst|fr(ü|ue)hling|summer|spring|autumn|fall|januar|februar|"
+                          r"m(ä|ae)rz|april|mai|juni|juli|august|september|oktober|november|dezember|"
+                          r"january|february|march|june|july|october|december)\d{2,4}$")
+
+
+def validate_password_strength(password: str, *, username: str | None = None, email: str | None = None) -> list[str]:
     """T21: Validate password meets policy requirements. Returns list of violations."""
     errors = []
     if len(password) < MIN_PASSWORD_LENGTH:
         errors.append(f"Mindestens {MIN_PASSWORD_LENGTH} Zeichen erforderlich")
+    if len(password) > MAX_PASSWORD_LENGTH:
+        errors.append(f"Höchstens {MAX_PASSWORD_LENGTH} Zeichen")
+    plain = re.sub(r"[\s!?.\-_*#]+$", "", password.strip().lower())
+    if plain in COMMON_PASSWORDS or _SEASON_YEAR.match(plain):
+        errors.append("Dieses Passwort ist allgemein bekannt oder leicht zu erraten; bitte ein anderes wählen")
+    if len(set(password.lower())) <= 3:
+        errors.append("Bitte mehr verschiedene Zeichen verwenden")
+    lowered = password.lower()
+    for name in (username, (email or "").split("@", 1)[0]):
+        if name and len(name) >= 4 and name.lower() in lowered:
+            errors.append("Das Passwort darf den Benutzernamen oder die E-Mail-Adresse nicht enthalten")
+            break
     if REQUIRE_UPPERCASE and not any(c.isupper() for c in password):
         errors.append("Mindestens ein Großbuchstabe erforderlich")
     if REQUIRE_LOWERCASE and not any(c.islower() for c in password):
@@ -899,7 +942,7 @@ def register_user(username: str, email: str, full_name: str, password: str, role
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
-    pw_errors = validate_password_strength(password)
+    pw_errors = validate_password_strength(password, username=username, email=email)
     if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1016,7 +1059,8 @@ def update_user(user_id: str, updates: dict) -> UserRead:
 
 def set_user_password(user_id: str, password: str) -> UserRead:
     """Set a new password for an existing account (admin reset)."""
-    pw_errors = validate_password_strength(password)
+    account = _user_store.get_by_id(user_id) if hasattr(_user_store, "get_by_id") else None
+    pw_errors = validate_password_strength(password, username=(account or {}).get("username"), email=(account or {}).get("email"))
     if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1045,6 +1089,7 @@ def clear_users() -> None:
     _token_blacklist.clear()
     _blacklist_expiry.clear()
     _register_limiter._attempts.clear()
+    _address_login_limiter._attempts.clear()
 
 
 def get_current_user(

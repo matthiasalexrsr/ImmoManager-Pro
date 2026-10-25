@@ -77,3 +77,11 @@ def test_logout_revokes_and_clears_the_cookie(client):
     assert cleared is not None and cleared.value == ""
     again = client.post("/api/v1/auth/refresh", json={}, headers=APP, cookies={"immo_refresh": token})
     assert again.status_code == 401
+
+
+def test_many_failed_sign_ins_from_one_address_are_stopped_across_user_names(client):
+    for number in range(auth.MAX_FAILED_LOGINS_PER_ADDRESS):
+        assert client.post("/api/v1/auth/login", json={"username": f"guess{number}", "password": "Wrong1234x"}).status_code == 401
+    blocked = client.post("/api/v1/auth/login", json=CREDENTIALS)
+    assert blocked.status_code == 429                                        # even the right password waits now
+    assert "dieser Adresse" in blocked.json()["detail"]

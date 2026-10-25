@@ -340,3 +340,20 @@ class TestEmailService:
             body_text="Hello",
         )
         assert result is False
+
+
+class TestPasswordBlocklist:
+    """Known-compromised and expected passwords are refused even when they meet the character rules."""
+
+    def test_common_and_seasonal_passwords(self):
+        for password in ("Password1", "Passwort123!", "Sommer2025", "Willkommen1", "Pass1234", "Qwertz123"):
+            assert any("allgemein bekannt" in e for e in validate_password_strength(password)), password
+
+    def test_name_or_email_inside_the_password(self):
+        assert any("Benutzernamen" in e for e in validate_password_strength("Mueller2026x", username="mueller"))
+        assert any("Benutzernamen" in e for e in validate_password_strength("Xanna.berg9", email="Anna.Berg@example.com"))
+        assert validate_password_strength("Kiefer7Lampe", username="mueller", email="anna@example.com") == []
+
+    def test_length_limit_and_variety(self):
+        assert any("Höchstens" in e for e in validate_password_strength("Aa1" + "x" * 130))
+        assert any("verschiedene" in e for e in validate_password_strength("Aaaa1111"))
