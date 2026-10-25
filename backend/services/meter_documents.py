@@ -360,10 +360,10 @@ def proposal(store: Any, document: Any, extraction: Extraction, *, property_id: 
     default_day = extraction.reading_date or extraction.period_end or (period.end_date if period else None)
     costs = []
     for cost in extraction.costs:
-        key = suggest_key(cost["category"], facts, extraction.consumption_share)
+        suggestion = suggest_key(cost["category"], facts, extraction.consumption_share)
         costs.append({"description": cost["label"], "amount": float(cost["amount"]), "cost_category": cost["category"],
                       "category_label": CATEGORIES.get(cost["category"], cost["category"]),
-                      "is_recoverable": bool(cost.get("recoverable", True)), **key, "line": cost.get("line")})
+                      "is_recoverable": bool(cost.get("recoverable", True)), **suggestion, "line": cost.get("line")})
     readings = []
     for reading in extraction.readings:
         meter = next((by_serial[key] for key in serial_keys(reading.get("serial")) if key in by_serial), None)

@@ -81,6 +81,22 @@ def _property(document, period, property_id: str | None) -> str:
     return chosen
 
 
+@router.get("/guide")
+def billing_guide(property_id: str, period_id: str | None = None) -> dict:
+    """The utility statement assistant's view of a property and period: situation, hints, steps, check."""
+    from ..services import billing_guide as guide_service
+    from .billing import _run_billing_period_preflight
+    try:
+        store.get_property(property_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    period = _period(period_id)
+    if period is not None and period.property_id != property_id:
+        raise HTTPException(422, "Die Abrechnungsperiode gehört zu einer anderen Immobilie.")
+    checks = _run_billing_period_preflight(period.id) if period is not None else None
+    return guide_service.guide(store, property_id, period.id if period is not None else None, checks=checks)
+
+
 @router.get("/meter-documents/readers")
 def meter_document_readers(actor: Annotated[UserRead, Depends(get_current_user)]) -> list[dict]:
     """Who can read a document: the local rules always, Claude or ChatGPT once connected in the assistant."""
