@@ -16,6 +16,10 @@ import {
 } from './Icons';
 import { Keyboard, Star } from 'lucide-react';
 import { NAV_SECTIONS, SUB_PAGES } from './navigation';
+
+// An entry with an entry of its own beneath it (/statements and /statements/assistant) is active only on its own page.
+const NAV_PATHS = NAV_SECTIONS.flatMap(section => (section.items || []).map(item => item.to));
+const NESTED_PARENTS = new Set(NAV_PATHS.filter(path => NAV_PATHS.some(other => other.startsWith(`${path}/`))));
 import ShortcutHelp from './ShortcutHelp';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavFavorites } from '../utils/navFavorites';
@@ -226,7 +230,7 @@ function LayoutFrame() {
   };
   const navItem = item => {
     const label = tr(item.labelKey, item.fallback);
-    return <NavLink key={item.to} to={item.to} end={item.to === '/'}
+    return <NavLink key={item.to} to={item.to} end={item.to === '/' || NESTED_PARENTS.has(item.to)}
       className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
       aria-label={label} title={collapsed ? label : undefined} onClick={() => setMobileNavOpen(false)}>
       <span className="icon-wrapper"><item.icon size={19} /></span>

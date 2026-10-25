@@ -1052,6 +1052,8 @@ export default function Statements() {
           <button className="btn btn-sm btn-secondary" onClick={handleBackToList}>
             &larr; {t('pages.statements.back') || 'Zurück'}
           </button>
+          <Link className="btn btn-sm btn-secondary" to={`/statements/assistant?property_id=${encodeURIComponent(selectedPeriod.property_id)}&period_id=${encodeURIComponent(selectedPeriod.id)}`}>
+            Im Assistenten öffnen</Link>
           <div className="detail-title">
             <h1>{selectedPeriod.label || t('pages.statements.defaultLabel') || 'Abrechnung'}</h1>
             <span className="text-muted">
@@ -1544,7 +1546,8 @@ export default function Statements() {
   return (
     <div className="page billing-workspace">
       {toast.Toast}
-      <div className="billing-overview-heading"><div><h1>Nebenkostenabrechnungen</h1><p>Kosten, Verteilung und persönliche Abrechnungsschreiben je Immobilie und Zeitraum.</p></div></div>
+      <div className="billing-overview-heading"><div><h1>Nebenkostenabrechnungen</h1><p>Kosten, Verteilung und persönliche Abrechnungsschreiben je Immobilie und Zeitraum.</p></div>
+        <Link className="btn btn-primary" to="/statements/assistant">Mit dem Assistenten abrechnen</Link></div>
       <div className="toolbar billing-overview-filters"><label className="inline-field">Ansicht <select value={sourceFilter} onChange={event => setParams(current => {
         const next = new URLSearchParams(current); ['focus_id', 'suche'].forEach(key => next.delete(key));
         if (event.target.value === 'all') next.delete('filter'); else next.set('filter', event.target.value); return next;

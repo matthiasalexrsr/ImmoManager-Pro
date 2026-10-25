@@ -111,7 +111,7 @@ export default function MeterDocumentImport({ propertyId, periodId, withCosts = 
           <span><small>Art</small>{proposal.kind_label}</span>
           <span><small>Zeitraum</small>{proposal.period_start ? `${formatDate(proposal.period_start)} – ${formatDate(proposal.period_end)}` : 'nicht erkannt'}</span>
           <span><small>Ablesetag</small>{proposal.reading_date ? formatDate(proposal.reading_date) : '—'}</span>
-          {proposal.consumption_share != null && <span><small>Nach Verbrauch</small>{proposal.consumption_share}{' %'}</span>}
+          {proposal.consumption_share != null && <span><small>Nach Verbrauch</small>{proposal.consumption_share}{'\u00a0%'}</span>}
           {proposal.total != null && <span><small>Summe laut Dokument</small>{formatMoney(proposal.total)}</span>}
           <span><small>Gelesen von</small>{proposal.reader_label}</span>
           <Link to={`/documents/${encodeURIComponent(proposal.document.id)}`} target="_blank" rel="noopener noreferrer">Original öffnen</Link>

@@ -19,6 +19,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Mietvertrag-Wizard',
+        billingAssistant: 'Nebenkosten-Assistent',
         notificationTemplates: 'Benachrichtigungsvorlagen',
         letterTemplates: 'Briefvorlagen',
         notifications: 'Benachrichtigungen',
@@ -158,6 +159,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Lease Wizard',
+        billingAssistant: 'Service charge assistant',
         notificationTemplates: 'Notification Templates',
         letterTemplates: 'Letter templates',
         notifications: 'Notifications',
@@ -297,6 +299,7 @@ const BUILTIN_TRANSLATIONS = {
     navigation: {
       main: {
         contractWizard: 'Asistente de contrato',
+        billingAssistant: 'Asistente de gastos comunes',
         notificationTemplates: 'Plantillas de notificacion',
         letterTemplates: 'Plantillas de cartas',
         notifications: 'Notificaciones',

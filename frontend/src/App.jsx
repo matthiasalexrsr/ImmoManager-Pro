@@ -22,6 +22,7 @@ const Units = lazy(() => import('./pages/Units'));
 const UnitOverview = lazy(() => import('./pages/UnitOverview'));
 const Tenants = lazy(() => import('./pages/Tenants'));
 const Contracts = lazy(() => import('./pages/Contracts'));
+const BillingAssistant = lazy(() => import('./pages/BillingAssistant'));
 const Accounts = lazy(() => import('./pages/Accounts'));
 const Bookings = lazy(() => import('./pages/Bookings'));
 const Invoices = lazy(() => import('./pages/Invoices'));
@@ -192,6 +193,7 @@ export default function App() {
           <Route path="meters" element={<Meters />} />
           <Route path="contacts" element={<Contacts />} />
           <Route path="statements" element={<Statements />} />
+          <Route path="statements/assistant" element={<BillingAssistant />} />
           <Route path="messages" element={<Messages />} />
           <Route path="categories" element={<Categories />} />
           <Route path="deposits" element={<Deposits />} />

@@ -67,6 +67,7 @@ export const NAV_SECTIONS = [
       { to: '/invoice-review', labelKey: 'navigation.main.invoiceReview', fallback: 'Rechnungsprüfung', icon: InvoiceIcon },
       { to: '/rent-overview', labelKey: 'navigation.main.rentOverview', fallback: 'Mietübersicht', icon: RentIcon },
       { to: '/statements', labelKey: 'navigation.main.statements', fallback: 'Abrechnungen', icon: StatementIcon },
+      { to: '/statements/assistant', labelKey: 'navigation.main.billingAssistant', fallback: 'Nebenkosten-Assistent', icon: StatementIcon },
       { to: '/receivables', labelKey: 'navigation.main.receivables', fallback: 'Forderungen', icon: InvoiceIcon },
       { to: '/dunning', labelKey: 'navigation.main.dunning', fallback: 'Mahnwesen', icon: InvoiceIcon },
       { to: '/review', labelKey: 'navigation.main.review', fallback: 'Prüfliste', icon: InvoiceIcon },
