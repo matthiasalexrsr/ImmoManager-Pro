@@ -121,6 +121,7 @@ jobs:
           pip install ruff==0.15.20 pytest-cov==7.1.0 mypy==2.4.0 pdfplumber==0.11.10 -c constraints.txt
           # the audit tool stays current on purpose (it judges the pinned set above)
           pip install pip-audit
+          pip install bandit==1.8.6
       - name: Lint (ruff)
         if: matrix.store-backend == 'memory'
         run: ruff check backend
@@ -130,6 +131,9 @@ jobs:
       - name: Security audit (pip-audit)
         if: matrix.store-backend == 'memory'
         run: pip-audit -r requirements.txt --strict --desc
+      - name: Static security analysis (bandit, medium and up)
+        if: matrix.store-backend == 'memory'
+        run: bandit -r backend -x backend/tests,backend/services/autotest -ll -ii -q
       - name: Run tests with coverage
         env:
           TEST_STORE_BACKEND: ${{ matrix.store-backend }}

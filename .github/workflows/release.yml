@@ -121,6 +121,31 @@ jobs:
           "zip=$zip" >> $env:GITHUB_OUTPUT
           Write-Host ("Paket: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
 
+      - name: SBOM and checksums
+        id: sbom
+        # required for a release; a branch build only reports a failure here
+        continue-on-error: ${{ steps.version.outputs.tag == '' }}
+        shell: pwsh
+        run: |
+          # what the package is made of (CycloneDX) and the SHA-256 of every published file
+          $out = Join-Path $env:RUNNER_TEMP 'release-meta'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $python = (Get-Command python).Source
+          python -m venv (Join-Path $env:RUNNER_TEMP 'sbom-venv')
+          $tool = Join-Path $env:RUNNER_TEMP 'sbom-venv/Scripts'
+          & "$tool/python.exe" -m pip install --quiet cyclonedx-bom==7.1.0
+          & "$tool/cyclonedx-py.exe" environment --of JSON -o (Join-Path $out 'sbom-python.cdx.json') $python
+          if ($LASTEXITCODE -ne 0) { throw 'SBOM der Python-Pakete fehlgeschlagen' }
+          Push-Location frontend
+          npm sbom --sbom-format cyclonedx --omit dev | Out-File -Encoding utf8NoBOM (Join-Path $out 'sbom-frontend.cdx.json')
+          if ($LASTEXITCODE -ne 0) { throw 'SBOM der Oberflaeche fehlgeschlagen' }
+          Pop-Location
+          $files = @('${{ steps.package.outputs.zip }}') + (Get-ChildItem $out -Filter '*.cdx.json').FullName
+          $sums = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower(), (Split-Path $file -Leaf) }
+          $sums | Out-File -Encoding ascii (Join-Path $out 'SHA256SUMS.txt')
+          Get-Content (Join-Path $out 'SHA256SUMS.txt')
+          "dir=$out" >> $env:GITHUB_OUTPUT
+
       - name: Try the package and the update from the previous release
         shell: pwsh
         run: |
@@ -182,7 +207,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.name }}
-          path: ${{ steps.package.outputs.zip }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.sbom.outputs.dir }}
           retention-days: 30
           compression-level: 0
 
@@ -190,7 +217,9 @@ jobs:
         if: steps.version.outputs.tag != ''
         shell: pwsh
         run: |
-          $releaseArgs = @('${{ steps.version.outputs.tag }}', '${{ steps.package.outputs.zip }}',
+          $meta = @((Get-ChildItem '${{ steps.sbom.outputs.dir }}' -File).FullName)
+          if ($meta.Count -lt 3) { throw 'SBOM oder Pruefsummen fehlen.' }
+          $releaseArgs = @('${{ steps.version.outputs.tag }}', '${{ steps.package.outputs.zip }}') + $meta + @(
                     '--repo', $env:GITHUB_REPOSITORY, '--title', 'ImmoManager Pro ${{ steps.version.outputs.version }}',
                     '--notes-file', 'docs/RELEASE_NOTES.md')
           if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $releaseArgs += '--prerelease' }
