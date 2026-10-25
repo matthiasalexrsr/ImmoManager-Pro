@@ -194,6 +194,22 @@ def test_roles_take_over_their_part_only(case):
     assert clients["buchhaltung"].post(url, json={"billing_period_id": period, "costs": [cost]}).status_code == 200
 
 
+def test_an_account_of_another_portfolio_reaches_neither_the_document_nor_the_property(case):
+    elsewhere = store.create_portfolio(PortfolioCreate(name="Anderer Bestand"))
+    staff = auth.register_user("meter-staff", "staff@example.test", "Staff", "Secret123", "verwalter",
+                               portfolio_access="selected", portfolio_ids=[elsewhere.id])
+    with TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(staff.id)}) as client:
+        url = f"/api/v1/billing/meter-documents/{case['document']['id']}"
+        reading = {"meter_id": case["meters"]["10456791"].id, "reading_date": "2025-12-31", "value": 97}
+        responses = [client.post(f"{url}/analysis", json={"billing_period_id": case["period"].id}),
+                     client.post(f"{url}/apply", json={"billing_period_id": case["period"].id, "readings": [reading]}),
+                     client.get("/api/v1/billing/guide", params={"property_id": case["property"].id})]
+    for response in responses:
+        assert response.status_code in (403, 404), response.text
+        assert "Bautzner" not in response.text
+    assert store.list_standalone_meter_readings() == [] and store.list_cost_items() == []
+
+
 def test_the_ai_reads_the_document_through_the_connected_account(case, monkeypatch):
     seen: dict = {}
 
