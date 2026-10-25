@@ -874,14 +874,14 @@ export default function Statements() {
   };
   const applyCostReading = reading => {
     if (!selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) return;
-    const { initial, aiMarks } = formFromReading({}, reading, COST_FORM);
+    const { initial, aiMarks } = formFromReading({}, reading, COST_FORM, [], costReading?.name);
     const category = reading.values?.cost_category?.value;
     openCostForm({ ...initial, cost_category: category || undefined, description: initial.description || 'Importierte Kostenposition' }, reading, aiMarks);
   };
   const completeCostItem = (item, reading) => {
     const existing = costItems.find(row => row.id === item.id);
     if (!existing) { toast.show('Die vorhandene Kostenposition ist nicht mehr da.'); return; }
-    const { initial, aiMarks } = fillEmpty({ ...existing, is_recoverable: existing.is_recoverable === false ? 'false' : 'true' }, reading, COST_FORM);
+    const { initial, aiMarks } = fillEmpty({ ...existing, is_recoverable: existing.is_recoverable === false ? 'false' : 'true' }, reading, COST_FORM, costReading?.name);
     openCostForm(initial, reading, aiMarks);
   };
   const openCostItem = (item, reading) => {

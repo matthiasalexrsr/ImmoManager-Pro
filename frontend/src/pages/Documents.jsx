@@ -380,7 +380,7 @@ function DocumentsWorkspace() {
     setFormMarks(null); setModal(null);
   };
   const applyReading = reading => {
-    const { initial, aiMarks } = formFromReading(readingSource.base, reading, DOCUMENT_FORM, PLACE_KEYS);
+    const { initial, aiMarks } = formFromReading(readingSource.base, reading, DOCUMENT_FORM, PLACE_KEYS, readingSource.name);
     if (!DOC_TYPES.some(type => type.value === initial.document_type)) initial.document_type = readingSource.base.document_type;
     openForm(initial, reading, aiMarks);
   };
@@ -391,7 +391,7 @@ function DocumentsWorkspace() {
   };
   const completeExisting = async (item, reading) => {
     const record = await api.get(`/documents/${encodeURIComponent(item.id)}`);
-    const { initial, aiMarks } = fillEmpty(record, reading, DOCUMENT_FORM);
+    const { initial, aiMarks } = fillEmpty(record, reading, DOCUMENT_FORM, readingSource?.name);
     openForm(initial, reading, aiMarks);
   };
 

@@ -495,7 +495,8 @@ def _duplicates(store: Any, surface: surfaces.Surface, params: dict, values: dic
                 text: str, check: bool) -> list[dict]:
     if not check:
         return []
-    return surfaces.duplicates(store, surface, params, values, sha256=source_info["sha256"], text=text, document_id=document_id)
+    return surfaces.duplicates(store, surface, params, values, sha256=source_info["sha256"], text=text, document_id=document_id,
+                               size=source_info.get("size"))
 
 
 def options(store: Any, actor: Any, surface_id: Optional[str] = None) -> dict:
@@ -541,7 +542,7 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
         except ProviderError as error:
             raise HTTPException(422, str(error)) from error
     read = _read(store, actor, surface, source, params, values, reader, model=model, instruction=command.instruction)
-    file_info = {"name": source.filename, "media_type": source.media_type, "sha256": source.sha256,
+    file_info = {"name": source.filename, "media_type": source.media_type, "sha256": source.sha256, "size": len(source.content),
                  "characters": len(source.text), "text_source": source.text_source, "file_url": source.file_url}
     found_values = read.get("values") or {}
     duplicates = _duplicates(store, surface, params, found_values, file_info, source.document.id if source.document else None,

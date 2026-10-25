@@ -7,6 +7,7 @@ for a surface; nothing here writes data.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -19,15 +20,22 @@ from .meter_documents import german_number, plain_number, serial_keys
 DOCUMENT_TYPES = ("Mietvertrag", "Rechnung", "Nebenkostenabrechnung", "Protokoll", "Versicherung", "Grundbuchauszug",
                   "Energieausweis", "Betriebskostenabrechnung", "Mahnung", "Kündigung", "Übergabeprotokoll",
                   "Handwerkerrechnung", "Steuerbescheid", "Sonstiges")
-COST_CATEGORIES = ("heating", "hot_water", "water", "sewage", "electricity", "waste", "street_cleaning", "cleaning",
-                   "garden", "caretaker", "insurance", "property_tax", "elevator", "chimney", "cable_tv", "lighting",
-                   "maintenance", "administration", "other")
-COST_CATEGORY_LABELS = {"heating": "Heizung", "hot_water": "Warmwasser", "water": "Wasser", "sewage": "Abwasser",
-                        "electricity": "Allgemeinstrom", "waste": "Müllabfuhr", "street_cleaning": "Straßenreinigung",
+# The cost types of the utility statement (services/billing_guide.BETRKV): invoices pass theirs on to cost items, and
+# the statement compares them with the year before. Maintenance and administration are not recoverable.
+COST_CATEGORIES = ("heating", "hot_water", "water", "electricity", "garbage", "street_cleaning", "cleaning", "garden",
+                   "caretaker", "insurance", "property_tax", "elevator", "chimney", "cable", "laundry", "maintenance",
+                   "administration", "other")
+COST_CATEGORY_LABELS = {"heating": "Heizkosten", "hot_water": "Warmwasser", "water": "Wasser und Abwasser",
+                        "electricity": "Allgemeinstrom", "garbage": "Müllabfuhr", "street_cleaning": "Straßenreinigung",
                         "cleaning": "Gebäudereinigung", "garden": "Gartenpflege", "caretaker": "Hauswart",
                         "insurance": "Versicherung", "property_tax": "Grundsteuer", "elevator": "Aufzug",
-                        "chimney": "Schornsteinfeger", "cable_tv": "Kabel/Antenne", "lighting": "Beleuchtung",
+                        "chimney": "Schornsteinfeger", "cable": "Kabel/Antenne", "laundry": "Wäschepflege",
                         "maintenance": "Instandhaltung", "administration": "Verwaltung", "other": "Sonstiges"}
+# what a model may still answer with, and the catalogue's code for it
+CHOICE_ALIASES = {"waste": "garbage", "sewage": "water", "cable_tv": "cable", "lighting": "electricity"}
+# document types older imports stored as English keys
+DOCUMENT_TYPE_LABELS = {"invoice": "Rechnung", "contract": "Vertrag", "receipt": "Beleg", "protocol": "Protokoll",
+                        "statement": "Abrechnung", "letter": "Brief", "other": "Sonstiges"}
 CONFIDENCE = ("high", "medium", "low")
 MAX_MONEY = Decimal("10000000")
 
@@ -209,6 +217,7 @@ def clean_value(field: Field, value: Any, facts: dict) -> Any:
             text = str(value).strip() if isinstance(value, (str, bool)) else None
             if isinstance(value, bool):
                 text = "true" if value else "false"
+            text = CHOICE_ALIASES.get(text or "", text)
             return text if text in field.choices else None
         if field.kind == "iban":
             from .sepa_rules import compact, iban_problem
@@ -319,13 +328,13 @@ def for_model(known: dict, level: str) -> dict:
 _DATE = r"(\d{1,2}\.\d{1,2}\.\d{2,4})"
 _AMOUNT = r"(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2})"
 _CATEGORY_WORDS = (("heating", ("heizöl", "fernwärme", "heizung", "brennstoff", "gaslieferung")),
-                   ("hot_water", ("warmwasser",)), ("sewage", ("abwasser", "schmutzwasser", "niederschlagswasser")),
-                   ("water", ("wasser",)), ("waste", ("müll", "abfall", "restmüll", "biotonne")),
+                   ("hot_water", ("warmwasser",)), ("water", ("abwasser", "schmutzwasser", "niederschlagswasser", "wasser")),
+                   ("garbage", ("müll", "abfall", "restmüll", "biotonne")),
                    ("street_cleaning", ("straßenreinigung", "winterdienst")), ("electricity", ("allgemeinstrom", "strom")),
                    ("cleaning", ("treppenhausreinigung", "gebäudereinigung", "reinigung")), ("garden", ("garten", "grünpflege")),
                    ("caretaker", ("hausmeister", "hauswart")), ("insurance", ("versicherung", "police")),
                    ("property_tax", ("grundsteuer", "grundbesitzabgaben")), ("elevator", ("aufzug", "fahrstuhl")),
-                   ("chimney", ("schornstein", "kaminkehrer")), ("cable_tv", ("kabel", "antenne", "breitband")))
+                   ("chimney", ("schornstein", "kaminkehrer")), ("cable", ("kabel", "antenne", "breitband")))
 
 
 _COMPANY = re.compile(r"\b(GmbH|AG|KG|OHG|GbR|UG|e\.\s?K\.|e\.\s?V\.|mbH|Stadtwerke|Werke|Versorgung|Service|Handwerk|"
@@ -462,9 +471,37 @@ def _document_title(store: Any, document_id: str) -> Optional[Any]:
         return None
 
 
-def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional[str] = None) -> list[tuple[Any, str]]:
-    """Visible documents with the same file (archived original or analysed upload) or, failing that, the
-    same read text (at least 200 characters, from the full-text index)."""
+def _same_stored_files(store: Any, sha256: str, size: Optional[int], ids: dict[str, str]) -> None:
+    """Documents whose file in the local upload folder has the same bytes (a document filed from an upload has no
+    archived original yet). Only files of the same size are hashed."""
+    from urllib.parse import unquote
+
+    from .file_storage import LocalStorage, get_file_storage
+    storage = get_file_storage()
+    if not size or not isinstance(storage, LocalStorage):
+        return
+    for document in store.list_documents():
+        url = getattr(document, "file_url", None) or ""
+        if ids.get(document.id) == "same_file" or not url.startswith("/uploads/"):
+            continue
+        try:
+            path = storage._path(unquote(url.removeprefix("/uploads/").split("?", 1)[0]))
+            if path.stat().st_size != size:
+                continue
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for block in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(block)
+        except (OSError, ValueError):
+            continue
+        if digest.hexdigest() == sha256:
+            ids[document.id] = "same_file"
+
+
+def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional[str] = None,
+                        size: Optional[int] = None) -> list[tuple[Any, str]]:
+    """Visible documents with the same file (archived original, analysed upload or stored file) or, failing that,
+    the same read text (at least 200 characters, from the full-text index)."""
     ids: dict[str, str] = {}
     if hasattr(store, "db"):
         from sqlalchemy import select
@@ -494,6 +531,7 @@ def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional
             for row in document_text.memory_rows(store).values():
                 if row.characters == len(text) and row.text == text:
                     ids.setdefault(row.document_id, "same_text")
+    _same_stored_files(store, sha256, size, ids)
     ids.pop(exclude or "", None)
     found = []
     for document_id, reason in ids.items():
@@ -519,7 +557,7 @@ REASONS = {"same_file": "dieselbe Datei", "same_text": "derselbe Inhalt", "same_
 
 
 def duplicates(store: Any, surface: Surface, params: dict, values: dict, *, sha256: str, text: str,
-               document_id: Optional[str]) -> list[dict]:
+               document_id: Optional[str], size: Optional[int] = None) -> list[dict]:
     """Existing records that probably stem from the same document, with what can be done about each."""
     found: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -531,11 +569,12 @@ def duplicates(store: Any, surface: Surface, params: dict, values: dict, *, sha2
         found.append({"kind": kind, "id": record_id, "title": title, "href": href, "reason": reason,
                       "reason_label": REASONS.get(reason, reason), "details": details, "can_update": can_update})
 
-    same = same_file_documents(store, sha256, text, exclude=document_id)
+    same = same_file_documents(store, sha256, text, exclude=document_id, size=size)
     source_ids = {document.id for document, _ in same} | ({document_id} if document_id else set())
     for document, reason in same:
         add("document", document.id, document.title or "Dokument", f"/documents/{document.id}", reason,
-            " · ".join(part for part in (document.document_type, _day_text(document.document_date)) if part),
+            " · ".join(part for part in (DOCUMENT_TYPE_LABELS.get(document.document_type or "", document.document_type),
+                                         _day_text(document.document_date)) if part),
             can_update=surface.id == "document")
     value = {name: item["value"] for name, item in values.items()}
     if surface.id == "document" and value.get("title") and value.get("document_date"):

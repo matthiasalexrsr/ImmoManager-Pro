@@ -201,7 +201,7 @@ export default function Meters() {
     const serial = reading.values?.serial;
     const withMeter = reading.meter ? { ...reading, values: { ...reading.values, meter: { value: reading.meter, evidence: serial?.evidence || serial?.value,
       confidence: serial?.confidence, source: reading.reader } } } : reading;
-    const { initial, aiMarks } = formFromReading(photo.meter ? { meter_id: photo.meter.id } : {}, withMeter, METER_PHOTO_FORM);
+    const { initial, aiMarks } = formFromReading(photo.meter ? { meter_id: photo.meter.id } : {}, withMeter, METER_PHOTO_FORM, [], photo.name);
     photoReading.current = reading;
     setReadingStart({ initial, aiMarks });
     setPhoto(null);

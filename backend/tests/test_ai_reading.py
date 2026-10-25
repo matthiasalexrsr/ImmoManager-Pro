@@ -35,9 +35,10 @@ IBAN DE89 3704 0044 0532 0130 00
 2 % Skonto bei Zahlung innerhalb von 10 Tagen"""
 
 
-def _pdf(text: str) -> bytes:
+def _pdf(text: str, title: str = "") -> bytes:
     buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
+    pdf = canvas.Canvas(buffer, pagesize=A4, invariant=1)
+    pdf.setTitle(title)
     for number, line in enumerate(text.splitlines()):
         pdf.drawString(50, 800 - 14 * number, line)
     pdf.showPage()
@@ -237,8 +238,19 @@ def test_the_same_file_or_text_as_an_existing_document_is_found(case):
     if hasattr(store, "db"):
         store.db.commit()                                   # the indexing job commits its own work
     reading = _start(case, surface="document", file_url=_upload(content), reader="local").json()
-    assert [(item["kind"], item["id"], item["reason"]) for item in reading["duplicates"]] == [("document", first["id"], "same_text")]
+    assert [(item["kind"], item["id"], item["reason"]) for item in reading["duplicates"]] == [("document", first["id"], "same_file")]
     assert reading["duplicates"][0]["can_update"] is True and reading["duplicates"][0]["href"] == f"/documents/{first['id']}"
+    # the same text in another file (a new scan, other metadata)
+    other = _pdf(INVOICE + "\n" + "Weitere Zeile mit ausreichend Text für den Vergleich. " * 4, title="Zweitschrift")
+    assert other != content
+    again = _start(case, surface="document", file_url=_upload(other), reader="local").json()
+    assert [(item["id"], item["reason"]) for item in again["duplicates"]] == [(first["id"], "same_text")]
+    # a short file is found by its bytes alone
+    short = _pdf("Kurzer Zettel")
+    note = client.post("/api/v1/documents", json={"title": "Zettel", "property_id": case["property"].id, "file_url": _upload(short),
+                                                  "document_type": "Sonstiges"}).json()
+    found = _start(case, surface="document", file_url=_upload(short), reader="local").json()
+    assert [(item["id"], item["reason"]) for item in found["duplicates"]] == [(note["id"], "same_file")]
 
 
 def test_who_may_read_where_and_what_the_settings_switch_off(case, monkeypatch):

@@ -1,5 +1,6 @@
 import { api } from '../../api';
 import { formatDate, formatMoney } from '../../utils/format';
+import { COST_CATEGORIES } from '../../utils/costCategories';
 
 const key = () => crypto.randomUUID();
 
@@ -78,8 +79,9 @@ export function combined(values, parts) {
 /**
  * A form's start values from what it already knows (`base`) and a reading: read values win, except for the
  * `keep` fields the page itself set (the property or tenant the person is working in). Marks only for read values.
+ * `name` is the file as the person chose it (the stored copy has a generated name).
  */
-export function formFromReading(base, reading, mapping, keep = []) {
+export function formFromReading(base, reading, mapping, keep = [], name = null) {
   const { initial, marks } = readingToForm(reading, mapping);
   const values = { ...base };
   const shown = {};
@@ -89,11 +91,11 @@ export function formFromReading(base, reading, mapping, keep = []) {
     shown[field] = marks[field];
   }
   return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
-    document: reading.document?.title || reading.file?.name || null } : null };
+    document: name || reading.document?.title || reading.file?.name || null } : null };
 }
 
 /** Read values for the empty fields of a record that already exists (the "add the read values" choice). */
-export function fillEmpty(record, reading, mapping) {
+export function fillEmpty(record, reading, mapping, name = null) {
   const { initial, marks } = readingToForm(reading, mapping);
   const values = { ...record };
   const shown = {};
@@ -103,7 +105,7 @@ export function fillEmpty(record, reading, mapping) {
     shown[field] = marks[field];
   }
   return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
-    document: reading.document?.title || reading.file?.name || null } : null };
+    document: name || reading.document?.title || reading.file?.name || null } : null };
 }
 
 /** Reading fields for the document form. */
@@ -128,10 +130,7 @@ export const METER_PHOTO_FORM = {
 };
 
 export const CHOICE_LABELS = {
-  heating: 'Heizung', hot_water: 'Warmwasser', water: 'Wasser', sewage: 'Abwasser', electricity: 'Allgemeinstrom',
-  waste: 'Müllabfuhr', street_cleaning: 'Straßenreinigung', cleaning: 'Gebäudereinigung', garden: 'Gartenpflege',
-  caretaker: 'Hauswart', insurance: 'Versicherung', property_tax: 'Grundsteuer', elevator: 'Aufzug', chimney: 'Schornsteinfeger',
-  cable_tv: 'Kabel/Antenne', lighting: 'Beleuchtung', maintenance: 'Instandhaltung', administration: 'Verwaltung', other: 'Sonstiges',
+  ...Object.fromEntries(COST_CATEGORIES),
   invoice: 'Rechnung', credit_note: 'Gutschrift', true: 'Ja', false: 'Nein', cold_water: 'Kaltwasser', gas: 'Gas',
 };
 

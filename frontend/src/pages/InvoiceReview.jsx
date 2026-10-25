@@ -13,6 +13,7 @@ import AiReadingPanel from '../features/aiReading/AiReadingPanel';
 import { AiFieldNote, AiFormSummary, AiMarkChip } from '../features/aiReading/AiFieldMarks';
 import { aiGroupClass, pendingMessage, useAiMarks } from '../features/aiReading/aiMarks';
 import { INVOICE_FORM, aiReadingApi, formFromReading } from '../features/aiReading/aiReadingApi';
+import { COST_CATEGORIES } from '../utils/costCategories';
 import '../features/maintenanceProject/maintenanceProject.css';
 import '../features/invoiceReview/invoiceReview.css';
 
@@ -248,7 +249,7 @@ function NewInvoice({ properties, onClose, onSaved }) {
     } catch (failure) { setError(failure.message); }
   };
   const applyReading = found => {
-    const { initial, aiMarks } = formFromReading(values, found, INVOICE_FORM);
+    const { initial, aiMarks } = formFromReading(values, found, INVOICE_FORM, [], readFile?.name);
     reading.current = found;
     setMarkStart(values); setValues(initial); setMarks(aiMarks); setReadFile(current => ({ ...current, applied: true }));
   };
@@ -301,6 +302,20 @@ function NewInvoice({ properties, onClose, onSaved }) {
       <AiFieldNote label={label} state={state} mark={mark} onConfirm={() => aiForm.confirm([key])} disabled={saving} />
     </div>;
   };
+  const costCategory = () => {
+    const state = aiForm.state('cost_category');
+    const mark = aiForm.mark('cost_category');
+    const known = COST_CATEGORIES.some(([value]) => value === values.cost_category);
+    return <div className={`form-group${aiGroupClass(state)}`}>
+      <label htmlFor="ir-new-cost_category">{tx.costCategory} <AiMarkChip state={state} mark={mark} /></label>
+      <select id="ir-new-cost_category" value={values.cost_category} onChange={event => set('cost_category', event.target.value)}>
+        <option value="">{tx.none}</option>
+        {!known && values.cost_category && <option value={values.cost_category}>{values.cost_category}</option>}
+        {COST_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+      <AiFieldNote label={tx.costCategory} state={state} mark={mark} onConfirm={() => aiForm.confirm(['cost_category'])} disabled={saving} />
+    </div>;
+  };
   const close = () => { dropReading(); onClose(); };
   return (
     <Modal title={tx.newInvoice} onClose={close} wide>
@@ -330,7 +345,7 @@ function NewInvoice({ properties, onClose, onSaved }) {
             </label>
             <DraftDefaults context="invoice-review" propertyId={values.property_id} disabled={saving}
               onApply={defaults => setValues(current => ({ ...current, cost_category: current.cost_category || defaults.cost_category || '', recoverable: defaults.recoverable ?? current.recoverable }))} />
-            {input('cost_category', tx.costCategory)}
+            {costCategory()}
             {input('skonto_percent', tx.skontoPercent, 'number', { step: '0.01', min: '0', max: '99' })}
             {input('skonto_days', tx.skontoDays, 'number', { min: '0' })}
             {input('payment_days', tx.paymentDays, 'number', { min: '0' })}
