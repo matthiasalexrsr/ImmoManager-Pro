@@ -1,4 +1,5 @@
 .ai-reading { display: grid; gap: 12px; }
+.ai-reading-inline { margin-bottom: 12px; padding: 12px 14px; }
 .ai-reading-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .ai-reading-head h3 { margin: 0; font-size: var(--text-md, 1rem); }
 .ai-reading-head svg { color: var(--color-primary); }

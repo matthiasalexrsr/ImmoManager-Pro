@@ -5,7 +5,7 @@ import { CONFIDENCE_LABELS, READER_HINTS, aiReadingApi, preferredReader, shownVa
 import './aiReading.css';
 
 /**
- * Reading a document for a form: who reads it, what should happen with it, the conversation with the AI,
+ * Reading a document for a form (no <form> of its own, so it can sit inside one): who reads it, what should happen with it, the conversation with the AI,
  * the question about a record that already exists, and the values with their evidence. `onApply` gets the
  * reading once the person takes the values into the form; `children(reading)` shows surface-specific results.
  */
@@ -175,16 +175,16 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
         {fields.length > 0 && Object.keys(values).length === 0 && <p className="text-muted">Keine Werte erkannt.</p>}
         {typeof children === 'function' ? children(reading, setReading) : children}
 
-        {reading.chat ? <form className="ai-chat-input" onSubmit={send}>
+        {reading.chat ? <div className="ai-chat-input" role="group" aria-label="Nachricht schreiben">
           <label htmlFor={`${id}-message`} className="sr-only">Nachricht an {reading.reader_label}</label>
           <MessageSquare size={18} aria-hidden="true" />
           <textarea id={`${id}-message`} rows={2} maxLength={4000} value={message} disabled={busy === 'say' || reading.status !== 'open'}
             onChange={event => setMessage(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) send(event); }}
             placeholder="Was soll mit dem Dokument geschehen, was ist falsch erkannt? (Strg+Enter sendet)" />
-          <button type="submit" className="btn btn-secondary" disabled={!message.trim() || Boolean(busy) || reading.status !== 'open'}
-            aria-label="Senden"><Send size={16} aria-hidden="true" /> Senden</button>
-        </form> : reading.reader === 'local' && <p className="form-hint">Ein Gespräch über das Dokument ist mit Claude oder ChatGPT möglich.</p>}
+          <button type="button" className="btn btn-secondary" disabled={!message.trim() || Boolean(busy) || reading.status !== 'open'}
+            aria-label="Senden" onClick={send}><Send size={16} aria-hidden="true" /> Senden</button>
+        </div> : reading.reader === 'local' && <p className="form-hint">Ein Gespräch über das Dokument ist mit Claude oder ChatGPT möglich.</p>}
 
         <div className="ai-reading-actions">
           {onApply && <button type="button" className="btn btn-primary" disabled={waiting || decided === 'cancel' || reading.status !== 'open' || Boolean(busy)}

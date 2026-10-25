@@ -112,6 +112,10 @@ export const DOCUMENT_FORM = {
   unit_id: 'unit', tenant_id: 'tenant', description: values => combined(values, [['sender', 'Absender'], ['description', '']]),
 };
 
+/** Reading fields for the invoice receipt form. */
+export const INVOICE_FORM = Object.fromEntries(['supplier', 'invoice_number', 'invoice_date', 'net_amount', 'vat_rate', 'gross_amount',
+  'skonto_percent', 'skonto_days', 'payment_days', 'cost_category'].map(name => [name, name]));
+
 export const CHOICE_LABELS = {
   heating: 'Heizung', hot_water: 'Warmwasser', water: 'Wasser', sewage: 'Abwasser', electricity: 'Allgemeinstrom',
   waste: 'Müllabfuhr', street_cleaning: 'Straßenreinigung', cleaning: 'Gebäudereinigung', garden: 'Gartenpflege',

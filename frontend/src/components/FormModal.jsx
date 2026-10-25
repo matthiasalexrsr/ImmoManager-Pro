@@ -15,10 +15,8 @@ import DuplicateHints from './DuplicateHints';
 import DraftDefaults from './DraftDefaults';
 import UnsavedNavigationGuard, { NavigationScopeNotice } from './UnsavedNavigationGuard';
 import { navigationDiscardLabel } from './navigationProtectionContext';
-import '../features/aiReading/aiReading.css';
-
-const AI_CONFIDENCE = { high: 'sicher erkannt', medium: 'wahrscheinlich', low: 'unsicher – bitte genau prüfen' };
-const AI_MARK = { filled: 'KI', confirmed: 'KI ✓', pending: 'KI – prüfen', changed: 'geändert', added: 'neu' };
+import { aiGroupClass, pendingMessage, useAiMarks } from '../features/aiReading/aiMarks';
+import { AiFieldNote, AiFormSummary, AiMarkChip } from '../features/aiReading/AiFieldMarks';
 
 const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
   && f.options.every(o => o.value === 'true' || o.value === 'false');
@@ -54,7 +52,6 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
   const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
     [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [startValues] = useState(() => Object.fromEntries(fields.map(f => [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
-  const [aiConfirmed, setAiConfirmed] = useState(() => new Set());
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saveFailure, setSaveFailure] = useState(false);
@@ -314,22 +311,12 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     return () => modal.removeEventListener('keydown', trapFocus);
   }, [fields, confirmDiscard]);
 
-  const aiState = key => {
-    const mark = aiMarks?.fields?.[key];
-    const current = String(values[key] ?? '');
-    if (mark) {
-      if (current !== String(mark.value ?? '')) return 'changed';
-      if (aiMarks.mode === 'confirm') return aiConfirmed.has(key) ? 'confirmed' : 'pending';
-      return 'filled';
-    }
-    if (aiMarks && current !== '' && String(startValues[key] ?? '') === '') return 'added';
-    return null;
-  };
+  const aiForm = useAiMarks(aiMarks, values, startValues);
   const visibleFields = fields.filter(f => f.type !== 'hidden');
-  const aiPending = aiMarks?.mode === 'confirm' ? visibleFields.filter(f => aiState(f.key) === 'pending').map(f => f.key) : [];
-  const aiFilled = visibleFields.filter(f => aiMarks?.fields?.[f.key]).length;
+  const aiPending = aiForm.pending(visibleFields.map(f => f.key));
+  const aiFilled = aiForm.filled(visibleFields.map(f => f.key));
   const confirmAi = keys => {
-    setAiConfirmed(current => new Set([...current, ...keys]));
+    aiForm.confirm(keys);
     setFieldErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
   };
 
@@ -339,7 +326,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
     if (aiPending.length) {
       // values read from a document are the person's decision: each one is looked at before it is saved
       setFieldErrors(Object.fromEntries(aiPending.map(key => [key, ['Von der KI eingetragen – bitte bestätigen oder ändern.']])));
-      setError(`Bitte die von der KI eingetragenen Werte prüfen und bestätigen: ${aiPending.map(key => fields.find(f => f.key === key).label).join(', ')}.`);
+      setError(pendingMessage(aiPending.map(key => fields.find(f => f.key === key).label)));
       setSaveFailure(false);
       modalRef.current?.querySelector(`#form-field-${CSS.escape(aiPending[0])}`)?.focus();
       return;
@@ -454,14 +441,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 </button>
               </>}
             </div>}
-            {aiMarks && aiFilled > 0 && <div className="ai-form-summary" role="status">
-              <strong>{aiFilled} {aiFilled === 1 ? 'Wert' : 'Werte'} von {aiMarks.label || 'der KI'}</strong>
-              {aiMarks.document && <span>aus „{aiMarks.document}“</span>}
-              <span>{aiMarks.mode === 'confirm' ? (aiPending.length ? `${aiPending.length} noch zu bestätigen` : 'alle geprüft')
-                : 'markiert: von der KI eingetragen, geändert oder neu'}</span>
-              {aiPending.length > 0 && <button type="button" className="btn btn-sm btn-secondary" disabled={fieldDisabled}
-                onClick={() => confirmAi(aiPending)}>Alle bestätigen</button>}
-            </div>}
+            <AiFormSummary aiMarks={aiMarks} filled={aiFilled} pending={aiPending} onConfirmAll={() => confirmAi(aiPending)} disabled={fieldDisabled} />
             {initial?.id == null && ['contracts', 'bookings'].includes(context) && <DraftDefaults
               context={context} propertyId={values.property_id} disabled={fieldDisabled}
               onApply={defaults => { const next = { ...values }; for (const [key, value] of Object.entries(defaults)) if (fields.some(field => field.key === key) && !next[key]) next[key] = value; setValues(next); setDirty(true); draft.stage(next); }} />}
@@ -539,12 +519,12 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                 const descriptionIds = [fieldErrorId, hintId].filter(Boolean).join(' ') || undefined;
                 const options = typeof f.options === 'function' ? f.options(values) : f.options;
                 const FieldComponent = f.component;
-                const ai = aiMarks ? aiState(f.key) : null;
-                const aiMark = aiMarks?.fields?.[f.key];
+                const ai = aiForm.state(f.key);
+                const aiMark = aiForm.mark(f.key);
                 return (
-                  <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}${ai === 'added' ? ' ai-added' : ai ? ` ai-field is-${ai}` : ''}`}>
+                  <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}${aiGroupClass(ai)}`}>
                     <label htmlFor={inputId}>{f.label}{f.required && ' *'}
-                      {ai && <span className={`ai-mark is-${ai}`} title={ai === 'changed' ? `Die KI las: ${aiMark.value}` : undefined}>{AI_MARK[ai]}</span>}</label>
+                      <AiMarkChip state={ai} mark={aiMark} /></label>
                     {FieldComponent ? <FieldComponent id={inputId} value={values[f.key] ?? ''}
                       onChange={value => update(f.key, value)} disabled={fieldDisabled}
                       aria-invalid={fieldErrorId ? true : undefined} aria-describedby={descriptionIds} /> : f.type === 'select' ? (
@@ -610,11 +590,7 @@ export default function FormModal({ title, fields, initial, onSave, onClose, rep
                         placeholder={f.placeholder}
                       />
                     )}
-                    {ai === 'pending' && <button type="button" className="btn btn-sm btn-secondary ai-confirm" disabled={fieldDisabled}
-                      aria-label={`${f.label}: von der KI eingetragenen Wert bestätigen`} onClick={() => confirmAi([f.key])}>Bestätigen</button>}
-                    {aiMark && (aiMark.evidence || aiMark.confidence) && <small className="ai-evidence-hint">
-                      {aiMark.evidence ? `Beleg: „${aiMark.evidence}“` : ''}{aiMark.evidence && aiMark.confidence ? ' · ' : ''}
-                      {aiMark.confidence ? AI_CONFIDENCE[aiMark.confidence] : ''}</small>}
+                    <AiFieldNote label={f.label} state={ai} mark={aiMark} onConfirm={() => confirmAi([f.key])} disabled={fieldDisabled} />
                     {fieldErrorId && <small id={fieldErrorId} className="form-field-error">{fieldErrors[f.key].join(' · ')}</small>}
                     {f.hint && <small id={hintId} className="form-hint">{f.hint}</small>}
                     <MissingChoice hint={prerequisiteFor(f, options)} requestLeave={requestLeave} />

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import DraftDefaults from '../components/DraftDefaults';
@@ -8,6 +9,10 @@ import { formatDate, formatMoney } from '../utils/format';
 import { Empty, Modal, Pill } from '../features/maintenanceProject/ProjectUi';
 import { PAYMENT_TONE, STATUS_TONE, compact, reviewApi } from '../features/invoiceReview/reviewApi';
 import { fill, useReviewText } from '../features/invoiceReview/text';
+import AiReadingPanel from '../features/aiReading/AiReadingPanel';
+import { AiFieldNote, AiFormSummary, AiMarkChip } from '../features/aiReading/AiFieldMarks';
+import { aiGroupClass, pendingMessage, useAiMarks } from '../features/aiReading/aiMarks';
+import { INVOICE_FORM, aiReadingApi, formFromReading } from '../features/aiReading/aiReadingApi';
 import '../features/maintenanceProject/maintenanceProject.css';
 import '../features/invoiceReview/invoiceReview.css';
 
@@ -197,6 +202,11 @@ function NewInvoice({ properties, onClose, onSaved }) {
   const navigate = useNavigate();
   const [values, setValues] = useState(EMPTY_INVOICE);
   const [file, setFile] = useState(null);
+  const [readFile, setReadFile] = useState(null);            // the receipt uploaded for reading: { fileUrl, name }
+  const [marks, setMarks] = useState(null);
+  const [markStart, setMarkStart] = useState(EMPTY_INVOICE);
+  const reading = useRef(null);                              // the reading the values came from
+  const aiForm = useAiMarks(marks, values, markStart);
   const [duplicates, setDuplicates] = useState([]);
   const [duplicateError, setDuplicateError] = useState(null);
   const [duplicateAttempt, setDuplicateAttempt] = useState(0);
@@ -222,13 +232,37 @@ function NewInvoice({ properties, onClose, onSaved }) {
   }, [ready, values.supplier, values.invoice_number, values.gross_amount, values.invoice_date, duplicateAttempt, tx.duplicateCheckFailed]);
 
   const sameNumber = duplicates.some(d => d.reason === 'same_number');
+  const labels = { supplier: tx.supplier, invoice_number: tx.number, invoice_date: tx.invoiceDate, net_amount: tx.net, vat_rate: tx.vatRate,
+    gross_amount: tx.gross, cost_category: tx.costCategory, skonto_percent: tx.skontoPercent, skonto_days: tx.skontoDays,
+    payment_days: tx.paymentDays };
+  const pending = aiForm.pending(Object.keys(labels));
+  const dropReading = () => {
+    if (reading.current?.status === 'open') aiReadingApi.finish(reading.current, 'cancelled').catch(() => {});
+    reading.current = null; setReadFile(null);                // read values stay marked in the form
+  };
+  const startReading = async () => {
+    setError(null);
+    try {
+      const fileUrl = await aiReadingApi.upload(file);
+      setReadFile({ fileUrl, name: file.name });
+    } catch (failure) { setError(failure.message); }
+  };
+  const applyReading = found => {
+    const { initial, aiMarks } = formFromReading(values, found, INVOICE_FORM);
+    reading.current = found;
+    setMarkStart(values); setValues(initial); setMarks(aiMarks); setReadFile(current => ({ ...current, applied: true }));
+  };
   const submit = async event => {
     event.preventDefault();
+    if (pending.length) { setError(pendingMessage(pending.map(key => labels[key]))); return; }
     setSaving(true);
     setError(null);
     try {
       let documentId;
-      if (file) {
+      if (readFile) {                                         // the receipt is already uploaded for reading
+        documentId = (await api.post('/documents', compact({ title: `${values.supplier} ${values.invoice_number}`.trim(),
+          document_type: 'invoice', file_url: readFile.fileUrl, property_id: values.property_id || undefined }))).id;
+      } else if (file) {
         const form = new FormData();
         form.append('file', file);
         form.append('title', `${values.supplier} ${values.invoice_number}`.trim());
@@ -248,6 +282,8 @@ function NewInvoice({ properties, onClose, onSaved }) {
           invoice_date: values.invoice_date, net_amount: net, vat_rate: Number(values.vat_rate),
           vat_amount: Math.round((gross - net) * 100) / 100, gross_amount: gross, property_id: values.property_id }),
       }));
+      if (reading.current) aiReadingApi.finish(reading.current, 'taken_over', { kind: 'invoice', id: created.invoice.id }).catch(() => {});
+      reading.current = null;
       onSaved();
       navigate(`/invoice-review/${encodeURIComponent(created.invoice.id)}`);
     } catch (failure) {
@@ -256,16 +292,29 @@ function NewInvoice({ properties, onClose, onSaved }) {
     }
   };
 
-  const input = (key, label, type = 'text', extra = {}) => (
-    <label className="form-group">{label}
-      <input type={type} value={values[key]} onChange={event => set(key, event.target.value)} {...extra} />
-    </label>
-  );
+  const input = (key, label, type = 'text', extra = {}) => {
+    const state = aiForm.state(key);
+    const mark = aiForm.mark(key);
+    return <div className={`form-group${aiGroupClass(state)}`}>
+      <label htmlFor={`ir-new-${key}`}>{label} <AiMarkChip state={state} mark={mark} /></label>
+      <input id={`ir-new-${key}`} type={type} value={values[key]} onChange={event => set(key, event.target.value)} {...extra} />
+      <AiFieldNote label={label} state={state} mark={mark} onConfirm={() => aiForm.confirm([key])} disabled={saving} />
+    </div>;
+  };
+  const close = () => { dropReading(); onClose(); };
   return (
-    <Modal title={tx.newInvoice} onClose={onClose} wide>
+    <Modal title={tx.newInvoice} onClose={close} wide>
       <form onSubmit={submit}>
         <div className="modal-body">
           {error && <div className="alert-error" role="alert">{error}</div>}
+          {readFile && !readFile.applied && <div className="panel ai-reading-inline">
+            <AiReadingPanel surface="invoice" autoStart source={readFile} params={values.property_id ? { property_id: values.property_id } : {}}
+              title="Beleg einlesen" applyLabel="In die Rechnung übernehmen" onApply={applyReading}
+              onCancel={() => { reading.current = null; setReadFile(null); }}
+              onOpenExisting={item => { setReadFile(null); onClose(); navigate(item.href); }} />
+          </div>}
+          <AiFormSummary aiMarks={marks} filled={aiForm.filled(Object.keys(labels))} pending={pending}
+            onConfirmAll={() => aiForm.confirm(pending)} disabled={saving} />
           <div className="mp-form-grid">
             {input('supplier', tx.supplier, 'text', { required: true })}
             {input('invoice_number', tx.number)}
@@ -285,9 +334,14 @@ function NewInvoice({ properties, onClose, onSaved }) {
             {input('skonto_percent', tx.skontoPercent, 'number', { step: '0.01', min: '0', max: '99' })}
             {input('skonto_days', tx.skontoDays, 'number', { min: '0' })}
             {input('payment_days', tx.paymentDays, 'number', { min: '0' })}
-            <label className="form-group">{tx.document}
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff" onChange={event => setFile(event.target.files?.[0] || null)} />
-            </label>
+            <div className="form-group">
+              <label htmlFor="ir-new-file">{tx.document}</label>
+              <input id="ir-new-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff"
+                onChange={event => { dropReading(); setFile(event.target.files?.[0] || null); }} />
+              {file && !readFile && <button type="button" className="btn btn-sm btn-secondary" disabled={saving} onClick={startReading}>
+                <Sparkles size={14} aria-hidden="true" /> Beleg einlesen</button>}
+              {readFile?.applied && <small className="form-hint">Werte aus „{readFile.name}“ übernommen.</small>}
+            </div>
             <label className="ir-check">
               <input type="checkbox" checked={values.recoverable} onChange={event => set('recoverable', event.target.checked)} />
               {tx.recoverable}
