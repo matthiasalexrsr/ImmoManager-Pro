@@ -470,6 +470,10 @@ def public(store: Any, unit: Any, row: Any, confirm_mode: str = "confirm") -> di
                   surface_label=surface.label, reader_label=READERS.get(data["reader"], data["reader"]),
                   confirm_mode=confirm_mode if confirm_mode in CONFIRM_MODES else "confirm",
                   messages=[{key: message.get(key) for key in ("id", "role", "text", "changed", "at")} for message in _messages(unit, row.id)])
+    if surface.id == "meter_photo":                     # the meter the read device number belongs to, for the form
+        serial = ((data.get("values") or {}).get("serial") or {}).get("value")
+        meter = surfaces.match_meter(store, data.get("params") or {}, str(serial)) if serial else None
+        result["meter"] = {"id": meter.id, "label": meter.serial_number or meter.id} if meter is not None else None
     if surface.rows and data.get("extraction") is not None:
         from . import meter_documents
         try:

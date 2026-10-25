@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
-import { History } from 'lucide-react';
+import { Camera, History } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -13,6 +13,9 @@ import KpiAction from '../components/KpiAction';
 import MeterHistory from '../features/meters/MeterHistory';
 import MeterDocumentImport from '../features/meterDocuments/MeterDocumentImport';
 import { useCanWrite } from '../contexts/AuthContext';
+import AiReadingDialog from '../features/aiReading/AiReadingDialog';
+import AiReadingPanel from '../features/aiReading/AiReadingPanel';
+import { METER_PHOTO_FORM, aiReadingApi, formFromReading } from '../features/aiReading/aiReadingApi';
 
 const METER_TYPE_LABELS = {
   cold_water: 'Kaltwasser',
@@ -69,6 +72,11 @@ export default function Meters() {
   const [historyRevision, setHistoryRevision] = useState(0);
   const canWrite = useCanWrite('/meters');
   const [importProperty, setImportProperty] = useState('');
+  const [photo, setPhoto] = useState(null);                  // a meter photo being read: { fileUrl, name, meter }
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [readingStart, setReadingStart] = useState(null);    // the reading form's values and marks from a photo
+  const photoReading = useRef(null);
+  const photoInput = useRef(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [groupBy, setGroupBy] = useState('none'); // 'none' | 'property' | 'type' | 'supplier'
@@ -169,10 +177,41 @@ export default function Meters() {
 
   const handleSaveReading = async (data) => {
     const meterId = data.meter_id;
-    await api.post(`/meters/${meterId}/readings`, data);
+    const saved = await api.post(`/meters/${meterId}/readings`, data);
+    const reading = photoReading.current;
+    photoReading.current = null;
+    setReadingStart(null);
+    if (reading) aiReadingApi.finish(reading, 'taken_over', { kind: 'meter_reading', id: saved?.id || null }).catch(() => {});
     refreshData();
     setHistoryRevision(value => value + 1);
     if (store) store.invalidateRelated('meters', 'units');
+  };
+
+  const choosePhoto = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPhotoBusy(true);
+    try {
+      setPhoto({ fileUrl: await aiReadingApi.upload(file, 'meter-photos'), name: file.name, meter: historyOf });
+    } catch (failure) { setLoadError(failure.message || 'Das Foto konnte nicht hochgeladen werden.'); }
+    finally { setPhotoBusy(false); }
+  };
+  const applyPhoto = reading => {
+    const serial = reading.values?.serial;
+    const withMeter = reading.meter ? { ...reading, values: { ...reading.values, meter: { value: reading.meter, evidence: serial?.evidence || serial?.value,
+      confidence: serial?.confidence, source: reading.reader } } } : reading;
+    const { initial, aiMarks } = formFromReading(photo.meter ? { meter_id: photo.meter.id } : {}, withMeter, METER_PHOTO_FORM);
+    photoReading.current = reading;
+    setReadingStart({ initial, aiMarks });
+    setPhoto(null);
+    setModal('create-reading');
+  };
+  const closeReadingForm = () => {
+    const reading = photoReading.current;
+    photoReading.current = null;
+    if (reading) aiReadingApi.finish(reading, 'cancelled').catch(() => {});
+    setReadingStart(null); setModal(null);
   };
 
   const handleDeleteMeter = async (row) => {
@@ -227,6 +266,22 @@ export default function Meters() {
         <KpiAction label="Prüfung fällig" value={loadError && !meters.length ? '—' : stats.dueInspection} color={stats.dueInspection ? 'var(--warning)' : undefined} onClick={() => openSources('inspection')} />
         {stats.types.map(([type, count]) => <KpiAction key={type} label={METER_TYPE_LABELS[type] || type} value={count} onClick={() => openSources(`type:${type}`)} />)}
       </div>
+
+      {canWrite && <div className="toolbar">
+        <button type="button" className="btn btn-secondary" disabled={photoBusy} onClick={() => photoInput.current?.click()}>
+          <Camera size={16} aria-hidden="true" /> {photoBusy ? 'Foto wird hochgeladen …' : 'Stand aus Foto'}</button>
+        <input ref={photoInput} type="file" accept="image/*" capture="environment" hidden aria-label="Zählerfoto wählen" onChange={choosePhoto} />
+      </div>}
+      {photo && <AiReadingDialog title="Zählerstand aus Foto" onClose={() => setPhoto(null)}>
+        <AiReadingPanel surface="meter_photo" source={{ fileUrl: photo.fileUrl, name: photo.name }} title="Was zeigt der Zähler?"
+          params={photo.meter?.property_id ? { property_id: photo.meter.property_id } : {}} applyLabel="Ablesung prüfen und speichern"
+          onApply={applyPhoto} onCancel={() => setPhoto(null)}
+          onOpenExisting={item => {                            // a reading of that day exists: show the meter's history
+            setPhoto(null);
+            const meter = meters.find(row => row.id === new URLSearchParams(item.href.split('?')[1] || '').get('focus_id'));
+            if (meter) setHistoryOf(meter);
+          }} />
+      </AiReadingDialog>}
 
       {canWrite && <details className="panel meter-import-panel">
         <summary>Ableseprotokoll des Messdienstes auswerten (ista, Techem, Brunata, Minol …)</summary>
@@ -317,9 +372,10 @@ export default function Meters() {
           title="Ablesung erfassen"
           repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
-          initial={historyOf ? { meter_id: historyOf.id } : null}
+          initial={readingStart?.initial || (historyOf ? { meter_id: historyOf.id } : null)}
+          aiMarks={readingStart?.aiMarks}
           onSave={handleSaveReading}
-          onClose={() => setModal(null)}
+          onClose={closeReadingForm}
         />
       )}
     </div>

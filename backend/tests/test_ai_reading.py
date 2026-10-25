@@ -307,4 +307,5 @@ def test_a_meter_photo_is_matched_to_the_meter_and_a_stored_reading_is_found(cas
     assert request["attachments"][1]["mime"] == "image/png"                                   # the photo itself goes along
     assert request["context"]["known"]["meters"] == [{"serial": "WZ 26958890", "type": "cold_water", "unit": "EG links"}]
     assert reading["values"]["value"]["value"] == "647.6"
+    assert reading["meter"] == {"id": meter.id, "label": "WZ 26958890"}                       # for the form's meter choice
     assert [(item["kind"], item["reason"]) for item in reading["duplicates"]] == [("meter_reading", "same_day")]

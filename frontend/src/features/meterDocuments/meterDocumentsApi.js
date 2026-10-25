@@ -18,7 +18,6 @@ export function titleFrom(name) {
 }
 
 export const meterDocumentsApi = {
-  readers: options => api.get('/billing/meter-documents/readers', options),
   upload: (file, propertyId) => {
     const form = new FormData();
     form.append('file', file);
@@ -28,7 +27,6 @@ export const meterDocumentsApi = {
     form.append('property_id', propertyId);
     return api.upload('/documents/import', form);
   },
-  analyse: (documentId, body) => api.post(`${base(documentId)}/analysis`, body),
   apply: (documentId, body) => api.post(`${base(documentId)}/apply`, body),
 };
 

@@ -121,6 +121,12 @@ export const COST_FORM = {
   description: values => values.description || combined(values, [['supplier', '']]), amount: 'amount', is_recoverable: 'recoverable',
 };
 
+/** Reading fields for a meter reading read from a photo (the meter found by its device number). */
+export const METER_PHOTO_FORM = {
+  meter_id: 'meter', reading_date: 'reading_date', value: 'value',
+  notes: values => (values.meter ? null : combined(values, [['serial', 'Gerätenummer laut Foto']])),
+};
+
 export const CHOICE_LABELS = {
   heating: 'Heizung', hot_water: 'Warmwasser', water: 'Wasser', sewage: 'Abwasser', electricity: 'Allgemeinstrom',
   waste: 'Müllabfuhr', street_cleaning: 'Straßenreinigung', cleaning: 'Gebäudereinigung', garden: 'Gartenpflege',
