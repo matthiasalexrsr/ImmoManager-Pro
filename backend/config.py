@@ -139,6 +139,13 @@ class Settings(BaseSettings):
         "X-Token-Transport",
     ]
 
+    # --- Browser security headers (backend/middleware.py SecurityHeadersMiddleware) ---
+    security_headers_enabled: bool = True
+    # replaces the built-in Content-Security-Policy, e.g. for files served from another origin
+    content_security_policy: str = ""
+    # Strict-Transport-Security over HTTPS; 0 switches it off (e.g. while testing a new certificate)
+    hsts_max_age: int = 31536000
+
     # --- Logging ---
     log_level: str = "INFO"
     log_format: str = "json"  # "json" or "text"

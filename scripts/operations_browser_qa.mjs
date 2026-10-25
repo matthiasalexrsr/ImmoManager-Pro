@@ -70,6 +70,7 @@ try {
   });
   page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on('pageerror', error => report.page_errors.push({ page: current, error: String(error) }));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push({ page: current, error: `CSP: ${message.text()}` }); });
   page.on('response', response => {
     if (response.status() >= 500 && new URL(response.url()).origin === base.origin) report.server_errors.push({ page: current, path: new URL(response.url()).pathname, status: response.status() });
   });

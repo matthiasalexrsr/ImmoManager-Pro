@@ -57,6 +57,7 @@ try {
   await context.route('**/*', route => { const url = new URL(route.request().url()); if (!['http:', 'https:'].includes(url.protocol) || url.origin === base.origin) return route.continue(); report.external.push(url.origin + url.pathname); return route.abort('blockedbyclient'); });
   await context.addInitScript(({ token, id }) => { localStorage.setItem('access_token', token); localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, { token, id: profile.id });
   page = await context.newPage(); page.on('pageerror', error => report.page_errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
   await step('Open letter from actual Statements list and review real multi-page Unicode PDF', async () => {
     await page.goto(`${base.origin}/statements?filter=statements&focus_id=${statement.id}`);
     await page.getByRole('button', { name: 'Anschreiben & PDF', exact: true }).click();

@@ -66,6 +66,7 @@ async function login(username) {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => results.errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) results.errors.push(`CSP: ${message.text()}`); });
   await page.goto(base.origin + '/login');
   await page.locator('input[autocomplete="username"]').fill(username);
   await page.locator('input[type="password"]').fill(process.env.QA_PASSWORD);

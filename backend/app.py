@@ -26,6 +26,7 @@ from .middleware import (
     DBSessionMiddleware,
     RBACWriteGuardMiddleware,
     RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
 )
 from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
@@ -205,6 +206,7 @@ app.add_middleware(
 
 # Application middleware (added in reverse execution order)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)

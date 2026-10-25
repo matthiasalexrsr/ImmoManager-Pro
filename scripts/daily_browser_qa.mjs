@@ -35,6 +35,7 @@ try {
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem('immo.tutorial.' + id, JSON.stringify({ offered: true })); }, user.id);
   page = await context.newPage(); page.setDefaultTimeout(30000);
   page.on('pageerror', e => report.errors.push(String(e)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.errors.push(`CSP: ${message.text()}`); });
   page.on('request', r => { if (/^https?:/.test(r.url()) && new URL(r.url()).origin !== base.origin) report.external.push(r.url()); });
   await page.goto(base.origin + '/login');
   await page.locator('input[autocomplete="username"]').fill('owner');

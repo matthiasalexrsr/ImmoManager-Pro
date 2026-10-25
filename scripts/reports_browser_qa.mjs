@@ -59,6 +59,7 @@ try {
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem('immo.tutorial.' + id, JSON.stringify({ offered: true })); }, owner.id);
   page = await context.newPage(); page.setDefaultTimeout(30000);
   page.on('pageerror', error => report.page_errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
   page.on('response', response => { if (response.status() >= 500) report.server_errors.push({ path: new URL(response.url()).pathname, status: response.status() }); });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());

@@ -2,7 +2,7 @@
 
 Extracted from app.py for clarity and maintainability.
 Contains: request logging, locale parsing, DB session cleanup, audit logging,
-and RBAC enforcement for write operations.
+RBAC enforcement for write operations, and the browser security headers.
 """
 
 import logging
@@ -12,8 +12,10 @@ from uuid import uuid4
 
 from fastapi import Request, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .audit import log_action
 from .config import settings
@@ -21,6 +23,75 @@ from .dependencies import begin_request_scope, end_request_scope
 from .logging_config import request_id_var, safe_query
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Browser security headers ─────────────────────────────────────────────────
+
+# The app loads everything from its own origin: no inline script, no eval (WebAssembly only, for the PDF
+# viewer's image decoders), inline styles from React's style props, data:/blob: for previews, print frames
+# and downloads. Nothing may frame it except itself (the print and contract-wizard frames).
+APP_CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+           "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; "
+           "frame-src 'self' blob:; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; "
+           "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+# The bundled contract wizard is a classic page with inline handlers; it still loads nothing from elsewhere.
+WIZARD_CSP = APP_CSP.replace("script-src 'self' 'wasm-unsafe-eval'", "script-src 'self' 'unsafe-inline'")
+# FastAPI's API documentation loads Swagger UI / ReDoc from jsDelivr.
+DOCS_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com; "
+            "worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+PERMISSIONS_POLICY = ("camera=(self), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), "
+                      "hid=(), midi=(), display-capture=(), interest-cohort=()")
+
+
+def security_headers(path: str, https: bool) -> dict[str, str]:
+    """The headers every response carries; a route's own (stricter) value of a header is kept."""
+    if settings.content_security_policy:
+        csp = settings.content_security_policy
+    elif path.startswith("/mietvertrag"):
+        csp = WIZARD_CSP
+    elif path in ("/docs", "/redoc") or path.startswith("/docs/"):
+        csp = DOCS_CSP
+    else:
+        csp = APP_CSP
+    headers = {
+        "Content-Security-Policy": csp,
+        "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "same-origin",
+        "Permissions-Policy": PERMISSIONS_POLICY,
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if path.startswith("/uploads/") or path.startswith("/api/"):
+        headers["Cross-Origin-Resource-Policy"] = "same-origin"      # private files and data are not embeddable elsewhere
+    if https and settings.hsts_max_age > 0:
+        headers["Strict-Transport-Security"] = f"max-age={settings.hsts_max_age}; includeSubDomains"
+    return headers
+
+
+class SecurityHeadersMiddleware:
+    """Content-Security-Policy, framing, referrer, permissions and (over HTTPS) HSTS on every response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not settings.security_headers_enabled:
+            await self.app(scope, receive, send)
+            return
+        # Behind a TLS proxy the server is started with trusted proxy headers, which set the scheme.
+        wanted = security_headers(scope.get("path", ""), scope.get("scheme") == "https")
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in wanted.items():
+                    if name not in headers:
+                        headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 # ─── Request ID + Logging Middleware ─────────────────────────────────────────

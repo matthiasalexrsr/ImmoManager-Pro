@@ -45,6 +45,7 @@ try {
   await context.route('**/*', route => { const url = new URL(route.request().url()); if (!['http:', 'https:'].includes(url.protocol) || url.origin === base.origin) return route.continue(); report.external.push(url.origin + url.pathname); return route.abort('blockedbyclient'); });
   await context.addInitScript(({ token, id }) => { localStorage.setItem('access_token', token); localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, { token, id: profile.id });
   page = await context.newPage(); page.on('pageerror', error => report.page_errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
   let task, cost;
   await step('Create a custom recurring task with count through the actual form', async () => {
     await page.goto(base.origin + '/tasks'); await page.locator('[data-table-add]').click();

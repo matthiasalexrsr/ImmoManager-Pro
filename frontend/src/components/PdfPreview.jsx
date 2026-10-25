@@ -63,6 +63,7 @@ export default function PdfPreview({ url, title, renderOverlay }) {
           standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, iccUrl: `${base}iccs/`,
           // Load only the required ranges when the source supports byte ranges.
           disableStream: true, disableAutoFetch: true,
+          isEvalSupported: false,                          // the Content-Security-Policy allows no eval
           canvasMaxAreaInBytes: MAX_PIXELS * 4,
         });
         task.onPassword = () => { clearTimeout(timer); fail('password'); };

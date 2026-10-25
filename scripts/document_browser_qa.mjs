@@ -76,6 +76,7 @@ try {
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, profile.id);
   page = await context.newPage();
   page.on('pageerror', error => report.pageErrors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.pageErrors.push(`CSP: ${message.text()}`); });
   await page.goto(`${base.origin}/login`);
   await page.locator('input[autocomplete="username"]').fill('owner');
   await page.locator('input[type=password]').fill(process.env.QA_PASSWORD);

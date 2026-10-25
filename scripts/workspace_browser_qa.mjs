@@ -69,7 +69,8 @@ try {
   const task = await call('POST', '/tasks', { title: 'QA Rückruf Handwerker', status: 'open', property_id: property.id, due_date: '2026-10-20' });
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, profile.id);
-  page = await context.newPage(); page.on('pageerror', error => result.errors.push(String(error))); page.setDefaultTimeout(15000);
+  page = await context.newPage(); page.on('pageerror', error => result.errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); }); page.setDefaultTimeout(15000);
   await step('Real login and exact source navigation', async () => { await login(); await page.goto(`${base.origin}/tasks?focus_id=${task.id}`); await expect(page.getByText('QA Rückruf Handwerker', { exact: true })).toBeVisible(); });
   await step('Autosave preserves an edit without changing the tenant', async () => {
     const dialog = await editTenant(tenant.full_name);
@@ -210,6 +211,7 @@ try {
     try {
       page = await readerContext.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', error => result.errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); });
       await login('steuerberater');
       await page.goto(`${base.origin}/tenants`);
       await expect(page.locator('.data-table tbody')).toContainText(tenant.full_name);
