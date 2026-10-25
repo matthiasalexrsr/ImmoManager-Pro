@@ -249,25 +249,39 @@ describe('Billing workspace', () => {
     expect(within(breakdown).queryByRole('button', { name: 'Kostenpositionen bearbeiten' })).not.toBeInTheDocument();
   });
 
-  it('routes OCR drafts into the shared cost editor without an invented amount or foreign property key', async () => {
-    api.upload.mockResolvedValue({ file_url: '/uploads/ocr.pdf' });
-    api.post.mockImplementation(async (path, body) => path.startsWith('/billing/cost-items/import-ocr')
-      ? { success: true, draft: { billing_period_id: 'bp1', description: 'OCR-Beleg', amount: null, allocation_key_id: 'key2',
-        source_document_id: 'ocr-doc', vat_rate: 19, net_amount: 84.03, gross_amount: 100 }, ocr_fields: {} }
+  it('reads a cost receipt into the shared cost editor, archives it as the source and marks the read values', async () => {
+    api.upload.mockResolvedValue({ file_url: '/uploads/billing-ocr/beleg.pdf' });
+    const reading = { id: 'rc1', revision: 1, surface: 'cost_item', reader: 'local', reader_label: 'Lokale Regeln', status: 'open', chat: false,
+      changed: [], duplicates: [], decision: null, questions: [], notes: [], dropped: [], messages: [], confirm_mode: 'mark', file: { name: 'beleg.pdf' },
+      values: { description: { value: 'Müllabfuhr Stadtreinigung 2025', evidence: 'Müllabfuhr', confidence: 'medium', source: 'local' },
+        amount: { value: '612.40', evidence: 'Gesamt 612,40 EUR', confidence: 'high', source: 'local' },
+        cost_category: { value: 'waste', confidence: 'medium', source: 'local' } } };
+    const readingGet = api.get.getMockImplementation();
+    api.get.mockImplementation((path, ...rest) => path.startsWith('/ai/readings/options') ? Promise.resolve({
+      readers: [{ id: 'local', label: 'Lokale Regeln', available: true, ai: false }], default_reader: 'auto', ai_enabled: true, chat: true,
+      confirm_mode: 'mark', surfaces: [{ id: 'cost_item', label: 'Kostenposition', may_use: true, ai_allowed: true, needs_ai: false,
+        fields: [{ name: 'description', label: 'Bezeichnung', kind: 'text' }, { name: 'amount', label: 'Betrag', kind: 'money' }] }] })
+      : readingGet(path, ...rest));
+    api.post.mockImplementation(async (path, body) => path === '/ai/readings' ? reading : path === '/documents' ? { id: 'doc-beleg' }
       : { ...body, id: 'ocr-cost' });
     render(page()); await open();
     fireEvent.change(screen.getByLabelText('pages.statements.ocrImport'), { target: { files: [new File(['fixture'], 'beleg.pdf', { type: 'application/pdf' })] } });
-    const preview = await screen.findByRole('dialog', { name: 'Erkannten Text prüfen' });
-    fireEvent.click(within(preview).getByRole('button', { name: 'Kostenposition prüfen und ergänzen' }));
-    const editor = screen.getByRole('dialog', { name: 'Kostenposition hinzufügen' });
-    expect(within(editor).getByLabelText(/pages.statements.formAmount/)).toHaveValue(null);
-    expect(within(editor).getByLabelText(/pages.statements.formAllocationKey/)).toHaveValue('');
+    const read = await screen.findByRole('dialog', { name: 'Kostenbeleg einlesen' });
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ai/readings', expect.objectContaining({ surface: 'cost_item',
+      file_url: '/uploads/billing-ocr/beleg.pdf', params: { property_id: 'p1', billing_period_id: 'bp1' } })));
+    fireEvent.click(await within(read).findByRole('button', { name: 'Kostenposition prüfen und ergänzen' }));
+    const editor = await screen.findByRole('dialog', { name: 'Kostenposition hinzufügen' });
+    expect(within(editor).getByLabelText(/pages.statements.formAmount/, { selector: 'input' })).toHaveValue(612.4);
+    expect(within(editor).getByLabelText(/pages.statements.formAllocationKey/)).toHaveValue('');     // the key stays the person's choice
+    expect(within(editor).getByText('2 Werte von Lokale Regeln')).toBeInTheDocument();
     expect(api.post.mock.calls.filter(([path]) => path === '/billing/cost-items')).toHaveLength(0);
-    fireEvent.change(within(editor).getByLabelText(/pages.statements.formAmount/), { target: { value: '100' } });
     fireEvent.change(within(editor).getByLabelText(/pages.statements.formAllocationKey/), { target: { value: 'key1' } });
     await act(async () => { fireEvent.submit(editor.querySelector('form')); });
-    expect(api.post).toHaveBeenCalledWith('/billing/cost-items', expect.objectContaining({ billing_period_id: 'bp1', allocation_key_id: 'key1',
-      amount: 100, source_document_id: 'ocr-doc', vat_rate: 19, net_amount: 84.03, gross_amount: 100 }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/billing/cost-items', expect.objectContaining({ billing_period_id: 'bp1',
+      allocation_key_id: 'key1', amount: 612.4, description: 'Müllabfuhr Stadtreinigung 2025', cost_category: 'waste', source_document_id: 'doc-beleg' })));
+    expect(api.post).toHaveBeenCalledWith('/documents', expect.objectContaining({ file_url: '/uploads/billing-ocr/beleg.pdf', property_id: 'p1' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/ai/readings/rc1/finish', expect.objectContaining({
+      outcome: 'taken_over', record_kind: 'cost_item', record_id: 'ocr-cost' })));
   });
 
   it('keeps manual revision selection in the URL across refresh and restores its list context without a foreign notification receipt', async () => {

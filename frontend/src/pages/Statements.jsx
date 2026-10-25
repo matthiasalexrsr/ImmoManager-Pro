@@ -16,6 +16,9 @@ import { formatMoney } from '../utils/format';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, FolderOpen, ListChecks, Pencil } from 'lucide-react';
 import MeterDocumentImport from '../features/meterDocuments/MeterDocumentImport';
+import AiReadingDialog from '../features/aiReading/AiReadingDialog';
+import AiReadingPanel from '../features/aiReading/AiReadingPanel';
+import { COST_FORM, aiReadingApi, fillEmpty, formFromReading } from '../features/aiReading/aiReadingApi';
 import './statements.css';
 
 const sumMoney = (rows, key) => rows.reduce((sum, row) => sum + Math.round(Number(row[key] || 0) * 100), 0) / 100;
@@ -366,7 +369,9 @@ export default function Statements() {
   const [creatingReceivables, setCreatingReceivables] = useState(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
   const [deliveryModal, setDeliveryModal] = useState(false);
-  const [ocrDraft, setOcrDraft] = useState(null);
+  const [costReading, setCostReading] = useState(null);      // an uploaded receipt being read: { fileUrl, name, periodId }
+  const [costMarks, setCostMarks] = useState(null);
+  const costReadingSource = useRef(null);                     // the reading and file the open cost form came from
   const [ocrUploading, setOcrUploading] = useState(false);
   const [disputing, setDisputing] = useState(false);
   const [promptModal, setPromptModal] = useState(null);
@@ -550,11 +555,17 @@ export default function Statements() {
     if (!selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) throw new Error('Diese Abrechnung kann nicht bearbeitet werden.');
     const data = { ...(costModal !== 'create' ? costModal : costPrefill), ...form,
       billing_period_id: selectedPeriod.id, is_recoverable: form.is_recoverable !== 'false' && form.is_recoverable !== false };
-    if (costModal === 'create') {
-      await api.post('/billing/cost-items', data);
-    } else {
-      await api.put(`/billing/cost-items/${costModal.id}`, data);
+    const source = costReadingSource.current;
+    if (source?.fileUrl && !data.source_document_id && !source.documentId) {   // the read receipt goes into the archive
+      const document = await api.post('/documents', { title: data.description || source.name, document_type: 'Rechnung',
+        file_url: source.fileUrl, property_id: selectedPeriod.property_id });
+      source.documentId = document.id;                         // a retry after a failed save keeps this document
     }
+    if (source?.documentId && !data.source_document_id) data.source_document_id = source.documentId;
+    const saved = costModal === 'create' ? await api.post('/billing/cost-items', data) : await api.put(`/billing/cost-items/${costModal.id}`, data);
+    costReadingSource.current = null;
+    if (source) aiReadingApi.finish(source.reading, 'taken_over', { kind: 'cost_item', id: saved?.id || costModal.id }).catch(() => {});
+    setCostMarks(null);
     await loadData();
     await refreshPreflight(selectedPeriod.id);
   };
@@ -836,47 +847,54 @@ export default function Statements() {
     const file = e.target.files?.[0];
     if (!file || !selectedPeriod) return;
     setOcrUploading(true);
-    setOcrDraft(null);
+    setCostReading(null);
     try {
       const current = api.captureSession();
-      // Step 1: Upload file
       const formData = new FormData();
       formData.append('file', file);
       const uploadData = await api.upload('/files/upload?folder=billing-ocr', formData);
       current();
       if (currentPeriod.current !== selectedPeriod.id) return;
       if (!uploadData?.file_url) throw new Error('Datei-Upload fehlgeschlagen');
-
-      // Step 2: Call OCR import endpoint
-      const ocrRes = await api.post(
-        `/billing/cost-items/import-ocr?billing_period_id=${selectedPeriod.id}&file_url=${encodeURIComponent(uploadData.file_url)}`,
-        {}
-      );
-      current();
-      if (currentPeriod.current !== selectedPeriod.id) return;
-
-      if (ocrRes?.success) {
-        setOcrDraft(ocrRes);
-      } else {
-        toast.show(ocrRes?.error || 'Texterkennung fehlgeschlagen');
-      }
+      setCostReading({ fileUrl: uploadData.file_url, name: file.name, periodId: selectedPeriod.id });
     } catch (err) {
       toast.show(err.message || 'Import fehlgeschlagen');
     } finally {
       setOcrUploading(false);
-      // Reset file input
       e.target.value = '';
     }
   };
 
-  const handleAcceptOcrDraft = () => {
-    if (!ocrDraft?.draft || !selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) return;
-    const draft = ocrDraft.draft;
-    const key = allocationKeys.find(item => item.id === draft.allocation_key_id
-      && (!item.property_id || item.property_id === selectedPeriod.property_id));
-    setCostPrefill({ ...draft, description: draft.description || 'Importierte Kostenposition', allocation_key_id: key?.id || '' });
-    setOcrDraft(null);
-    setCostModal('create');
+  const openCostForm = (target, reading, marks) => {
+    costReadingSource.current = reading ? { reading, fileUrl: costReading?.fileUrl, name: costReading?.name } : null;
+    setCostMarks(marks);
+    setCostReading(null);
+    if (target.id) setCostModal(target);
+    else { setCostPrefill(target); setCostModal('create'); }
+  };
+  const applyCostReading = reading => {
+    if (!selectedPeriod || !isMutable(selectedPeriod.status) || !canEditCosts) return;
+    const { initial, aiMarks } = formFromReading({}, reading, COST_FORM);
+    const category = reading.values?.cost_category?.value;
+    openCostForm({ ...initial, cost_category: category || undefined, description: initial.description || 'Importierte Kostenposition' }, reading, aiMarks);
+  };
+  const completeCostItem = (item, reading) => {
+    const existing = costItems.find(row => row.id === item.id);
+    if (!existing) { toast.show('Die vorhandene Kostenposition ist nicht mehr da.'); return; }
+    const { initial, aiMarks } = fillEmpty({ ...existing, is_recoverable: existing.is_recoverable === false ? 'false' : 'true' }, reading, COST_FORM);
+    openCostForm(initial, reading, aiMarks);
+  };
+  const openCostItem = (item, reading) => {
+    aiReadingApi.finish(reading, 'cancelled', item).catch(() => {});
+    const existing = costItems.find(row => row.id === item.id);
+    setCostReading(null);
+    if (existing) setCostModal(existing);
+  };
+  const closeCostForm = () => {
+    const source = costReadingSource.current;
+    costReadingSource.current = null;
+    if (source) aiReadingApi.finish(source.reading, 'cancelled').catch(() => {});
+    setCostModal(null); setCostPrefill(null); setCostMarks(null);
   };
 
   const handleExportPeriod = async () => {
@@ -942,7 +960,7 @@ export default function Statements() {
       return next;
     });
     setCostSourceFilter('all'); setStatementSourceFilter('all');
-    setCostModal(null); setCostPrefill(null); setOcrDraft(null); setBreakdown(null); setLetterStatement(null);
+    setCostModal(null); setCostPrefill(null); setCostReading(null); setCostMarks(null); setBreakdown(null); setLetterStatement(null);
     currentPeriod.current = period.id;
     setSelectedPeriod(period);
     setView('detail');
@@ -1411,69 +1429,12 @@ export default function Statements() {
           />
         </div>
 
-        {/* OCR Import Preview Dialog */}
-        {ocrDraft && (
-          <div className="modal-overlay" onClick={() => setOcrDraft(null)}>
-            <div className="modal" role="dialog" aria-modal="true" aria-label="Erkannten Text prüfen" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-              <div className="modal-header">
-                <h3>Erkannten Text prüfen</h3>
-                <button className="btn-close" onClick={() => setOcrDraft(null)} aria-label="Schließen">&times;</button>
-              </div>
-              <div className="modal-body" style={{ display: 'grid', gap: '0.75rem' }}>
-                {ocrDraft.ocr_fields && (
-                  <div>
-                    <strong>Erkannte Felder</strong>
-                    <table style={{ width: '100%', fontSize: 'var(--text-base)', borderCollapse: 'collapse' }}>
-                      <tbody>
-                        {ocrDraft.ocr_fields.supplier && (
-                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Lieferant</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.supplier}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.description || 0) * 100)}{'\u00a0%'}</td></tr>
-                        )}
-                        {ocrDraft.ocr_fields.total_amount != null && (
-                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Betrag</td>
-                            <td style={{ padding: '4px 8px' }}>{formatMoney(ocrDraft.ocr_fields.total_amount)}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.amount || 0) * 100)}{'\u00a0%'}</td></tr>
-                        )}
-                        {ocrDraft.ocr_fields.cost_category && (
-                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Kostenart</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.cost_category}</td>
-                            <td style={{ padding: '4px 8px', color: '#888' }}>{Math.round((ocrDraft.confidence?.cost_category || 0) * 100)}{'\u00a0%'}</td></tr>
-                        )}
-                        {ocrDraft.ocr_fields.invoice_number && (
-                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Rechnungsnr.</td>
-                            <td style={{ padding: '4px 8px' }}>{ocrDraft.ocr_fields.invoice_number}</td>
-                            <td></td></tr>
-                        )}
-                        {ocrDraft.ocr_fields.invoice_date && (
-                          <tr><td style={{ padding: '4px 8px', fontWeight: 500 }}>Datum</td>
-                            <td style={{ padding: '4px 8px' }}>{formatDate(ocrDraft.ocr_fields.invoice_date)}</td>
-                            <td></td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {ocrDraft.ocr_text_preview && (
-                  <div>
-                    <strong>Textvorschau</strong>
-                    <pre style={{ fontSize: 'var(--text-xs)', background: 'var(--bg-secondary, #f5f5f5)', padding: '8px', borderRadius: '4px', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
-                      {ocrDraft.ocr_text_preview}
-                    </pre>
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={() => setOcrDraft(null)}>
-                    Abbrechen
-                  </button>
-                  <button className="btn btn-sm btn-primary" onClick={handleAcceptOcrDraft}>
-                    Kostenposition prüfen und ergänzen
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {costReading && costReading.periodId === selectedPeriod.id && <AiReadingDialog title="Kostenbeleg einlesen" onClose={() => setCostReading(null)}>
+          <AiReadingPanel surface="cost_item" autoStart source={{ fileUrl: costReading.fileUrl, name: costReading.name }}
+            params={{ property_id: selectedPeriod.property_id, billing_period_id: selectedPeriod.id }} title="Was steht im Beleg?"
+            applyLabel="Kostenposition prüfen und ergänzen" onApply={applyCostReading} onCancel={() => setCostReading(null)}
+            onOpenExisting={openCostItem} onUpdateExisting={completeCostItem} />
+        </AiReadingDialog>}
 
         {periodStmts.length > 0 && (
           <section ref={statementSourceTable} aria-label="Einzelabrechnungen als Verteilungsquelle" tabIndex={-1}>
@@ -1513,7 +1474,8 @@ export default function Statements() {
               : { ...costModal, is_recoverable: costModal.is_recoverable === false ? 'false' : 'true' }}
             onSave={handleSaveCost}
             repeatKeep={['allocation_key_id', 'is_recoverable']}
-            onClose={() => { setCostModal(null); setCostPrefill(null); }}
+            onClose={closeCostForm}
+            aiMarks={costMarks}
           />
         )}
 

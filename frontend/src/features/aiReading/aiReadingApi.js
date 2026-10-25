@@ -116,6 +116,11 @@ export const DOCUMENT_FORM = {
 export const INVOICE_FORM = Object.fromEntries(['supplier', 'invoice_number', 'invoice_date', 'net_amount', 'vat_rate', 'gross_amount',
   'skonto_percent', 'skonto_days', 'payment_days', 'cost_category'].map(name => [name, name]));
 
+/** Reading fields for a cost item of a utility statement. */
+export const COST_FORM = {
+  description: values => values.description || combined(values, [['supplier', '']]), amount: 'amount', is_recoverable: 'recoverable',
+};
+
 export const CHOICE_LABELS = {
   heating: 'Heizung', hot_water: 'Warmwasser', water: 'Wasser', sewage: 'Abwasser', electricity: 'Allgemeinstrom',
   waste: 'Müllabfuhr', street_cleaning: 'Straßenreinigung', cleaning: 'Gebäudereinigung', garden: 'Gartenpflege',
