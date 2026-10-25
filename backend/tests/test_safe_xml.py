@@ -18,4 +18,5 @@ def test_entities_are_refused_as_unreadable_xml(document):
 
 def test_ordinary_office_and_bank_xml_is_read():
     root = safe_xml.fromstring(b'<w:document xmlns:w="urn:w"><w:p><w:t>Miete</w:t></w:p></w:document>')
-    assert root.find(".//{urn:w}t").text == "Miete"
+    found = root.find(".//{urn:w}t")
+    assert found is not None and found.text == "Miete"

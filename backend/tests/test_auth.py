@@ -340,7 +340,7 @@ class TestTokenRevocation:
         resp = logout({"access_token": result.access_token, "refresh_token": result.refresh_token})
         assert "abgemeldet" in resp["detail"].lower() or "erfolgreich" in resp["detail"].lower()
         assert is_token_revoked(result.access_token)
-        assert is_token_revoked(result.refresh_token)
+        assert result.refresh_token and is_token_revoked(result.refresh_token)
 
 
 class TestSQLUserStoreSessionCleanup:
