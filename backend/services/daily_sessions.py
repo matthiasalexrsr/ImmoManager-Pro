@@ -63,6 +63,25 @@ def check(identifier, user_id):
         raise HTTPException(401, 'Sitzung ist abgelaufen oder widerrufen.')
 
 
+def revoke_all(user_id, keep=None):
+    """End every login family of an account (its password was reset), except `keep`, the caller's own."""
+    from .. import auth
+    stamp = state.now()
+    if auth._auth_session_factory is None:
+        with auth._revocation_lock:
+            for row in _sessions.values():
+                if row['owner_id'] == user_id and not row.get('revoked_at') and row['id'] != keep:
+                    row.update(revoked_at=stamp, revision=row['revision'] + 1)
+        return
+    with auth._revocation_session() as db:
+        rows = db.scalars(select(DailySessionORM).where(DailySessionORM.owner_id == user_id,
+                                                        DailySessionORM.revoked_at.is_(None)).with_for_update()).all()
+        for row in rows:
+            if row.id != keep:
+                row.revoked_at, row.revision = stamp, row.revision + 1
+        db.commit()
+
+
 def inventory(store, actor_id, current=None):
     from .. import auth
     with auth._revocation_lock if not hasattr(store, 'db') else nullcontext(), archive.work(store, actor_id) as unit:

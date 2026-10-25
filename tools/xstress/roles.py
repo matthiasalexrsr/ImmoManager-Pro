@@ -156,6 +156,11 @@ def matrix(users: dict[str, Client], f: Findings) -> None:
     except RuntimeError:
         pass
     owner.call("POST", f"/auth/users/{hid}/password", {"password": PASSWORD}, expect=(200, 204), area="Rechte")
+    # a new password ends the sessions signed in with the old one
+    status, _ = target.call("GET", "/tenants", expect=(401,), area="Rechte", quiet=True)
+    if status == 200:
+        f.add("RECHTE", "Rechte", "Sitzung bleibt nach dem Zurücksetzen des Passworts gültig")
+    target.login()
     # too many wrong passwords lock the account, but not the others
     import httpx
     for _ in range(7):

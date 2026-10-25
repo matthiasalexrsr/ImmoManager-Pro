@@ -85,3 +85,18 @@ def test_many_failed_sign_ins_from_one_address_are_stopped_across_user_names(cli
     blocked = client.post("/api/v1/auth/login", json=CREDENTIALS)
     assert blocked.status_code == 429                                        # even the right password waits now
     assert "dieser Adresse" in blocked.json()["detail"]
+
+
+def test_a_password_reset_ends_the_other_sessions_of_the_account(client):
+    owner = auth.register_user("chefin", "chefin@example.com", "Chefin", "Kiefer7Lampe", "eigentuemer")
+    reader_session = client.post("/api/v1/auth/login", json=CREDENTIALS).json()["access_token"]
+    owner_token = client.post("/api/v1/auth/login", json={"username": "chefin", "password": "Kiefer7Lampe"}).json()["access_token"]
+    reader_id = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {reader_session}"}).json()["id"]
+    reset = client.post(f"/api/v1/auth/users/{reader_id}/password", json={"password": "Neues4Passwort"},
+                        headers={"Authorization": f"Bearer {owner_token}"})
+    assert reset.status_code == 200, reset.text
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {reader_session}"}).status_code == 401
+    own = client.post(f"/api/v1/auth/users/{owner.id}/password", json={"password": "Andere8Lampe"},
+                      headers={"Authorization": f"Bearer {owner_token}"})
+    assert own.status_code == 200, own.text
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {owner_token}"}).status_code == 200   # this session stays

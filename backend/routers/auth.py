@@ -506,11 +506,16 @@ def patch_user(
 def reset_user_password(
     user_id: str,
     payload: UserPasswordReset,
+    request: Request,
     user: UserRead = Depends(require_role("eigentuemer", "verwalter")),
 ) -> UserRead:
-    """Set a new password for an account (admin only)."""
+    """Set a new password for an account (admin only); its other sessions end, a self-reset keeps this one."""
     _require_may_manage(user, _load_target(user_id))
-    return set_user_password(user_id, payload.password)
+    keep = None
+    scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
+    if user_id == user.id and scheme.lower() == "bearer" and token:
+        keep = decode_token(token).sid
+    return set_user_password(user_id, payload.password, keep_session=keep)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

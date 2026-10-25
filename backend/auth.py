@@ -1057,8 +1057,8 @@ def update_user(user_id: str, updates: dict) -> UserRead:
     return _to_user_read(user)
 
 
-def set_user_password(user_id: str, password: str) -> UserRead:
-    """Set a new password for an existing account (admin reset)."""
+def set_user_password(user_id: str, password: str, *, keep_session: str | None = None) -> UserRead:
+    """Set a new password for an existing account (admin reset); the account's other sessions end."""
     account = _user_store.get_by_id(user_id) if hasattr(_user_store, "get_by_id") else None
     pw_errors = validate_password_strength(password, username=(account or {}).get("username"), email=(account or {}).get("email"))
     if pw_errors:
@@ -1070,6 +1070,8 @@ def set_user_password(user_id: str, password: str) -> UserRead:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     clear_login_attempts(user["username"])
+    from .services.daily_sessions import revoke_all
+    revoke_all(user_id, keep=keep_session)       # OWASP: a new password ends the sessions signed in with the old one
     return _to_user_read(user)
 
 
