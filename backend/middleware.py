@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # viewer's image decoders), inline styles from React's style props, data:/blob: for previews, print frames
 # and downloads. Nothing may frame it except itself (the print and contract-wizard frames).
 APP_CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
-           "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; "
+           "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; worker-src 'self' blob:; "
            "frame-src 'self' blob:; media-src 'self' blob:; manifest-src 'self'; object-src 'none'; "
            "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 # The bundled contract wizard is a classic page with inline handlers; it still loads nothing from elsewhere.

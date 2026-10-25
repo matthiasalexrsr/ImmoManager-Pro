@@ -39,6 +39,7 @@ def test_the_app_page_gets_a_strict_policy_and_no_hsts_over_plain_http():
     assert csp == APP_CSP
     assert "script-src 'self' 'wasm-unsafe-eval';" in csp and "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")
     assert "object-src 'none'" in csp and "frame-ancestors 'self'" in csp and "base-uri 'self'" in csp
+    assert "connect-src 'self' blob:;" in csp                                # the PDF preview reads files of the chat
     assert response.headers["x-frame-options"] == "SAMEORIGIN"
     assert response.headers["referrer-policy"] == "same-origin"
     assert "geolocation=()" in response.headers["permissions-policy"]
