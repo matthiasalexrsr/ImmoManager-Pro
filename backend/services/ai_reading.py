@@ -509,6 +509,11 @@ def options(store: Any, actor: Any, surface_id: Optional[str] = None) -> dict:
             "default_reader": values.get("ai_default_reader", "auto"),
             "chat": bool(values.get("ai_chat_enabled", True)) and bool(values.get("ai_reading_enabled", True)),
             "ai_enabled": bool(values.get("ai_reading_enabled", True)),
+            # what goes to the AI and how long readings stay, for the explanation in the settings
+            "policy": {"send_images": bool(values.get("ai_send_images", True)), "max_pages": values.get("ai_max_pages", 4),
+                       "context": values.get("ai_context", "standard"), "keep_days": values.get("ai_keep_days", 30),
+                       "check_duplicates": bool(values.get("ai_check_duplicates", True)), "calls_per_window": CALLS_PER_WINDOW,
+                       "window_minutes": WINDOW_SECONDS // 60},
             "surfaces": [{"id": surface.id, "label": surface.label, "entry": surface.entry, "purpose": surface.purpose,
                           "needs_ai": surface.needs_ai, "may_use": may_write(actor.role, surface.area),
                           "ai_allowed": _ai_allowed(surface, values) is None, "ai_reason": _ai_allowed(surface, values),

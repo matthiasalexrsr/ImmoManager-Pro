@@ -30,3 +30,10 @@
 .setting-reset { margin-left: -12px; }
 .settings-catalogue :focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
 .settings-grid > .settings-catalogue { grid-column: 1 / -1; }
+
+/* Settings → KI-Verarbeitung */
+.ai-settings h3 { margin: 0 0 var(--space-2); font-size: var(--text-md); }
+.ai-settings-list { display: grid; gap: var(--space-2); max-width: 90ch; margin: 0; padding-left: 1.25rem; }
+.ai-settings-readers { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0 0 var(--space-2); padding: 0; list-style: none; }
+.ai-settings-readers li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.ai-settings p { max-width: 90ch; }

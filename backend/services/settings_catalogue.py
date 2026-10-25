@@ -107,6 +107,21 @@ LABELS.update(ai_reading_enabled='KI-Auswertung von Dokumenten zulassen (Claude/
 CHOICES.update(ai_context=['none', 'standard', 'extended'], ai_default_reader=['auto', 'local', 'claude', 'codex'],
                ai_confirm_mode=['confirm', 'mark'], ai_model_claude=['', 'sonnet', 'opus'],
                **{key: [False, True] for key, value in AI_GLOBAL.items() if isinstance(value, bool)})
+# what the choices mean, in words (the catalogue shows these instead of the stored codes)
+CHOICE_LABELS = dict(
+    ai_context={'none': 'Keine Angaben zur Immobilie', 'standard': 'Immobilie, Einheiten, Lieferanten und Zähler',
+                'extended': 'Zusätzlich die Namen der Mieter'},
+    ai_default_reader={'auto': 'Automatisch: verbundene KI, sonst lokale Regeln', 'local': 'Lokale Regeln (das Dokument bleibt hier)',
+                       'claude': 'Claude', 'codex': 'ChatGPT'},
+    ai_confirm_mode={'confirm': 'Jeden Wert vor dem Speichern bestätigen', 'mark': 'Nur markieren (KI, geändert, neu)'},
+    ai_model_claude={'': 'Vorgabe des Kontos', 'sonnet': 'Sonnet (schneller)', 'opus': 'Opus (gründlicher)'})
+
+
+def labelled_choices(key: str, choices):
+    labels = CHOICE_LABELS.get(key)
+    return [{'value': choice, 'label': labels.get(choice, str(choice))} for choice in choices] if labels and choices else choices
+
+
 GLOBAL_ONLY |= set(AI_GLOBAL)
 BUSINESS |= set(AI_GLOBAL)
 TEXT_KEYS |= AI_RULE_KEYS | {'ai_model_codex'}
@@ -224,7 +239,7 @@ def catalogue(store, actor_id, property_id=None):
             if not setting_allowed(unit, key):
                 continue
             value, origin = effective(unit, key, property_id)
-            choices = CHOICES.get(key)
+            choices = labelled_choices(key, CHOICES.get(key))
             if key == 'booking_category':
                 choices = [{'value': '', 'label': 'Keine Vorgabe'}] + [{'value': row.id, 'label': row.name} for row in unit.store.list_categories()]
             if key == 'preferred_connection':

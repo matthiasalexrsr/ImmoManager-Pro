@@ -14,6 +14,7 @@ import BackupSection from './settings/BackupSection';
 import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
 import LetterheadSection from '../features/letters/LetterheadSection';
+import AiSettingsSection from './settings/AiSettingsSection';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -24,7 +25,7 @@ export default function Settings() {
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
-  const allowedTabs = ['catalogue', 'letterhead', 'security', 'system', ...(isAdmin ? ['users', 'dev'] : [])];
+  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isAdmin ? ['users', 'dev'] : [])];
   const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
   const setSettingsTab = section => setParams(current => {
     const next = new URLSearchParams(current);
@@ -45,6 +46,7 @@ export default function Settings() {
 
   const tabs = [
     { key: 'catalogue', label: 'Einstellungen finden' },
+    { key: 'ai', label: 'KI-Verarbeitung' },
     { key: 'letterhead', label: 'Briefkopf' },
     { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
@@ -70,6 +72,7 @@ export default function Settings() {
 
       <div className="settings-grid">
         {settingsTab === 'catalogue' && <><SettingsCatalogue /><button className="btn btn-secondary" onClick={() => tutorial?.start(0)}>Bedienungstour starten</button></>}
+        {settingsTab === 'ai' && <AiSettingsSection />}
         {settingsTab === 'letterhead' && <LetterheadSection />}
         {settingsTab === 'security' && <SecuritySection />}
 

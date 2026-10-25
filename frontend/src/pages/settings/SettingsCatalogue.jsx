@@ -15,7 +15,7 @@ const ORIGINS = { explicit: 'Beim Start übergeben', process_env: 'Umgebungsvari
   launcher_env_file: '.env-Datei des Starters' };
 const originLabel = origin => ORIGINS[origin] || (String(origin || '').startsWith('object:') ? 'Ausgewähltes Objekt' : origin);
 
-function SettingField({ item, onSaved }) {
+export function SettingField({ item, onSaved }) {
   const storage = privateStorageKey(`setting-draft:${item.scope}:${item.key}`);
   const [recovery] = useState(() => { try { return JSON.parse(sessionStorage.getItem(storage) || 'null'); } catch { return null; } });
   const [value, setValue] = useState(recovery?.value ?? item.value);

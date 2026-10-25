@@ -110,7 +110,7 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
             })}
           </fieldset>
           {reader && <p className="form-hint">{READER_HINTS[reader]}</p>}
-          {info?.ai_reason && <p className="form-hint">{info.ai_reason}</p>}
+          {info?.ai_reason && <p className="form-hint">{info.ai_reason} <Link to="/settings?section=ai">Zu den Einstellungen</Link></p>}
           {readers.every(item => !item.ai || !item.available) && <p className="form-hint">
             Für Scans, Fotos und das Gespräch über das Dokument im <Link to="/assistant">Assistenten</Link> ein Claude- oder ChatGPT-Konto verbinden.</p>}
           {reader && reader !== 'local' && <label className="ai-reading-instruction">Was soll mit dem Dokument geschehen? (freiwillig)
