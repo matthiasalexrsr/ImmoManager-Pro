@@ -1,0 +1,57 @@
+.ai-reading { display: grid; gap: 12px; }
+.ai-reading-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ai-reading-head h3 { margin: 0; font-size: var(--text-md, 1rem); }
+.ai-reading-head svg { color: var(--color-primary); }
+.ai-reading-start { display: grid; gap: 10px; }
+.ai-reading-readers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; padding: 0; border: 0; }
+.ai-reading-readers legend { float: left; margin-right: 6px; font-weight: 600; }
+.ai-reading-readers label { display: inline-flex; align-items: center; gap: 6px; }
+.ai-reading-readers label.is-unavailable { color: var(--color-text-secondary); }
+.ai-reading-instruction { display: grid; gap: 4px; font-weight: 600; }
+.ai-reading-instruction textarea { font-weight: 400; }
+.ai-reading-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ai-reading-duplicates { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--color-warning); border-radius: var(--radius, 12px);
+  background: var(--color-warning-light); }
+.ai-reading-duplicates p { margin: 0; }
+.ai-reading-duplicates ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ai-reading-duplicates li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; }
+.ai-reading-dup-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.ai-chat { display: grid; gap: 8px; max-height: 18rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.ai-chat li { display: grid; gap: 2px; max-width: 46rem; padding: 8px 12px; border-radius: var(--radius, 12px); background: var(--color-bg); }
+.ai-chat li.ai-chat-user { justify-self: end; background: var(--color-primary-50); }
+.ai-chat li.ai-chat-end { padding: 0; background: none; }
+.ai-chat-who { color: var(--color-text-secondary); font-size: var(--text-xs, .75rem); font-weight: 600; }
+.ai-chat-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-chat-changed { color: var(--color-primary-700); font-size: var(--text-xs, .75rem); }
+.ai-chat-input { display: flex; align-items: flex-start; gap: 8px; }
+.ai-chat-input svg { margin-top: 8px; flex: none; color: var(--color-text-secondary); }
+.ai-chat-input textarea { flex: 1 1 auto; min-width: 0; resize: vertical; }
+.ai-reading-questions { padding: 10px 14px; border-radius: var(--radius, 12px); background: var(--color-primary-50); }
+.ai-reading-questions ul { margin: 4px 0 0; padding-left: 18px; }
+.ai-reading-notes { margin: 0; padding: 10px 14px 10px 30px; border-radius: var(--radius, 12px); background: var(--color-warning-light); }
+.ai-reading-values td.ai-evidence { max-width: 22rem; color: var(--color-text-secondary); font-size: var(--text-sm, .875rem); overflow-wrap: anywhere; }
+.ai-reading-values tr.is-changed th, .ai-reading-values tr.is-changed td { background: var(--color-primary-50); }
+.ai-badge { margin-left: 6px; vertical-align: middle; }
+.ai-confidence { font-size: var(--text-sm, .875rem); }
+.ai-confidence.is-high { color: var(--color-success); }
+.ai-confidence.is-medium { color: var(--color-text-secondary); }
+.ai-confidence.is-low { color: var(--color-warning); font-weight: 600; }
+
+/* values in a form that came from a reading (FormModal aiMarks) */
+.ai-form-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; padding: 8px 12px;
+  border-radius: var(--radius, 12px); background: var(--color-primary-50); font-size: var(--text-sm, .875rem); }
+.ai-form-summary strong { font-weight: 600; }
+.form-group.ai-field > label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.form-group.ai-field input, .form-group.ai-field select, .form-group.ai-field textarea { box-shadow: inset 3px 0 0 var(--color-primary); }
+.form-group.ai-field.is-pending input, .form-group.ai-field.is-pending select, .form-group.ai-field.is-pending textarea {
+  box-shadow: inset 3px 0 0 var(--color-warning); background: var(--color-warning-light); }
+.form-group.ai-field.is-changed input, .form-group.ai-field.is-changed select, .form-group.ai-field.is-changed textarea {
+  box-shadow: inset 3px 0 0 var(--color-info); }
+.form-group.ai-added input, .form-group.ai-added select, .form-group.ai-added textarea { box-shadow: inset 3px 0 0 var(--color-info); }
+.ai-mark { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 999px; font-size: var(--text-2xs, .6875rem);
+  font-weight: 600; line-height: 1.6; background: var(--color-primary-light); color: var(--color-primary-700); }
+.ai-mark.is-pending { background: var(--color-warning-light); color: var(--color-warning); }
+.ai-mark.is-changed, .ai-mark.is-added { background: var(--color-info-light); color: #0e6577; }
+.ai-confirm { padding: 0 8px; min-height: 22px; font-size: var(--text-xs, .75rem); }
+.ai-evidence-hint { display: block; margin-top: 2px; color: var(--color-text-secondary); font-size: var(--text-xs, .75rem); overflow-wrap: anywhere; }
+@media (max-width: 640px) { .ai-chat-input { flex-wrap: wrap; } .ai-chat-input svg { display: none; } }
