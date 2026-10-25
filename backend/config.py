@@ -136,6 +136,7 @@ class Settings(BaseSettings):
         "Accept",
         "Accept-Language",
         "X-Request-ID",
+        "X-Token-Transport",
     ]
 
     # --- Logging ---

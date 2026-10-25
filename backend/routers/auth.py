@@ -38,6 +38,7 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services.session_cookie import clear_refresh_cookie, cookie_token, set_refresh_cookie, wants_cookie
 from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -137,8 +138,17 @@ def login(
         access_token=create_access_token(user["id"], session_id),
         refresh_token=create_refresh_token(user["id"], session_id),
     )
-    if request is not None and response is not None:
-        set_upload_access_cookie(response, request, tokens.access_token)
+    return _deliver(tokens, request, response)
+
+
+def _deliver(tokens: TokenResponse, request: Request | None, response: Response | None) -> TokenResponse:
+    """The browser app gets its refresh token only as an HttpOnly cookie (services/session_cookie)."""
+    if request is None or response is None:
+        return tokens
+    set_upload_access_cookie(response, request, tokens.access_token)
+    if wants_cookie(request) and tokens.refresh_token:
+        set_refresh_cookie(response, request, tokens.refresh_token)
+        return TokenResponse(access_token=tokens.access_token)
     return tokens
 
 
@@ -152,9 +162,16 @@ def refresh(
 
     Implements token rotation: the old refresh token is revoked on use,
     and a new refresh token is issued alongside the new access token.
-    This prevents replay attacks with stolen refresh tokens.
+    This prevents replay attacks with stolen refresh tokens. The browser app sends no
+    token: it is identified by its HttpOnly cookie, and only together with its header.
     """
-    token_data = decode_token(payload.refresh_token)
+    token = payload.refresh_token or (cookie_token(request) if wants_cookie(request) else "")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Keine Sitzung zum Erneuern. Bitte erneut anmelden.",
+        )
+    token_data = decode_token(token)
     if token_data.type != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -167,14 +184,12 @@ def refresh(
             detail="Benutzer nicht gefunden oder deaktiviert",
         )
     # Rotate: revoke the old refresh token so it cannot be reused
-    revoke_token(payload.refresh_token, require_unrevoked=True)
+    revoke_token(token, require_unrevoked=True)
     tokens = TokenResponse(
         access_token=create_access_token(user["id"], token_data.sid),
         refresh_token=create_refresh_token(user["id"], token_data.sid),
     )
-    if request is not None and response is not None:
-        set_upload_access_cookie(response, request, tokens.access_token)
-    return tokens
+    return _deliver(tokens, request, response)
 
 
 @router.post("/logout")
@@ -190,8 +205,12 @@ def logout(
         revoke_token(access_token)
     if refresh_token:
         revoke_token(refresh_token)
+    if cookie_token(request):
+        revoke_token(cookie_token(request))
     if request is not None and response is not None:
         clear_upload_access_cookie(response, request)
+        if cookie_token(request) or wants_cookie(request):
+            clear_refresh_cookie(response, request)
     return {"detail": "Erfolgreich abgemeldet"}
 
 

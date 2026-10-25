@@ -12,6 +12,10 @@
 import { workspaceOwner } from './utils/workspaceIdentity';
 
 const BASE = import.meta.env.VITE_API_URL || '/api/v1';
+// The server keeps this app's refresh token in an HttpOnly cookie for the auth endpoints and leaves it out of
+// every response body, so script in the page cannot read it. A token still in localStorage comes from an older
+// version (or an older server) and is used once more, then the cookie takes over.
+const COOKIE_TRANSPORT = { 'X-Token-Transport': 'cookie' };
 let refreshInFlight = null;
 let logoutInFlight = null;
 let logoutRequested = false;
@@ -112,24 +116,39 @@ async function fetchWithRetry(url, options, retriesLeft = MAX_RETRIES, beforeAtt
 // Token refresh
 // ---------------------------------------------------------------------------
 
+function storeRefreshToken(token) {
+  if (token) localStorage.setItem('refresh_token', token);       // an older server still answers with the token
+  else localStorage.removeItem('refresh_token');
+}
+
 function tryRefreshToken(owner) {
   if (logoutRequested) return Promise.resolve(false);
   if (refreshInFlight) return refreshInFlight;
   const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return Promise.resolve(false);
+  if (!refreshToken && !getToken()) return Promise.resolve(false);   // never signed in here, or signed out
   const refreshOwner = tokenOwner(refreshToken);
-  if (owner != null && refreshOwner !== undefined && refreshOwner !== owner) {
+  if (refreshToken && owner != null && refreshOwner !== undefined && refreshOwner !== owner) {
     invalidateExternalSession();
     return Promise.reject(changedSessionError());
   }
+  const accessBefore = getToken();
   refreshInFlight = (async () => {
+    const send = () => fetch(`${BASE}/auth/refresh`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...COOKIE_TRANSPORT },
+      body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+    });
     let res;
     try {
-      res = await fetch(`${BASE}/auth/refresh`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
+      res = await send();
+      if ((res.status === 401 || res.status === 403) && !refreshToken) {
+        // Another window may just have renewed the session and rotated the cookie: use its access token, or
+        // try once more with the cookie the browser now holds.
+        if (getToken() && getToken() !== accessBefore) return true;
+        await new Promise(resolve => setTimeout(resolve, 300));
+        if (getToken() && getToken() !== accessBefore) return true;
+        res = await send();
+      }
     } catch (err) {
       throw networkError(err);
     }
@@ -143,10 +162,10 @@ function tryRefreshToken(owner) {
       invalidateExternalSession();
       throw changedSessionError();
     }
-    if (localStorage.getItem('refresh_token') !== refreshToken) return false;
+    if (refreshToken && localStorage.getItem('refresh_token') !== refreshToken) return false;
     // Logout waits for this result, then revokes these newest tokens.
     localStorage.setItem('access_token', data.access_token);
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    storeRefreshToken(data.refresh_token);
     return true;
   })().finally(() => { refreshInFlight = null; });
   return refreshInFlight;
@@ -366,7 +385,7 @@ export async function login(username, password) {
     res = await fetchWithRetry(`${BASE}/auth/login`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...COOKIE_TRANSPORT },
       body: JSON.stringify({ username, password }),
     });
   } catch (err) {
@@ -378,7 +397,7 @@ export async function login(username, password) {
   }
   const data = await res.json();
   localStorage.setItem('access_token', data.access_token);
-  localStorage.setItem('refresh_token', data.refresh_token);
+  storeRefreshToken(data.refresh_token);
   logoutRequested = false;
   sessionGeneration += 1;
   return data;
@@ -433,7 +452,7 @@ export function logout() {
       const response = await fetch(`${BASE}/auth/logout`, {
         method: 'POST', credentials: 'include',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json', ...COOKIE_TRANSPORT,
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({

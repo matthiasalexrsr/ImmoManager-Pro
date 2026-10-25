@@ -1334,7 +1334,8 @@ class UserPasswordReset(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
+    # empty for the browser app: its refresh token lives only in an HttpOnly cookie (services/session_cookie)
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
 
 
@@ -1353,7 +1354,8 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # API clients send their refresh token; the browser app sends none and is identified by its cookie
+    refresh_token: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
