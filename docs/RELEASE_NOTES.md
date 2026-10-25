@@ -106,8 +106,16 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Formulare:** „Speichern & weiteren“, „Duplizieren“, „Heute“ neben jedem Datum, Strg+Enter zum Speichern; Eingaben gehen beim Schließen nicht verloren.
 - **Tastatur:** „/“ öffnet die Suche, Alt+N das Neu-Formular der Liste, „?“ zeigt alle Kürzel. Favoriten lassen sich in der Seitenleiste anheften; aufgeklappte Bereiche bleiben aufgeklappt, und auf einer Detailseite führt der Seitenname oben zurück zur Liste.
 
+### Dokumente einlesen
+- **Ein Lesefeld überall, wo ein Dokument eine Maske füllt:** beim Hochladen eines Dokuments, im Rechnungseingang („Beleg einlesen“), beim Kostenbeleg der Nebenkostenabrechnung, bei Dokumenten des Messdienstes und als „Stand aus Foto“ bei den Zählern (am Telefon mit der Kamera).
+- **Wer liest:** die eingebauten Regeln sofort, oder auf Wunsch das eigene, im Assistenten verbundene Claude- oder ChatGPT-Konto. Man kann dazuschreiben, was mit dem Dokument geschehen soll, und im Gespräch nachfragen oder korrigieren („Der Betrag ist netto“).
+- **Jeder Wert mit Beleg:** zu jedem gelesenen Wert stehen die Stelle im Dokument und wie sicher er ist. In der Maske ist jeder Wert markiert und wird – je nach Einstellung – einzeln bestätigt, bevor gespeichert wird; von Hand geänderte und neu eingetragene Werte sind ebenfalls markiert.
+- **Gibt es den Eintrag schon?** Vor dem Übernehmen sucht das Programm nach einem Datensatz zum selben Dokument (gleiche Datei, gleicher Inhalt, gleiche Rechnung, gleicher Zählerstand) und fragt: öffnen, ergänzen, trotzdem neu anlegen oder abbrechen.
+- **Einstellungen → KI-Verarbeitung:** erklärt, was an die KI geht, zeigt die verbundenen Konten und enthält alle Vorgaben – KI an oder aus (auch je Stelle), Hausregeln je Stelle, Seitenbilder, Angaben zur Immobilie, Aufbewahrung, und persönlich: wer liest, bestätigen oder nur markieren.
+
 ### Sicherheit, Sicherung, Updates
 - **Rollen und Rechte:** Rollen (Verwaltung, Buchhaltung, Technik, Nur Lesen) mit Portfoliozugriff je Konto.
+- **Sicherheit für den Einsatz im Netz:** strenge Sicherheitsrichtlinien des Browsers (kein fremder Code, keine Einbettung in fremde Seiten), die Sitzung in einem geschützten Cookie, Sperre bekannter und leicht erratbarer Passwörter, Bremse gegen Anmeldeversuche von einer Adresse, Prüfung des Dateiinhalts beim Hochladen; ein neues Passwort beendet die übrigen Sitzungen. Jedes Release enthält Prüfsummen (`SHA256SUMS.txt`) und eine Liste aller enthaltenen Komponenten (SBOM). Sicherheitslücken bitte vertraulich melden – siehe `SECURITY.md`.
 - **Datensicherung:**
   - täglich ein geprüftes Vollbackup mit Datenbank, Anhängen, Einstellungen und Schlüssel;
   - auf Wunsch eine geprüfte zweite Kopie auf USB-Festplatte oder Netzlaufwerk, eingerichtet unter Einstellungen → System → Betrieb;
@@ -160,6 +168,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Versand:** E-Mails und Mahnbriefe erzeugt das Programm als Entwurf oder PDF und versendet sie nicht. Die SEPA-Lastschriftdatei lädt man selbst bei der Bank hoch.
 - **Fälligkeit und Feiertage:** Für den dritten Werktag zählen nur die bundesweiten Feiertage; regionale (z. B. Heilige Drei Könige, Fronleichnam) nicht, dort kann eine Miete einen Tag früher als fällig gelten.
 - **Messdienst-Dokumente:** Das Lesen mit KI braucht ein im Assistenten verbundenes Claude- oder ChatGPT-Konto; das Dokument geht dann an diesen Anbieter. Die eingebauten Regeln lesen nur PDFs mit Textebene; gescannte PDFs gibt die KI nur mit PyMuPDF als Bilder weiter (sonst ein Foto verwenden). Die Aufteilung je Wohnung, die der Messdienst errechnet, wird angezeigt, aber nicht übernommen; die Abrechnung rechnet selbst.
+- **Dokumente einlesen:** Ohne verbundenes KI-Konto lesen die eingebauten Regeln nur Dokumente mit Textebene und nicht in Fotos; ein Gespräch über das Dokument ist dann nicht möglich. Mit KI gehen die Inhalte an den Anbieter des verbundenen Kontos (siehe Einstellungen → KI-Verarbeitung). Die Prüfung auf „gleiche Datei“ vergleicht gespeicherte Dateien nur bei lokaler Ablage, nicht bei S3-Speicher.
 - **Teilen:** WhatsApp kann über einen Link keine Datei anhängen; sie liegt in den Downloads und wird im Chat angehängt. Der Teilen-Dialog von Windows erscheint nur in Browsern, die Dateien teilen können. Word-Dateien druckt das Programm nur, wenn LibreOffice installiert ist.
 - **Steuerliche Jahresauswertung:** Sie folgt dem Buchungsdatum; die Zehn-Tage-Regel für regelmäßig wiederkehrende Zahlungen um den Jahreswechsel (§ 11 EStG) wird nicht angewandt.
 - **Eigentümer:** DATEV-Export und WISO-Übertragungsbogen je Eigentümer verteilen nach den erfassten Anteilen; ob das steuerlich so zuzurechnen ist, prüfen sie nicht. Rückgängig machen lässt sich nur der letzte Wechsel eines Objekts, und nur, solange seine Anteile nicht von Hand geändert wurden. Die DSGVO-Auskunft für Kontakte gibt es nur über die Programmschnittstelle.
