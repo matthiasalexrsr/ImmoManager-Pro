@@ -317,7 +317,8 @@ def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
         check = connection.execute("PRAGMA integrity_check" if full_check else "PRAGMA quick_check").fetchone()[0]
         tables = [row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
-        counts = {table: connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] for table in tables}
+        # table names come from sqlite_master of the backup itself and are quoted (bandit B608 reviewed)
+        counts = {table: connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] for table in tables}  # nosec B608
         revision = None
         if "alembic_version" in tables:
             row = connection.execute("SELECT version_num FROM alembic_version").fetchone()

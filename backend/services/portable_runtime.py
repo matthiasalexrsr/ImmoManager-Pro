@@ -90,8 +90,8 @@ def inventory(database) -> tuple[set[str], set[str]]:
                 raise ValueError("Datenbankinventar kann nicht gelesen werden")
             tables = inspector.get_table_names()
         for table in tables:
-            quoted = '"' + table.replace('"', '""') + '"'
-            for row in execute("SELECT * FROM " + quoted):
+            quoted = '"' + table.replace('"', '""') + '"'           # a schema table name (bandit B608 reviewed)
+            for row in execute("SELECT * FROM " + quoted):  # nosec B608
                 for value in row:
                     visit(value)
         if "upload_portfolio_grants" in tables:

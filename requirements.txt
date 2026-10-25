@@ -27,6 +27,8 @@ pillow==13.0.0
 python-docx==1.2.0
 # Text layer of PDFs for the full-text search of documents (pure Python, BSD)
 pypdf==6.21.2
+# XML of uploads, bank files and office archives read without entity expansion (services/safe_xml.py)
+defusedxml==0.7.1
 
 # HTTP client (updater + autotest)
 httpx==0.28.1

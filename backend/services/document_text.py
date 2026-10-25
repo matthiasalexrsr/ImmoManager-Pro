@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
-from xml.etree import ElementTree
 
 from sqlalchemy import and_, func, literal, or_, select
 
@@ -31,7 +30,7 @@ from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import DocumentORM, DocumentTextORM
 from ..domain.clock import local_today
 from ..store_errors import NotFoundError
-from . import document_context
+from . import document_context, safe_xml
 
 KIND = "documents.text_index"
 CHUNK = 50
@@ -110,7 +109,7 @@ def _office_text(content: bytes, member: str) -> str:
         info = archive.getinfo(member)
         if info.file_size > MAX_BYTES:
             return ""
-        root = ElementTree.fromstring(archive.read(member))
+        root = safe_xml.fromstring(archive.read(member))
     parts: list[str] = []
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1]

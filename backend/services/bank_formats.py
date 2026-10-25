@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from . import safe_xml
+
 
 class BankFormatError(ValueError):
     pass
@@ -149,7 +151,7 @@ def camt_rows(text: str) -> tuple[list, list, dict]:
     if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
         raise BankFormatError("XML-Dokumenttypen und Entitäten sind nicht erlaubt")
     try:
-        root = ET.fromstring(text)
+        root = safe_xml.fromstring(text)
     except ET.ParseError:
         raise BankFormatError("Ungültige CAMT-XML-Datei") from None
     namespace = root.tag.partition("}")[0].lstrip("{")

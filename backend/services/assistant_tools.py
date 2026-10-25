@@ -22,6 +22,7 @@ from ..domain.clock import local_today
 from ..finance_models import ReportDefinition
 from . import assistant_context as context
 from . import assistant_storage as db
+from . import safe_xml
 from . import workspace_contexts as contexts
 from .integrations import connection_storage as dbs
 from .portfolio_scope import RESOURCE_ALIASES
@@ -403,7 +404,6 @@ def _full_text(raw: bytes, name: str) -> tuple[str, list[str]]:
         return raw.decode("utf-8-sig"), []
     if ext == "docx":
         import zipfile
-        from xml.etree import ElementTree as ET
 
         from .document_formats import validate_docx
         validate_docx(raw)
@@ -412,7 +412,7 @@ def _full_text(raw: bytes, name: str) -> tuple[str, list[str]]:
             parts = ["word/document.xml"] + sorted(key for key in package.namelist()
                 if key.startswith(("word/header", "word/footer")) and key.endswith(".xml"))
             return "\n".join("".join(node.text or "" for node in paragraph.iter(namespace + "t"))
-                             for part in parts for paragraph in ET.fromstring(package.read(part)).iter(namespace + "p")), []
+                             for part in parts for paragraph in safe_xml.fromstring(package.read(part)).iter(namespace + "p")), []
     if ext == "pdf":
         import fitz
         with fitz.open(stream=raw, filetype="pdf") as document:

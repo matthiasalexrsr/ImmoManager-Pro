@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from . import safe_xml
+
 
 class S3ProtocolError(RuntimeError):
     def __init__(self, code):
@@ -68,7 +70,7 @@ class S3Client:
         except HTTPError as exc:
             try:
                 raw = exc.read(8192)
-                code = ET.fromstring(raw).findtext("Code") or str(exc.code)
+                code = safe_xml.fromstring(raw).findtext("Code") or str(exc.code)
             except (ValueError, ET.ParseError):
                 code = str(exc.code)
             finally:

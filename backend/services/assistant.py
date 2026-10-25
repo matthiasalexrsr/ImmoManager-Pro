@@ -15,6 +15,7 @@ from ..db.assistant_models import AssistantMessageORM as Message
 from ..db.assistant_models import AssistantProposalORM as Proposal
 from ..db.assistant_models import AssistantRunORM as Run
 from . import assistant_storage as db
+from . import safe_xml
 from .file_storage import get_file_storage
 from .integrations import connection_storage as dbs
 
@@ -311,7 +312,6 @@ def inspect_attachment(raw, name):
             raise HTTPException(415, "Textanhänge benötigen gültiges UTF-8 ohne Binärdaten.") from None
     elif ext == "docx":
         import zipfile
-        from xml.etree import ElementTree as ET
 
         from .document_formats import validate_docx
         validate_docx(raw)
@@ -321,7 +321,7 @@ def inspect_attachment(raw, name):
             selected = ["word/document.xml"] + sorted(name for name in package.namelist()
                 if name.startswith(("word/header", "word/footer")) and name.endswith(".xml"))
             for part in selected:
-                root = ET.fromstring(package.read(part))
+                root = safe_xml.fromstring(package.read(part))
                 for paragraph in root.iter(namespace + "p"):
                     chunk = "".join(node.text or "" if node.tag == namespace + "t" else
                                     "\t" if node.tag == namespace + "tab" else "\n"

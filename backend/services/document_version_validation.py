@@ -134,8 +134,9 @@ def _verified_chunks(db: _Database, row: dict) -> None:
     bounded = "length(data) BETWEEN 1 AND 65536"
     if db.dialect == "sqlite":
         bounded = "typeof(data) = 'blob' AND " + bounded
+    # only fixed SQL fragments are put into the statement (bandit B608 reviewed)
     cursor = db.execute(
-        f"SELECT position, portfolio_id, CASE WHEN {bounded} THEN data ELSE NULL END "
+        f"SELECT position, portfolio_id, CASE WHEN {bounded} THEN data ELSE NULL END "  # nosec B608
         "FROM document_version_chunks WHERE version_id = :id ORDER BY position", {"id": row["id"]})
     checksum, size, expected = hashlib.sha256(), 0, 0
     try:

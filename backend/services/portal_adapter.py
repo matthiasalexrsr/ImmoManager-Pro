@@ -15,7 +15,9 @@ import time
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
-from ftplib import FTP_TLS
+
+# FTPS only: a verified TLS context and prot_p() before any transfer (bandit B402 reviewed)
+from ftplib import FTP_TLS  # nosec B402
 from io import BytesIO
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlsplit

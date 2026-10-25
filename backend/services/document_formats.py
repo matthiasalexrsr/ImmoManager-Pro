@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from PIL import Image
 
 from ..config import settings
+from . import safe_xml
 
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -56,7 +57,7 @@ def validate_docx(content: bytes) -> dict:
                 if item.filename.endswith((".xml", ".rels")):
                     if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
                         raise ValueError()
-                    xml = ET.fromstring(data)
+                    xml = safe_xml.fromstring(data)
                     if item.filename == "[Content_Types].xml" and any(any(marker in node.get("ContentType", "").lower()
                             for marker in ("macroenabled", "vbaproject", "activex", "oleobject")) for node in xml):
                         raise ValueError()
@@ -80,7 +81,7 @@ def validate_docx(content: bytes) -> dict:
                                 if not target or target.startswith("/") or ":" in target or "\\" in target or (
                                         resolved.startswith("../") or resolved not in names):
                                     raise ValueError()
-            main = ET.fromstring(package.read("word/document.xml"))
+            main = safe_xml.fromstring(package.read("word/document.xml"))
             if main.tag != "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}document":
                 raise ValueError()
             return {"format": "docx", "parts": len(entries), "native_ooxml": True,
