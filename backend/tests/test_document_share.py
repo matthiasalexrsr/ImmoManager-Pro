@@ -113,12 +113,13 @@ def test_an_email_draft_carries_the_file_and_is_recorded(case):
     message = BytesParser(policy=policy.default).parsebytes(response.content)
     assert message["X-Unsent"] == "1" and message["To"] == "mieter@example.test" and message["Cc"] == "buero@example.test"
     assert message["Subject"] == "Ihre Abrechnung"
-    assert "anbei die Abrechnung" in message.get_body(("plain",)).get_content()
+    body = message.get_body(("plain",))
+    assert body is not None and "anbei die Abrechnung" in body.get_content()
     [attachment] = list(message.iter_attachments())
     assert attachment.get_filename() == "abrechnung.pdf"            # without the storage prefix
     assert attachment.get_content_type() == "application/pdf" and attachment.get_content() == content
     [entry] = list_audit_logs(entity_type="document", entity_id=document["id"], action="SHARE")
-    assert json.loads(entry.changes) == {"via": "email_draft", "to": ["mieter@example.test"], "cc": ["buero@example.test"]}
+    assert json.loads(entry.changes or "{}") == {"via": "email_draft", "to": ["mieter@example.test"], "cc": ["buero@example.test"]}
 
     file = client.get(f"/api/v1/documents/{document['id']}/file")
     assert file.status_code == 200 and file.content == content and file.headers["content-type"] == "application/pdf"
