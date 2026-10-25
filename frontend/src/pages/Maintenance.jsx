@@ -230,7 +230,7 @@ export default function Maintenance() {
         <KpiAction label="Offen" value={error && !items.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
         <KpiAction label="In Bearbeitung" value={error && !items.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
         <KpiAction label="Überfällig" value={error && !items.length ? '—' : overdueCount} color="var(--danger)" onClick={() => openSources('overdue')} />
-        <KpiAction label="Ø Alter (offen / in Bearbeitung)" value={error && !items.length ? '—' : `${avgAge} Tage`} onClick={() => openSources('age_basis')} />
+        <KpiAction label="Ø Alter (offen / in Bearbeitung)" value={error && !items.length ? '—' : `${avgAge} ${Number(avgAge) === 1 ? 'Tag' : 'Tage'}`} onClick={() => openSources('age_basis')} />
       </div>
 
       {/* Filter tabs */}

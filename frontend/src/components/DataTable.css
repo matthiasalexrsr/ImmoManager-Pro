@@ -44,7 +44,8 @@
   .data-table-workspace table.data-table td > a:not(.btn) {
     display: inline-block; width: max-content; max-width: 12rem; white-space: normal; text-wrap: pretty; vertical-align: middle;
   }
-  .data-table-workspace .cell-text { width: max-content; max-width: 12rem; text-wrap: pretty; }
+  /* a word longer than the column ("Treppenhausbeleuchtung") breaks at a syllable instead of running into the next one */
+  .data-table-workspace .cell-text { width: max-content; max-width: 12rem; text-wrap: pretty; overflow-wrap: break-word; hyphens: auto; }
   main table td .cell-text :is(.party-link, .entity-link) { display: inline; width: auto; max-width: none; }
   /* free text that is cut after two lines anyway (a booking text) leaves the width to names */
   .data-table-workspace table.data-table td.td-narrow .cell-text { max-width: 9.5rem; }
@@ -60,6 +61,25 @@
   .data-table-workspace table.data-table :is(th, td) { padding-left: .6rem; padding-right: .6rem; }
   .data-table-workspace table.data-table :is(th, td):first-child { padding-left: 1rem; }
   .data-table-workspace table.data-table :is(th, td):last-child { padding-right: 1rem; }
+}
+/* A list that would scroll sideways (DataTable sets table-tight, e.g. on a 1280 px monitor): names wrap a
+   little earlier and cells keep less padding. Lists that fit keep their layout. */
+@media (min-width: 1100px) {
+  .data-table-workspace .table-tight table.data-table td :is(.party-link, .entity-link),
+  .data-table-workspace .table-tight table.data-table td > a:not(.btn),
+  .data-table-workspace .table-tight .cell-text:not(.cell-nowrap) { max-width: 11rem; }
+  .data-table-workspace .table-tight .cell-text.cell-email-text { max-width: 12rem; }
+  .data-table-workspace .table-tight table.data-table :is(th, td) { padding-left: .5rem; padding-right: .5rem; }
+  .data-table-workspace .table-tight table.data-table :is(th, td):first-child { padding-left: .85rem; }
+  .data-table-workspace .table-tight table.data-table :is(th, td):last-child { padding-right: .85rem; }
+  .data-table-workspace .table-tight table.data-table td.td-wrap { min-width: 9.5rem; }
+  .data-table-workspace .table-tighter table.data-table td :is(.party-link, .entity-link),
+  .data-table-workspace .table-tighter table.data-table td > a:not(.btn),
+  .data-table-workspace .table-tighter .cell-text:not(.cell-nowrap) { max-width: 10rem; }
+  .data-table-workspace .table-tighter .cell-text.cell-email-text { max-width: 11rem; }
+  .data-table-workspace .table-tighter table.data-table :is(th, td) { padding-left: .4rem; padding-right: .4rem; }
+  .data-table-workspace .table-tighter table.data-table :is(th, td):first-child { padding-left: .75rem; }
+  .data-table-workspace .table-tighter table.data-table :is(th, td):last-child { padding-right: .75rem; }
 }
 .data-table-workspace table.data-table th.th-actions,
 .data-table-workspace table.data-table td.action-cell {

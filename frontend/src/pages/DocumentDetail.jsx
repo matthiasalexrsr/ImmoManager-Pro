@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Download, Eye, FileUp, Mail, Pencil, Trash2, Wrench } from 'lucide-react';
+import { Download, Eye, FileUp, Mail, Pencil, Printer, Share2, Trash2, Wrench } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useAuth, useCanWrite } from '../contexts/AuthContext';
 import { useDataStore } from '../contexts/DataStoreContext';
@@ -13,6 +13,8 @@ import ChannelPanel from '../features/channels/ChannelPanel';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 import { downloadVersion } from '../features/documentWork/documentWorkApi';
 import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
+import ShareDocumentDialog from '../features/documentShare/ShareDocumentDialog';
+import { printDocuments, skippedNote } from '../features/documentShare/documentShare';
 import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
 import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
 import {
@@ -28,6 +30,8 @@ import '../features/documentDetail/documentDetail.css';
 import './propertyDossier.css';
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.tiff,.tif,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv';
+
+const reminderDays = days => { const value = Number.isInteger(days) ? days : 30; return `${value} ${value === 1 ? 'Tag' : 'Tage'}`; };
 
 export default function DocumentDetail({ service = documentDetailService }) {
   const { documentId } = useParams();
@@ -128,6 +132,11 @@ function DocumentPage({ id, service }) {
         </div>
         <div className="dossier-actions document-dossier-actions">
           {document.file_url && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('viewer')}><Eye size={15} aria-hidden="true" /> Hochgeladene Datei ansehen</button>}
+          {(document.file_url || head) && <button type="button" className="btn btn-sm btn-secondary" onClick={() => run(async () => {
+            const { skipped } = await printDocuments([id]);
+            if (skipped.length) throw new Error(skippedNote(skipped));
+          })}><Printer size={15} aria-hidden="true" /> Drucken</button>}
+          {(document.file_url || head) && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('share')}><Share2 size={15} aria-hidden="true" /> Teilen</button>}
           {canWrite && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('edit')}><Pencil size={15} aria-hidden="true" /> Angaben bearbeiten</button>}
           {(document.file_url || head) && !unbound && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('tools')}><Wrench size={15} aria-hidden="true" /> Dokumentwerkzeuge</button>}
           {(document.file_url || head) && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPanel('post')}><Mail size={15} aria-hidden="true" /> Brief und Frankatur</button>}
@@ -150,7 +159,7 @@ function DocumentPage({ id, service }) {
               <div className="detail-field"><span>Datum:</span> {formatDate(document.document_date)}</div>
               <div className="detail-field"><span>Gültig bis:</span> {document.valid_until
                 ? <span className={`document-expiry document-expiry-${expiry}`}>{formatDate(document.valid_until)}{expiry === 'expired' ? ' · abgelaufen' : expiry === 'due' ? ' · läuft ab' : ''}
-                  {` · Erinnerung ${Number.isInteger(document.reminder_days) ? document.reminder_days : 30} Tage vorher`}</span>
+                  {` · Erinnerung ${reminderDays(document.reminder_days)} vorher`}</span>
                 : '—'}</div>
               <div className="detail-field"><span>Schlagwörter:</span> {document.tags || '—'}</div>
               {document.description && <p className="document-dossier-description">{document.description}</p>}
@@ -246,6 +255,7 @@ function DocumentPage({ id, service }) {
           changed();
         }} />}
       {panel === 'viewer' && document.file_url && <FileViewer fileUrl={document.file_url} title={document.title} onClose={() => setPanel(null)} />}
+      {panel === 'share' && <ShareDocumentDialog document={document} partyId={context.tenant_id} onClose={() => setPanel(null)} />}
       {panel === 'tools' && <DocumentWorkbench documentId={id} onClose={() => { setPanel(null); changed(); }} />}
       {panel === 'post' && <section className="panel" aria-label="Brief und Frankatur">
         <button type="button" className="btn btn-secondary" onClick={() => setPanel(null)}>Briefvorbereitung schließen</button>

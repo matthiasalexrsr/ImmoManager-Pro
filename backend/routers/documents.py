@@ -1,22 +1,39 @@
+import json
 import uuid
 from io import BytesIO
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from ..audit import log_action
 from ..auth import get_current_user
 from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch, UserRead
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
-from ..services import document_context, document_retention, document_text
+from ..services import document_context, document_retention, document_share, document_text
 from ..services.document_versions import ensure_binding_kept, ensure_no_originals
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError, ValidationError
 
 router = APIRouter(prefix="/documents", tags=["Dokumente"])
+
+
+class PrintRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=document_share.MAX_DOCUMENTS)
+
+
+class EmailDraftRequest(BaseModel):
+    to: list[str] = Field(default_factory=list, max_length=20)
+    cc: list[str] = Field(default_factory=list, max_length=20)
+    subject: str = Field(default="", max_length=200)
+    body: str = Field(default="", max_length=20000)
+
+
+_PRIVATE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
 
 
 class DocumentOcrAnalyzeRequest(BaseModel):
@@ -148,6 +165,45 @@ def text_index_now(property_id: str | None = None, unit_id: str | None = None, c
 def retention_of_documents() -> dict:
     """Retention class, period and deletion lock of every visible document, and the rules."""
     return {"rules": document_retention.rules(store), "items": document_retention.assess_all(store)}
+
+
+@router.post("/print")
+def print_documents(payload: PrintRequest) -> Response:
+    """One PDF to print: the pages of every selected document in order; X-Print-Skipped names the ones
+    that have no file or no printable format."""
+    content, skipped = document_share.print_pdf(store, payload.ids)
+    return Response(content, media_type="application/pdf", headers={
+        **_PRIVATE, "Content-Disposition": "inline; filename*=UTF-8''Druck.pdf",
+        "X-Print-Skipped": quote(json.dumps(skipped, ensure_ascii=False), safe="")})
+
+
+@router.get("/{document_id}/file")
+def document_file(document_id: str) -> Response:
+    """The document's current file (newest archived version, else the upload) under the name it was given."""
+    try:
+        document = store.get_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    file = document_share.current_file(store, document)
+    return Response(file.content, media_type=file.media_type, headers={
+        **_PRIVATE, "Content-Disposition": "attachment; filename*=UTF-8''" + quote(file.filename, safe="")})
+
+
+@router.post("/{document_id}/email-draft")
+def document_email_draft(document_id: str, payload: EmailDraftRequest,
+                         actor: Annotated[UserRead | None, Depends(get_current_user)] = None) -> Response:
+    """An unsent e-mail with the document's file attached (.eml), to send from the mail program."""
+    try:
+        document = store.get_document(document_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    raw, filename = document_share.email_draft(store, document, to=payload.to, cc=payload.cc,
+                                               subject=payload.subject, body=payload.body)
+    log_action("SHARE", "document", document.id, user_id=actor.id if actor else None,
+               username=actor.username if actor else None,
+               changes={"via": "email_draft", "to": payload.to, "cc": payload.cc})
+    return Response(raw, media_type="message/rfc822", headers={
+        **_PRIVATE, "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe="")})
 
 
 @router.get("/{document_id}/details")

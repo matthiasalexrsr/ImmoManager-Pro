@@ -262,11 +262,11 @@ async function request(path, options = {}) {
     throw parseApiError(body, res.status);
   }
 
-  if (responseType === 'blob') {
+  if (responseType === 'blob' || responseType === 'file') {
     // Generated or protected files (PDF): the same session checks as JSON, also after reading.
     const blob = await res.blob();
     current();
-    return blob;
+    return responseType === 'blob' ? blob : { blob, headers: res.headers };
   }
 
   // Safe JSON parsing for success responses
@@ -348,6 +348,11 @@ export const api = {
   getBlob: (path, { signal } = {}) => request(path, { signal, responseType: 'blob' }),
   postBlob: (path, data, { signal } = {}) => request(path, {
     method: 'POST', body: JSON.stringify(data), signal, responseType: 'blob',
+  }),
+  /** a file with its response headers (name, notes such as X-Print-Skipped): { blob, headers } */
+  getFile: (path, { signal } = {}) => request(path, { signal, responseType: 'file' }),
+  postFile: (path, data, { signal } = {}) => request(path, {
+    method: 'POST', body: JSON.stringify(data), signal, responseType: 'file',
   }),
   /** multipart upload (FormData) with the same session, refresh and logout handling as JSON */
   upload: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),

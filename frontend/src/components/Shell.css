@@ -54,7 +54,8 @@
 .workspace-shell .nav-primary { display: grid; gap: 3px; }
 .workspace-shell .nav-link,
 .workspace-shell .nav-group-toggle { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 42px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--shell-muted); font: inherit; font-size: var(--text-sm); font-weight: 500; line-height: 1.4; text-align: left; text-decoration: none; cursor: pointer; }
-.workspace-shell .nav-label { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+/* a long menu word ("Benachrichtigungsvorlagen") breaks at a syllable, never inside one */
+.workspace-shell .nav-label { min-width: 0; white-space: normal; overflow-wrap: break-word; hyphens: auto; }
 .workspace-shell .icon-wrapper { flex: 0 0 19px; display: flex; align-items: center; justify-content: center; }
 .workspace-shell .nav-link:hover,
 .workspace-shell .nav-group-toggle:hover { color: #fff; background: #203e3f; }
@@ -130,6 +131,9 @@
 @media (min-width: 769px) and (max-width: 1439px) {
   .workspace-shell { --sidebar-width: 224px; }
   .workspace-shell .main-content-body { padding-inline: 20px; }
+}
+@media (min-width: 769px) and (max-width: 1365px) {
+  .workspace-shell .main-content-body { padding-inline: 16px; }
 }
 @media (max-width: 1180px) {
   .workspace-shell .shell-context,

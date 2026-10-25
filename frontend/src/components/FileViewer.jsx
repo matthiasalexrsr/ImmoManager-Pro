@@ -4,6 +4,7 @@ import { api } from '../api';
 import { CloseIcon } from './Icons';
 import PdfPreview from './PdfPreview';
 import { downloadFile, fileKind, resolveFileUrl } from '../features/partyWorkspace/files';
+import { printFileUrl } from '../features/documentShare/documentShare';
 import { useModalDialog } from '../features/partyWorkspace/useModalDialog';
 import { usePartyText } from '../features/partyWorkspace/text';
 import { isOwnUploadUrl, prepareUploadAccess } from '../utils/uploadAccess';
@@ -133,6 +134,12 @@ export default function FileViewer({ fileUrl, title, onClose }) {
     }
   };
 
+  const handlePrint = async () => {
+    setError(null);
+    try { await printFileUrl(fileUrl); }
+    catch (err) { if (err?.name !== 'AbortError') setError(err.message || 'Die Datei konnte nicht gedruckt werden.'); }
+  };
+
   if (!fileUrl) return null;
   return createPortal(
     <div className="modal-overlay file-viewer-overlay" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
@@ -141,7 +148,7 @@ export default function FileViewer({ fileUrl, title, onClose }) {
           <h3>{label}</h3>
           <div className="file-viewer-actions">
             {ocrText && <button type="button" className={`btn btn-sm ${showOcr ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={showOcr} onClick={() => setShowOcr(value => !value)}>{showOcr ? text.original : text.ocr}</button>}
-            {resolvedUrl && <><a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary" onClick={handleOpen} aria-busy={opening || undefined}>{text.open}</a><button type="button" className="btn btn-sm btn-secondary" onClick={handleDownload} disabled={downloading}>{downloading ? text.downloading : text.download}</button></>}
+            {resolvedUrl && <><a href={resolvedUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary" onClick={handleOpen} aria-busy={opening || undefined}>{text.open}</a>{(kind === 'pdf' || kind === 'image') && <button type="button" className="btn btn-sm btn-secondary" onClick={handlePrint}>Drucken</button>}<button type="button" className="btn btn-sm btn-secondary" onClick={handleDownload} disabled={downloading}>{downloading ? text.downloading : text.download}</button></>}
             <button type="button" onClick={onClose} className="btn-close" aria-label={text.close}><CloseIcon size={18} /></button>
           </div>
         </div>

@@ -7,7 +7,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import CurrentDocumentViewer from '../features/documentDetail/CurrentDocumentViewer';
 import { PlusIcon } from '../components/Icons';
-import { Eye, FileText, Mail, Wrench } from 'lucide-react';
+import { Eye, FileText, Mail, Printer, Share2, Wrench } from 'lucide-react';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useTranslation } from '../i18n';
 import { PartyLink, usePartyWorkspace } from '../features/partyWorkspace/PartyWorkspace';
@@ -23,6 +23,9 @@ import MoreMenu from '../components/MoreMenu';
 import DocumentWorkbench from '../features/documentWork/DocumentWorkbench';
 import DocumentContentSearch from '../features/documentSearch/DocumentContentSearch';
 import RetentionLockDialog from '../features/documentRetention/RetentionLockDialog';
+import ShareDocumentDialog from '../features/documentShare/ShareDocumentDialog';
+import { printDocuments, skippedNote } from '../features/documentShare/documentShare';
+import { useToast } from '../components/Toast';
 import { retentionCell, retentionOptions, retentionService } from '../features/documentRetention/retentionApi';
 import { deriveDocumentAssociations, documentAssociationFields, resolveDocumentContext } from '../features/documentDetail/documentAssociations';
 
@@ -61,6 +64,15 @@ function DocumentsWorkspace() {
   const canOverrideRetention = auth?.role === 'eigentuemer' || auth?.role === 'verwalter';
   const [retention, setRetention] = useState(null);
   const [lockTarget, setLockTarget] = useState(null);
+  const [shareTarget, setShareTarget] = useState(null);
+  const toast = useToast();
+  // one PDF of the chosen documents in the print dialog; the ones without a printable file are named
+  const printRows = async rows => {
+    const { skipped } = await printDocuments(rows.map(row => row.id));
+    if (skipped.length) toast?.warning(skippedNote(skipped));
+    return { failed: skipped.map(item => ({ row: rows.find(row => row.id === item.id) || { id: item.id, title: item.title }, message: item.reason })) };
+  };
+  const printOne = row => printRows([row]).catch(problem => toast?.error(problem.message || 'Das Dokument konnte nicht gedruckt werden.'));
   const party = usePartyWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = searchParams.get('tenant_id') || '';
@@ -566,14 +578,17 @@ function DocumentsWorkspace() {
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         onRowClick={row => row.file_url && setViewerFile(row)}
-        rowActions={row => [{ label: 'Dokumentseite öffnen', icon: <FileText size={15} aria-hidden="true" />, onClick: () => navigate(`/documents/${encodeURIComponent(row.id)}`) },
-          ...(row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
-          { label: 'Brief und Frankatur', icon: <Mail size={15} aria-hidden="true" />, onClick: () => setPostDocument(row) },
+        rowActions={row => [...(row.file_url ? [{ label: 'Dokument ansehen', icon: <Eye size={15} aria-hidden="true" />, onClick: () => setViewerFile(row) },
+          { label: 'Drucken', icon: <Printer size={15} aria-hidden="true" />, onClick: () => printOne(row) },
+          { label: 'Teilen', icon: <Share2 size={15} aria-hidden="true" />, onClick: () => setShareTarget(row) }] : []),
+          { label: 'Dokumentseite öffnen', icon: <FileText size={15} aria-hidden="true" />, onClick: () => navigate(`/documents/${encodeURIComponent(row.id)}`) },
+          ...(row.file_url ? [{ label: 'Brief und Frankatur', icon: <Mail size={15} aria-hidden="true" />, onClick: () => setPostDocument(row) },
           { label: 'Dokumentwerkzeuge', icon: <Wrench size={15} aria-hidden="true" />, onClick: () => setSearchParams(previous => {
             const next = new URLSearchParams(previous); next.set('tool_id', row.id); return next;
           }) }] : [])]}
         rowName={row => row.title || row.id}
-        bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : []}
+        bulkActions={[{ key: 'print', label: 'Drucken', applies: row => Boolean(row.file_url), runAll: printRows },
+          ...(aktenwerkReady ? [aktenwerkBulkAction(row => (row.file_url ? documentExchangeId(row.id) : null))] : [])]}
       />}
       {tenantId && documentPage && !loading && !error && <nav aria-label="Dokumentseiten" className="toolbar" style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <button className="btn btn-secondary" disabled={skip === 0} onClick={() => setSkip(value => Math.max(0, value - 25))}>Vorherige Dokumente</button>
@@ -595,6 +610,7 @@ function DocumentsWorkspace() {
         canOverride={canWrite && canOverrideRetention} onClose={() => setLockTarget(null)}
         onDeleted={() => { setLockTarget(null); refreshData(); if (store) store.invalidateRelated('documents'); }} />}
       {viewerFile && <CurrentDocumentViewer key={viewerFile.id} document={viewerFile} onClose={() => setViewerFile(null)} />}
+      {shareTarget && <ShareDocumentDialog key={shareTarget.id} document={shareTarget} partyId={shareTarget.party_id} onClose={() => setShareTarget(null)} />}
       {postDocument && <section className="panel" aria-label="Brief und Frankatur">
         <button type="button" className="btn btn-secondary" onClick={() => setPostDocument(null)}>Briefvorbereitung schließen</button>
         <ChannelPanel key={postDocument.id} sourceId={postDocument.id} mode="post" />

@@ -4,6 +4,8 @@ import { useConfirm } from './ConfirmDialog';
 // Actions on several selected rows. Each row runs through the page's own single-row call, one
 // after another, so every server check (rights, conflicts, deletion guards) still applies per row.
 // A failure does not stop the others; the bar reports which rows failed and keeps them selected.
+// An action with runAll works on the whole selection at once (printing one PDF of every row) and
+// returns the rows it could not take ({ failed: [{ row, message }] }).
 // The report lives in the table: when every row succeeded the selection empties, and the result
 // must stay visible until it is dismissed or a new selection starts.
 export default function BulkBar({ rows, total, allSelected, actions, onSelectAll, onClear, onFinished, onRunningChange, words, report, setReport, sums = [] }) {
@@ -28,17 +30,25 @@ export default function BulkBar({ rows, total, allSelected, actions, onSelectAll
       setReport(null);
       setShowAllFailures(false);
       const failed = [];
-      for (let i = 0; i < targets.length; i += 1) {
-        setRunning({ label: action.label, done: i, count: targets.length });
+      if (action.runAll) {
         try {
-          await action.run(targets[i]);
+          failed.push(...((await action.runAll(targets))?.failed || []));
         } catch (error) {
-          failed.push({ row: targets[i], message: error?.message || String(error) });
+          failed.push(...targets.map(row => ({ row, message: error?.message || String(error) })));
+        }
+      } else {
+        for (let i = 0; i < targets.length; i += 1) {
+          setRunning({ label: action.label, done: i, count: targets.length });
+          try {
+            await action.run(targets[i]);
+          } catch (error) {
+            failed.push({ row: targets[i], message: error?.message || String(error) });
+          }
         }
       }
       const succeeded = targets.length - failed.length;
       setReport({ label: action.label, succeeded, failed, skipped: rows.length - targets.length });
-      const result = { succeeded: targets.filter(row => !failed.some(f => f.row === row)), failed };
+      const result = { succeeded: targets.filter(row => !failed.some(f => f.row === row || f.row?.id === row.id)), failed };
       onFinished?.(result);
       // the page reloads its list once, not once per row
       try { await action.finished?.(result); } catch { /* the page shows its own load errors */ }

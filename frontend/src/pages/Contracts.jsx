@@ -34,6 +34,13 @@ function remainingDays(endDate) {
 
 const RENT_SOURCE_LABELS = { contract_start: 'Vertragsbeginn', adjustment: 'Mietanpassung', manual: 'Manuell' };
 
+// an end within 90 days of an active contract stands out
+function ContractEnd({ row }) {
+  const soon = row.status === 'active' && row.remaining_days != null && row.remaining_days <= 90;
+  return <span style={soon ? { color: 'var(--warning)', fontWeight: 600 } : undefined}
+               title={soon ? `noch ${row.remaining_days} ${row.remaining_days === 1 ? 'Tag' : 'Tage'}` : undefined}>{formatDate(row.end_date)}</span>;
+}
+
 export default function Contracts() {
   const [filter, setFilter, params] = useListRouteFilter(['all', 'active', 'ending_soon', 'expiring90', 'missing_documents', 'terminated', 'draft', 'no_deposit'], ['focus_id', 'contract_id']);
   const [, setContextParams] = useSearchParams();
@@ -156,14 +163,12 @@ export default function Contracts() {
       render: (v, row) => row.tenant_id ? <PartyLink tenantId={row.tenant_id}>{v === '—' ? 'Partei öffnen' : v}</PartyLink> : v },
     { key: 'cold_rent', label: 'Kaltmiete (€)', type: 'number', sum: true, align: 'right',
       render: v => formatMoney(v) },
-    { key: 'start_date', label: t('tenantsContracts.contracts.form.startDate') || 'Beginn', type: 'date', filterType: 'dateRange' },
-    { key: 'end_date', label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange',
-      render: (v, row) => {
-        if (!v) return <span className="text-muted">unbefristet</span>;
-        const soon = row.status === 'active' && row.remaining_days != null && row.remaining_days <= 90;
-        return <span style={soon ? { color: 'var(--warning)', fontWeight: 600 } : undefined}
-                     title={soon ? `noch ${row.remaining_days} Tage` : undefined}>{formatDate(v)}</span>;
-      }},
+    // the start with the end beneath it; the end stays a column of its own to show, sort and filter
+    { key: 'start_date', label: 'Laufzeit', type: 'date', filterType: 'dateRange',
+      render: (v, row) => <span className="cell-stack"><span>{formatDate(v)}</span>
+        <span className="td-sub">{row.end_date ? <>bis <ContractEnd row={row} /></> : 'unbefristet'}</span></span> },
+    { key: 'end_date', hidden: true, label: t('tenantsContracts.contracts.form.endDate') || 'Ende', type: 'date', filterType: 'dateRange',
+      render: (v, row) => v ? <ContractEnd row={row} /> : <span className="text-muted">unbefristet</span> },
     { key: 'remaining_days', hidden: true, label: 'Restlaufzeit', type: 'number', align: 'right',
       render: (v) => {
         if (v == null) return <span className="text-muted">unbefristet</span>;

@@ -31,7 +31,7 @@ const COLUMNS = [
     }},
   { key: 'property_count', label: 'Immobilien', type: 'number', align: 'right' },
   { key: 'total_units', label: 'Einheiten', type: 'number', align: 'right' },
-  { key: 'currency', label: 'Währung' },
+  { key: 'currency', label: 'Währung', hidden: true },
   { key: 'description', label: 'Beschreibung' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },

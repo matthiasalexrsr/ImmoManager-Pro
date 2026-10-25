@@ -16,7 +16,7 @@ Reading is open to every signed-in user. For writing:
   does not confirm the factual check; techniker confirms the factual check (for invoices of a
   maintenance order only, checked by the service) and nothing else of the review; the
   settings (four-eyes limit) belong to eigentuemer and verwalter
-- readonly      only personal settings
+- readonly      only personal settings (and printing documents or drafting e-mails of them)
 Everybody who works in the office may also keep tasks, documents, files, photos,
 messages, calendar entries and notifications. Endpoints add finer checks of their own
 (for example who may create which users).
@@ -32,6 +32,8 @@ import re
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
 PERSONAL = ("/workspace", "/assistant", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
             r"^/notifications/(all/receipt|[^/]+/receipt)$")
+# requests that only read although they are POSTs: printing documents and e-mail drafts of them
+READS = (r"^/documents/print$", r"^/documents/[^/]+/email-draft$")
 OFFICE = ("/work-center", "/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")
 # Project file of a maintenance case: awarding and cancelling orders and deciding change orders
 # commits money; the invoices of an order are bookkeeping. Both are not the technician's.
@@ -58,7 +60,7 @@ WRITE_AREAS: dict[str, tuple[str, ...] | None] = {
     "verwalter": None,
     "buchhaltung": PERSONAL + OFFICE + BOOKKEEPING,
     "techniker": PERSONAL + OFFICE + TECHNICAL,
-    "readonly": PERSONAL,
+    "readonly": PERSONAL + READS,
 }
 
 ROLE_LABELS = {"eigentuemer": "Eigentümer", "verwalter": "Verwalter", "buchhaltung": "Buchhaltung",

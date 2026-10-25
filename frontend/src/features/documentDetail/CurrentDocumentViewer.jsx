@@ -5,6 +5,7 @@ import FileViewer from '../../components/FileViewer';
 import { useModalDialog } from '../partyWorkspace/useModalDialog';
 import { downloadVersion } from '../documentWork/documentWorkApi';
 import DocumentPreview from './DocumentPreview';
+import { printDocuments, skippedNote } from '../documentShare/documentShare';
 import { documentDetailService, shownFilename } from './documentDetailApi';
 import { entityHref } from '../../utils/entityLinks';
 import './documentDetail.css';
@@ -39,6 +40,15 @@ export default function CurrentDocumentViewer({ document: record, onClose, servi
     catch (error) { setDownloadError(error.message || 'Die Fassung konnte nicht heruntergeladen werden.'); }
     finally { setBusy(false); }
   };
+  const print = async () => {
+    if (busy) return;
+    setBusy(true); setDownloadError(null);
+    try {
+      const { skipped } = await printDocuments([record.id]);
+      if (skipped.length) setDownloadError(skippedNote(skipped));
+    } catch (error) { setDownloadError(error.message || 'Die Fassung konnte nicht gedruckt werden.'); }
+    finally { setBusy(false); }
+  };
   return createPortal(<div className="modal-overlay file-viewer-overlay" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={dialog} className="file-viewer-modal current-document-viewer" role="dialog" aria-modal="true" aria-label={record.title} tabIndex={-1}>
       <header className="modal-header file-viewer-header"><h3>{record.title}</h3>
@@ -50,7 +60,10 @@ export default function CurrentDocumentViewer({ document: record, onClose, servi
         {head && <><p className="document-dossier-note">Aktuelle Fassung {head.number} · {shownFilename(head.filename)}</p>
           <DocumentPreview key={head.id} id={record.id} head={head} document={state.details.document} service={service} />
           {downloadError && <p role="alert" className="text-red">{downloadError}</p>}
-          <button type="button" className="btn btn-secondary" disabled={busy} onClick={download}>Aktuelle Fassung herunterladen</button></>}
+          <div className="toolbar">
+            <button type="button" className="btn btn-secondary" disabled={busy} onClick={download}>Aktuelle Fassung herunterladen</button>
+            <button type="button" className="btn btn-secondary" disabled={busy} onClick={print}>Drucken</button>
+          </div></>}
         <Link className="btn btn-secondary" to={entityHref('document', record.id)} onClick={onClose}>Dokumentakte öffnen</Link>
       </div>
     </section>

@@ -455,7 +455,8 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
   // Pagination
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
-  const pageData = serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const pageData = useMemo(() => serverPaged ? sorted : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    [serverPaged, sorted, safePage, pageSize]);
   // Totals include every filtered row, independently of the visible page.
   const sumColumns = visibleColumns.filter(col => col.sum);
   const showTotals = !serverPaged && sumColumns.length > 0 && sorted.length > 0;
@@ -643,6 +644,32 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     setRepeatsPageTitle(Boolean(title) && heading?.textContent?.trim() === String(title).trim());
   }, [title]);
   const titleHidden = hideTitle || repeatsPageTitle;
+  // A list that would scroll sideways first narrows its names and cell padding (table-tight, then
+  // table-tighter in DataTable.css);
+  // checked again when its rows, its columns or its width change.
+  const scrollRef = useRef(null);
+  const fitWidth = useRef(0);
+  const fit = useCallback(() => {
+    const box = scrollRef.current;
+    if (!box) return;
+    box.classList.remove('table-tight', 'table-tighter');
+    for (const level of ['table-tight', 'table-tighter']) {
+      if (box.scrollWidth <= box.clientWidth + 1) break;
+      box.classList.add(level);
+    }
+  }, []);
+  useLayoutEffect(() => { fit(); }, [fit, pageData, visibleColumns]);
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      if (box.clientWidth === fitWidth.current) return;
+      fitWidth.current = box.clientWidth;
+      fit();
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [fit]);
   const clearTableFilters = () => {
     setSearch(''); setColumnFilters({}); setPage(0);
     if (inheritRouteFocus && new URLSearchParams(routeSearch ?? window.location.search).has('focus_id')) clearFocusedRow?.(true);
@@ -756,7 +783,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       )}
 
       <NotificationArrival rows={pageData} />
-      <div className="table-scroll">
+      <div ref={scrollRef} className="table-scroll">
         <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>
             <tr>
