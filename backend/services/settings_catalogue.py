@@ -78,6 +78,39 @@ TEXT_KEYS = {'document_sender', 'document_address', 'document_signature', 'booki
 MULTILINE_KEYS = {'document_address', 'document_contact', 'document_bank', 'document_footer'}
 TEXT_KEYS |= MULTILINE_KEYS
 TEXT_KEYS |= {'bank_csv_date_column', 'bank_csv_amount_column', 'bank_csv_text_column', 'preferred_connection'}
+# Reading documents with the AI (services/ai_reading): installation-wide rules of the office, and how each
+# person works with the readings. The AI itself is the person's own Claude or ChatGPT account.
+AI_SURFACE_IDS = ("document", "invoice", "cost_item", "meter_document", "meter_photo")
+AI_SURFACE_NAMES = dict(document="Dokumentablage", invoice="Rechnungseingang", cost_item="Kostenposition der Nebenkostenabrechnung",
+                        meter_document="Dokument des Messdienstes", meter_photo="Zählerfoto")
+AI_GLOBAL = dict(ai_reading_enabled=True, ai_chat_enabled=True, ai_check_duplicates=True, ai_send_images=True,
+                 ai_max_pages=4, ai_context='standard', ai_keep_days=30,
+                 **{f'ai_surface_{surface}': True for surface in AI_SURFACE_IDS},
+                 **{f'ai_rules_{surface}': '' for surface in AI_SURFACE_IDS})
+AI_PERSONAL = dict(ai_default_reader='auto', ai_confirm_mode='confirm', ai_model_claude='', ai_model_codex='')
+AI_RULE_KEYS = {f'ai_rules_{surface}' for surface in AI_SURFACE_IDS}
+DEFAULTS.update(AI_GLOBAL)
+DEFAULTS.update(AI_PERSONAL)
+LABELS.update(ai_reading_enabled='KI-Auswertung von Dokumenten zulassen (Claude/ChatGPT des jeweiligen Kontos)',
+              ai_chat_enabled='Gespräch mit der KI zum eingelesenen Dokument zulassen',
+              ai_check_duplicates='Vor dem Übernehmen nach vorhandenen Datensätzen zum selben Dokument suchen',
+              ai_send_images='Seitenbilder an die KI senden (Scans und Fotos ohne Textebene)',
+              ai_max_pages='Höchstens so viele Seitenbilder je Dokument senden',
+              ai_context='Angaben zur Immobilie, die die KI zum Abgleich erhält',
+              ai_keep_days='Lesevorgänge und Gespräche nach so vielen Tagen löschen',
+              ai_default_reader='Vorgabe beim Einlesen: wer liest das Dokument',
+              ai_confirm_mode='Von der KI eingetragene Werte in der Maske',
+              ai_model_claude='Claude-Modell für das Einlesen (leer: Vorgabe des Kontos)',
+              ai_model_codex='ChatGPT-Modell für das Einlesen (leer: Vorgabe des Kontos)',
+              **{f'ai_surface_{surface}': f'KI-Einlesen: {name}' for surface, name in AI_SURFACE_NAMES.items()},
+              **{f'ai_rules_{surface}': f'Hausregeln für die KI: {name}' for surface, name in AI_SURFACE_NAMES.items()})
+CHOICES.update(ai_context=['none', 'standard', 'extended'], ai_default_reader=['auto', 'local', 'claude', 'codex'],
+               ai_confirm_mode=['confirm', 'mark'], ai_model_claude=['', 'sonnet', 'opus'],
+               **{key: [False, True] for key, value in AI_GLOBAL.items() if isinstance(value, bool)})
+GLOBAL_ONLY |= set(AI_GLOBAL)
+BUSINESS |= set(AI_GLOBAL)
+TEXT_KEYS |= AI_RULE_KEYS | {'ai_model_codex'}
+MULTILINE_KEYS |= AI_RULE_KEYS
 ENV_KEYS = {"backup_daily_at": "Uhrzeit der täglichen Sicherung", "backup_keep_daily": "Tägliche Sicherungen aufbewahren",
             "backup_keep_monthly": "Monatliche Sicherungen aufbewahren", "backup_schedule_enabled": "Automatische Sicherung",
             "job_scheduler_enabled": "Hintergrundverarbeitung", "restore_probe_day": "Tag der Wiederherstellungsprobe"}
@@ -104,7 +137,7 @@ def validate(values):
     if set(values) - DEFAULTS.keys():
         raise HTTPException(422, "Unbekannte Einstellung.")
     for key, value in values.items():
-        limit = 1500 if key == 'document_address' else 500 if key in MULTILINE_KEYS else 120
+        limit = 1500 if key == 'document_address' else 1000 if key in AI_RULE_KEYS else 500 if key in MULTILINE_KEYS else 120
         if key in TEXT_KEYS and (not isinstance(value, str) or len(value) > limit
                                 or any(ord(char) < 32 and not (key in MULTILINE_KEYS and char == '\n') for char in value)):
             raise HTTPException(422, 'Ungültiger Text für ' + LABELS[key] + '.')
@@ -112,6 +145,10 @@ def validate(values):
             raise HTTPException(422, 'Nummernpräfix enthält unzulässige Zeichen.')
         if key in ('contract_number_start', 'contract_number_width') and (type(value) is not int or not 1 <= value <= (999999999 if key.endswith('start') else 12)):
             raise HTTPException(422, 'Ungültige Nummernkreisgrenze.')
+        if key == 'ai_model_codex' and value and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}", value):
+            raise HTTPException(422, 'Ungültige Modellkennung.')
+        if key in ('ai_max_pages', 'ai_keep_days') and (type(value) is not int or not 1 <= value <= (20 if key == 'ai_max_pages' else 365)):
+            raise HTTPException(422, f"{LABELS[key]}: ganze Zahl zwischen 1 und {20 if key == 'ai_max_pages' else 365}.")
         if key in RETENTION_YEARS and (type(value) is not int or not (0 if key.endswith('contract_years') else 1) <= value <= 30):
             raise HTTPException(422, f"{LABELS[key]}: ganze Jahre zwischen {0 if key.endswith('contract_years') else 1} und 30.")
         if key in CHOICES and (type(value) is not type(DEFAULTS[key]) or value not in CHOICES[key]):
@@ -139,7 +176,7 @@ def setting_allowed(unit, key):
     from ..permissions import may_write
     area = ('/integrations' if key == 'preferred_connection' else '/bookings' if key.startswith('bank_') or key == 'booking_category'
             else '/invoice-review/receipts' if key.startswith('invoice_') or key == 'confirmed_cost_defaults'
-            else '/documents' if key.startswith('document_') else None)
+            else '/documents' if key.startswith(('document_', 'ai_')) else None)
     return (area is None or may_write(unit.user['role'], area)) and (key != 'preferred_connection' or scope_from_user(unit.user).unrestricted)
 
 
@@ -200,14 +237,14 @@ def catalogue(store, actor_id, property_id=None):
                 result.append(dict(key=key, label=LABELS[key], value=value, origin=origin, scope="personal", editable=key != "currency",
                                revision=state.get(unit, "preferences")["revision"], choices=choices, input_type="time" if key in ("quiet_start", "quiet_end") else 'textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else "number",
                                inherited=key not in own, restart_required=False, secret=False,
-                               group="Benachrichtigungen" if key in ("email_notifications", "reminder_days", "quiet_start", "quiet_end") else 'Dokumente und Kostenregeln' if key in BUSINESS else "Ansicht und Arbeitsweise"))
+                               group="Benachrichtigungen" if key in ("email_notifications", "reminder_days", "quiet_start", "quiet_end") else 'KI-Verarbeitung' if key.startswith('ai_') else 'Dokumente und Kostenregeln' if key in BUSINESS else "Ansicht und Arbeitsweise"))
             if admin and key in BUSINESS:
                 for scope in ("global" if scope_from_user(unit.user).unrestricted else None, "object:" + property_id if property_id and key not in GLOBAL_ONLY else None):
                     if scope:
                         saved = rule(unit, scope, key)
                         result.append(dict(key=key, label=LABELS[key], value=saved["payload"].get("value", DEFAULTS[key]),
                                            origin=scope if saved["payload"] else "Standard", scope=scope, editable=True,
-                                           revision=saved["revision"], choices=choices, input_type='textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else 'number', restart_required=False, secret=False, group="Fachliche Vorgaben"))
+                                           revision=saved["revision"], choices=choices, input_type='textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else 'number', restart_required=False, secret=False, group='KI-Verarbeitung' if key.startswith('ai_') else "Fachliche Vorgaben"))
         if admin and scope_from_user(unit.user).unrestricted:
             for key, label in ENV_KEYS.items():
                 result.append(dict(key=key, label=label, value=getattr(settings, key), scope="installation", origin=getattr(runtime_config, "SETTING_ORIGINS", {}).get(key, "Unbekannt (beim Start nicht erfasst)"),
@@ -224,6 +261,7 @@ def _update(store, actor_id, values, base_revision=None, idempotency_key=None, s
         raise HTTPException(422, 'Mindestens eine Einstellung angeben.')
     if set(values) & GLOBAL_ONLY and scope != 'global':
         raise HTTPException(422, 'Aufbewahrungsfristen gelten installationsweit.' if set(values) & RETENTION_YEARS.keys()
+                            else 'Die Vorgaben zur KI-Verarbeitung gelten installationsweit.' if set(values) & AI_GLOBAL.keys()
                             else 'Nummernkreise gelten installationsweit.')
     if scope != "personal" and (set(values) - BUSINESS or not (scope == "global" or scope.startswith("object:"))):
         raise HTTPException(422, "Diese Einstellung ist nur persönlich zulässig.")

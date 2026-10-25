@@ -17,6 +17,8 @@ Reading is open to every signed-in user. For writing:
   maintenance order only, checked by the service) and nothing else of the review; the
   settings (four-eyes limit) belong to eigentuemer and verwalter
 - readonly      only personal settings (and printing documents or drafting e-mails of them)
+Reading a document into a form (/ai/readings) is personal; the service lets only those read for a
+form who may save it (services/ai_reading).
 Everybody who works in the office may also keep tasks, documents, files, photos,
 messages, calendar entries and notifications. Endpoints add finer checks of their own
 (for example who may create which users).
@@ -30,7 +32,7 @@ from __future__ import annotations
 import re
 
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
-PERSONAL = ("/workspace", "/assistant", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
+PERSONAL = ("/workspace", "/assistant", "/ai/readings", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
             r"^/notifications/(all/receipt|[^/]+/receipt)$")
 # requests that only read although they are POSTs: printing documents and e-mail drafts of them
 READS = (r"^/documents/print$", r"^/documents/[^/]+/email-draft$")

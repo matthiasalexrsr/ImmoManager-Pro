@@ -1,6 +1,7 @@
 from . import (
     accounts,
     admin,
+    ai_reading,
     audit,
     auth,
     autotest,
@@ -59,6 +60,7 @@ __all__ = [
     "auth",
     "autotest",
     "billing",
+    "ai_reading",
     "billing_assistant",
     "bookings",
     "budgets",

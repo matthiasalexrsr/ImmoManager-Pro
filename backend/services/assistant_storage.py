@@ -94,6 +94,8 @@ def put(unit, model, data: dict, *, row=None, state: str | None = None, conversa
 
 def conversation(unit, identifier: str, *, lock: bool = False):
     row = get(unit, Conversation, identifier, lock=lock)
+    if row.state == "reading":                 # a reading of a document (ai_reading) is no assistant conversation
+        raise HTTPException(404, "Gespräch oder Vorgang nicht gefunden.")
     from .assistant_context import assert_context_access
     for bundle in payload(row).get("_contexts", []):
         try:
@@ -150,11 +152,14 @@ def page(unit, model, *, conversation_id: str | None = None, cursor=None, limit=
             raise HTTPException(422, "Ungültige Fortsetzung.") from None
     if unit.db is None:
         rows = [row for row in dbs.memory(unit, model).values() if row.owner_id == unit.actor_id
+                and (model is not Conversation or row.state != "reading")
                 and (conversation_id is None or row.conversation_id == conversation_id)
                 and (before is None or (row.created_at, row.id) < before)]
         rows = sorted(rows, key=lambda row: (row.created_at, row.id), reverse=True)[:limit + 1]
     else:
         query = select(model).where(model.owner_id == unit.actor_id)
+        if model is Conversation:
+            query = query.where(model.state != "reading")
         if conversation_id:
             query = query.where(model.conversation_id == conversation_id)
         if before:

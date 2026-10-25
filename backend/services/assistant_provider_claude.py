@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
 from .assistant_provider_process import CliProcess, private_environment
-from .assistant_provider_prompt import SYSTEM_PROMPT, checked_model, finish_answer, user_payload
+from .assistant_provider_prompt import checked_model, finish_answer, system_prompt, user_payload
 from .assistant_provider_protocol import ProviderError, application_mcp
 from .assistant_provider_vault import ProfileLease
 from .secret_box import write_private_file
@@ -268,7 +268,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
             "--no-session-persistence", "--permission-mode", "dontAsk", "--permission-prompts", "none",
             "--disable-slash-commands", "--tools", "WebSearch" if web else "",
             "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-            "--include-partial-messages", "--system-prompt", SYSTEM_PROMPT]
+            "--include-partial-messages", "--system-prompt", system_prompt(request)]
     if permitted:
         argv += ["--allowedTools", ','.join(sorted(permitted))]
     if mcp:

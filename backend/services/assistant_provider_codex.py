@@ -7,7 +7,7 @@ import time
 from collections import deque
 
 from .assistant_provider_process import CliProcess
-from .assistant_provider_prompt import SYSTEM_PROMPT, checked_model, finish_answer, user_payload
+from .assistant_provider_prompt import checked_model, finish_answer, system_prompt, user_payload
 from .assistant_provider_protocol import ProviderError, application_mcp
 from .secret_box import write_private_file
 
@@ -244,7 +244,7 @@ def execute(profile, executable, request, emit, cancelled):
         model = checked_model(request.get('model'))
         work = profile.path / 'work'
         params = {'cwd': str(work), 'approvalPolicy': 'never', 'permissions': 'immomanager', 'ephemeral': True,
-                  'baseInstructions': SYSTEM_PROMPT, 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
+                  'baseInstructions': system_prompt(request), 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
                   'model': model}
         started = rpc.call('thread/start', params)
         active = started.get('activePermissionProfile')
