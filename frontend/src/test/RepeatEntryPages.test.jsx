@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Units from '../pages/Units';
@@ -34,6 +34,7 @@ it('keeps the first unit form and its repeat fields alive while the saved list r
   expect(screen.getByLabelText('Immobilie *')).toHaveValue('p2');
   expect(screen.getByLabelText('Bezeichnung *')).toHaveValue('');
 
+  await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));   // the page asks for the list again after the effect ran
   await act(async () => finishReload([{ id: 'u1', property_id: 'p2', label: 'Erste Wohnung' }]));
   expect(screen.getByRole('status')).toHaveTextContent('1 gespeichert');
   expect(screen.getByLabelText('Immobilie *')).toHaveValue('p2');
