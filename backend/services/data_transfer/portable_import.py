@@ -62,6 +62,7 @@ def prepare(unit, content, prepared):
         model = active_by_name.get(record["source_type"]) if not record.get("historical") else None
         if model:
             value = typed(model, record["payload"], extract)
+            package.privacy.guard(unit, model.__tablename__, value["id"])
             key = (record["source_type"], value["id"])
             if key in active:
                 raise ValueError("Fachnachweis doppelt im Kundenexport.")
@@ -77,10 +78,11 @@ def prepare(unit, content, prepared):
                 if any(before[name] != item for name, item in value.items() if name not in {"validation_actor_id", "created_by", "idempotency_key", "revision", "updated_at", "state", "blockers"}):
                     raise ValueError("Vorhandener Fachnachweis ist nicht identisch.")
             active[key] = (model, value, old is None)
-        if model not in (EInvoiceIntakeORM, EInvoiceValidationORM, *package.portal.MODELS):
+        if model not in (EInvoiceIntakeORM, EInvoiceValidationORM, *package.portal.MODELS, *package.privacy.ACTIVE_MODELS):
             history.append(record)
     package.portal.validate([(model, value) for model, value, _ in active.values() if model in package.portal.MODELS], final,
         {row["id"]: row for row in snapshot[package.originals.SNAPSHOT_KEY]})
+    package.privacy.validate(list(active.values()), final)
     intakes = [value for model, value, _ in active.values() if model is EInvoiceIntakeORM]
     validations = [value for model, value, _ in active.values() if model is EInvoiceValidationORM]
     verify_rows(intakes, validations, {key: row.model_dump() for key, row in final.get("invoices", {}).items()})
@@ -114,6 +116,8 @@ def apply(unit, batch, plan):
             if model is not incoming_model or not fresh:
                 continue
             value = dict(value)
+            if model in package.privacy.ACTIVE_MODELS:
+                value = package.privacy.restored(model, value, unit.actor_id, batch.id)
             if model in package.portal.MODELS:
                 value = package.portal.restored(model, value)
             if model is EInvoiceIntakeORM:

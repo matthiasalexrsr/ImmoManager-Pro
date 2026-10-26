@@ -83,7 +83,7 @@ def _require_full_bank_backup(store: Any) -> None:
 
 def _require_full_private_backup(store: Any) -> None:
     """A partial business snapshot cannot replace private workflow evidence."""
-    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_', 'data_import', 'data_external_', 'data_portability_', 'external_portal_')
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_', 'data_import', 'data_external_', 'data_portability_', 'external_portal_', 'privacy_')
     payment_evidence = frozenset({'payment_recipient_versions', 'payment_authorizations', 'payment_security_settings',
                                   'payment_totp_uses', 'payment_security_events', 'payment_totp_attempts'})
     if hasattr(store, 'db'):
@@ -320,6 +320,15 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     specs = entity_specs()
     backend = _backend(store)
     parsed, problems = _parse(data, specs)
+    from .privacy.portability import guard as privacy_import_guard
+    from .privacy.storage import read_unit
+    privacy_unit = read_unit(store)
+    for spec in specs:
+        for record in parsed[spec.key]:
+            try:
+                privacy_import_guard(privacy_unit, spec.key, record.id)
+            except ValueError as error:
+                problems.append(str(error))
     incoming, original_problems = originals.parse(data.get(originals.SNAPSHOT_KEY))
     problems += original_problems
     existing: dict[str, dict[str, Record]] = {}

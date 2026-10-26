@@ -29,6 +29,7 @@ from .. import document_original_snapshot as originals
 from ..external_portal import portability as portal
 from ..file_storage import get_file_storage, validate_key
 from ..integrations import connection_storage as db
+from ..privacy import portability as privacy
 from ..upload_policy import DOCUMENT_EXTENSIONS, content_matches, file_extension
 from .common import digest, encoded
 from .imports import _controls
@@ -40,8 +41,8 @@ MAX_MEMBERS = 100_000
 # Every column of these models is business evidence. In particular TOTP *uses*
 # contain a counter and timestamp, never a secret, recovery code or OTP value.
 EVIDENCE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM,
-                   PaymentAuthorizationORM, PaymentSecurityEventORM, PaymentTotpUseORM, ExternalReferenceORM, ImportBatchORM, *portal.MODELS)
-ACTIVE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM, *portal.MODELS)
+                   PaymentAuthorizationORM, PaymentSecurityEventORM, PaymentTotpUseORM, ExternalReferenceORM, ImportBatchORM, *portal.MODELS, *privacy.MODELS)
+ACTIVE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM, *portal.MODELS, *privacy.ACTIVE_MODELS)
 
 
 def _rows(unit, model):

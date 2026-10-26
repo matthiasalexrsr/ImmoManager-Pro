@@ -51,6 +51,21 @@ def isolated_private_memory_families(monkeypatch):
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item, nextitem):
+    # Legacy module finalizers reset business fixtures through the production
+    # partial-snapshot guard. Explicitly discard this test's retained privacy
+    # evidence first; never weaken the guard or touch a caller-owned database.
+    from sqlalchemy import delete
+
+    from backend import dependencies
+    from backend.services.privacy.backup import MODELS as privacy_models
+    fixture_store = dependencies.store
+    if hasattr(fixture_store, 'db'):
+        for model in privacy_models:
+            fixture_store.db.execute(delete(model))
+        fixture_store.db.commit()
+    else:
+        for model in privacy_models:
+            fixture_store.__dict__.get('_integration_connections', {}).pop(model.__tablename__, None)
     # Run after ALL fixture finalizers, including monkeypatch restoration.
     # A module's cleanup fixture can itself perform legacy read queries; the
     # function fixture above may finalize before that fixture does.

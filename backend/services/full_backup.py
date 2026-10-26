@@ -1154,11 +1154,13 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
     from .e_invoice.backup import verify as verify_e_invoices
     from .external_portal.backup import verify as verify_portal
     from .payment_security_backup import verify as verify_payment_security
+    from .privacy.backup import verify as verify_privacy
     try:
         e_invoice_proof = verify_e_invoices(connection)
         payment_proof = verify_payment_security(connection)
         data_transfer_proof = verify_data_transfer(connection)
         portal_proof = verify_portal(connection, normalize=normalize)
+        privacy_proof = verify_privacy(connection, normalize=normalize)
     except Exception:
         raise BackupError("E-Rechnungsoriginale, Zuordnungen und Prüfnachweise konnten nicht vollständig geprüft werden.") from None
     return {
@@ -1166,6 +1168,7 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
         "payment_security": payment_proof,
         "data_transfer": data_transfer_proof,
         "external_portal": portal_proof,
+        "privacy": privacy_proof,
         "assistant": assistant_proof,
         "channels": channel_proof,
         "teha": teha_proof,
@@ -1456,6 +1459,15 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             secret_box.write_private_file(target / "runtime.from-backup.json", files[RUNTIME])
         if manifest.get("runtime"):
             (target / "runtime-manifest.json").write_text(json.dumps(manifest["runtime"], indent=2), encoding="utf-8")
+        # Always fence a restored installation, even a PostgreSQL dump which the
+        # operator loads later. Each restore has a new epoch, so an older completed
+        # review cannot reopen search/AI/portal access.
+        restored_env = target / ".env"
+        lines = restored_env.read_text(encoding="utf-8").splitlines() if restored_env.exists() else []
+        lines = [line for line in lines if line.strip().partition("=")[0].strip() != "PRIVACY_RESTORE_ID"]
+        lines.append("PRIVACY_RESTORE_ID=" + secrets.token_hex(24))
+        secret_box.write_private_file(restored_env, ("\n".join(lines) + "\n").encode())
+        steps.append("Vor Freigabe von Portal, Suche und KI: aktuelles Datenschutzjournal importieren, Löschungen/Sperren abgleichen und die Wiederherstellungsprüfung in Einstellungen → Datenschutz bestätigen.")
         if final_target.exists():
             final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
         os.replace(filesystem_path(target), filesystem_path(final_target))

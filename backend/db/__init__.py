@@ -21,6 +21,7 @@ from . import (
     job_models,  # noqa: F401  (durable job runs and occurrence ledger)
     maintenance_project_models,  # noqa: F401  (project file of a maintenance case)
     payment_security_models,  # noqa: F401 (versioned recipients and exact-state approvals)
+    privacy_models,  # noqa: F401 (holds, erasure decisions, restore review)
     service_contract_models,  # noqa: F401  (property service contracts and their links)
     tax_models,  # noqa: F401
     teha_models,  # noqa: F401  (TEHA receive/published evidence)

@@ -109,8 +109,10 @@ def global_search(
         reranked = search_index.search(q, keyword_hits, top_k=max(50, len(keyword_hits)))
         # the index covers the installation: a hit found only there is checked against this account
         found = {(hit.entity_type, hit.entity_id) for hit in keyword_hits}
+        from ..services.privacy.storage import is_restricted
         reranked = [h for h in reranked
-                    if (h.entity_type, h.entity_id) in found or resource_visible(h.entity_type, h.entity_id)]
+                    if ((h.entity_type, h.entity_id) in found or resource_visible(h.entity_type, h.entity_id))
+                    and not (h.entity_type == "document" and is_restricted(store, "document", h.entity_id))]
         reranked_results = [
             {"entity_type": h.entity_type, "id": h.entity_id, "display": h.display, "detail": h.detail,
              "url": h.url, "score": h.combined_score}

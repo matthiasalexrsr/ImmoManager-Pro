@@ -113,6 +113,8 @@ def _eligible_version(unit, access, version_id):
     version = archive.version_row(unit, version_id)
     if version is None:
         raise HTTPException(404, "Archivierte Dokumentversion nicht gefunden.")
+    from ..privacy.storage import ensure_available
+    ensure_available(unit.store, "document", version.document_id)
     _, current = archive.bind_document(unit, version.document_id, lock=True)
     version = archive.authorized_version(unit, version.document_id, version.id, current)
     place = access.binding

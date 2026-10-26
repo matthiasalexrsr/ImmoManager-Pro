@@ -172,6 +172,9 @@ def grant(unit, identifier, identity_id=None, *, active=True):
     item = db.row(unit, PortalGrantORM, identifier, lock=True, required=False)
     if item is None or (identity_id and item.identity_id != identity_id) or (active and not item.active):
         raise HTTPException(404, "Portalzuordnung nicht verfügbar.")
+    from ..privacy.storage import ensure_available, ensure_restore_reviewed
+    ensure_restore_reviewed(unit.store)
+    ensure_available(unit.store, "portal_identity", item.identity_id)
     current, _ = binding(unit, item.kind, item.tenant_id or item.contact_id, item.contract_id or item.ownership_id)
     if current != item.binding or current["portfolio_id"] != item.portfolio_id:
         raise HTTPException(409, "Die Zuordnung wurde fachlich geändert. Ein neuer geprüfter Portalzugang ist erforderlich.")
@@ -183,9 +186,12 @@ def external_work(store, token):
     if not token or len(token) > 100:
         raise HTTPException(401, "Bitte am Portal anmelden.")
     with raw_work(store) as unit:
+        from ..privacy.storage import ensure_available, ensure_restore_reviewed
+        ensure_restore_reviewed(unit.store)
         session = db.find_one(unit, PortalSessionORM, token_sha256=token_hash(token), lock=True)
         if session is None or session.revoked_at or session.expires_at <= db.now():
             raise HTTPException(401, "Portalsitzung abgelaufen oder widerrufen.")
+        ensure_available(unit.store, "portal_identity", session.identity_id)
         identity = db.row(unit, PortalIdentityORM, session.identity_id, lock=True)
         if not identity.active or identity.revision != session.identity_revision:
             raise HTTPException(401, "Portalzugang deaktiviert. Bitte die Verwaltung kontaktieren.")

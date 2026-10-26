@@ -14,7 +14,7 @@ from ..dependencies import store
 from ..models import Document, DocumentCreate, DocumentPatch, UserRead
 from ..routers.files import _perform_ocr, analyze_file, process_ocr
 from ..services import document_context, document_retention, document_share, document_text
-from ..services.document_versions import ensure_binding_kept, ensure_no_originals
+from ..services.document_versions import ensure_binding_kept
 from ..services.file_storage import get_file_storage
 from ..services.upload_policy import DOCUMENT_EXTENSIONS, read_limited, require_allowed_extension
 from ..storage import NotFoundError, ValidationError
@@ -277,12 +277,9 @@ def delete_document(document_id: str,
     """Delete a document; refused (409) while its retention period runs, unless an owner or
     manager gives `retention_override` (a reason, kept in the audit journal)."""
     try:
-        ensure_no_originals(store, "document", document_id)
-        user = actor.model_dump() if actor is not None else None
-        retention = document_retention.ensure_deletable(store, document_id, actor=user, override_reason=retention_override)
-        if retention.get("override") and user is not None:
-            document_retention.record_override(store, user, store.get_document(document_id), retention)
-        store.delete_document(document_id)
-        document_text.forget(store, document_id)
+        from ..services.privacy.document_delete import remove
+        if actor is None:
+            raise HTTPException(401, "Bitte anmelden.")
+        remove(store, actor.id, document_id, retention_override)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

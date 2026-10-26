@@ -70,6 +70,7 @@ from .routers import (
     payment_security,
     photos,
     portfolios,
+    privacy,
     properties,
     receivables,
     reletting,
@@ -106,6 +107,7 @@ def build_api_v1() -> APIRouter:
     _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
     _admin_dep = [Depends(require_role("eigentuemer", "verwalter"))]
     api_v1.include_router(operations.router, dependencies=_admin_dep)
+    api_v1.include_router(privacy.router, dependencies=_admin_dep)
     api_v1.include_router(admin_runtime.router, dependencies=_admin_dep)
     api_v1.include_router(admin.router, dependencies=_admin_dep)
     api_v1.include_router(audit.router, dependencies=_auth_dep)

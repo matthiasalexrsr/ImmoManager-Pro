@@ -187,6 +187,9 @@ class Settings(BaseSettings):
     # --- Auto-migration ---
     # Ignored since the explicit upgrade (python -m backend.upgrade); kept so old .env files load.
     auto_migrate: bool = False
+    # A unique epoch is written by full restore, including manual PostgreSQL restores.
+    # Search, AI and external portal access stay closed until the privacy review.
+    privacy_restore_id: str = ""
 
     # --- Secrets at rest ---
     # Key file for integration secrets (default: <DATA_DIR>/secrets/keyring.json, created on first use).

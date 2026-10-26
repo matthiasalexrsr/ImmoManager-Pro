@@ -80,6 +80,8 @@ def document_file(store, token, identifier):
 
 
 def _case(unit, identifier, identity_id=None):
+    from ..privacy.storage import ensure_available
+    ensure_available(unit.store, "portal_case", identifier)
     link = db.row(unit, PortalCaseORM, identifier, required=False, lock=True)
     if link is None or not link.active:
         raise HTTPException(404, "Vorgang nicht verfügbar.")

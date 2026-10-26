@@ -166,6 +166,8 @@ def rules(store) -> dict:
 def ensure_deletable(store, document_id: str, *, actor: dict | None = None, override_reason: str | None = None) -> dict:
     """Refuse deleting while the retention period runs (409), unless an owner or manager gives
     a reason; returns the assessment (with `override` when the lock was overridden)."""
+    from .privacy.storage import ensure_no_hold
+    ensure_no_hold(store, "document", document_id)
     document = store.get_document(document_id)
     result = assess_all(store, [document])[document.id]
     if not result["locked"]:

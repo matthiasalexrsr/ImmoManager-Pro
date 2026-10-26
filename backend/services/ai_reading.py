@@ -190,10 +190,13 @@ class Source:
 
 def _source(store: Any, command: StartCommand) -> Source:
     from . import document_share, document_text
+    from .privacy.storage import ensure_available, ensure_restore_reviewed
+    ensure_restore_reviewed(store)
     if bool(command.document_id) == bool(command.file_url):
         raise HTTPException(422, "Bitte genau ein Dokument oder eine hochgeladene Datei angeben.")
     document = None
     if command.document_id:
+        ensure_available(store, "document", command.document_id)
         try:
             document = store.get_document(command.document_id)
         except NotFoundError as exc:
@@ -430,6 +433,10 @@ def _row(unit: Any, identifier: str, *, lock: bool = False) -> Any:
 
 
 def _check_source_access(unit: Any, data: dict) -> None:
+    from .privacy.storage import ensure_available, ensure_restore_reviewed
+    ensure_restore_reviewed(unit.store)
+    if (data.get("document") or {}).get("id"):
+        ensure_available(unit.store, "document", data["document"]["id"])
     # Receipts retain identifiers only: every read, replay and mutation must
     # resolve both the original source and all context anchors with today's rights.
     try:

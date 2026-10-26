@@ -93,6 +93,7 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    "privacy_controls", "privacy_decisions", "privacy_requests", "privacy_restore_reviews",
     "external_portal_identities", "external_portal_sessions", "external_portal_attempts", "external_portal_commands",
     "payment_totp_uses", "payment_totp_attempts",  # locked-account predicates; no general API
     "assistant_conversations", "assistant_messages", "assistant_runs", "assistant_attachments", "assistant_proposals",
