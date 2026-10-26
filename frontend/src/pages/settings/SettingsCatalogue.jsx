@@ -138,6 +138,7 @@ export default function SettingsCatalogue() {
     ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
     ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
     ...(auth?.user?.role === 'eigentuemer' ? [['Datenübernahme, CSV-Vorlagen, Kundenexport und Wiederimport', '/settings?section=migration']] : []),
+    ...(['eigentuemer', 'verwalter'].includes(auth?.user?.role) ? [['Mieter- und Eigentümerportale, Einladungen und Veröffentlichungen', '/settings?section=portal']] : []),
     ...(auth?.isAdmin ? [['Integrationen und Zugangsdaten', '/integrations'], ['Benutzer, Rollen und Objektzugriff', '/settings?section=users'], ['Sicherung, Wiederherstellung, Backupzeit, Aufbewahrung, Jobs und Betrieb', '/settings?section=system'], ['Updates und Erweiterungen', '/settings?section=system']] : []),
   ].filter(([label]) => matches(label));
   return <section className="settings-catalogue"><h2>Einstellungen finden</h2>

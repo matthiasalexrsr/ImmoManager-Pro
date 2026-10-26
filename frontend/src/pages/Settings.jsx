@@ -17,6 +17,7 @@ import LetterheadSection from '../features/letters/LetterheadSection';
 import AiSettingsSection from './settings/AiSettingsSection';
 import ImportWizard from '../features/dataTransfer/ImportWizard';
 import CustomerExports from '../features/dataTransfer/CustomerExports';
+import PortalAdmin from '../features/externalPortal/PortalAdmin';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -28,7 +29,8 @@ export default function Settings() {
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
   const isOwner = auth?.user?.role === 'eigentuemer';
-  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
+  const canManagePortal = ['eigentuemer', 'verwalter'].includes(auth?.user?.role);
+  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(canManagePortal ? ['portal'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
   const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
   const setSettingsTab = section => setParams(current => {
     const next = new URLSearchParams(current);
@@ -54,6 +56,7 @@ export default function Settings() {
     { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
     ...(isOwner ? [{ key: 'migration', label: 'Datenübernahme / Kundenexport' }] : []),
+    ...(canManagePortal ? [{ key: 'portal', label: 'Mieter- und Eigentümerportale' }] : []),
     ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
   ];
@@ -83,6 +86,7 @@ export default function Settings() {
         {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
 
         {settingsTab === 'migration' && isOwner && <><ImportWizard /><CustomerExports /></>}
+        {settingsTab === 'portal' && canManagePortal && <PortalAdmin />}
         {/* System tab: Backup, Updates, About */}
         {settingsTab === 'system' && (
           <>

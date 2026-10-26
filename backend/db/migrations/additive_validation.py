@@ -1,5 +1,7 @@
 """Prove a pre-existing additive table before adopting it without data loss."""
-from sqlalchemy import UniqueConstraint, inspect
+import re
+
+from sqlalchemy import CheckConstraint, UniqueConstraint, inspect
 
 
 def verify_table(connection, table):
@@ -15,6 +17,15 @@ def verify_table(connection, table):
     actual_unique = {tuple(constraint["column_names"]) for constraint in inspector.get_unique_constraints(table.name)}
     if expected_unique != actual_unique:
         raise RuntimeError("Additive uniqueness mismatch: " + table.name)
+    def expression(value):
+        # PostgreSQL reflects equivalent CHECK expressions with grouping and
+        # explicit casts on text literals. Ignore only those syntax additions.
+        value = re.sub(r"::(?:text|character varying)", "", value)
+        return re.sub(r"[\s()]", "", value).lower()
+    expected_checks = {constraint.name: expression(str(constraint.sqltext)) for constraint in table.constraints if isinstance(constraint, CheckConstraint)}
+    actual_checks = {constraint["name"]: expression(constraint["sqltext"]) for constraint in inspector.get_check_constraints(table.name)}
+    if expected_checks != actual_checks:
+        raise RuntimeError("Additive check constraint mismatch: " + table.name)
     expected_foreign = {(tuple(column.name for column in constraint.columns), tuple(element.column.name for element in constraint.elements),
         constraint.referred_table.name, constraint.ondelete or "NO ACTION") for constraint in table.foreign_key_constraints}
     actual_foreign = {(tuple(constraint["constrained_columns"]), tuple(constraint["referred_columns"]), constraint["referred_table"],

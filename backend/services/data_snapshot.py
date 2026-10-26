@@ -83,7 +83,7 @@ def _require_full_bank_backup(store: Any) -> None:
 
 def _require_full_private_backup(store: Any) -> None:
     """A partial business snapshot cannot replace private workflow evidence."""
-    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_', 'data_import', 'data_external_', 'data_portability_')
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_', 'data_import', 'data_external_', 'data_portability_', 'external_portal_')
     payment_evidence = frozenset({'payment_recipient_versions', 'payment_authorizations', 'payment_security_settings',
                                   'payment_totp_uses', 'payment_security_events', 'payment_totp_attempts'})
     if hasattr(store, 'db'):

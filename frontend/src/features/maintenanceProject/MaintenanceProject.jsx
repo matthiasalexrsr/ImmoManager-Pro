@@ -15,15 +15,19 @@ import { AppointmentsTab, OverviewTab, WorkTab } from './PlanningTabs';
 import { CostsTab, ProcurementTab } from './CommercialTabs';
 import { DocumentsTab, ProtocolsTab } from './EvidenceTabs';
 import './maintenanceProject.css';
+import { useAuth } from '../../contexts/AuthContext';
+import PortalConversations from '../externalPortal/PortalConversations';
 
 const TABS = [
   ['overview', 'tabOverview'], ['work', 'tabWork'], ['appointments', 'tabAppointments'],
   ['procurement', 'tabProcurement'], ['costs', 'tabCosts'], ['protocols', 'tabProtocols'], ['documents', 'tabDocuments'],
 ];
-const TAB_KEYS = TABS.map(([key]) => key);
 
 /** The project file of one maintenance case (Schaden → Projektakte). */
 export default function MaintenanceProject({ caseId }) {
+  const auth = useAuth();
+  const tabs = ['eigentuemer', 'verwalter'].includes(auth?.user?.role) ? [...TABS, ['portal', 'Externe Kommunikation']] : TABS;
+  const TAB_KEYS = tabs.map(([key]) => key);
   const { tx } = useProjectText();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -203,12 +207,12 @@ export default function MaintenanceProject({ caseId }) {
       )}
 
       <div className="detail-tabs mp-tabs" role="tablist" aria-label={tx.sections}>
-        {TABS.map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button key={key} type="button" role="tab" id={`mp-tab-${key}`} data-tab-key={key}
             aria-selected={tab === key} tabIndex={tab === key ? 0 : -1}
             aria-controls={`mp-panel-${key}`} className={`detail-tab ${tab === key ? 'active' : ''}`}
             onClick={() => selectTab(key)} onKeyDown={event => onTabKey(event, key)}>
-            {tx[label]}
+            {key === 'portal' ? label : tx[label]}
           </button>
         ))}
       </div>
@@ -220,6 +224,7 @@ export default function MaintenanceProject({ caseId }) {
         {tab === 'costs' && <CostsTab ctx={ctx} />}
         {tab === 'protocols' && <ProtocolsTab ctx={ctx} />}
         {tab === 'documents' && <DocumentsTab ctx={ctx} />}
+        {tab === 'portal' && <PortalConversations caseId={caseId} caseRecord={record} />}
       </div>
 
       {form && (

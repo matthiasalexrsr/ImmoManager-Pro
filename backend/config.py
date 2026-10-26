@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     # --- Application ---
     app_version: str = _get_version()
     app_title: str = "ImmoManager Pro API"
+    portal_enabled: bool = False
+    portal_public_url: str = ""
+    portal_local_test_mode: bool = False
 
     # --- Database ---
     database_url: str = "sqlite:///./immo_manager.db"

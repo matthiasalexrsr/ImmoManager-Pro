@@ -77,8 +77,10 @@ def prepare(unit, content, prepared):
                 if any(before[name] != item for name, item in value.items() if name not in {"validation_actor_id", "created_by", "idempotency_key", "revision", "updated_at", "state", "blockers"}):
                     raise ValueError("Vorhandener Fachnachweis ist nicht identisch.")
             active[key] = (model, value, old is None)
-        if model not in (EInvoiceIntakeORM, EInvoiceValidationORM):
+        if model not in (EInvoiceIntakeORM, EInvoiceValidationORM, *package.portal.MODELS):
             history.append(record)
+    package.portal.validate([(model, value) for model, value, _ in active.values() if model in package.portal.MODELS], final,
+        {row["id"]: row for row in snapshot[package.originals.SNAPSHOT_KEY]})
     intakes = [value for model, value, _ in active.values() if model is EInvoiceIntakeORM]
     validations = [value for model, value, _ in active.values() if model is EInvoiceValidationORM]
     verify_rows(intakes, validations, {key: row.model_dump() for key, row in final.get("invoices", {}).items()})
@@ -112,6 +114,8 @@ def apply(unit, batch, plan):
             if model is not incoming_model or not fresh:
                 continue
             value = dict(value)
+            if model in package.portal.MODELS:
+                value = package.portal.restored(model, value)
             if model is EInvoiceIntakeORM:
                 value["validation_actor_id"] = unit.actor_id
                 if value["state"] != "accepted":

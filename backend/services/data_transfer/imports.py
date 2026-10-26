@@ -15,8 +15,6 @@ from ...db.data_transfer_models import ExternalReferenceORM as Reference
 from ...db.data_transfer_models import ImportBatchORM as Batch
 from ...db.data_transfer_models import ImportFileORM as File
 from ...db.document_version_models import DocumentVersionORM
-from ...db.e_invoice_models import EInvoiceIntakeORM, EInvoiceValidationORM
-from ...db.payment_security_models import PaymentRecipientORM
 from ...domain.lease_engine import find_unit_overlap, unit_overlap_message
 from .. import data_snapshot as snapshots
 from ..integrations import connection_storage as db
@@ -26,6 +24,11 @@ from .common import digest, encoded, lock_target, work
 MAX_FILE = 64 * 1024 * 1024
 MAX_TOTAL = 128 * 1024 * 1024
 VOLATILE = {"created_at", "updated_at"}
+
+
+def _active_models():
+    from .portable_archive import ACTIVE_MODELS
+    return ACTIVE_MODELS
 
 
 def _files(unit, identifier):
@@ -76,7 +79,7 @@ def _target(unit):
     else:
         versions = [[row.id, row.sha256, row.number, row.document_id] for row in sorted(unit.archive.versions.values(), key=lambda row: row.id)]
     evidence = {}
-    for model in (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM):
+    for model in _active_models():
         rows = unit.db.scalars(select(model).order_by(model.id)) if unit.db is not None else sorted(db.memory(unit, model).values(), key=lambda row: row.id)
         evidence[model.__tablename__] = [{column.name: hashlib.sha256(value).hexdigest() if isinstance(value := getattr(row, column.name), bytes)
             else value.isoformat() if hasattr(value, "isoformat") else value for column in model.__table__.columns} for row in rows]
@@ -338,7 +341,7 @@ def commit(store, actor_id, identifier, command: CommitImport):
         if batch.state != "ready":
             raise HTTPException(409, "Zuerst alle Fehler in der Vorschau beheben.")
         from types import SimpleNamespace
-        lock_target(unit, [*snapshots.entity_specs(), *[SimpleNamespace(table=model.__table__) for model in (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM)]])
+        lock_target(unit, [*snapshots.entity_specs(), *[SimpleNamespace(table=model.__table__) for model in (*_active_models(), DocumentVersionORM)]])
         preview, target_sha, plan_sha, prepared, references = _preview(unit, batch, _files(unit, identifier))
         if target_sha != batch.target_sha256 or plan_sha != batch.plan_sha256 or preview["error_count"] or prepared is None:
             raise HTTPException(409, "Der Zielbestand oder die Quelldaten haben sich geändert. Nichts wurde übernommen; bitte die Vorschau erneuern.")

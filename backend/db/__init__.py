@@ -13,6 +13,7 @@ from . import (
     document_work_models,  # noqa: F401 (document sessions, exports and evidence links)
     dunning_models,  # noqa: F401  (dunning: cases, letters, outbox, replies)
     e_invoice_models,  # noqa: F401 (structured receipts and local validation evidence)
+    external_portal_models,  # noqa: F401 (isolated invited external identities)
     finance_models,  # noqa: F401 (existing-money settlement links and report definitions)
     integration_attempt_models,  # noqa: F401  (private attempt and cursor receipts)
     integration_connection_models,  # noqa: F401 (private connections, mappings, runs and source receipts)

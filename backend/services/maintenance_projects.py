@@ -292,10 +292,12 @@ def _check_case_values(case: Any) -> None:
         raise ValidationError("Das geschätzte Budget darf nicht negativ sein.")
 
 
-def create_case(store: Any, payload: Any, actor_id: str | None) -> Any:
+def create_case(store: Any, payload: Any, actor_id: str | None, *, _unit=None) -> Any:
+    from contextlib import nullcontext
+
     from ..models import MaintenanceCase
 
-    with work(store, actor_id, ("/maintenance",)) as unit:
+    with nullcontext(_unit) if _unit is not None else work(store, actor_id, ("/maintenance",)) as unit:
         if LEGACY_STATUSES.get(payload.status, payload.status) in ("completed", "cancelled"):
             raise HTTPException(422, "Eine neue Akte beginnt offen oder in Bearbeitung. Abschluss und Abbruch werden anschließend dokumentiert.")
         _check_case_values(payload)

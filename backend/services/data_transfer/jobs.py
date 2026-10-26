@@ -3,10 +3,11 @@ import hashlib
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from ...db.data_transfer_models import PortabilityExportORM as Export
+from ...db.document_version_models import DocumentVersionORM
 from .. import data_snapshot
 from .. import document_versions as archive
 from ..integrations import connection_storage as db
@@ -67,7 +68,9 @@ def handler(ctx):
             if user["role"] != "eigentuemer" or not scope.unrestricted:
                 raise HTTPException(403, "Berechtigung für den gesamten Kundenbestand wurde entzogen.")
             with scope_context(scope), bound_actor(user):
-                specs = list(data_snapshot.entity_specs()) + [SimpleNamespace(table=model.__table__) for model in (*portable_archive.EVIDENCE_MODELS, portable_archive.ImportedEvidenceORM)]
+                if unit.db is not None and unit.db.get_bind().dialect.name == "postgresql":
+                    unit.db.execute(text("SELECT pg_advisory_xact_lock(725627501)"))
+                specs = list(data_snapshot.entity_specs()) + [SimpleNamespace(table=model.__table__) for model in (*portable_archive.EVIDENCE_MODELS, portable_archive.ImportedEvidenceORM, DocumentVersionORM)]
                 lock_target(unit, specs)
                 content, manifest = portable_archive.build(unit)
             changes = {"state": "ready", "content": content, "sha256": hashlib.sha256(content).hexdigest(),

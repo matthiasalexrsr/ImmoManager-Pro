@@ -45,6 +45,7 @@ from .routers import (
     dunning,
     e_invoice_intakes,
     escalation,
+    external_portal,
     files,
     finance_reports,
     handover_protocols,
@@ -99,6 +100,7 @@ def build_api_v1() -> APIRouter:
     # Auth routes (public - no auth dependency)
     api_v1.include_router(auth.router)
     api_v1.include_router(channels.public_router)
+    api_v1.include_router(external_portal.public_router)
 
     # Protected routes
     _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]
@@ -134,6 +136,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(maintenance_projects.payments_router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
     api_v1.include_router(e_invoice_intakes.router, dependencies=_auth_dep)
+    api_v1.include_router(external_portal.router, dependencies=_auth_dep)
     api_v1.include_router(payment_security.router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
