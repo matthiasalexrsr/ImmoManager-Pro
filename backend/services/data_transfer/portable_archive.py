@@ -9,12 +9,13 @@ import io
 import json
 import re
 import zipfile
+import zlib
 from datetime import date, datetime
 from decimal import Decimal
 from urllib.parse import unquote
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import JSON, select
 
 from ...db.data_transfer_models import ExternalReferenceORM, ImportBatchORM, ImportedEvidenceORM
 from ...db.e_invoice_models import EInvoiceIntakeORM, EInvoiceValidationORM
@@ -43,6 +44,55 @@ MAX_MEMBERS = 100_000
 EVIDENCE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM,
                    PaymentAuthorizationORM, PaymentSecurityEventORM, PaymentTotpUseORM, ExternalReferenceORM, ImportBatchORM, *portal.MODELS, *privacy.MODELS)
 ACTIVE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM, *portal.MODELS, *privacy.ACTIVE_MODELS)
+# The v1 evidence schema has object-valued JSON except for these lists. Check
+# the containers before domain validators or restored services access .get().
+JSON_LIST_FIELDS = {("e_invoice_intakes", "blockers"), ("e_invoice_validations", "messages"),
+                    ("privacy_controls", "file_keys_sha256")}
+
+
+def _object(value, label):
+    if not isinstance(value, dict):
+        raise ValueError(label + ": JSON-Objekt erwartet.")
+    return value
+
+
+def _object_list(value, label):
+    if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+        raise ValueError(label + ": Liste von JSON-Objekten erwartet.")
+    return value
+
+
+def _string_list(value, label, *, hashes=False):
+    if not isinstance(value, list) or any(not isinstance(item, str) or (hashes and not re.fullmatch(r"[a-f0-9]{64}", item)) for item in value):
+        raise ValueError(label + ": Textliste mit gültigen Einträgen erwartet.")
+
+
+def _evidence_json(model, payload):
+    for column in model.__table__.columns:
+        if not isinstance(column.type, JSON):
+            continue
+        value, field = payload.get(column.name), (model.__tablename__, column.name)
+        if value is None and column.nullable:
+            continue
+        container = list if field in JSON_LIST_FIELDS else dict
+        if not isinstance(value, container):
+            raise ValueError("JSON-Struktur passt nicht zum Fachnachweis: " + ".".join(field))
+        if field == ("e_invoice_validations", "messages"):
+            for message in _object_list(value, "Prüfmeldungen"):
+                if not {"severity", "text"} <= message.keys() or any(not isinstance(item, str) for item in message.values()):
+                    raise ValueError("Prüfmeldungen benötigen textuelle Schweregrade und Beschreibungen.")
+        elif field in JSON_LIST_FIELDS:
+            _string_list(value, ".".join(field), hashes=column.name == "file_keys_sha256")
+        elif field == ("e_invoice_intakes", "reading"):
+            for name, item in _object(value, "Lesefassung").items():
+                if name in {"lines", "taxes", "bank_accounts"}:
+                    for row in _object_list(item, "Lesefassung " + name):
+                        if any(part is not None and not isinstance(part, str) for part in row.values()):
+                            raise ValueError("Ungültiger Feldtyp in der Rechnungslesefassung.")
+                elif name in {"supplier_tax_ids", "blockers"}:
+                    _string_list(item, "Lesefassung " + name)
+                elif item is not None and not isinstance(item, str):
+                    raise ValueError("Ungültiger Feldtyp in der Rechnungslesefassung.")
 
 
 def _rows(unit, model):
@@ -184,27 +234,40 @@ def read(content):
                 if entry.filename not in {"manifest.json", "business.json", "originals.json", "evidence.json", "attachments.json", "schema.json", "README.md"} and not re.fullmatch(r"blobs/[a-f0-9]{64}", entry.filename):
                     raise ValueError("Unerwarteter Archivpfad.")
             parts = {entry.filename: archive.read(entry) for entry in entries}
-        manifest = json.loads(parts.pop("manifest.json"))
-        if manifest.get("format") != FORMAT or manifest.get("version") != VERSION or set(manifest["files"]) != set(parts):
+        manifest = _object(json.loads(parts.pop("manifest.json")), "manifest.json")
+        files = _object(manifest["files"], "manifest.files")
+        _object(manifest["controls"], "manifest.controls")
+        _object_list(manifest["originals"], "manifest.originals")
+        if (manifest.get("format") != FORMAT or type(manifest.get("version")) is not int
+                or manifest["version"] != VERSION or set(files) != set(parts)):
             raise ValueError("Unbekanntes oder unvollständiges Kundenexportformat.")
         for name, raw in parts.items():
-            expected = manifest["files"][name]
+            expected = _object(files[name], "manifest.files." + name)
             if expected != {"sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}:
                 raise ValueError("Prüfsumme oder Größe eines Archivbestandteils stimmt nicht.")
         def extract(source):
+            _object(source, "Binärreferenz")
             raw = parts[source["blob"]]
             if source != {"blob": "blobs/" + hashlib.sha256(raw).hexdigest(), "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}:
                 raise ValueError("Ungültige Binärreferenz.")
             return raw
-        snapshot = json.loads(parts["business.json"])
-        versions = json.loads(parts["originals.json"])
+        snapshot = _object(json.loads(parts["business.json"]), "business.json")
+        _object(json.loads(parts["schema.json"]), "schema.json")
+        versions = _object_list(json.loads(parts["originals.json"]), "originals.json")
+        for row in versions:
+            _object(row["metadata_snapshot"], "Originalmetadaten")
         snapshot[originals.SNAPSHOT_KEY] = [{**{key: value for key, value in row.items() if key != "source"},
             "blocks": [base64.b64encode(raw[index:index + originals.CHUNK_BYTES]).decode() for index in range(0, len(raw), originals.CHUNK_BYTES)]}
             for row in versions for raw in [extract(row["source"])]]
-        evidence = json.loads(parts["evidence.json"])
+        evidence = _object_list(json.loads(parts["evidence.json"]), "evidence.json")
         models = {model.__tablename__: model for model in EVIDENCE_MODELS}
         for record in evidence:
-            if record["source_type"] not in models or digest(record["payload"]) != record["sha256"]:
+            _object(record["payload"], "Fachnachweis")
+            if (not isinstance(record.get("source_type"), str) or record["source_type"] not in models
+                    or not isinstance(record.get("record_id"), str) or not record["record_id"]
+                    or not isinstance(record.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", record["sha256"])
+                    or ("historical" in record and type(record["historical"]) is not bool)
+                    or digest(record["payload"]) != record["sha256"]):
                 raise ValueError("Unbekannter oder beschädigter Fachnachweis.")
             model = models[record["source_type"]]
             expected = set(model.__table__.columns.keys())
@@ -212,7 +275,8 @@ def read(content):
                 expected.remove('file_keys_sha256')  # previously emitted v1 customer archives
             if set(record["payload"]) != expected or record["record_id"] != record["payload"]["id"]:
                 raise ValueError("Fachnachweis passt nicht zu seinem Datensatzschema.")
-        assets = json.loads(parts["attachments.json"])
+            _evidence_json(model, record["payload"])
+        assets = _object_list(json.loads(parts["attachments.json"]), "attachments.json")
         seen = set()
         wanted = set(_uploads(snapshot)) - set(key for row in versions for key in _uploads(row.get("metadata_snapshot", {})))
         for asset in assets:
@@ -225,5 +289,5 @@ def read(content):
             raise ValueError("Die Anlagenliste ist unvollständig.")
         encoded(snapshot)  # reject NaN/Infinity and excessive recursion
         return snapshot, evidence, [(asset["storage_key"], extract(asset["source"])) for asset in assets], extract, manifest
-    except (KeyError, TypeError, ValueError, RecursionError, zipfile.BadZipFile, NotImplementedError, RuntimeError, UnicodeError) as error:
+    except (KeyError, TypeError, ValueError, RecursionError, zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError, UnicodeError) as error:
         raise ValueError("Kundenexport nicht sicher lesbar: " + str(error)[:250]) from None
