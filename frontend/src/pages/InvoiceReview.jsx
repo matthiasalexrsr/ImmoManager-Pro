@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import DraftDefaults from '../components/DraftDefaults';
 import useLookupChoices from '../hooks/useLookupChoices';
@@ -14,6 +14,8 @@ import { AiFieldNote, AiFormSummary, AiMarkChip } from '../features/aiReading/Ai
 import { aiGroupClass, pendingMessage, useAiMarks } from '../features/aiReading/aiMarks';
 import { INVOICE_FORM, aiReadingApi, formFromReading } from '../features/aiReading/aiReadingApi';
 import { COST_CATEGORIES } from '../utils/costCategories';
+import EInvoiceIntakes from '../features/invoiceReview/EInvoiceIntakes';
+import { BankModeSettings } from '../features/invoiceReview/PaymentSecurity';
 import '../features/maintenanceProject/maintenanceProject.css';
 import '../features/invoiceReview/invoiceReview.css';
 
@@ -23,7 +25,12 @@ const STATUSES = ['pending', 'received', 'query', 'approved', 'partially_approve
 // Finanzen → Rechnungsprüfung: every invoice with its review state, filtered on the server.
 export default function InvoiceReview() {
   const { tx } = useReviewText();
-  const [tab, setTab] = useState('inbox');
+  const [params, setParams] = useSearchParams();
+  const initialIntake = params.get('intake');
+  const initialTab = params.get('tab');
+  const [tab, setTab] = useState(initialIntake ? 'eInvoices' : initialTab === 'proposals' ? 'proposals' : 'inbox');
+  useEffect(() => { if (initialIntake) setTab('eInvoices'); }, [initialIntake]);
+  useEffect(() => { if (initialTab === 'proposals') setTab('proposals'); }, [initialTab]);
   const propertyChoices = useLookupChoices({ properties: '/properties' });
   const properties = propertyChoices.data.properties || [];
   const canReceive = useCanWrite('/invoice-review/receipts');
@@ -45,12 +52,15 @@ export default function InvoiceReview() {
       {propertyChoices.error && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyChoices.error}{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={propertyChoices.reload}>Auswahl erneut laden</button></p>}
       <div className="detail-tabs" role="tablist" aria-label={tx.title}>
-        {['inbox', 'proposals'].map(key => (
+        {['inbox', 'proposals', 'eInvoices'].map(key => (
           <button key={key} type="button" role="tab" aria-selected={tab === key}
-            className={`detail-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{tx[key]}</button>
+            className={`detail-tab${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{key === 'eInvoices' ? 'E-Rechnungseingang' : tx[key]}</button>
         ))}
       </div>
-      {tab === 'inbox' ? <Inbox properties={properties} choicesReady={propertyChoices.ready} revision={revision} /> : <Proposals revision={revision} />}
+      {tab === 'inbox' ? <Inbox properties={properties} choicesReady={propertyChoices.ready} revision={revision} /> :
+        tab === 'proposals' ? <Proposals revision={revision} /> : <EInvoiceIntakes properties={properties} choicesReady={propertyChoices.ready}
+          initialIntake={initialIntake} onIntakeClosed={() => { const next = new URLSearchParams(params); next.delete('intake'); setParams(next, { replace: true }); }}
+          onAccepted={() => setRevision(value => value + 1)} />}
       {dialog === 'new' && propertyChoices.ready && <NewInvoice properties={properties} onClose={() => setDialog(null)}
         onSaved={() => setRevision(value => value + 1)} />}
       {dialog === 'settings' && <Settings onClose={() => setDialog(null)} />}
@@ -156,17 +166,26 @@ function Proposals({ revision }) {
   const { tx } = useReviewText();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [skip, setSkip] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    reviewApi.proposals({}, { signal: controller.signal }).then(setData)
+    setData(null); setError(null);
+    reviewApi.proposals({ skip, limit: PAGE }, { signal: controller.signal }).then(result => {
+      if (!controller.signal.aborted) setData(result);
+    })
       .catch(failure => { if (failure.name !== 'AbortError') setError(failure.message || tx.loadFailed); });
     return () => controller.abort();
-  }, [revision, tx]);
-  if (error) return <div className="alert-error" role="alert">{error}</div>;
+  }, [revision, tx, skip, attempt]);
+  if (error) return <div className="alert-error" role="alert">{error} <button type="button" className="btn btn-secondary" onClick={() => setAttempt(value => value + 1)}>{tx.retry}</button></div>;
   if (!data) return <p className="text-muted" role="status">{tx.loading}</p>;
   return (
     <section aria-label={tx.proposals}>
       <p className="text-muted">{tx.proposalsNote}</p>
+      {!!data.blocked_total && <div className="panel mp-section-body"><h2>Bankdatenfreigabe ausstehend ({data.blocked_total})</h2>
+        <ul>{data.blocked.map(item => <li key={item.invoice_id}><Link to={`/invoice-review/${encodeURIComponent(item.invoice_id)}#bankfreigabe`}>
+          {item.supplier} · {item.invoice_number || item.invoice_id}</Link><p>{item.blockers.join(' ')}</p></li>)}</ul>
+      </div>}
       {data.items.length === 0 ? <Empty>{tx.noProposals}</Empty> : (
         <>
           <ul className="ir-list">
@@ -176,6 +195,7 @@ function Proposals({ revision }) {
                   <span className="ir-row-main">
                     <strong>{item.supplier}</strong>
                     <span className="text-muted">{item.payment_reference || tx.none} · {tx.payBy} {formatDate(item.pay_by)}</span>
+                    {item.recipient && <span>{item.recipient.name} · {item.recipient.iban} · Version {item.recipient.number}</span>}
                   </span>
                   <span className="ir-row-amount">{formatMoney(item.proposed_amount)}</span>
                   <span className="ir-row-state">
@@ -190,6 +210,11 @@ function Proposals({ revision }) {
           <p className="ir-total"><strong>{tx.total}: {formatMoney(data.total_amount)}</strong> · {fill(tx.count, { count: data.total })}</p>
         </>
       )}
+      <div className="ir-paging" aria-label="Seiten der Zahlungsvorschläge und gesperrten Rechnungen">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={skip === 0} onClick={() => setSkip(Math.max(0, skip - PAGE))}>{tx.previous}</button>
+        <span>Seite {1 + skip / PAGE}</span>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!data.has_more && !data.blocked_has_more} onClick={() => setSkip(skip + PAGE)}>{tx.next}</button>
+      </div>
     </section>
   );
 }
@@ -483,6 +508,7 @@ function Settings({ onClose }) {
           <button type="submit" className="btn btn-primary" disabled={!values}>{tx.save}</button>
         </div>
       </form>
+      <BankModeSettings />
     </Modal>
   );
 }

@@ -14,6 +14,7 @@ import {
   Checks, Decision, Dispute, Findings, History, Payment, ReceiptForm, Summary, Transfer,
 } from '../features/invoiceReview/ReviewPanels';
 import { useReviewText } from '../features/invoiceReview/text';
+import PaymentSecurity from '../features/invoiceReview/PaymentSecurity';
 import '../features/maintenanceProject/maintenanceProject.css';
 import '../features/invoiceReview/invoiceReview.css';
 
@@ -78,7 +79,7 @@ function InvoiceReviewSession({ id }) {
       <RelatedPageLinks items={relatedItems} />
       {readOnly && <p className="ir-note">{tx.readOnly}</p>}
       <div className="ir-review">
-        <DocumentPane document={view.document} />
+        <DocumentPane document={view.document} intake={view.structured_intake} />
         <div className="ir-panels">
           <Summary view={view} />
           <Findings view={view} />
@@ -88,6 +89,7 @@ function InvoiceReviewSession({ id }) {
           {!view.review && abilities.receive && propertyChoices.ready && <ReceiptForm view={view} properties={properties} onChanged={reload} />}
           {view.review && <Checks key={`checks-${revision}`} view={view} onChanged={reload} />}
           <Decision key={`decision-${revision}`} view={view} onChanged={reload} />
+          {view.kind !== 'credit_note' && <PaymentSecurity key={`bank-${revision}`} invoiceId={invoice.id} />}
           <Payment key={`payment-${revision}`} view={view} onChanged={reload} />
           <Dispute key={`dispute-${revision}`} view={view} onChanged={reload} />
           <Transfer key={`transfer-${revision}`} view={view} onChanged={reload} />
@@ -98,7 +100,7 @@ function InvoiceReviewSession({ id }) {
   );
 }
 
-function DocumentPane({ document }) {
+function DocumentPane({ document, intake }) {
   const { tx } = useReviewText();
   const [open, setOpen] = useState(false);
   if (!document) {
@@ -108,6 +110,7 @@ function DocumentPane({ document }) {
   return (
     <aside className="ir-document panel" aria-label={tx.document}>
       <div className="ir-document-head">
+        {intake && <Link to={intake.href} className="btn btn-secondary btn-sm">E-Rechnung: Lesefassung und Prüfberichte</Link>}
         <strong>{document.title}</strong>
         <Pill tone={INTEGRITY_TONE[document.integrity]}>{tx[`integrity_${document.integrity}`]}</Pill>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}>{tx.openDocument}</button>

@@ -50,7 +50,7 @@ _scope: ContextVar[AccessScope | None] = ContextVar("immo_portfolio_scope", defa
 _guarding: ContextVar[bool] = ContextVar("immo_scope_guarding", default=False)
 # installation definitions: everyone reads them, only all-access accounts change them
 GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules", "invoice_review_settings",
-                         "dunning_stage_settings", "dunning_base_rates"})
+                         "dunning_stage_settings", "dunning_base_rates", "payment_security_settings"})
 # a shared address book: every account reads it; changing a record needs its binding (or all access)
 SHARED_READ = frozenset({"contacts"})
 _owning: ContextVar[bool] = ContextVar("immo_scope_owning", default=False)
@@ -93,6 +93,7 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    "payment_totp_uses", "payment_totp_attempts",  # locked-account predicates; no general API
     "assistant_conversations", "assistant_messages", "assistant_runs", "assistant_attachments", "assistant_proposals",
     # Each service predicates by owner/current source grants before any private read.
     "bank_imports", "bank_source_links", "bank_fints_sessions",

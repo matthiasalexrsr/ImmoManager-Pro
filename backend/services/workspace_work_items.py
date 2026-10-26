@@ -6,10 +6,12 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import Date, and_, case, exists, func, literal, or_, select
+from sqlalchemy.orm import defer
 
 from ..db.business_qol_models import DocumentIntakeORM
 from ..db.document_version_models import DocumentVersionORM
 from ..db.dunning_models import DunningCaseORM, DunningLetterORM
+from ..db.e_invoice_models import EInvoiceIntakeORM
 from ..db.orm_models import (
     AllocationKeyORM,
     BillingPeriodORM,
@@ -46,7 +48,9 @@ SOURCES: dict[str, tuple[Any, str, str, str]] = {
     "meter_reading": (BillingPeriodORM, "billing_periods", "reading_missing", "/meters"),
     "tenant_change": (HandoverProtocolORM, "handover_protocols", "turnover_incomplete", "/handover-protocols"),
 }
-CONTEXT_KINDS = {"dunning": "contract", "meter_reading": "billing_period", "tenant_change": "handover_protocol"}
+CONTEXT_KINDS = {"dunning": "contract", "meter_reading": "billing_period", "tenant_change": "handover_protocol", "contract_end": "contract"}
+SOURCES["contract_end"] = (ContractORM, "contracts", "contract_ending", "/contracts")
+SOURCES["e_invoice"] = (EInvoiceIntakeORM, "e_invoice_intakes", "intake_review", "/e-invoice-intakes")
 CLOSED = ("completed", "done", "closed", "cancelled", "canceled", "paid", "archived", "finalized")
 
 
@@ -70,8 +74,10 @@ def work_reason(store: Any, kind: str, row: Any) -> str:
 
 def due_column(kind: str):
     orm = SOURCES[kind][0]
-    if kind == "contract":
+    if kind in ("contract", "e_invoice"):
         return literal(None, type_=Date())
+    if kind == "contract_end":
+        return orm.end_date
     if kind == "dunning":
         return (select(DunningLetterORM.payment_deadline).join(DunningCaseORM, DunningCaseORM.id == DunningLetterORM.case_id)
             .where(DunningCaseORM.contract_id == ContractORM.id, DunningCaseORM.status == "open", DunningLetterORM.status == "final")
@@ -101,6 +107,10 @@ def memory_document_filed(document: Any) -> bool:
 
 def source_predicate(kind: str, store: Any = None):
     orm = SOURCES[kind][0]
+    if kind == "e_invoice":
+        return EInvoiceIntakeORM.state != "accepted"
+    if kind == "contract_end":
+        return and_(ContractORM.end_date.is_not(None), ContractORM.status.in_(("active", "terminated", "expired")))
     if kind == "document":
         original = exists(select(DocumentVersionORM.id).where(DocumentVersionORM.document_id == DocumentORM.id))
         finished = exists(select(DocumentIntakeORM.id).where(
@@ -171,6 +181,11 @@ def deferral_predicate(kind: str, actor_id: str, deferred: str):
 
 
 def _memory_applicable(store: Any, kind: str, row: Any) -> bool:
+    if kind == "e_invoice":
+        return row.state != "accepted"
+    if kind == "contract_end":
+        from .workflow_guidance import turnover_state
+        return row.end_date is not None and row.status in ("active", "terminated", "expired") and not turnover_state(store, row)[3]
     if kind == "document":
         from .document_versions import memory_archive
         if any(version.document_id == row.id for version in memory_archive(store).versions.values()):
@@ -213,11 +228,16 @@ def _memory_applicable(store: Any, kind: str, row: Any) -> bool:
         return False
     if kind == "receivable" and row.status not in UNPAID_RECEIVABLE_STATUSES:
         return False
+    if kind == "invoice":
+        from .workflow_guidance import invoice_pending
+        return row.gross_amount > 0 and invoice_pending(store, row)
     return not (kind == "invoice" and row.gross_amount <= 0 or kind == "receivable" and row.amount_due <= 0)
 
 
 def _due(kind: str, row: Any, store: Any = None) -> date | None:
-    if kind == "contract":
+    if kind == "contract_end":
+        return row.end_date
+    if kind in ("contract", "e_invoice"):
         return None
     if kind == "dunning":
         if hasattr(row, "_workcenter_due"):
@@ -315,6 +335,29 @@ def sort_key(item: dict) -> tuple[str, str, str]:
     return (item["due_date"] or "9999-12-31", item["kind"], item["entity_id"])
 
 
+def _collection(store, kind):
+    if kind == "e_invoice":
+        return store.__dict__.get("_integration_connections", {}).get("e_invoice_intakes", {})
+    return getattr(store, SOURCES[kind][1])
+
+
+def _context(store, kind, identifier, actor_id):
+    if kind != "e_invoice":
+        return resolve_context(store, CONTEXT_KINDS.get(kind, kind), identifier, actor_id)
+    if hasattr(store, "db"):
+        row = store.db.scalar(select(EInvoiceIntakeORM).options(defer(EInvoiceIntakeORM.original), defer(EInvoiceIntakeORM.xml))
+                              .where(EInvoiceIntakeORM.id == identifier))
+    else:
+        row = _collection(store, kind).get(identifier)
+    if row is None:
+        raise HTTPException(404, "Rechnungseingang nicht gefunden.")
+    parent = resolve_context(store, "property", row.property_id, actor_id)
+    return {"kind": "e_invoice", "entity_id": row.id, "revision": str(row.revision), "property_id": row.property_id,
+        "portfolio_id": parent["portfolio_id"], "portfolio_ids": parent["portfolio_ids"],
+        "title": row.reading.get("number") or row.filename, "href": "/invoice-review?intake=" + row.id,
+        "values": {"id": row.id, "property_id": row.property_id, "state": row.state}, "dependencies": []}
+
+
 def resolve_work_item(store: Any, key: str, actor_id: str, *, require_applicable: bool = True) -> dict:
     try:
         kind, identifier, reason = key.split(":")
@@ -325,7 +368,7 @@ def resolve_work_item(store: Any, key: str, actor_id: str, *, require_applicable
             raise ValueError
     except (ValueError, KeyError):
         raise HTTPException(404, "Arbeitsvorgang nicht vorhanden.") from None
-    context = resolve_context(store, CONTEXT_KINDS.get(kind, kind), identifier, actor_id)
+    context = _context(store, kind, identifier, actor_id)
     if require_applicable:
         if hasattr(store, "db"):
             predicate = source_predicate(kind, store)
@@ -335,8 +378,14 @@ def resolve_work_item(store: Any, key: str, actor_id: str, *, require_applicable
             applicable = present is not None
             if kind == "service_contract" and applicable:
                 applicable = _due(kind, present, store) is not None
+            if kind == "contract_end" and applicable:
+                from .workflow_guidance import turnover_state
+                applicable = not turnover_state(store, present)[3]
+            if kind == "invoice" and applicable:
+                from .workflow_guidance import invoice_pending
+                applicable = invoice_pending(store, present)
         else:
-            row = getattr(store, collection).get(identifier)
+            row = _collection(store, kind).get(identifier)
             applicable = row is not None and _memory_applicable(store, kind, row)
             if kind == "dunning" and applicable:
                 applicable = any(case.id == dunning_case_id and case.contract_id == identifier and case.status == "open"
@@ -354,7 +403,7 @@ def resolve_work_item(store: Any, key: str, actor_id: str, *, require_applicable
 
 
 def _item(store: Any, kind: str, row: Any, actor_id: str, user: dict) -> dict:
-    context = resolve_context(store, CONTEXT_KINDS.get(kind, kind), row.id, actor_id)
+    context = _context(store, kind, row.id, actor_id)
     if kind == "dunning":
         context["href"] = f"/dunning/contracts/{row.id}"
     if kind == "service_contract":
@@ -365,17 +414,21 @@ def _item(store: Any, kind: str, row: Any, actor_id: str, user: dict) -> dict:
     actions = [{"id": "open", "label": "Öffnen", "href": context["href"], "allowed": True},
                {"id": "note", "label": "Gesprächsnotiz", "allowed": may_write(user["role"], "/tasks")},
                {"id": "defer", "label": "Wiedervorlage", "allowed": True}]
+    if kind == "e_invoice":
+        actions = [action for action in actions if action["id"] != "note"]
     if kind == "task":
         actions.append({"id": "complete", "label": "Erledigen", "allowed": can_edit})
-    title = {"contract": "Vertragsunterlagen: ", "service_contract": "Kündigungsfrist: ", "meter": "Zählerprüfung: ",
+    title = {"contract": "Vertragsunterlagen: ", "contract_end": "Mietwechsel: ", "service_contract": "Kündigungsfrist: ", "meter": "Zählerprüfung: ",
              "meter_reading": "Ablesungen zur Abrechnung prüfen: ", "tenant_change": "Übergabe abschließen: "}.get(kind, "") + context["title"]
     reason = work_reason(store, kind, row)
-    return {"work_item_key": f"{kind}:{row.id}:{reason}", "kind": kind, "entity_id": row.id,
+    item = {"work_item_key": f"{kind}:{row.id}:{reason}", "kind": kind, "entity_id": row.id,
             "entity_type": context["kind"], "reason": reason, "title": title,
             "subtitle": reading_details(store, row) if kind == "meter_reading" else getattr(row, "description", None) or "", "href": context["href"],
             "due_date": due.isoformat() if due else None, "priority": getattr(row, "priority", "medium"),
-            "status": getattr(row, "status", "open"), "property_id": context["property_id"],
+            "status": getattr(row, "status", getattr(row, "state", "open")), "property_id": context["property_id"],
             "assignee": getattr(row, "assignee", None), "revision": context["revision"], "can_edit": can_edit, "actions": actions}
+    from .workflow_guidance import enrich
+    return enrich(store, kind, row, user, item)
 
 
 def source_rows(store: Any, kind: str, *, property_id: str | None = None, due_before: date | None = None,
@@ -386,19 +439,29 @@ def source_rows(store: Any, kind: str, *, property_id: str | None = None, due_be
     if hasattr(store, "db"):
         due = func.coalesce(due_column(kind), date.max)
         query = select(orm).where(source_predicate(kind, store), deferral_predicate(kind, actor_id, deferred))
+        if kind == "e_invoice":
+            query = query.options(defer(EInvoiceIntakeORM.original), defer(EInvoiceIntakeORM.xml))
         if property_id:
             query = query.where(property_predicate(kind, property_id))
-        if kind == "service_contract":
+        if kind in ("service_contract", "contract_end", "invoice"):
             # Calendar-month notice rules are the existing Terms domain, not a
             # guessed SQL duration. Stream only live notice-bearing sources;
             # the selected page has bounded memory and no lifetime truncation.
             def candidates():
                 for row in store.db.scalars(query.execution_options(yield_per=100)):
+                    if kind == "contract_end":
+                        from .workflow_guidance import turnover_state
+                        if turnover_state(store, row)[3]:
+                            continue
+                    if kind == "invoice":
+                        from .workflow_guidance import invoice_pending
+                        if not invoice_pending(store, row):
+                            continue
                     day = _due(kind, row, store)
-                    if day is not None and (due_before is None or day <= due_before) and (
-                            after is None or (day.isoformat(), kind, row.id) > after):
+                    if (day is not None or kind == "invoice") and (due_before is None or day is None or day <= due_before) and (
+                            after is None or ((day or date.max).isoformat(), kind, row.id) > after):
                         yield row
-            return candidates() if limit is None else nsmallest(limit, candidates(), key=lambda row: (_due(kind, row, store), row.id))
+            return candidates() if limit is None else nsmallest(limit, candidates(), key=lambda row: (_due(kind, row, store) or date.max, row.id))
         if due_before:
             query = query.where(or_(due_column(kind).is_(None), due_column(kind) <= due_before))
         if after:
@@ -416,7 +479,18 @@ def source_rows(store: Any, kind: str, *, property_id: str | None = None, due_be
                     yield row
             return dated_rows()
         return store.db.scalars(query)
-    rows = [row for row in getattr(store, collection).values() if _memory_applicable(store, kind, row)
+    available = _collection(store, kind).values()
+    if kind == "e_invoice":
+        accessible = []
+        for candidate in available:
+            try:
+                _context(store, kind, candidate.id, actor_id)
+                accessible.append(candidate)
+            except (NotFoundError, HTTPException) as error:
+                if isinstance(error, HTTPException) and error.status_code != 404:
+                    raise
+        available = accessible
+    rows = [row for row in available if _memory_applicable(store, kind, row)
             and (not property_id or _memory_property(store, kind, row, property_id))
             and (not due_before or _due(kind, row, store) is None or (_due(kind, row, store) or date.min) <= due_before)]
     rows.sort(key=lambda row: ((_due(kind, row, store) or date.max).isoformat(), kind, row.id))
@@ -467,7 +541,7 @@ def counts(store: Any, actor_id: str, *, property_id: str | None = None,
         resolve_context(store, "property", property_id, actor_id)
     result = {}
     for kind, (orm, _collection, _reason, _area) in SOURCES.items():
-        if kind == "service_contract":
+        if kind in ("service_contract", "contract_end", "invoice"):
             result[kind] = sum(1 for _ in source_rows(store, kind, property_id=property_id, due_before=due_before,
                                                      actor_id=actor_id, deferred=deferred))
             continue

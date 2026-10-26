@@ -174,6 +174,9 @@ class Settings(BaseSettings):
     # --- Scheduled jobs ---
     # Every process ticks; durable runs and leases keep one worker per job.
     job_scheduler_enabled: bool = True
+    # Explicit, hash-verified local bundle; no download or ambient Java at runtime.
+    e_invoice_bundle: str = ""
+    e_invoice_timeout_seconds: int = Field(default=90, ge=5, le=180)
     job_scheduler_interval_seconds: float = 60.0
     # "latest": only the newest missed occurrence of a series becomes a task; "all": every one
     recurring_catch_up: Literal["latest", "all"] = "latest"

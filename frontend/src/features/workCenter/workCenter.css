@@ -59,3 +59,6 @@ tr:hover .work-inline > .btn-ghost,
 
 .work-summary-metric span, .work-summary-metric small { overflow-wrap: normal; word-break: normal; hyphens: auto; }
 .work-center h1 { overflow-wrap: anywhere; hyphens: auto; font-size: clamp(1.3rem, 1rem + 1vw, 2rem); }
+.work-guidance { padding: .65rem .8rem; border-left: 3px solid var(--color-border); overflow-wrap: anywhere; }
+.work-guidance p { margin: .3rem 0; }
+.work-flow-steps { display: flex; flex-wrap: wrap; gap: .4rem 2rem; padding-left: 1.3rem; }

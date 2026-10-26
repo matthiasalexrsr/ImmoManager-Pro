@@ -51,7 +51,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 13: the retention class chosen on a document (likewise)
 # 14: a tenant's direct debit account and mandate date (likewise)
 # 15: owners' shares of properties and units, their changes and the owner a booking belongs to (likewise)
-SNAPSHOT_FORMAT_VERSION = 15
+# 16: explicitly disclosed invoice payable rounding (never folded into VAT)
+SNAPSHOT_FORMAT_VERSION = 16
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}
@@ -82,7 +83,9 @@ def _require_full_bank_backup(store: Any) -> None:
 
 def _require_full_private_backup(store: Any) -> None:
     """A partial business snapshot cannot replace private workflow evidence."""
-    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_')
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_')
+    payment_evidence = frozenset({'payment_recipient_versions', 'payment_authorizations', 'payment_security_settings',
+                                  'payment_totp_uses', 'payment_security_events', 'payment_totp_attempts'})
     if hasattr(store, 'db'):
         from sqlalchemy import inspect
 
@@ -90,11 +93,11 @@ def _require_full_private_backup(store: Any) -> None:
 
         existing = set(inspect(store.db.connection()).get_table_names())
         tables = [table for name, table in Base.metadata.tables.items()
-                  if name in existing and name.startswith(prefixes)]
+                  if name in existing and (name.startswith(prefixes) or name in payment_evidence)]
         present = any(store.db.scalar(select(1).select_from(table).limit(1)) is not None for table in tables)
     else:
         families = store.__dict__.get('_integration_connections', {})
-        present = any(rows for name, rows in families.items() if name.startswith(prefixes))
+        present = any(rows for name, rows in families.items() if name.startswith(prefixes) or name in payment_evidence)
     if present:
         raise SnapshotError(['Dieser Bestand enthält geschützte Schnittstellen-, Kommunikations- oder Dokumentnachweise. '
                              'Bitte die vollständige Sicherung mit Datenbank, Originaldateien und Schlüsselring verwenden; '

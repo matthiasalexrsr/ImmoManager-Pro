@@ -55,6 +55,7 @@ class InvoiceReview(BaseModel):
     arithmetic_at: Optional[UtcDateTime] = None
     checklist: dict[str, Any] = Field(default_factory=dict)
     vat_lines: list[dict[str, Any]] = Field(default_factory=list)
+    rounding_amount: float = 0.0
     skonto_percent: Optional[float] = None
     skonto_days: Optional[int] = None
     skonto_until: Optional[date] = None
@@ -129,6 +130,9 @@ class VatLineInput(_Request):
     rate: float = Field(ge=0, le=100)
     net: float
     vat: float
+    category: str = Field(default="S", min_length=1, max_length=8)
+    exemption_reason: str = Field(default="", max_length=2000)
+    exemption_code: str = Field(default="", max_length=100)
 
     @field_validator("net", "vat")
     @classmethod
@@ -181,6 +185,7 @@ class _ReceiptFields(_Request):
     skonto_days: Optional[int] = Field(default=None, ge=0, le=365)
     payment_days: Optional[int] = Field(default=None, ge=0, le=365)
     vat_lines: Optional[list[VatLineInput]] = Field(default=None, max_length=10)
+    rounding_amount: float = Field(default=0.0, ge=-1, le=1)
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     cost_category: Optional[str] = Field(default=None, max_length=100)

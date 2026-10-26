@@ -27,6 +27,22 @@ def purge_originals(store) -> None:
             install_guards(connection)
 
 
+def purge_payment_evidence(store) -> None:
+    """Only for owned test stores; production commands retain bank decisions."""
+    from sqlalchemy import delete
+
+    from backend.db.orm_models import Base
+    tables = [table for table in reversed(Base.metadata.sorted_tables) if table.name.startswith("payment_")]
+    if hasattr(store, "db"):
+        for table in tables:
+            store.db.execute(delete(table))
+        store.db.commit()
+    else:
+        families = store.__dict__.get("_integration_connections", {})
+        for table in tables:
+            families.pop(table.name, None)
+
+
 def drop_guards(connection) -> None:
     for table in ARCHIVE_TABLES:
         if connection.dialect.name == "sqlite":

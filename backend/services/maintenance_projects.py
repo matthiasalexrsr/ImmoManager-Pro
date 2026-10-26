@@ -185,6 +185,22 @@ def _blockers(rows: Rows, case_id: str, target: str) -> list[str]:
     target = LEGACY_STATUSES.get(target, target)
     found = []
     if target == "completed":
+        completed_orders = rows.find("maintenance_orders", case_id=case_id, status="completed")
+        protocols = rows.find("maintenance_protocols", case_id=case_id, status="final")
+        invoice_links = rows.find("maintenance_order_invoices", case_id=case_id)
+        for order in completed_orders:
+            if not any(protocol.finalized_at and protocol.protocol_type == "acceptance" and
+                       protocol.order_id in (None, order.id) for protocol in protocols):
+                found.append(f"Für Auftrag {_q(order.order_number or order.supplier_name)} fehlt der abgeschlossene Abnahmenachweis.")
+            links = [link for link in invoice_links if link.order_id == order.id]
+            if money(order.gross_amount) > ZERO and not links:
+                found.append(f"Für Auftrag {_q(order.order_number or order.supplier_name)} fehlt die zugeordnete Rechnung.")
+        for link in invoice_links:
+            reviews = rows.find("invoice_reviews", invoice_id=link.invoice_id)
+            if not reviews or reviews[0].status not in ("approved", "partially_approved", "rejected"):
+                found.append("Eine zugeordnete Rechnung ist noch nicht abschließend geprüft.")
+            elif reviews[0].dispute_status == "open":
+                found.append("Zu einer zugeordneten Rechnung besteht noch ein offener Widerspruch.")
         open_packages = [wp.title for wp in rows.find("maintenance_work_packages", case_id=case_id)
                          if wp.status not in RESOLVED]
         if open_packages:
@@ -215,6 +231,9 @@ def _change_status(p: Project, new: str, reason: str | None, *, workflow: bool) 
     old = p.case.status
     if old == new:
         return
+    old_effective, new_effective = LEGACY_STATUSES.get(old, old), LEGACY_STATUSES.get(new, new)
+    if not workflow and (old_effective in ("completed", "cancelled") or new_effective in ("completed", "cancelled")):
+        raise conflict("Abschluss, Abbruch und Wiederaufnahme bitte über den dokumentierten Statuswechsel ausführen.")
     if workflow:
         allowed = TRANSITIONS.get(old)
         if allowed is not None and new not in allowed:
@@ -225,6 +244,11 @@ def _change_status(p: Project, new: str, reason: str | None, *, workflow: bool) 
     blockers = _blockers(p.rows, p.id, new)
     if blockers:
         raise conflict(f"{_q(STATUS_LABELS.get(new, new))} ist noch nicht möglich: {' '.join(blockers)}")
+    if new_effective == "completed" and not p.rows.find("maintenance_protocols", case_id=p.id, status="final"):
+        if not workflow:
+            raise conflict("Den Abschluss bitte mit einer Begründung über den Statuswechsel dokumentieren.")
+        if not reason or len(reason.strip()) < 10:
+            raise HTTPException(422, "Ein Abschluss ohne finales Protokoll benötigt eine nachvollziehbare Begründung (mindestens 10 Zeichen).")
     _record_status(p.rows, p.id, old, new, p.actor_id, reason)
 
 
@@ -272,6 +296,8 @@ def create_case(store: Any, payload: Any, actor_id: str | None) -> Any:
     from ..models import MaintenanceCase
 
     with work(store, actor_id, ("/maintenance",)) as unit:
+        if LEGACY_STATUSES.get(payload.status, payload.status) in ("completed", "cancelled"):
+            raise HTTPException(422, "Eine neue Akte beginnt offen oder in Bearbeitung. Abschluss und Abbruch werden anschließend dokumentiert.")
         _check_case_values(payload)
         _check_location(unit, payload.property_id, payload.unit_id)
         now = datetime.now(timezone.utc)
@@ -1459,7 +1485,7 @@ def read_project(store: Any, case_id: str, actor: dict | None) -> dict:
         return users[user_id]
 
     status = case.status
-    allowed = [{"status": target, "reason_required": target == "cancelled" or status in ("completed", "cancelled"),
+    allowed = [{"status": target, "reason_required": target in ("completed", "cancelled") or status in ("completed", "cancelled"),
                 "blockers": _blockers(rows, case_id, target)}
                for target in TRANSITIONS.get(status, CASE_STATUSES) if target != status]
     today = local_today()

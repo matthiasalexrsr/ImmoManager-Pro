@@ -20,7 +20,7 @@ import './workCenter.css';
 
 const LABELS = { task: 'Aufgaben', maintenance: 'Instandhaltung', invoice: 'Rechnungen',
   document: 'Dokumente', receivable: 'Forderungen', dunning: 'Mahnvorgänge', contract: 'Fehlende Vertragsunterlagen',
-  service_contract: 'Kündigungsfristen', meter: 'Zählerprüfungen', meter_reading: 'Fehlende Ablesungen im Abrechnungszeitraum', tenant_change: 'Offene Mieterwechsel' };
+  service_contract: 'Kündigungsfristen', meter: 'Zählerprüfungen', meter_reading: 'Fehlende Ablesungen im Abrechnungszeitraum', tenant_change: 'Offene Übergaben', contract_end: 'Mietwechsel', e_invoice: 'E-Rechnungseingänge' };
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 
 export default function WorkCenter() {
@@ -89,9 +89,19 @@ export default function WorkCenter() {
       <ul className="work-item-list">{feed.items.map(item => <li className="work-item" key={item.work_item_key}>
         <div className="work-item-heading"><h3><Link to={item.href}>{item.title}</Link></h3><span className="work-item-context">{LABELS[item.kind] || item.kind}</span></div>
         {item.subtitle && <p>{item.subtitle}</p>}
+        {item.workflow && <div className="work-guidance">
+          <p><strong>Nächster Schritt: </strong>{item.workflow.next_action.label}</p>
+          {!item.workflow.next_action.allowed && item.workflow.next_action.reason && <p>{item.workflow.next_action.reason}</p>}
+          {item.workflow.assignee && <p>Zuständig: {item.workflow.assignee}</p>}
+          {item.workflow.waiting_for && <p>Wartet auf: {item.workflow.waiting_for}</p>}
+          {!!item.workflow.blockers.length && <details><summary>Offene Voraussetzungen ({item.workflow.blockers.length})</summary><ul>{item.workflow.blockers.map((text, index) => <li key={index}>{text}</li>)}</ul></details>}
+          {item.workflow.steps && <ol className="work-flow-steps">{item.workflow.steps.map(step => <li key={step.id}><Link to={step.href}>{step.label}</Link> · {step.done ? 'nachgewiesen' : 'offen'}</li>)}</ol>}
+          <p className="work-item-context">Fristgrundlage: {item.workflow.deadline_basis}</p>
+          {item.workflow.escalation.status === 'overdue' && <p>Bearbeitungsfrist seit {item.workflow.escalation.days_overdue} Tagen überschritten.</p>}
+        </div>}
         {item.kind === 'task' && item.assignee && <p className="work-item-context">Zuständig: {item.assignee}</p>}
         <p className="work-item-context">{item.due_date ? `Fällig: ${formatDate(item.due_date)}` : 'Ohne Fälligkeitsdatum'}{item.deferred_until && ` · Persönlich zurückgestellt bis ${formatDate(item.deferred_until)}`}</p>
-        <div className="work-item-actions"><Link className="btn btn-sm btn-primary" to={item.href}>Vorgang öffnen</Link>
+        <div className="work-item-actions"><Link className="btn btn-sm btn-primary" to={item.href}>{item.workflow?.next_action?.allowed && item.workflow.next_action.href === item.href ? item.workflow.next_action.label : 'Vorgang öffnen'}</Link>
           {(item.actions || []).filter(action => action.allowed && action.href && action.href !== item.href).map(action => <Link className="btn btn-sm btn-secondary" key={action.id} to={action.href}>{action.label}</Link>)}
           {(item.actions || []).some(action => action.id === 'note' && action.allowed) && <button type="button" className="btn btn-sm btn-secondary"
             onClick={() => setConversation(item)}>Gespräch / Wiedervorlage</button>}

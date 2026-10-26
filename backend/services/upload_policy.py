@@ -27,7 +27,7 @@ DOCUMENT_EXTENSIONS = IMAGE_EXTENSIONS | frozenset(
 # Generated originals (Wohnungsgeberbestätigung, Übergabe- and maintenance protocols, dunning letters) are served
 # from the verified archive, never from a file on disk that happens to have the same name.
 ARCHIVED_PREFIXES = ("housing-confirmations/", "handover-protocols/", "maintenance-protocols/", "dunning-letters/",
-                     "deposit-settlements/", "billing-letters/", "template-letters/", "teha/")
+                     "deposit-settlements/", "billing-letters/", "template-letters/", "teha/", "e-invoices/")
 # Browsers render these inline without executing script.
 INLINE_SAFE_EXTENSIONS = frozenset({"pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp"})
 

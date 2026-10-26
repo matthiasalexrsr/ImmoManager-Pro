@@ -6,7 +6,7 @@ import './workCenter.css';
 
 const LABELS = { task: 'Offene Aufgaben', maintenance: 'Offene Instandhaltung', invoice: 'Offene Rechnungen',
   receivable: 'Offene Forderungen', document: 'Dokumenteneingang', dunning: 'Mahnvorgänge', contract: 'Fehlende Vertragsunterlagen',
-  service_contract: 'Kündigungsfristen', meter: 'Zählerprüfungen', meter_reading: 'Fehlende Ablesungen im Abrechnungszeitraum', tenant_change: 'Offene Mieterwechsel' };
+  service_contract: 'Kündigungsfristen', meter: 'Zählerprüfungen', meter_reading: 'Fehlende Ablesungen im Abrechnungszeitraum', tenant_change: 'Offene Übergaben', contract_end: 'Mietwechsel', e_invoice: 'E-Rechnungseingänge' };
 export default function WorkSummary({ query = '', revision = 0 }) {
   return <Summary key={`${query}:${revision}`} query={query} />;
 }

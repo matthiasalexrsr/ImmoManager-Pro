@@ -179,7 +179,7 @@ def test_closed_project_appointment_cannot_bypass_workflow_through_calendar(owne
     case = _case(owner, estate)
     appointment = _ok(owner.post(f"{API}/maintenance/{case['id']}/appointments", json={
         "title": "Abnahme", "event_date": "2026-11-03", "kind": "acceptance"}), 201)
-    _ok(owner.post(f"{API}/maintenance/{case['id']}/transition", json={"status": "completed"}))
+    _ok(owner.post(f"{API}/maintenance/{case['id']}/transition", json={"status": "completed", "reason": "Termin abgeschlossen, keine weiteren Arbeiten erforderlich."}))
     url = f"{API}/calendar/{appointment['calendar_event_id']}"
     before = _ok(owner.get(url))
     for response in (owner.patch(url, json={"title": "Umgangen"}), owner.delete(url)):
@@ -510,7 +510,7 @@ def test_status_workflow_with_gates_and_history(owner, estate):
     assert owner.patch(f"{base}", json={"status": "completed"}).status_code == 409
     assert owner.post(f"{base}/transition", json={"status": "cancelled"}).status_code == 422     # reason needed
     _ok(owner.patch(f"{base}/work-packages/{a['id']}", json={"status": "done"}))
-    _ok(owner.post(f"{base}/transition", json={"status": "completed"}))
+    _ok(owner.post(f"{base}/transition", json={"status": "completed", "reason": "Arbeitspaket abgeschlossen, keine externen Aufträge angefallen."}))
     assert owner.post(f"{base}/transition", json={"status": "open"}).status_code == 409       # not a path
     assert owner.post(f"{base}/work-packages", json={"title": "Später"}).status_code == 409    # closed file
     _ok(owner.post(f"{base}/transition", json={"status": "in_progress", "reason": "Nacharbeit"}))
@@ -524,8 +524,11 @@ def test_existing_maintenance_api_stays_compatible(owner, estate):
     created = _case(owner, estate, priority="high", estimated_cost=250.5, contractor="Firma Alt")
     base = f"{API}/maintenance/{created['id']}"
     assert set(created) >= {"id", "property_id", "title", "status", "estimated_cost", "contractor", "appointment_at"}
-    updated = _ok(owner.put(base, json={"property_id": estate["property"].id, "title": "Neu", "status": "done"}))
-    assert (updated["title"], updated["status"], updated["contractor"]) == ("Neu", "done", None)
+    updated = _ok(owner.put(base, json={"property_id": estate["property"].id, "title": "Neu", "status": "in_progress"}))
+    assert (updated["title"], updated["status"], updated["contractor"]) == ("Neu", "in_progress", None)
+    assert owner.patch(base, json={"status": "done"}).status_code == 409
+    _ok(owner.post(base + "/transition", json={"status": "completed", "reason": "Ohne Fremdauftrag erledigt und Ergebnis dokumentiert."}))
+    _ok(owner.post(base + "/transition", json={"status": "in_progress", "reason": "Neue Nacharbeit dokumentiert."}))
     patched = _ok(owner.patch(base, json={"status": "in_progress", "assignee": "Hausmeister"}))
     assert (patched["status"], patched["assignee"], patched["title"]) == ("in_progress", "Hausmeister", "Neu")
     assert owner.put(base, json={"property_id": "missing", "title": "X"}).status_code == 400
@@ -533,7 +536,7 @@ def test_existing_maintenance_api_stays_compatible(owner, estate):
                                                           "title": "X"}).status_code == 404
     listed = _ok(owner.get(f"{API}/maintenance?property_id={estate['property'].id}"))
     assert [row["id"] for row in listed] == [created["id"]]
-    assert [h["new_value"] for h in _project(owner, created["id"])["history"]] == ["in_progress", "done", "open"]
+    assert [h["new_value"] for h in _project(owner, created["id"])["history"]] == ["in_progress", "completed", "in_progress", "open"]
     appointment = _ok(owner.post(f"{base}/appointments", json={"title": "Begehung", "event_date": "2026-06-01",
                                                                 "event_time": "09:30", "kind": "inspection"}), 201)
     events = _ok(owner.get(f"{API}/calendar?property_id={estate['property'].id}"))

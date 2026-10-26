@@ -40,6 +40,7 @@ export function Summary({ view }) {
         <Fact label={tx.net}>{formatMoney(invoice.net_amount)}</Fact>
         <Fact label={tx.vat}>{formatMoney(invoice.vat_amount)}</Fact>
         <Fact label={tx.gross}>{formatMoney(invoice.gross_amount)}</Fact>
+        {!!review?.rounding_amount && <Fact label="Ausgewiesene Rundung">{formatMoney(review.rounding_amount)}</Fact>}
         {review && <Fact label={tx.receivedOn}>{formatDate(review.received_on)}</Fact>}
         <Fact label={tx.dueOn}>{s.due_on ? formatDate(s.due_on) : null}</Fact>
         {s.skonto_until && <Fact label={tx.skontoUntil}>{formatDate(s.skonto_until)} ({s.skonto_amount > 0
@@ -189,8 +190,9 @@ export function Checks({ view, onChanged }) {
       <Section id="ir-arithmetic" title={tx.arithmetic}>
         <table className="ir-vat">
           <caption className="sr-only">{tx.vatLines}</caption>
-          <thead><tr><th scope="col">{tx.vatRate}</th><th scope="col">{tx.net}</th><th scope="col">{tx.vat}</th></tr></thead>
-          <tbody>{lines.map(line => <tr key={line.rate}><td>{line.rate} %</td><td>{formatMoney(line.net)}</td>
+          <thead><tr><th scope="col">Steuergruppe</th><th scope="col">{tx.vatRate}</th><th scope="col">{tx.net}</th><th scope="col">{tx.vat}</th></tr></thead>
+          <tbody>{lines.map((line, index) => <tr key={`${line.category || 'S'}-${line.rate}-${index}`}>
+            <td>{line.category || 'S'}{(line.exemption_reason || line.exemption_code) && <p>{line.exemption_reason || line.exemption_code}</p>}</td><td>{line.rate} %</td><td>{formatMoney(line.net)}</td>
             <td>{formatMoney(line.vat)}</td></tr>)}</tbody>
         </table>
         <CheckResult result={review?.arithmetic_result} by={review?.arithmetic_by_name} />

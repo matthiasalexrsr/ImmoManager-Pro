@@ -25,7 +25,8 @@ def private_environment(profile: Path) -> dict[str, str]:
 
 
 class CliProcess:
-    def __init__(self, argv: list[str], profile: Path, *, env: dict[str, str] | None = None):
+    def __init__(self, argv: list[str], profile: Path, *, env: dict[str, str] | None = None,
+                 memory_limit_bytes: int | None = None):
         self.lines: queue.Queue[tuple[str, str]] = queue.Queue(maxsize=128)
         self.job = None
         self._closed = False
@@ -40,7 +41,8 @@ class CliProcess:
                                         creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) | (0x4 if os.name == 'nt' else 0)))
         if os.name == "nt":
             try:
-                self.job = _windows_job(self.process)
+                self.job = (_windows_job(self.process, memory_limit_bytes=memory_limit_bytes)
+                            if memory_limit_bytes is not None else _windows_job(self.process))
             except BaseException:
                 self.process.kill()
                 self.process.wait(timeout=5)
@@ -162,7 +164,7 @@ class CliProcess:
         self.close()
 
 
-def _windows_job(process):
+def _windows_job(process, *, memory_limit_bytes: int | None = None):
     import ctypes
     from ctypes import wintypes
 
@@ -188,6 +190,13 @@ def _windows_job(process):
         raise getattr(ctypes, 'WinError')(getattr(ctypes, 'get_last_error')())
     limits = Extended()
     limits.Basic.Flags = 0x2000  # KILL_ON_JOB_CLOSE
+    if memory_limit_bytes is not None:
+        limits.Basic.Flags |= 0x100 | 0x200 | 0x8  # PROCESS_MEMORY, JOB_MEMORY and ACTIVE_PROCESS
+        limits.ProcessMemory = memory_limit_bytes
+        limits.JobMemory = memory_limit_bytes
+        # Windows virtual-environment python.exe is a redirector that starts
+        # the interpreter. The aggregate job budget still covers both processes.
+        limits.Basic.ActiveProcesses = 2
     if not kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)) or not kernel.AssignProcessToJobObject(job, wintypes.HANDLE(process._handle)):
         kernel.CloseHandle(job)
         raise getattr(ctypes, 'WinError')(getattr(ctypes, 'get_last_error')())

@@ -29,6 +29,7 @@ are never changed by reading them.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import nullcontext
@@ -398,7 +399,7 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
             now = stamp("invoices")
             invoice = Invoice.model_validate({   # the UI contract fields come in at import time
                 **draft.model_dump(), "id": str(uuid4()), "status": "open",
-                "vat_amount": draft.vat_amount or float(money(draft.gross_amount) - money(draft.net_amount)),
+                "vat_amount": draft.vat_amount or float(money(draft.gross_amount) - money(draft.net_amount) - money(payload.rounding_amount)),
                 "source_document_id": payload.document_id, "created_at": now, "updated_at": now})
             rows.add("invoices", invoice)
         else:
@@ -453,6 +454,7 @@ def start_review(store: Any, invoice_id: str | None, payload: ReceiptRequest, ac
             credit_for_invoice_id=payload.credit_for_invoice_id, received_on=payload.received_on or local_today(),
             document_id=document_id, document_sha256=digest, status="received",
             vat_lines=[line.model_dump() for line in payload.vat_lines or []],
+            rounding_amount=float(money(payload.rounding_amount)),
             skonto_percent=payload.skonto_percent, skonto_days=payload.skonto_days,
             property_id=values.get("property_id"), unit_id=values.get("unit_id"),
             cost_category=payload.cost_category, recoverable=bool(payload.recoverable),
@@ -568,7 +570,8 @@ def _plain(value: Any) -> Any:
 
 def _arithmetic(invoice: Any, review: Any) -> list[dict]:
     return rules.arithmetic_findings(invoice.net_amount, invoice.vat_amount, invoice.gross_amount,
-                                     invoice.vat_rate, review.vat_lines if review is not None else None)
+                                     invoice.vat_rate, review.vat_lines if review is not None else None,
+                                     getattr(review, "rounding_amount", 0))
 
 
 def _checklist(invoice: Any, review: Any, settings: InvoiceReviewSettings, has_period: bool) -> dict:
@@ -578,6 +581,38 @@ def _checklist(invoice: Any, review: Any, settings: InvoiceReviewSettings, has_p
                            has_skonto=bool(review is not None and review.skonto_percent), arithmetic_ok=not errors,
                            has_service_period=has_period, small_limit=settings.small_invoice_limit,
                            manual=review.checklist if review is not None else None)
+
+
+def _check_fingerprint(rows: Rows, invoice: Any, review: Any, kind: str) -> str:
+    """Bind a check to source facts, never to the other check's result or timestamp."""
+    fields = (*FIXED_AFTER_DECISION, "due_date", "source_document_id")
+    receipt = ("kind", "credit_for_invoice_id", "document_id", "document_sha256", "property_id", "unit_id",
+               "change_order_id", "vat_lines", "rounding_amount", "cost_category", "recoverable",
+               "skonto_percent", "skonto_until", "due_on")
+    facts: dict[str, Any] = {"invoice": {key: getattr(invoice, key, None) for key in fields},
+             "receipt": {key: getattr(review, key, None) for key in receipt}}
+    document = rows.get("documents", review.document_id) if review.document_id else None
+    facts["document_sha256"] = _file_digest(document, rows) if document else None
+    if kind == "factual_check":
+        links = _links(rows, invoice.id)
+        facts["assignment"] = _assignment(rows, invoice, review, links)
+        facts["findings"] = _factual_findings(rows, invoice, review, links)
+    else:
+        facts["checklist"] = review.checklist
+    return hashlib.sha256(json.dumps(facts, sort_keys=True, ensure_ascii=False, default=str,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def _stale_checks(rows: Rows, invoice: Any, review: Any, events: list) -> list[str]:
+    stale = []
+    for kind, result, label in (("factual_check", review.factual_result, "sachliche Prüfung"),
+                                ("arithmetic_check", review.arithmetic_result, "rechnerische Prüfung")):
+        if result is None or (kind == "factual_check" and review.kind == "credit_note"):
+            continue
+        event = next((event for event in reversed(events) if event.action == kind), None)
+        if event is None or event.details.get("source_sha256") != _check_fingerprint(rows, invoice, review, kind):
+            stale.append(label)
+    return stale
 
 
 def factual_check(store: Any, invoice_id: str, payload: CheckRequest, actor_id: str | None) -> dict:
@@ -596,6 +631,7 @@ def factual_check(store: Any, invoice_id: str, payload: CheckRequest, actor_id: 
                  factual_at=stamp("invoice_reviews"))
         r.event("factual_check", status_after=r.review.status, reason=payload.note, details={
             "result": payload.result, "assignment": _assignment(r.rows, r.invoice, r.review, links)["kind"],
+            "source_sha256": _check_fingerprint(r.rows, r.invoice, r.review, "factual_check"),
             "findings": [f["code"] for f in findings]})
         return _dump(r.review) or {}
 
@@ -617,6 +653,7 @@ def arithmetic_check(store: Any, invoice_id: str, payload: CheckRequest, actor_i
                  arithmetic_at=stamp("invoice_reviews"))
         r.event("arithmetic_check", status_after=r.review.status, reason=payload.note, details={
             "result": payload.result, "findings": [f["code"] for f in findings], "missing": listing["missing"],
+            "source_sha256": _check_fingerprint(r.rows, r.invoice, r.review, "arithmetic_check"),
             "checked": {"net": as_number(money(r.invoice.net_amount)), "vat": as_number(money(r.invoice.vat_amount)),
                         "gross": as_number(money(r.invoice.gross_amount))}})
         return _dump(r.review) or {}
@@ -656,6 +693,10 @@ def decide(store: Any, invoice_id: str, payload: DecisionRequest, actor_id: str 
                 missing.append("rechnerische Prüfung")
             if missing:
                 raise conflict(f"Vor der Freigabe fehlt: {', '.join(missing)}.")
+            events = sorted(r.rows.find("invoice_review_events", invoice_id=invoice_id), key=lambda event: event.seq)
+            stale = _stale_checks(r.rows, r.invoice, r.review, events)
+            if stale:
+                raise conflict(f"Der geprüfte Stand wurde geändert oder ist nicht vollständig belegt. Erneut nötig: {', '.join(stale)}.")
             objected = "objected" in (r.review.factual_result, r.review.arithmetic_result)
             if payload.decision == "approve" and objected:
                 raise conflict("Eine Prüfung hat Beanstandungen; freigeben lässt sich nur ein Teilbetrag (mit "
@@ -952,18 +993,15 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
     factual = _factual_findings(rows, invoice, review, links)
     duplicates = find_duplicates(rows, store, _invoice_facts(invoice), settings.duplicate_window_days)
     events = sorted(rows.find("invoice_review_events", invoice_id=invoice_id), key=lambda e: e.seq)
-    checked: dict | None = next((e.details.get("checked") for e in reversed(events)
-                                 if e.action == "arithmetic_check"), None)
-    changed_after_check = checked is not None and (
-        money(checked["gross"]) != money(invoice.gross_amount) or money(checked["net"]) != money(invoice.net_amount))
+    stale = _stale_checks(rows, invoice, review, events) if review is not None and review.status in PENDING else []
     findings = [*arithmetic, *rules.checklist_findings(listing), *factual, *settlement.findings]
     if duplicates:
         findings.append(rules.finding("possible_duplicate", "warning",
                                       f"{len(duplicates)} mögliche Dublette(n) desselben Lieferanten.",
                                       count=len(duplicates)))
-    if changed_after_check:
+    if stale:
         findings.append(rules.finding("changed_after_check", "error",
-                                      "Die Beträge der Rechnung wurden nach der rechnerischen Prüfung geändert."))
+                                      f"Der geprüfte Stand ist nicht mehr aktuell. Erneut nötig: {', '.join(stale)}."))
     document = None
     document_id = review.document_id if review is not None else invoice.source_document_id
     if document_id:
@@ -990,8 +1028,10 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
                                                           ("factual_by", "arithmetic_by", "decided_by",
                                                            "dispute_resolved_by", "created_by"))])
     role = (actor or {}).get("role")
+    from .e_invoice.service import invoice_context
     return {
         "invoice": _dump(invoice),
+        "structured_intake": invoice_context(store, invoice_id),
         "review": None if review is None else {
             **(_dump(review) or {}), "factual_by_name": names.get(review.factual_by or ""),
             "arithmetic_by_name": names.get(review.arithmetic_by or ""),
@@ -1001,7 +1041,8 @@ def review_view(store: Any, invoice_id: str, actor: dict | None, today: date | N
         "kind": review.kind if review is not None else "invoice",
         "document": document,
         "assignment": _assignment(rows, invoice, review, links),
-        "arithmetic": {"lines": [{"rate": float(line.rate), "net": as_number(line.net), "vat": as_number(line.vat)}
+        "arithmetic": {"lines": [{"rate": float(line.rate), "net": as_number(line.net), "vat": as_number(line.vat),
+                                  "category": line.category, "exemption_reason": line.exemption_reason, "exemption_code": line.exemption_code}
                                  for line in rules.invoice_lines(invoice.net_amount, invoice.vat_amount,
                                                                  invoice.gross_amount, invoice.vat_rate,
                                                                  review.vat_lines if review is not None else None)],
@@ -1211,8 +1252,19 @@ def payment_proposals(store: Any, *, until: date | None = None, today: date | No
             "pay_by": pay_by.isoformat() if pay_by else None, "overdue": settlement.overdue,
             "dispute_open": as_number(settlement.dispute_open)})
     items.sort(key=lambda item: (item["pay_by"] or "9999-12-31", item["invoice_id"]))
+    from .payment_security import proposal_gate
+    candidates, items, blocked = items, [], []
+    for item in candidates:
+        gate = proposal_gate(store, item["invoice_id"], today=today)
+        if not gate["authorized"]:
+            blocked.append({**item, "blockers": gate["blockers"], "revision": gate["revision"]})
+            continue
+        recipient = gate["recipient"]
+        items.append({**item, "recipient": {key: recipient[key] for key in ("name", "iban", "bic", "number")},
+                      "authorization_id": gate["authorization"]["id"], "revision": gate["revision"]})
     total_amount = sum((money(item["proposed_amount"]) for item in items), ZERO)
     return {"items": items[skip:skip + limit], "total": len(items), "skip": skip, "limit": limit,
+            "blocked": blocked[skip:skip + limit], "blocked_total": len(blocked), "blocked_has_more": skip + limit < len(blocked),
             "has_more": skip + limit < len(items), "total_amount": as_number(total_amount),
             "note": "Vorschlag; es wird keine Zahlungsdatei erzeugt und nichts an eine Bank übermittelt."}
 

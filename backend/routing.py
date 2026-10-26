@@ -42,6 +42,7 @@ from .routers import (
     document_work,
     documents,
     dunning,
+    e_invoice_intakes,
     escalation,
     files,
     finance_reports,
@@ -64,6 +65,7 @@ from .routers import (
     notifications,
     operations,
     ownership,
+    payment_security,
     photos,
     portfolios,
     properties,
@@ -130,6 +132,8 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(maintenance_projects.router, dependencies=_auth_dep)
     api_v1.include_router(maintenance_projects.payments_router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.router, dependencies=_auth_dep)
+    api_v1.include_router(e_invoice_intakes.router, dependencies=_auth_dep)
+    api_v1.include_router(payment_security.router, dependencies=_auth_dep)
     api_v1.include_router(invoice_review.invoice_router, dependencies=_auth_dep)
     api_v1.include_router(documents.router, dependencies=_auth_dep)
     api_v1.include_router(document_work.router, dependencies=_auth_dep)

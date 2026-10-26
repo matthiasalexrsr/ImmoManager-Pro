@@ -15,6 +15,14 @@ vi.mock('../features/deposits/DepositsDialog', () => ({ default: ({ contractId }
 
 import Deposits from '../pages/Deposits';
 
+it('filters deposit records by the contract linked from the work center', async () => {
+  const files = vi.fn(async () => ({ items: [], total: 0, stages: {}, totals: { count: 0, amount: 0, received: 0, retained: 0 } }));
+  render(<MemoryRouter initialEntries={['/deposits?contract_id=c-1']}><Deposits service={{ files }} /></MemoryRouter>);
+  await waitFor(() => expect(files).toHaveBeenCalledWith(expect.objectContaining({ contract_id: 'c-1' }), expect.anything()));
+  fireEvent.click(screen.getByRole('button', { name: 'Alle Kautionsakten anzeigen' }));
+  await waitFor(() => expect(files.mock.calls.at(-1)[0].contract_id).toBeUndefined());
+});
+
 const row = index => ({ id: `d-${index}`, contract_id: 'c-1', contract_number: `V-${index}`, tenant_id: 't-1',
   tenant_name: `Mieter ${index}`, property_name: 'Bautzner Straße 61', unit_label: 'WE 3', form: 'transfer', amount: 1500,
   received: 1500, retention: index === 1 ? 300 : 0, stage: index === 1 ? 'retained' : 'received', contract_end: null });

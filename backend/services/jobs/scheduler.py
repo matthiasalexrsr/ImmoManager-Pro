@@ -120,9 +120,11 @@ def probe_handler(ctx: JobContext) -> bool:
 def default_handlers() -> dict:
     from ..assistant_runner import KIND as ASSISTANT_KIND
     from ..assistant_runner import handler as assistant_handler
+    from ..e_invoice.jobs import KIND as E_INVOICE_KIND
+    from ..e_invoice.jobs import handler as e_invoice_handler
     from .communication import KIND as COMMUNICATION_KIND
     from .communication import handler as communication_handler
-    return {ASSISTANT_KIND: assistant_handler, COMMUNICATION_KIND: communication_handler, RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
+    return {E_INVOICE_KIND: e_invoice_handler, ASSISTANT_KIND: assistant_handler, COMMUNICATION_KIND: communication_handler, RECURRING_KIND: make_recurring_handler(), ESCALATION_KIND: escalation_handler,
             SERVICE_CONTRACT_KIND: make_service_contract_handler(), DOCUMENT_EXPIRY_KIND: make_document_expiry_handler(),
             DOCUMENT_TEXT_KIND: make_document_text_handler(),
             BACKUP_KIND: backup_handler, PROBE_KIND: probe_handler}
@@ -194,6 +196,8 @@ def tick(jobs: JobStore | None = None, runner: JobRunner | None = None,
     recover(jobs)
     from ..assistant_runner import recover as recover_assistant
     recover_assistant(jobs)
+    from ..e_invoice.jobs import recover as recover_e_invoices
+    recover_e_invoices(jobs)
     runner = runner or JobRunner(jobs, default_handlers())
     return runner.run_until_idle()
 

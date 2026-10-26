@@ -99,10 +99,14 @@ class VatLine:
     rate: Decimal
     net: Decimal
     vat: Decimal
+    category: str = "S"
+    exemption_reason: str = ""
+    exemption_code: str = ""
 
     @classmethod
     def of(cls, raw: dict) -> VatLine:
-        return cls(Decimal(str(raw["rate"])), money(raw["net"]), money(raw["vat"]))
+        return cls(Decimal(str(raw["rate"])), money(raw["net"]), money(raw["vat"]),
+                   raw.get("category", "S"), raw.get("exemption_reason", ""), raw.get("exemption_code", ""))
 
 
 def invoice_lines(net: Any, vat_amount: Any, gross: Any, vat_rate: Any, lines: Sequence[dict] | None) -> list[VatLine]:
@@ -116,10 +120,11 @@ def invoice_lines(net: Any, vat_amount: Any, gross: Any, vat_rate: Any, lines: S
 
 
 def arithmetic_findings(net: Any, vat_amount: Any, gross: Any, vat_rate: Any,
-                        lines: Sequence[dict] | None) -> list[dict]:
+                        lines: Sequence[dict] | None, rounding_amount: Any = 0) -> list[dict]:
     net_total, gross_total = money(net), money(gross)
+    rounding = money(rounding_amount)
     found: list[dict] = []
-    breakdown = invoice_lines(net, vat_amount, gross, vat_rate, lines)
+    breakdown = invoice_lines(net, vat_amount, gross_total - rounding, vat_rate, lines)
     if gross_total <= 0 or net_total < 0:
         found.append(finding("non_positive_amount", "error",
                              "Rechnungsbeträge müssen positiv sein (eine Gutschrift wird als Gutschrift erfasst).",
@@ -148,12 +153,15 @@ def arithmetic_findings(net: Any, vat_amount: Any, gross: Any, vat_rate: Any,
                              f"Die Nettobeträge der Steuersätze ergeben {_de_amount(line_net)}, die Rechnung nennt "
                              f"{_de_amount(net_total)}.", expected=line_net, actual=net_total,
                              difference=net_total - line_net))
-    if line_net + line_vat != gross_total:
+    expected_gross = line_net + line_vat + rounding
+    if expected_gross != gross_total:
         found.append(finding("gross_mismatch", "error",
-                             f"Netto + Steuer = {_de_amount(line_net + line_vat)}, die Rechnung nennt brutto "
-                             f"{_de_amount(gross_total)} (Abweichung {_de_amount(gross_total - line_net - line_vat)}).",
-                             expected=line_net + line_vat, actual=gross_total,
-                             difference=gross_total - line_net - line_vat))
+                             f"Netto + Steuer + ausgewiesene Rundung = {_de_amount(expected_gross)}, die Rechnung nennt "
+                             f"{_de_amount(gross_total)} (Abweichung {_de_amount(gross_total - expected_gross)}).",
+                             expected=expected_gross, actual=gross_total,
+                             difference=gross_total - expected_gross))
+    if rounding:
+        found.append(finding("payable_rounding", "info", f"Ausgewiesene Zahlbetragsrundung: {_de_amount(rounding)}.", amount=rounding))
     if not lines and money(vat_amount) == 0 and gross_total != net_total:
         found.append(finding("vat_amount_missing", "info",
                              "Die Rechnung hat keinen Steuerbetrag gespeichert; geprüft wird brutto − netto."))

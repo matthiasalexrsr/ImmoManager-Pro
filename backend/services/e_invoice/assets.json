@@ -1,0 +1,42 @@
+{
+  "format": "immomanager-e-invoice-assets/1",
+  "assets": [
+    {
+      "name": "kosit",
+      "version": "1.6.3",
+      "filename": "validator-1.6.3-standalone.jar",
+      "url": "https://github.com/itplr-kosit/validator/releases/download/v1.6.3/validator-1.6.3-standalone.jar",
+      "sha256": "799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9",
+      "license": "Apache-2.0; included dependencies inventoried separately"
+    },
+    {
+      "name": "xrechnung",
+      "version": "3.0.2-2026-08-31",
+      "filename": "xrechnung-3.0.2-validator-configuration-2026-08-31.zip",
+      "url": "https://github.com/itplr-kosit/validator-configuration-xrechnung/releases/download/v2026-08-31/xrechnung-3.0.2-validator-configuration-2026-08-31.zip",
+      "sha256": "2530cd107c414511c5d0462ec10f886910395abfca820db82e83d70bf01221a8",
+      "license": "Apache-2.0 configuration; CEN and other rule licenses retained separately",
+      "extract": "rules"
+    },
+    {
+      "name": "mustang",
+      "resource_directory": "mustang-resources",
+      "resource_prefixes": ["font/cmap/"],
+      "version": "2.26.0",
+      "filename": "Mustang-CLI-2.26.0.jar",
+      "url": "https://github.com/ZUGFeRD/mustangproject/releases/download/core-2.26.0/Mustang-CLI-2.26.0.jar",
+      "sha256": "42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736",
+      "license": "Apache-2.0; included dependencies inventoried separately"
+    },
+    {
+      "name": "temurin-windows-x64",
+      "version": "21.0.12.1+1",
+      "filename": "OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+      "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636",
+      "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
+      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1",
+      "extract": "runtime"
+    }
+  ]
+}

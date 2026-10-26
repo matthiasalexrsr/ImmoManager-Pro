@@ -374,7 +374,8 @@ export const api = {
     method: 'POST', body: JSON.stringify(data), signal, responseType: 'file',
   }),
   /** multipart upload (FormData) with the same session, refresh and logout handling as JSON */
-  upload: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
+  upload: (path, formData, { signal, idempotencyKey } = {}) => request(path, { method: 'POST', body: formData, signal,
+    ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}) }),
 };
 
 export async function login(username, password, totpCode) {

@@ -71,6 +71,7 @@ class InvoiceReviewORM(Base):
     arithmetic_at: Mapped[datetime | None] = mapped_column(DateTime)
     checklist: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     vat_lines: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    rounding_amount: Mapped[float] = mapped_column(MONEY, nullable=False, default=0.0, server_default="0")
     # payment terms: Skonto and due date, fixed at receipt (the inbox filters on them)
     skonto_percent: Mapped[float | None] = mapped_column(Numeric(5, 2, asdecimal=False))
     skonto_days: Mapped[int | None] = mapped_column(Integer)

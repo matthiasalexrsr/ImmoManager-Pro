@@ -45,7 +45,7 @@ MAINTENANCE_DECISIONS = (r"^/maintenance/[^/]+/quotes/[^/]+/(accept|reject)$",
 MAINTENANCE_INVOICES = (r"^/maintenance/[^/]+/orders/[^/]+/invoices$", r"^/maintenance/[^/]+/invoice-links/[^/]+$")
 # the factual check of an invoice: whether the work was ordered and done
 INVOICE_FACTUAL = (r"^/invoices/[^/]+/review/factual-check$",)
-BOOKKEEPING = ("/bank-imports", "/aktenwerk", "/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
+BOOKKEEPING = ("/e-invoice-intakes", "/bank-imports", "/aktenwerk", "/invoice-review/receipts", "/bookings", "/accounts", "/categories", "/invoices", "/receivables", "/rent-charges", "/deposits",
                "/budgets", "/tax-rates", "/reports", "/billing/cost-items", "/billing/meter-documents", "/escalation/run", "/notifications/generate",
                r"^/contracts/[^/]+/dunning-campaign$", "/dunning", *MAINTENANCE_INVOICES,
                r"^/service-contracts/[^/]+/(invoices|payments|cost-transfers)(/[^/]+)?$")
@@ -55,7 +55,7 @@ TECHNICAL = ("/maintenance", "/meters", "/billing/meter-documents", "/handover-p
 DENIED: dict[str, tuple[str, ...]] = {"techniker": MAINTENANCE_DECISIONS + MAINTENANCE_INVOICES,
                                       "buchhaltung": INVOICE_FACTUAL}
 # /updates/configure decides where updates come from, so it is the owner's like installing them
-OWNER_ONLY = ("/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
+OWNER_ONLY = ("/payment-security/settings", "/admin/restore", "/admin/import", "/data/import", "/admin/bulk-delete", "/updates/apply",
               "/updates/restart", "/updates/configure", "/admin/operations/second-target", "/admin/operations/plugins")
 
 WRITE_AREAS: dict[str, tuple[str, ...] | None] = {
