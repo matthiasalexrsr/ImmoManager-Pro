@@ -12,7 +12,7 @@ from ..integrations import connection_storage as db
 from ..maintenance_rows import Rows
 from ..portfolio_scope import scope_context, scope_from_user
 from ..private_dependencies import ensure_unbound
-from .storage import control, key, receipt
+from .storage import control, key, receipt, remember_file
 
 
 def remove(store, actor_id, identifier, override_reason=None):
@@ -36,8 +36,10 @@ def remove(store, actor_id, identifier, override_reason=None):
                 unit.remove(document_text.memory_rows(unit.store), identifier)
             db.put(unit, PrivacyControlORM, {"id": key("document", identifier), "kind": "document", "record_id": identifier,
                 "held": False, "restricted": True, "erased_at": db.now(), "erasure_due": False, "revision": (old.revision if old else 0) + 1,
-                "reason": reason, "actor_id": unit.actor_id, "source_sha256": sha, "created_at": old.created_at if old else db.now(), "updated_at": db.now()})
+                "reason": reason, "actor_id": unit.actor_id, "source_sha256": sha,
+                "file_keys_sha256": remember_file(old, document.file_url),
+                "created_at": old.created_at if old else db.now(), "updated_at": db.now()})
             command = SimpleNamespace(reason=reason, idempotency_key=uuid4().hex,
                 model_dump=lambda **_: {"document_id": identifier, "sha256": sha, "reason": reason})
             receipt(unit, "erase", "document", identifier, command, sha,
-                {"removed": "Dokumentdatensatz und Suchindex", "retained": "Dateispeicher und Sicherungskopien sind getrennt auf verbleibende Dateikopien zu prüfen."})
+                {"removed": "Dokumentdatensatz und Suchindex", "retained": "Dateikopien sind für normale Dateizugriffe gesperrt. Dateispeicher und Sicherungskopien sind getrennt auf verbleibende Dateikopien zu prüfen."})

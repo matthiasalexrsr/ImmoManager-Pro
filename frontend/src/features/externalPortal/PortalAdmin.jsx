@@ -9,6 +9,7 @@ const BASE = '/portal-admin';
 
 export default function PortalAdmin() {
   const [refresh, setRefresh] = useState(0), [skip, setSkip] = useState(0), [selected, setSelected] = useState(null), [area, setArea] = useState('access');
+  const [recovery, setRecovery] = useState(null);
   const [configuration, configurationError] = usePortalAdminPage(`${BASE}/configuration`, refresh);
   const [page, error] = usePortalAdminPage(`${BASE}/grants?skip=${skip}&limit=25`, refresh);
   const access = page?.items.find(row => row.id === selected);
@@ -23,6 +24,10 @@ export default function PortalAdmin() {
       <button className="btn btn-secondary" aria-pressed={area === 'cases'} onClick={() => setArea('cases')}>Externe Anliegen und Rückfragen</button></div>
     {area === 'cases' ? <PortalConversations /> : <>
       <InviteParty available={Boolean(configuration?.available)} onCreated={reload} />
+      {recovery && <div role="status"><h3>Portalzugang zurückgesetzt</h3><p>Vorherige Sitzungen und Zuordnungen sind gesperrt. Nach Annahme wird nur das ausgewählte Verhältnis wieder zugänglich.</p>
+        {recovery.invitation_url ? <><p>Neuer Link für {recovery.email}, gültig bis {new Date(recovery.expires_at).toLocaleString('de-DE')}. Nur an die erneut geprüfte Person weitergeben.</p>
+          <label>Einmalig angezeigter Wiederherstellungslink<input readOnly value={recovery.invitation_url} onFocus={event => event.target.select()} /></label></> : <p>{recovery.notice}</p>}
+        <button className="btn btn-secondary" onClick={() => setRecovery(null)}>Wiederherstellungslink ausblenden</button></div>}
       <h3>Geprüfte Zuordnungen</h3>{error && <p role="alert">{error} <button onClick={reload}>Erneut laden</button></p>}
       <button className="btn btn-secondary" onClick={reload}>Aktuellen Stand laden</button>
       {!page ? <p role="status">Zuordnungen werden geladen …</p> : <>
@@ -32,7 +37,7 @@ export default function PortalAdmin() {
         <nav aria-label="Portalzugänge"><button className="btn btn-secondary" disabled={!skip} onClick={() => { setSkip(Math.max(0, skip - 25)); setSelected(null); }}>Zurück</button>
           <span> {page.total} Zuordnungen </span><button className="btn btn-secondary" disabled={skip + 25 >= page.total} onClick={() => { setSkip(skip + 25); setSelected(null); }}>Weiter</button></nav>
       </>}
-      {access && <GrantDetails key={access.id} access={access} onChanged={reload} />}
+      {access && <GrantDetails key={access.id} access={access} onChanged={reload} onRecovered={result => { setRecovery(result); reload(); }} />}
     </>}
   </div></section>;
 }
@@ -71,10 +76,11 @@ function InviteParty({ available, onCreated }) {
   </form></details>;
 }
 
-function GrantDetails({ access, onChanged }) {
+function GrantDetails({ access, onChanged, onRecovered }) {
   const auth = useAuth(), heading = useRef(null);
   const [reason, setReason] = useState(''), [skip, setSkip] = useState(0), [version, setVersion] = useState(''), [title, setTitle] = useState(''), [publishReason, setPublishReason] = useState(''), [refresh, setRefresh] = useState(0);
   const action = usePortalAdminAction();
+  const [verification, setVerification] = useState('');
   const [publications, publicationError] = usePortalAdminPage(`${BASE}/grants/${access.id}/publications`, refresh);
   const [documents, documentError] = usePortalAdminPage(access.active ? `${BASE}/grants/${access.id}/documents?skip=${skip}&limit=25` : null, refresh);
   useEffect(() => { heading.current?.focus(); }, []);
@@ -86,6 +92,15 @@ function GrantDetails({ access, onChanged }) {
     <label>Begründung für Änderung oder Widerruf<textarea minLength={10} maxLength={2000} value={reason} disabled={action.busy} onChange={event => setReason(event.target.value)} /></label>
     <div className="transfer-actions"><button className="btn btn-secondary" disabled={action.busy || reason.trim().length < 10} onClick={() => change(`${BASE}/grants/${access.id}`, access.revision, !access.active)}>{access.active ? 'Diese Zuordnung widerrufen' : 'Zuordnung nach Prüfung reaktivieren'}</button>
       {fullAccess && <button className="btn btn-secondary" disabled={action.busy || reason.trim().length < 10} onClick={() => change(`${BASE}/grants/${access.id}/identity`, access.identity_revision, !access.identity_active)}>{access.identity_active ? 'Gesamten externen Zugang deaktivieren' : 'Externen Zugang reaktivieren'}</button>}</div>
+    {fullAccess && <details><summary>Vergessenes Portalpasswort zurücksetzen</summary><form className="transfer-grid" onSubmit={async event => {
+      event.preventDefault();
+      const result = await action.perform(`${BASE}/grants/${access.id}/recovery-invitation`, {
+        expected_revision: access.identity_revision, grant_revision: access.revision, verification });
+      if (result) { setVerification(''); onRecovered(result); }
+    }}><p>Prüfen Sie die Identität erneut unabhängig von der Anfrage. Der Schritt sperrt alle bisherigen Sitzungen, Einladungen und Zuordnungen dieses externen Kontos. Der neue Link gilt 24 Stunden für dieses Verhältnis; weitere Zuordnungen müssen einzeln geprüft werden.</p>
+      <label>Erneute Identitätsprüfung dokumentieren<textarea required minLength={20} maxLength={2000} value={verification} disabled={action.busy} onChange={event => setVerification(event.target.value)} /></label>
+      <button className="btn btn-secondary" disabled={action.busy || !access.identity_active || verification.trim().length < 20}>Zugang zurücksetzen und neuen Link erstellen</button>
+    </form></details>}
     <h4>Veröffentlichte Fassungen</h4>{publicationError && <p role="alert">{publicationError}</p>}
     <ul className="transfer-list">{publications?.map(row => <li key={row.id}><strong>{row.title}</strong> · {row.active ? 'Veröffentlicht' : 'Widerrufen'}<p>SHA-256: <code>{row.sha256}</code></p>
       <button className="btn btn-secondary" disabled={action.busy || reason.trim().length < 10} onClick={() => change(`${BASE}/publications/${row.id}`, row.revision, !row.active)}>{row.active ? 'Veröffentlichung widerrufen' : 'Fassung erneut veröffentlichen'}</button></li>)}</ul>

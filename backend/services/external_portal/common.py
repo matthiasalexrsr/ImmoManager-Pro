@@ -54,9 +54,9 @@ def origin():
 
 
 def check_transport(request, *, write=False):
-    expected = origin()
     if request.headers.get("authorization"):
         raise HTTPException(401, "Das externe Portal verwendet ausschließlich seine eigene Portalsitzung.")
+    expected = origin()
     if request.url.scheme != "https":
         try:
             local = ip_address(request.client.host).is_loopback

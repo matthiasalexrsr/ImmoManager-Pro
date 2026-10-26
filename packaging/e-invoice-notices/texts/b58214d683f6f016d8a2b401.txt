@@ -1,0 +1,39 @@
+Source files: org/apache/batik/dom/svg12/XBLOMShadowTreeEvent.java, org/apache/batik/dom/svg/SVGPathContext.java, org/apache/batik/dom/svg/ExtendedTraitAccess.java, org/apache/batik/dom/svg/AbstractSVGNormPathSegList.java, org/apache/batik/dom/svg/SVGOMException.java, org/apache/batik/dom/svg/SVGPathSegConstants.java, org/apache/batik/dom/svg/AbstractSVGPathSegList.java, org/apache/batik/dom/svg/SVGAnimationContext.java, org/apache/batik/dom/svg/SVGOMAngle.java, org/apache/batik/dom/svg/AbstractSVGPreserveAspectRatio.java, org/apache/batik/dom/svg/SVGContext.java, org/apache/batik/dom/svg/SVGPointItem.java, org/apache/batik/dom/svg/AbstractSVGNumber.java, org/apache/batik/dom/svg/TraitAccess.java, org/apache/batik/dom/svg/IdContainer.java, org/apache/batik/dom/svg/AbstractSVGTransformList.java, org/apache/batik/dom/svg12/SVGOMWheelEvent.java, org/apache/batik/dom/svg/SVGOMUseShadowRoot.java, org/apache/batik/dom/svg/SVGSVGContext.java, org/apache/batik/dom/svg/AbstractSVGNumberList.java, org/apache/batik/dom/svg/AbstractSVGItem.java, org/apache/batik/dom/svg/SVGZoomAndPanSupport.java, org/apache/batik/dom/svg/ListHandler.java, org/apache/batik/dom/svg/AbstractSVGPointList.java, org/apache/batik/dom/svg/SVGTextContent.java, org/apache/batik/dom/svg/LiveAttributeException.java, org/apache/batik/dom/svg/SVGTestsSupport.java, org/apache/batik/dom/svg/SVGOMEvent.java, org/apache/batik/dom/svg/AbstractSVGMatrix.java, org/apache/batik/dom/svg/SVGOMMatrix.java, org/apache/batik/dom/svg/SVGNumberItem.java, org/apache/batik/dom/svg/SVGPathSegItem.java, org/apache/batik/dom/svg/SVGOMRect.java, org/apache/batik/dom/svg/ListBuilder.java, org/apache/batik/dom/svg/SVGOMTransform.java, org/apache/batik/dom/svg/SVGItem.java, org/apache/batik/dom/svg/SVGAnimatedPathDataSupport.java, org/apache/batik/dom/svg/SVGDocumentFactory.java, org/apache/batik/dom/svg/AbstractSVGList.java, org/apache/batik/dom/svg/SVGMotionAnimatableElement.java, org/apache/batik/dom/svg/LiveAttributeValue.java, org/apache/batik/dom/svg/AbstractSVGTransform.java, org/apache/batik/dom/svg/SVGOMPoint.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */
+
+Source files: org/apache/batik/dom/svg12/SVGGlobal.java, org/apache/batik/dom/svg12/Global.java
+/*
+ * Copyright (c) 2005 World Wide Web Consortium,
+ *
+ * (Massachusetts Institute of Technology, European Research Consortium for
+ * Informatics and Mathematics, Keio University). All Rights Reserved. This
+ * work is distributed under the W3C(r) Software License [1] in the hope that
+ * it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * [1] http://www.w3.org/Consortium/Legal/2002/copyright-software-20021231
+ *
+ * Modifications:
+ *
+ * September 18, 2005
+ *   Translated IDL to Java.
+ *   Placed interface in org.apache.batik.dom.svg12 for the time being.
+ *   Added javadocs.
+ */

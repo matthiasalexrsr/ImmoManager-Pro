@@ -207,7 +207,10 @@ def read(content):
             if record["source_type"] not in models or digest(record["payload"]) != record["sha256"]:
                 raise ValueError("Unbekannter oder beschädigter Fachnachweis.")
             model = models[record["source_type"]]
-            if set(record["payload"]) != set(model.__table__.columns.keys()) or record["record_id"] != record["payload"]["id"]:
+            expected = set(model.__table__.columns.keys())
+            if model.__tablename__ == 'privacy_controls' and 'file_keys_sha256' not in record['payload']:
+                expected.remove('file_keys_sha256')  # previously emitted v1 customer archives
+            if set(record["payload"]) != expected or record["record_id"] != record["payload"]["id"]:
                 raise ValueError("Fachnachweis passt nicht zu seinem Datensatzschema.")
         assets = json.loads(parts["attachments.json"])
         seen = set()

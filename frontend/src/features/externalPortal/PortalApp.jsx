@@ -51,7 +51,8 @@ export default function PortalApp() {
           <button key={name} aria-current={tab === name ? 'page' : undefined} onClick={() => setTab(name)}>{label}</button>)}</nav>
         <section key={profile.email + ':' + tab}>{tab === 'documents' ? <PortalDocuments /> : tab === 'cases' ? <PortalCases /> : <DamageForm onReported={() => setTab('cases')} />}</section>
       </PortalAuthContext.Provider>}
-    </main><footer>Nur ausdrücklich freigegebene Unterlagen und eigene Anliegen sind sichtbar. Bei akuter Gefahr wenden Sie sich unmittelbar an die zuständige Notfallstelle.</footer>
+    </main><footer><p>Nur ausdrücklich freigegebene Unterlagen und eigene Anliegen sind sichtbar. Bei akuter Gefahr wenden Sie sich unmittelbar an die zuständige Notfallstelle.</p>
+      <a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzen und Quellarchive</a></footer>
   </div>;
 }
 
@@ -64,6 +65,7 @@ function SignIn({ invitation, onSignedIn }) {
   }}>
     <h2>{invitation ? 'Einladung annehmen' : 'Anmelden'}</h2>
     <p>{invitation ? 'Für Ihren neuen Zugang legen Sie ein Passwort mit mindestens zwölf Zeichen fest. Falls Sie bereits ein Portalpasswort haben, verwenden Sie dieses.' : 'Der Zugang wird von Ihrer Verwaltung persönlich eingeladen. Verwenden Sie Ihre Portal-Anmeldedaten.'}</p>
+    {!invitation && <p>Passwort vergessen? Wenden Sie sich an Ihre Verwaltung. Nach erneuter Identitätsprüfung erhalten Sie einen befristeten Link, um ein neues Passwort festzulegen.</p>}
     {error && <p className="portal-error" role="alert">{error}</p>}
     {!invitation && <label>E-Mail-Adresse<input type="email" required autoComplete="username" maxLength={254} disabled={busy} value={email} onChange={event => setEmail(event.target.value)} /></label>}
     <label>Passwort<input type="password" required minLength={invitation ? 12 : 1} maxLength={128} autoComplete={invitation ? 'new-password' : 'current-password'} disabled={busy} value={password} onChange={event => setPassword(event.target.value)} /></label>

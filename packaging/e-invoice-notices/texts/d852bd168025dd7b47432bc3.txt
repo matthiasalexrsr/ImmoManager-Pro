@@ -1,0 +1,54 @@
+Source files: com/sun/xml/txw2/Attribute.java, com/sun/xml/txw2/Cdata.java, com/sun/xml/txw2/Comment.java, com/sun/xml/txw2/ContainerElement.java, com/sun/xml/txw2/ContentVisitor.java, com/sun/xml/txw2/Document.java, com/sun/xml/txw2/EndDocument.java, com/sun/xml/txw2/EndTag.java, com/sun/xml/txw2/IllegalAnnotationException.java, com/sun/xml/txw2/IllegalSignatureException.java, com/sun/xml/txw2/NamespaceDecl.java, com/sun/xml/txw2/NamespaceResolver.java, com/sun/xml/txw2/Pcdata.java, com/sun/xml/txw2/StartDocument.java, com/sun/xml/txw2/TXW.java, com/sun/xml/txw2/Text.java, com/sun/xml/txw2/TxwException.java, com/sun/xml/txw2/annotation/XmlAttribute.java, com/sun/xml/txw2/annotation/XmlCDATA.java, com/sun/xml/txw2/annotation/XmlElement.java, com/sun/xml/txw2/annotation/XmlNamespace.java, com/sun/xml/txw2/annotation/XmlValue.java, com/sun/xml/txw2/output/DelegatingXMLStreamWriter.java, com/sun/xml/txw2/output/DumbEscapeHandler.java, com/sun/xml/txw2/output/DumpSerializer.java, com/sun/xml/txw2/output/ResultFactory.java, com/sun/xml/txw2/output/SaxSerializer.java, com/sun/xml/txw2/output/StaxSerializer.java, com/sun/xml/txw2/output/StreamSerializer.java, com/sun/xml/txw2/output/TXWResult.java, com/sun/xml/txw2/output/TXWSerializer.java, com/sun/xml/txw2/output/XmlSerializer.java
+/*
+ * Copyright (c) 2005, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: com/sun/xml/txw2/Content.java, com/sun/xml/txw2/DatatypeWriter.java, com/sun/xml/txw2/StartTag.java, com/sun/xml/txw2/TypedXmlWriter.java, com/sun/xml/txw2/output/CharacterEscapeHandler.java, com/sun/xml/txw2/output/DomSerializer.java, com/sun/xml/txw2/output/IndentingXMLFilter.java, com/sun/xml/txw2/output/IndentingXMLStreamWriter.java
+/*
+ * Copyright (c) 2005, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: com/sun/xml/txw2/annotation/package-info.java, com/sun/xml/txw2/output/package-info.java, com/sun/xml/txw2/package-info.java
+/*
+ * Copyright (c) 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: com/sun/xml/txw2/output/DataWriter.java
+/*
+ * Copyright (c) 2018, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: module-info.java
+/*
+ * Copyright (c) 2017, 2023 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */

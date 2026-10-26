@@ -6,7 +6,7 @@ from ...db.privacy_models import PrivacyControlORM, PrivacyDecisionORM, RestoreR
 from ..data_transfer.common import digest
 from ..integrations import connection_storage as db
 from . import resources
-from .storage import control, key, lock_sources, receipt, replay, rows, work
+from .storage import control, key, lock_sources, receipt, remember_file, replay, rows, work
 
 FORMAT = "immomanager-privacy-controls/1"
 
@@ -74,7 +74,7 @@ def _present(unit, kind, identifier):
 
 
 def merge(store, actor_id, command):
-    data = [item.model_dump(mode="json") for item in command.controls]
+    data = [item.model_dump(mode="json", exclude_unset=True) for item in command.controls]
     if digest({"format": FORMAT, "controls": data}) != command.source_sha256 or len({item.id for item in command.controls}) != len(data):
         raise HTTPException(422, "Datenschutzjournal hat eine falsche Prüfsumme oder doppelte Einträge.")
     with work(store, actor_id) as unit:
@@ -87,6 +87,10 @@ def merge(store, actor_id, command):
                 raise HTTPException(422, "Datenschutzjournal enthält eine falsche Ressourcenkennung.")
             old = control(unit, incoming.kind, incoming.record_id)
             value = incoming.model_dump()
+            fingerprints = set(incoming.file_keys_sha256 or []) | set((old.file_keys_sha256 or []) if old else [])
+            if incoming.kind == 'document' and _present(unit, incoming.kind, incoming.record_id):
+                fingerprints.update(remember_file(old, unit.store.get_document(incoming.record_id).file_url))
+            value['file_keys_sha256'] = sorted(fingerprints) or None
             due = bool((incoming.erased_at or incoming.erasure_due) and _present(unit, incoming.kind, incoming.record_id))
             # Never downgrade a local hold, restriction or executed tombstone.
             value.update(held=incoming.held or bool(old and old.held),

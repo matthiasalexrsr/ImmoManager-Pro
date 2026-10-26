@@ -401,6 +401,11 @@ if __name__ == "__main__":
     # freeze_support() ensures they exit cleanly instead of re-spawning.
     multiprocessing.freeze_support()
 
+    if sys.argv[1:2] == ['e-invoice-limit-worker']:
+        from backend.services.e_invoice.posix_worker import main as e_invoice_limit_main
+        e_invoice_limit_main(sys.argv[2:])
+        raise SystemExit(0)
+
     if sys.argv[1:2] == ["e-invoice-read-worker"]:
         if len(sys.argv) != 3:
             raise SystemExit(2)

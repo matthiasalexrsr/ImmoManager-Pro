@@ -1,0 +1,90 @@
+Source files: org/apache/fontbox/EncodedFont.java, org/apache/fontbox/FontBoxFont.java, org/apache/fontbox/afm/AFMParser.java, org/apache/fontbox/afm/CharMetric.java, org/apache/fontbox/afm/Composite.java, org/apache/fontbox/afm/CompositePart.java, org/apache/fontbox/afm/FontMetrics.java, org/apache/fontbox/afm/KernPair.java, org/apache/fontbox/afm/Ligature.java, org/apache/fontbox/afm/TrackKern.java, org/apache/fontbox/cff/CFFCIDFont.java, org/apache/fontbox/cff/CFFCharset.java, org/apache/fontbox/cff/CFFCharsetCID.java, org/apache/fontbox/cff/CFFCharsetType1.java, org/apache/fontbox/cff/CFFEncoding.java, org/apache/fontbox/cff/CFFFont.java, org/apache/fontbox/cff/CFFStandardString.java, org/apache/fontbox/cff/CFFType1Font.java, org/apache/fontbox/cff/CIDKeyedType2CharString.java, org/apache/fontbox/cff/DataInput.java, org/apache/fontbox/cff/DataInputByteArray.java, org/apache/fontbox/cff/DataInputRandomAccessRead.java, org/apache/fontbox/cff/EmbeddedCharset.java, org/apache/fontbox/cff/FDSelect.java, org/apache/fontbox/cff/Type1CharString.java, org/apache/fontbox/cff/Type1FontUtil.java, org/apache/fontbox/cff/Type2CharString.java, org/apache/fontbox/cmap/CIDRange.java, org/apache/fontbox/cmap/CMap.java, org/apache/fontbox/cmap/CMapParser.java, org/apache/fontbox/cmap/CodespaceRange.java, org/apache/fontbox/encoding/BuiltInEncoding.java, org/apache/fontbox/encoding/Encoding.java, org/apache/fontbox/encoding/MacRomanEncoding.java, org/apache/fontbox/encoding/StandardEncoding.java, org/apache/fontbox/pfb/PfbParser.java, org/apache/fontbox/ttf/CmapLookup.java, org/apache/fontbox/ttf/CmapSubtable.java, org/apache/fontbox/ttf/CmapTable.java, org/apache/fontbox/ttf/DigitalSignatureTable.java, org/apache/fontbox/ttf/FontHeaders.java, org/apache/fontbox/ttf/GlyphData.java, org/apache/fontbox/ttf/GlyphSubstitutionTable.java, org/apache/fontbox/ttf/GlyphTable.java, org/apache/fontbox/ttf/HeaderTable.java, org/apache/fontbox/ttf/HorizontalHeaderTable.java, org/apache/fontbox/ttf/HorizontalMetricsTable.java, org/apache/fontbox/ttf/IndexToLocationTable.java, org/apache/fontbox/ttf/KerningSubtable.java, org/apache/fontbox/ttf/KerningTable.java, org/apache/fontbox/ttf/MaximumProfileTable.java, org/apache/fontbox/ttf/NameRecord.java, org/apache/fontbox/ttf/NamingTable.java, org/apache/fontbox/ttf/OS2WindowsMetricsTable.java, org/apache/fontbox/ttf/OTFParser.java, org/apache/fontbox/ttf/OTLTable.java, org/apache/fontbox/ttf/OpenTypeFont.java, org/apache/fontbox/ttf/OpenTypeScript.java, org/apache/fontbox/ttf/PostScriptTable.java, org/apache/fontbox/ttf/RandomAccessReadDataStream.java, org/apache/fontbox/ttf/RandomAccessReadUnbufferedDataStream.java, org/apache/fontbox/ttf/SubstitutingCmapLookup.java, org/apache/fontbox/ttf/TTCDataStream.java, org/apache/fontbox/ttf/TTFDataStream.java, org/apache/fontbox/ttf/TTFParser.java, org/apache/fontbox/ttf/TTFSubsetter.java, org/apache/fontbox/ttf/TTFTable.java, org/apache/fontbox/ttf/TrueTypeCollection.java, org/apache/fontbox/ttf/TrueTypeFont.java, org/apache/fontbox/ttf/VerticalHeaderTable.java, org/apache/fontbox/ttf/VerticalMetricsTable.java, org/apache/fontbox/ttf/VerticalOriginTable.java, org/apache/fontbox/ttf/WGL4Names.java, org/apache/fontbox/ttf/gsub/CompoundCharacterTokenizer.java, org/apache/fontbox/ttf/gsub/DefaultGsubWorker.java, org/apache/fontbox/ttf/gsub/GlyphArraySplitter.java, org/apache/fontbox/ttf/gsub/GlyphArraySplitterRegexImpl.java, org/apache/fontbox/ttf/gsub/GlyphSubstitutionDataExtractor.java, org/apache/fontbox/ttf/gsub/GsubWorker.java, org/apache/fontbox/ttf/gsub/GsubWorkerFactory.java, org/apache/fontbox/ttf/gsub/GsubWorkerForBengali.java, org/apache/fontbox/ttf/gsub/GsubWorkerForDevanagari.java, org/apache/fontbox/ttf/gsub/GsubWorkerForDflt.java, org/apache/fontbox/ttf/gsub/GsubWorkerForGujarati.java, org/apache/fontbox/ttf/gsub/GsubWorkerForLatin.java, org/apache/fontbox/ttf/model/GsubData.java, org/apache/fontbox/ttf/model/Language.java, org/apache/fontbox/ttf/model/MapBackedGsubData.java, org/apache/fontbox/ttf/model/MapBackedScriptFeature.java, org/apache/fontbox/ttf/model/ScriptFeature.java, org/apache/fontbox/ttf/table/common/CoverageTable.java, org/apache/fontbox/ttf/table/common/CoverageTableFormat1.java, org/apache/fontbox/ttf/table/common/CoverageTableFormat2.java, org/apache/fontbox/ttf/table/common/FeatureListTable.java, org/apache/fontbox/ttf/table/common/FeatureRecord.java, org/apache/fontbox/ttf/table/common/FeatureTable.java, org/apache/fontbox/ttf/table/common/LangSysTable.java, org/apache/fontbox/ttf/table/common/LookupListTable.java, org/apache/fontbox/ttf/table/common/LookupSubTable.java, org/apache/fontbox/ttf/table/common/LookupTable.java, org/apache/fontbox/ttf/table/common/RangeRecord.java, org/apache/fontbox/ttf/table/common/ScriptTable.java, org/apache/fontbox/ttf/table/gsub/AlternateSetTable.java, org/apache/fontbox/ttf/table/gsub/LigatureSetTable.java, org/apache/fontbox/ttf/table/gsub/LigatureTable.java, org/apache/fontbox/ttf/table/gsub/LookupTypeAlternateSubstitutionFormat1.java, org/apache/fontbox/ttf/table/gsub/LookupTypeLigatureSubstitutionSubstFormat1.java, org/apache/fontbox/ttf/table/gsub/LookupTypeMultipleSubstitutionFormat1.java, org/apache/fontbox/ttf/table/gsub/LookupTypeSingleSubstFormat1.java, org/apache/fontbox/ttf/table/gsub/LookupTypeSingleSubstFormat2.java, org/apache/fontbox/ttf/table/gsub/SequenceTable.java, org/apache/fontbox/type1/DamagedFontException.java, org/apache/fontbox/type1/Token.java, org/apache/fontbox/type1/Type1CharStringReader.java, org/apache/fontbox/type1/Type1Font.java, org/apache/fontbox/type1/Type1Parser.java, org/apache/fontbox/util/BoundingBox.java, org/apache/fontbox/util/autodetect/FontDirFinder.java, org/apache/fontbox/util/autodetect/FontFileFinder.java, org/apache/fontbox/util/autodetect/MacFontDirFinder.java, org/apache/fontbox/util/autodetect/NativeFontDirFinder.java, org/apache/fontbox/util/autodetect/UnixFontDirFinder.java, org/apache/fontbox/util/autodetect/WindowsFontDirFinder.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/fontbox/cff/CFFExpertCharset.java, org/apache/fontbox/cff/CFFExpertEncoding.java, org/apache/fontbox/cff/CFFExpertSubsetCharset.java, org/apache/fontbox/cff/CFFISOAdobeCharset.java, org/apache/fontbox/cff/CFFOperator.java, org/apache/fontbox/cff/CFFParser.java, org/apache/fontbox/cff/CFFStandardEncoding.java, org/apache/fontbox/cff/CharStringCommand.java, org/apache/fontbox/cff/Type1CharStringParser.java, org/apache/fontbox/cff/Type2CharStringParser.java, org/apache/fontbox/ttf/CFFTable.java, org/apache/fontbox/ttf/GlyfCompositeComp.java, org/apache/fontbox/ttf/GlyfCompositeDescript.java, org/apache/fontbox/ttf/GlyfDescript.java, org/apache/fontbox/ttf/GlyfSimpleDescript.java, org/apache/fontbox/ttf/GlyphDescription.java, org/apache/fontbox/ttf/GlyphRenderer.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/fontbox/cmap/CMapStrings.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/fontbox/type1/Type1Lexer.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+Source files: org/apache/fontbox/util/autodetect/OS400FontDirFinder.java
+/*
+ * Copyright 2018 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

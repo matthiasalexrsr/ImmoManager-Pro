@@ -1,0 +1,38 @@
+Source files: org/apache/batik/dom/GenericDocumentType.java, org/apache/batik/dom/events/DOMKeyboardEvent.java, org/apache/batik/dom/events/DOMTimeEvent.java, org/apache/batik/dom/GenericAttr.java, org/apache/batik/dom/GenericEntity.java, org/apache/batik/dom/AbstractAttr.java, org/apache/batik/dom/GenericProcessingInstruction.java, org/apache/batik/dom/util/SAXDocumentFactory.java, org/apache/batik/dom/traversal/DOMTreeWalker.java, org/apache/batik/dom/GenericDocumentFragment.java, org/apache/batik/dom/GenericText.java, org/apache/batik/dom/AbstractCharacterData.java, org/apache/batik/dom/AbstractNotation.java, org/apache/batik/dom/xbl/GenericXBLManager.java, org/apache/batik/dom/AbstractParentChildNode.java, org/apache/batik/dom/AbstractDOMImplementation.java, org/apache/batik/dom/events/DOMCustomEvent.java, org/apache/batik/dom/AbstractEntity.java, org/apache/batik/dom/events/DOMMutationNameEvent.java, org/apache/batik/dom/events/EventSupport.java, org/apache/batik/dom/GenericAttrNS.java, org/apache/batik/dom/util/XLinkSupport.java, org/apache/batik/dom/util/TriplyIndexedTable.java, org/apache/batik/dom/util/DocumentFactory.java, org/apache/batik/dom/util/XMLSupport.java, org/apache/batik/dom/util/DocumentDescriptor.java, org/apache/batik/dom/traversal/TraversalSupport.java, org/apache/batik/dom/GenericComment.java, org/apache/batik/dom/AbstractEntityReference.java, org/apache/batik/dom/AbstractDocument.java, org/apache/batik/dom/GenericCDATASection.java, org/apache/batik/dom/events/DOMKeyEvent.java, org/apache/batik/dom/AbstractProcessingInstruction.java, org/apache/batik/dom/StyleSheetProcessingInstruction.java, org/apache/batik/dom/AbstractElementNS.java, org/apache/batik/dom/GenericEntityReference.java, org/apache/batik/dom/ExtensibleDOMImplementation.java, org/apache/batik/dom/xbl/XBLManagerData.java, org/apache/batik/dom/GenericNotation.java, org/apache/batik/dom/StyleSheetFactory.java, org/apache/batik/dom/AbstractParentNode.java, org/apache/batik/dom/events/DOMTextEvent.java, org/apache/batik/dom/events/AbstractEvent.java, org/apache/batik/dom/events/DOMMouseEvent.java, org/apache/batik/dom/AbstractElement.java, org/apache/batik/dom/traversal/DOMNodeIterator.java, org/apache/batik/dom/GenericElement.java, org/apache/batik/dom/AbstractChildNode.java, org/apache/batik/dom/GenericDOMImplementation.java, org/apache/batik/dom/AbstractDocumentFragment.java, org/apache/batik/dom/AbstractNode.java, org/apache/batik/dom/GenericDocument.java, org/apache/batik/dom/events/DOMEvent.java, org/apache/batik/dom/DomExtension.java, org/apache/batik/dom/events/NodeEventTarget.java, org/apache/batik/dom/events/DocumentEventSupport.java, org/apache/batik/dom/AbstractText.java, org/apache/batik/dom/events/DOMUIEvent.java, org/apache/batik/dom/events/DOMMutationEvent.java, org/apache/batik/dom/events/EventListenerList.java, org/apache/batik/dom/AbstractAttrNS.java, org/apache/batik/dom/AbstractComment.java, org/apache/batik/dom/ExtendedNode.java, org/apache/batik/dom/util/CSSStyleDeclarationFactory.java, org/apache/batik/dom/util/HashTableStack.java, org/apache/batik/dom/util/SAXIOException.java, org/apache/batik/dom/util/IntTable.java, org/apache/batik/dom/util/ListNodeList.java, org/apache/batik/dom/util/DOMUtilities.java, org/apache/batik/dom/xbl/XBLManager.java, org/apache/batik/dom/AbstractStylableDocument.java, org/apache/batik/dom/GenericElementNS.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */
+
+Source files: org/apache/batik/dom/xbl/OriginalEvent.java, org/apache/batik/dom/xbl/XBLShadowTreeElement.java, org/apache/batik/dom/xbl/NodeXBL.java, org/apache/batik/dom/xbl/ShadowTreeEvent.java
+/*
+ * Copyright (c) 2005 World Wide Web Consortium,
+ *
+ * (Massachusetts Institute of Technology, European Research Consortium for
+ * Informatics and Mathematics, Keio University). All Rights Reserved. This
+ * work is distributed under the W3C(r) Software License [1] in the hope that
+ * it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *
+ * [1] http://www.w3.org/Consortium/Legal/2002/copyright-software-20021231
+ *
+ * Modifications:
+ *
+ * September 10, 2005
+ *   Placed interface in org.apache.batik.dom.xbl for the time being.
+ *   Added javadocs.
+ */

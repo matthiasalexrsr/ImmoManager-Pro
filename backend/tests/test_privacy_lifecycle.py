@@ -84,6 +84,61 @@ def test_stale_source_or_control_revision_cannot_be_decided(portal):
     assert conflict.value.status_code == 409
 
 
+@pytest.mark.parametrize('action', ['restrict', 'delete'])
+def test_direct_file_and_ocr_links_stay_blocked_after_metadata_deletion(portal, tmp_path, monkeypatch, action):
+    from io import BytesIO
+
+    from backend.services import file_storage
+    from backend.services.privacy.storage import ensure_file_available
+    storage = file_storage.LocalStorage(tmp_path / 'copies')
+    monkeypatch.setattr(file_storage, '_storage', storage)
+    # Use the same module-level accessor as the file routes.
+    monkeypatch.setattr('backend.routers.files.get_file_storage', lambda: storage)
+    key = 'privacy/source.pdf'
+    storage.save(key, BytesIO(b'%PDF-1.4\nretained synthetic copy\n%%EOF'))
+    storage.save('privacy/source_ocr.txt', BytesIO(b'private OCR text'))
+    doc = store.create_document(DocumentCreate(title='Old letter', file_url='/uploads/' + key,
+        document_date=date(1990, 1, 1), retention_class='business_letter'))
+    office = portal['office']
+    assert office.get('/api/v1/files/download', params={'key': key}).status_code == 200
+    if action == 'delete':
+        assert office.delete('/api/v1/documents/' + doc.id).status_code == 204
+    else:
+        change(portal, 'document', doc.id, 'restrict')
+    for route, params in [('/download', {'key': key}), ('/download', {'key': 'privacy/source_ocr.txt'}),
+                          ('/ocr-text', {'file_url': '/uploads/' + key})]:
+        response = office.get('/api/v1/files' + route, params=params)
+        assert response.status_code == 404, response.text
+    assert office.post('/api/v1/files/analyze', params={'file_url': '/uploads/' + key}).status_code == 404
+    assert office.post('/api/v1/files/ocr-process', params={'file_url': '/uploads/' + key}).status_code == 404
+    with pytest.raises(HTTPException):
+        ensure_file_available(store, '/uploads/' + key)
+    saved = journal.export(store, portal['owner'].id)
+    assert saved['controls'][0]['file_keys_sha256'] == [hashlib.sha256(key.encode()).hexdigest()]
+    assert key not in str(saved)  # locator hashes, not the deleted personal filename
+    # A freshly restored journal must retain this guard without the document row.
+    with work(store, portal['owner'].id) as unit:
+        db.remove(unit, PrivacyControlORM, saved['controls'][0]['id'])
+    journal.merge(store, portal['owner'].id, ImportJournal(controls=saved['controls'], source_sha256=saved['sha256'],
+        reason='Separates Löschjournal nach Wiederherstellung abgeglichen.', idempotency_key=uuid4().hex))
+    assert office.get('/api/v1/files/download', params={'key': key}).status_code == 404
+
+
+def test_pre_tombstone_journal_format_remains_importable(portal):
+    from backend.services.data_transfer.common import digest
+    doc = store.create_document(DocumentCreate(title='Legacy journal', file_url='/uploads/legacy.pdf'))
+    change(portal, 'document', doc.id, 'restrict')
+    saved = journal.export(store, portal['owner'].id)
+    for row in saved['controls']:
+        row.pop('file_keys_sha256', None)
+    checksum = digest({'format': saved['format'], 'controls': saved['controls']})
+    journal.merge(store, portal['owner'].id, ImportJournal(controls=saved['controls'], source_sha256=checksum,
+        reason='Vorheriges Journal mit dem aktuellen Datenbestand abgeglichen.', idempotency_key=uuid4().hex))
+    from backend.services.privacy.storage import ensure_file_available
+    with pytest.raises(HTTPException):
+        ensure_file_available(store, '/uploads/legacy.pdf')
+
+
 def test_restriction_removes_current_portal_all_downloads_search_and_ai(portal):
     first = portal["households"][0]
     doc, version = portals.document(portal, first)

@@ -635,6 +635,11 @@ def require_file_access(value: str, *, source=None):
     from ..routers.files import _file_url_to_key
     if _file_url_to_key(value).startswith(("assistant-private/", "assistant/")):
         raise HTTPException(404, "Datei nicht gefunden.")
+    if source is None:
+        from ..dependencies import store as source
+        from .privacy.storage import ensure_file_available, ensure_restore_reviewed
+        ensure_restore_reviewed(source)
+        ensure_file_available(source, value)
     scope = current_scope()
     if scope is None or scope.unrestricted:
         return

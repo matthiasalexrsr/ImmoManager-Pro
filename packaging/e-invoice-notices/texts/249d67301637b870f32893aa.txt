@@ -1,0 +1,21 @@
+Source files: org/verapdf/xmp/XMPUtils.java, org/verapdf/xmp/XMPMeta.java, org/verapdf/xmp/XMPConst.java, org/verapdf/xmp/XMPDateTime.java, org/verapdf/xmp/XMPPathFactory.java, org/verapdf/xmp/properties/XMPAliasInfo.java, org/verapdf/xmp/properties/XMPPropertyInfo.java, org/verapdf/xmp/properties/XMPProperty.java, org/verapdf/xmp/tools/SecureXML.java, org/verapdf/xmp/XMPSchemaRegistry.java, org/verapdf/xmp/containers/StaticXmpCoreContainers.java, org/verapdf/xmp/impl/XMPNode.java, org/verapdf/xmp/impl/XMPDateTimeImpl.java, org/verapdf/xmp/impl/XMPUtilsImpl.java, org/verapdf/xmp/impl/QName.java, org/verapdf/xmp/impl/ISO8601Converter.java, org/verapdf/xmp/impl/XMPSerializerRDF.java, org/verapdf/xmp/impl/XMPMetaImpl.java, org/verapdf/xmp/impl/xpath/XMPPathParser.java, org/verapdf/xmp/impl/xpath/XMPPath.java, org/verapdf/xmp/impl/xpath/XMPPathSegment.java, org/verapdf/xmp/impl/XMPSerializerHelper.java, org/verapdf/xmp/impl/FixASCIIControlsReader.java, org/verapdf/xmp/impl/Base64.java, org/verapdf/xmp/impl/XMPSchemaRegistryImpl.java, org/verapdf/xmp/impl/VeraPDFExtensionSchemaDefinition.java, org/verapdf/xmp/impl/XMPMetaParser.java, org/verapdf/xmp/impl/VeraPDFXMPNode.java, org/verapdf/xmp/impl/CountOutputStream.java, org/verapdf/xmp/impl/ByteBuffer.java, org/verapdf/xmp/impl/ParameterAsserts.java, org/verapdf/xmp/impl/VeraPDFExtensionSchemasContainer.java, org/verapdf/xmp/impl/XMPNormalizer.java, org/verapdf/xmp/impl/VeraPDFMeta.java, org/verapdf/xmp/impl/ParseRDF.java, org/verapdf/xmp/impl/XMPIteratorImpl.java, org/verapdf/xmp/impl/Latin1Converter.java, org/verapdf/xmp/impl/VeraPDFExtensionSchemaProperty.java, org/verapdf/xmp/impl/XMPNodeUtils.java, org/verapdf/xmp/impl/Utils.java, org/verapdf/xmp/XMPIterator.java, org/verapdf/xmp/options/PropertyOptions.java, org/verapdf/xmp/options/SerializeOptions.java, org/verapdf/xmp/options/Options.java, org/verapdf/xmp/options/AliasOptions.java, org/verapdf/xmp/options/ParseOptions.java, org/verapdf/xmp/options/IteratorOptions.java, org/verapdf/xmp/XMPMetaFactory.java, org/verapdf/xmp/XMPError.java, org/verapdf/xmp/XMPException.java, org/verapdf/xmp/XMPDateTimeFactory.java, org/verapdf/xmp/XMPVersionInfo.java
+/*
+ * This file is part of veraPDF XMP Library Core for Jakarta EE, a module of the veraPDF project.
+ * Copyright (c) 2015-2026, veraPDF Consortium <info@verapdf.org>
+ * All rights reserved.
+ *
+ * veraPDF XMP Library Core for Jakarta EE is free software: you can redistribute it and/or modify
+ * it under the terms of either:
+ *
+ * The GNU General public license GPLv3+.
+ * You should have received a copy of the GNU General Public License
+ * along with veraPDF XMP Library Core for Jakarta EE as the LICENSE.GPL file in the root of the source
+ * tree.  If not, see http://www.gnu.org/licenses/ or
+ * https://www.gnu.org/licenses/gpl-3.0.en.html.
+ *
+ * The Mozilla Public License MPLv2+.
+ * You should have received a copy of the Mozilla Public License along with
+ * veraPDF XMP Library Core for Jakarta EE as the LICENSE.MPL file in the root of the source tree.
+ * If a copy of the MPL was not distributed with this file, you can obtain one at
+ * http://mozilla.org/MPL/2.0/.
+ */

@@ -53,10 +53,14 @@ def verify(connection, *, normalize=False):
         # A backup cannot know decisions made after its capture. No restored
         # password, invitation or grant may restore access without a new review.
         for model in (models.PortalIdentityORM, models.PortalGrantORM, models.PortalPublicationORM, models.PortalCaseORM):
-            connection.execute(update(model).values(active=False, revision=model.revision + 1, updated_at=db.now()))
-        connection.execute(update(models.PortalSessionORM).values(revoked_at=db.now()))
-        connection.execute(update(models.PortalInvitationORM).values(revoked_at=db.now()))
+            connection.execute(update(model).values(active=False, revision=model.revision + 1, updated_at=db.now()),
+                               execution_options={"stream_results": False, "yield_per": None})
+        connection.execute(update(models.PortalSessionORM).values(revoked_at=db.now()),
+                           execution_options={"stream_results": False, "yield_per": None})
+        connection.execute(update(models.PortalInvitationORM).values(revoked_at=db.now()),
+                           execution_options={"stream_results": False, "yield_per": None})
         for identifier in grants:
             connection.execute(insert(models.PortalEventORM).values(id=str(uuid4()), grant_id=identifier, actor_id="system:restore",
-                kind="restored_access_suspended", reason="Wiederherstellung: aktuelle Lösch-, Sperr- und Freigabeentscheidungen müssen vor erneuter Veröffentlichung abgeglichen werden.", detail={}, created_at=db.now()))
+                kind="restored_access_suspended", reason="Wiederherstellung: aktuelle Lösch-, Sperr- und Freigabeentscheidungen müssen vor erneuter Veröffentlichung abgeglichen werden.", detail={}, created_at=db.now()),
+                execution_options={"stream_results": False, "yield_per": None})
     return {"present": True, "images": images, "publications": count, "revoked_sessions": len(sessions) if normalize else 0}

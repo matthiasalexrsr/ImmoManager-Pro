@@ -16,6 +16,7 @@ from ..external_portal_models import (
     InviteParty,
     PortalLogin,
     PublishDocument,
+    RecoverAccess,
     ReportDamage,
     SendMessage,
     ShareCase,
@@ -180,6 +181,11 @@ def change_grant(identifier: str, command: ChangeAccess, actor: Actor):
 @router.put("/grants/{identifier}/identity")
 def change_identity(identifier: str, command: ChangeAccess, actor: Actor):
     return _call(admin.change_identity, store, actor.id, identifier, command)
+
+
+@router.post('/grants/{identifier}/recovery-invitation', status_code=201)
+def recover_access(identifier: str, command: RecoverAccess, actor: Actor):
+    return _call(admin.recover_access, store, actor.id, identifier, command)
 
 
 @router.get("/grants/{identifier}/documents")

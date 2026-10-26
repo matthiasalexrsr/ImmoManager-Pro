@@ -103,4 +103,19 @@ describe('explicit internal publication', () => {
     expect(api.post.mock.calls[0][0]).toBe('/portal-admin/grants/grant-1/publications');
     expect(api.post.mock.calls[0][1]).toMatchObject({ grant_revision: 3, version_id: 'version-2', title: 'Meine Vertragsfassung' });
   });
+
+  it('keeps a once-shown recovery link visible across the refreshed access listing', async () => {
+    render(<MemoryRouter><PortalAdmin /></MemoryRouter>);
+    await userEvent.click(await screen.findByRole('button', { name: 'Zugang und Freigaben verwalten' }));
+    await userEvent.click(screen.getByText('Vergessenes Portalpasswort zurücksetzen'));
+    const button = screen.getByRole('button', { name: 'Zugang zurücksetzen und neuen Link erstellen' });
+    expect(button).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Erneute Identitätsprüfung dokumentieren'), 'Identität durch persönlich bekannten Rückruf geprüft.');
+    api.post.mockResolvedValue({ email: profile.email, invitation_url: 'https://portal.example.test/portal/accept#one-use', expires_at: '2026-10-27T12:00:00Z' });
+    await userEvent.click(button);
+    expect(api.post.mock.calls[0][1]).toMatchObject({ expected_revision: 2, grant_revision: 3 });
+    expect(await screen.findByLabelText('Einmalig angezeigter Wiederherstellungslink')).toHaveValue('https://portal.example.test/portal/accept#one-use');
+    await userEvent.click(screen.getByRole('button', { name: 'Wiederherstellungslink ausblenden' }));
+    expect(screen.queryByLabelText('Einmalig angezeigter Wiederherstellungslink')).not.toBeInTheDocument();
+  });
 });

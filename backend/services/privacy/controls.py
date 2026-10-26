@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from ...db.privacy_models import PrivacyControlORM, PrivacyDecisionORM
 from ..integrations import connection_storage as db
 from . import resources
-from .storage import control, key, lock_sources, receipt, replay, rows, work
+from .storage import control, key, lock_sources, receipt, remember_file, replay, rows, work
 
 
 def detail(store, actor_id, kind, identifier):
@@ -30,6 +30,8 @@ def change(store, actor_id, kind, identifier, command):
         value = db.values(existing) if existing else {"id": key(kind, identifier), "kind": kind, "record_id": identifier,
             "held": False, "restricted": False, "erased_at": None, "erasure_due": False, "revision": 0, "created_at": db.now()}
         outcome = {}
+        if kind == "document":
+            value['file_keys_sha256'] = remember_file(existing, unit.store.get_document(identifier).file_url)
         if command.action == "erase":
             if not current["can_erase"]:
                 raise HTTPException(409, "Löschen gesperrt: " + " ".join(current["blockers"]))

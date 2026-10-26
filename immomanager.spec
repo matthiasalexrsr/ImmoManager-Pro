@@ -227,6 +227,12 @@ _EXPLICIT_THIRD_PARTY = [
 # ---------------------------------------------------------------------------
 backend_data = list(collected_datas)
 from tools.third_party_notices import generate as generate_notices
+from pathlib import Path
+from tools.prepare_e_invoice import prepare as prepare_invoice_bundle
+invoice_bundle = Path(ROOT) / 'artifacts/e-invoice'
+prepare_invoice_bundle(invoice_bundle)
+backend_data.append((str(invoice_bundle), 'e-invoice'))
+backend_data.append((os.path.join(ROOT, 'backend', 'services', 'e_invoice', 'assets.json'), 'backend/services/e_invoice'))
 notices = generate_notices()
 backend_data.append((str(notices), 'THIRD_PARTY_NOTICES'))
 backend_data.append((os.path.join(ROOT, 'LICENSE'), '.'))

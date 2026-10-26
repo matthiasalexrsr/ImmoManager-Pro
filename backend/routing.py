@@ -87,6 +87,7 @@ from .routers import (
     tax_rates,
     teha,
     tenants,
+    third_party_licenses,
     units,
     updates,
     viewings,
@@ -102,6 +103,7 @@ def build_api_v1() -> APIRouter:
     api_v1.include_router(auth.router)
     api_v1.include_router(channels.public_router)
     api_v1.include_router(external_portal.public_router)
+    api_v1.include_router(third_party_licenses.router)
 
     # Protected routes
     _auth_dep = [Depends(require_auth), Depends(plausibility_guard)]

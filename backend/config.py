@@ -7,6 +7,7 @@ import enum
 import importlib.metadata
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -15,6 +16,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 SETTING_ORIGINS: dict[str, str] = {}
 SETTING_ORIGIN_FILES: dict[str, str] = {}
+
+
+def _packaged_invoice_bundle() -> str:
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    candidate = root / ("e-invoice" if getattr(sys, "frozen", False) else "artifacts/e-invoice")
+    return str(candidate) if candidate.is_dir() else ""
 
 
 def _get_version(pyproject: Path | None = None) -> str:
@@ -178,7 +185,7 @@ class Settings(BaseSettings):
     # Every process ticks; durable runs and leases keep one worker per job.
     job_scheduler_enabled: bool = True
     # Explicit, hash-verified local bundle; no download or ambient Java at runtime.
-    e_invoice_bundle: str = ""
+    e_invoice_bundle: str = Field(default_factory=_packaged_invoice_bundle)
     e_invoice_timeout_seconds: int = Field(default=90, ge=5, le=180)
     job_scheduler_interval_seconds: float = 60.0
     # "latest": only the newest missed occurrence of a series becomes a task; "all": every one

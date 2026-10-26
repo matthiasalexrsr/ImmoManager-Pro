@@ -28,6 +28,12 @@ class ChangeAccess(Command):
     reason: str = Field(min_length=10, max_length=2000)
 
 
+class RecoverAccess(Command):
+    expected_revision: int = Field(ge=1)
+    grant_revision: int = Field(ge=1)
+    verification: str = Field(min_length=20, max_length=2000)
+
+
 class PublishDocument(Command):
     grant_revision: int = Field(ge=1)
     version_id: str = Field(min_length=1, max_length=100)

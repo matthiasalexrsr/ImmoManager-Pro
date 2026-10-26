@@ -228,3 +228,25 @@ def test_http_upload_does_not_return_original_or_allow_readonly_write(estate):
         response = client.post("/api/v1/e-invoice-intakes", data={"property_id": prop.id},
             files={"file": ("invoice.xml", XML)}, headers={"Idempotency-Key": uuid4().hex})
         assert response.status_code == 403
+
+
+@pytest.mark.parametrize('same_command', [True, False])
+def test_concurrent_http_accept_never_creates_two_invoices(estate, valid_engine, same_command):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    row = receipt(estate)
+    first = command(row).model_dump(mode='json')
+    second = dict(first) if same_command else command(row).model_dump(mode='json')
+    barrier = Barrier(2)
+    token = auth.create_access_token(estate[0].id)
+    def accept(payload):
+        with TestClient(app, headers={'Authorization': 'Bearer ' + token}) as client:
+            barrier.wait(timeout=15)
+            response = client.post('/api/v1/e-invoice-intakes/' + row['id'] + '/accept', json=payload)
+            return response.status_code, response.json()
+    with ThreadPoolExecutor(2) as pool:
+        futures = [pool.submit(accept, payload) for payload in (first, second)]
+        results = [future.result(timeout=60) for future in futures]
+    assert sorted(status for status, _ in results) == ([200, 200] if same_command else [200, 409]), results
+    accepted = [value['invoice_id'] for status, value in results if status == 200]
+    assert len(set(accepted)) == 1 and len(store.list_invoices()) == 1

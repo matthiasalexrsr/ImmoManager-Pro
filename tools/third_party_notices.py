@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import sysconfig
 from importlib import metadata
 from pathlib import Path
 
@@ -74,7 +75,9 @@ def covered_sources(output):
 
 def generate(output=None):
     wizard_vendor, wizard_source = verify_wizard_assets(ROOT)
-    output = Path(output or ROOT / "artifacts/THIRD_PARTY_NOTICES")
+    invoice_manifest = ROOT / "packaging/e-invoice-notices/manifest.json"
+    notice_revision = hashlib.sha256(invoice_manifest.read_bytes()).hexdigest()[:12]
+    output = Path(output or ROOT / ("artifacts/notices-" + notice_revision))
     output.mkdir(parents=True, exist_ok=True)
     rows, missing, excluded = [], [], []
 
@@ -111,13 +114,16 @@ def generate(output=None):
         )
 
     roots = list(requirements(ROOT / "requirements-runtime.txt"))
-    # Desktop spec deliberately excludes the PostgreSQL driver.
-    roots = [req for req in roots if canonicalize_name(req.name) != "psycopg2-binary"]
+    hosting = os.environ.get('IMMO_PACKAGE_TARGET') == 'hosting'
+    # The desktop spec excludes PostgreSQL; the hosting image actually ships it.
+    if not hosting:
+        roots = [req for req in roots if canonicalize_name(req.name) != "psycopg2-binary"]
     if os.environ.get("IMMO_BUILD_BANK") == "1":
         roots += list(requirements(ROOT / "requirements-bank.txt"))
     if document_tools():
         roots += list(requirements(ROOT / "requirements-documents-optional.txt"))
-    roots += [Requirement("PyInstaller")]
+    if not hosting:
+        roots += [Requirement("PyInstaller")]
     seen = set()
 
     def visit(req):
@@ -177,7 +183,9 @@ def generate(output=None):
                 files.extend(Path(parent) / name for name in names if license_file(Path(name)))
             record("npm", pkg["name"], pkg["version"], pkg.get("license", info.get("license", "UNKNOWN")), files)
 
-    record("runtime", "Python", sys.version.split()[0], "PSF-2.0", [Path(sys.base_prefix) / "LICENSE.txt"])
+    python_licenses = [Path(sys.base_prefix) / 'LICENSE.txt', Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt',
+                       Path(sys.base_prefix) / 'LICENSE']
+    record("runtime", "Python", sys.version.split()[0], "PSF-2.0", python_licenses)
     record("asset", "Roboto-wizard", wizard_source["font_version"], "OFL-1.1",
            [wizard_vendor / "Roboto-OFL.txt", wizard_vendor / "SOURCES.json"])
     record("asset", "NotoSans", "bundled", "OFL-1.1", [ROOT / "backend/assets/fonts/OFL-Noto.txt"])
@@ -215,7 +223,15 @@ def generate(output=None):
     for path in output.iterdir():
         if path.is_file() and path.name not in expected:
             path.unlink()
-    print(f"{len(rows)} components with license texts: {output}")
+    from tools.e_invoice_notices import catalog
+    from tools.e_invoice_notices import generate as invoice_notices
+    invoice_rows = invoice_notices(output)
+    system_rows = []
+    if hosting:
+        from tools.hosting_notices import generate as system_notices
+        system_rows = system_notices(output)
+    catalog(output, [*rows, *invoice_rows, *system_rows])
+    print(f"{len(rows) + len(invoice_rows) + len(system_rows)} components with license texts: {output}")
     return output
 
 

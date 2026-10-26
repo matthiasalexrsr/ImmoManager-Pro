@@ -1,13 +1,21 @@
 {
-  "format": "immomanager-e-invoice-assets/1",
+  "format": "immomanager-e-invoice-assets/2",
   "assets": [
     {
       "name": "kosit",
       "version": "1.6.3",
-      "filename": "validator-1.6.3-standalone.jar",
-      "url": "https://github.com/itplr-kosit/validator/releases/download/v1.6.3/validator-1.6.3-standalone.jar",
-      "sha256": "799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9",
-      "license": "Apache-2.0; included dependencies inventoried separately"
+      "filename": "validator-1.6.3-immo1.jar",
+      "sha256": "3506fcf63323993c4c72b03d4cfa7aca8c491ee558b322edb689fbdf8b68d61e",
+      "license": "Apache-2.0; included dependencies inventoried separately",
+      "derive": {
+        "base": {
+          "filename": "validator-1.6.3-standalone.jar",
+          "url": "https://github.com/itplr-kosit/validator/releases/download/v1.6.3/validator-1.6.3-standalone.jar",
+          "sha256": "799e64befca97d4080e03608c80b85dd5a5ecc5f4ae4f35d1116ec2855b9a7c9"
+        },
+        "recipe": "kosit-cli-1"
+      },
+      "packaging_revision": "immo1"
     },
     {
       "name": "xrechnung",
@@ -21,12 +29,96 @@
     {
       "name": "mustang",
       "resource_directory": "mustang-resources",
-      "resource_prefixes": ["font/cmap/"],
+      "resource_prefixes": [
+        "font/cmap/"
+      ],
       "version": "2.26.0",
-      "filename": "Mustang-CLI-2.26.0.jar",
-      "url": "https://github.com/ZUGFeRD/mustangproject/releases/download/core-2.26.0/Mustang-CLI-2.26.0.jar",
-      "sha256": "42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736",
-      "license": "Apache-2.0; included dependencies inventoried separately"
+      "filename": "Mustang-CLI-2.26.0-immo1.jar",
+      "sha256": "d0490a37e073fa71ed109be8ec2ce0c8e4e5e07a42f145b80231bc7fa84263de",
+      "license": "Apache-2.0; included dependencies inventoried separately",
+      "derive": {
+        "base": {
+          "filename": "Mustang-CLI-2.26.0.jar",
+          "url": "https://github.com/ZUGFeRD/mustangproject/releases/download/core-2.26.0/Mustang-CLI-2.26.0.jar",
+          "sha256": "42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736"
+        },
+        "recipe": "mustang-security-1",
+        "replacements": [
+          {
+            "group": "com.fasterxml.jackson.core",
+            "artifact": "jackson-core",
+            "version": "2.22.4",
+            "filename": "com.fasterxml.jackson.core-jackson-core-2.22.4.jar",
+            "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4.jar",
+            "sha256": "2d30c375cddea9657a1e1ef97547a2694b663b355facb4de53a097782b312d1a",
+            "prefixes": [
+              "com/fasterxml/jackson/core/",
+              "META-INF/maven/com.fasterxml.jackson.core/jackson-core/"
+            ],
+            "source": {
+              "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.22.4/jackson-core-2.22.4-sources.jar",
+              "file": "com.fasterxml.jackson.core-jackson-core-2.22.4-sources.jar",
+              "sha256": "470b0c061f786de32a48391a716656e14f73a7439466ca4ad17c1f4607982761",
+              "bytes": 510436
+            }
+          },
+          {
+            "group": "com.fasterxml.jackson.core",
+            "artifact": "jackson-databind",
+            "version": "2.22.4",
+            "filename": "com.fasterxml.jackson.core-jackson-databind-2.22.4.jar",
+            "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4.jar",
+            "sha256": "d4cbf8947087f305869826801913abdc50735a1fab2074a1993e7bc67ca974a3",
+            "prefixes": [
+              "com/fasterxml/jackson/databind/",
+              "META-INF/maven/com.fasterxml.jackson.core/jackson-databind/"
+            ],
+            "source": {
+              "url": "https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.22.4/jackson-databind-2.22.4-sources.jar",
+              "file": "com.fasterxml.jackson.core-jackson-databind-2.22.4-sources.jar",
+              "sha256": "ffbe06fe73b9e3c3cd9b15ec9049711c91808cbbee133057bf13d3f9b43d7776",
+              "bytes": 1270435
+            }
+          },
+          {
+            "group": "org.assertj",
+            "artifact": "assertj-core",
+            "version": "3.27.7",
+            "filename": "org.assertj-assertj-core-3.27.7.jar",
+            "url": "https://repo.maven.apache.org/maven2/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7.jar",
+            "sha256": "c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f",
+            "prefixes": [
+              "org/assertj/",
+              "META-INF/maven/org.assertj/assertj-core/"
+            ],
+            "source": {
+              "url": "https://repo.maven.apache.org/maven2/org/assertj/assertj-core/3.27.7/assertj-core-3.27.7-sources.jar",
+              "file": "org.assertj-assertj-core-3.27.7-sources.jar",
+              "sha256": "5ba6de05730cf76021001f8437f35db4cb5b513465d4ace8c3a6fcd68d9a19ee",
+              "bytes": 1455621
+            }
+          },
+          {
+            "group": "net.bytebuddy",
+            "artifact": "byte-buddy",
+            "version": "1.17.8",
+            "filename": "net.bytebuddy-byte-buddy-1.17.8.jar",
+            "url": "https://repo.maven.apache.org/maven2/net/bytebuddy/byte-buddy/1.17.8/byte-buddy-1.17.8.jar",
+            "sha256": "2b5ddc8c1f4234bdb7cb45338a8e10a13e0e3ca473e91d5d821d681127ea8ba1",
+            "prefixes": [
+              "net/bytebuddy/",
+              "META-INF/maven/net.bytebuddy/byte-buddy/"
+            ],
+            "source": {
+              "url": "https://repo.maven.apache.org/maven2/net/bytebuddy/byte-buddy/1.17.8/byte-buddy-1.17.8-sources.jar",
+              "file": "net.bytebuddy-byte-buddy-1.17.8-sources.jar",
+              "sha256": "5211140f46c380a5e9630a86b2c07b396a9c374128fa603ca1d321b3c7da7449",
+              "bytes": 2705255
+            }
+          }
+        ]
+      },
+      "packaging_revision": "immo1"
     },
     {
       "name": "temurin-windows-x64",
@@ -36,6 +128,17 @@
       "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636",
       "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
       "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1",
+      "extract": "runtime",
+      "platform": "windows-x64"
+    },
+    {
+      "name": "temurin-linux-x64",
+      "platform": "linux-x64",
+      "version": "21.0.12.1+1",
+      "filename": "OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+      "sha256": "2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500",
+      "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
       "extract": "runtime"
     }
   ]

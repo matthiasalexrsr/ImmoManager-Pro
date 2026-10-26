@@ -5,7 +5,13 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from ...db.external_portal_models import PortalGrantORM, PortalIdentityORM, PortalInvitationORM, PortalPublicationORM
+from ...db.external_portal_models import (
+    PortalGrantORM,
+    PortalIdentityORM,
+    PortalInvitationORM,
+    PortalPublicationORM,
+    PortalSessionORM,
+)
 from .. import document_versions as archive
 from ..integrations import connection_storage as db
 from .common import admin_work, binding, event, grant, origin, public, receipt, replay, rows, token_hash
@@ -201,3 +207,42 @@ def change_identity(store, actor_id, grant_id, command):
         for item in rows(unit, PortalGrantORM, identity_id=identity.id):
             event(unit, item.id, "identity_changed", command.reason, {"active": command.active, "revision": identity.revision})
         return receipt(unit, operation, command, public(identity, ("id", "email", "active", "revision")))
+
+
+def recover_access(store, actor_id, grant_id, command):
+    """Verified administrator recovery; grants and sessions close before re-inviting."""
+    from ..portfolio_scope import scope_from_user
+    address = origin()
+    with admin_work(store, actor_id) as unit:
+        if not scope_from_user(unit.user).unrestricted:
+            raise HTTPException(403, 'Das Zurücksetzen eines gesamten Portalzugangs benötigt Zugriff auf alle Bestände.')
+        operation = 'recover:' + grant_id
+        if previous := replay(unit, operation, command):
+            return {**previous, 'invitation_url': None, 'notice': 'Der Zugang wurde bereits zurückgesetzt. Der Link wird nur einmal angezeigt. Bei Verlust den aktuellen Stand laden und nach erneuter Prüfung zurücksetzen.'}
+        access = grant(unit, grant_id, active=False)
+        identity = db.row(unit, PortalIdentityORM, access.identity_id, lock=True)
+        db.revision(identity, command.expected_revision)
+        db.revision(access, command.grant_revision)
+        if not identity.active:
+            raise HTTPException(409, 'Ein deaktiviertes Konto muss vor einer erneuten Einladung ausdrücklich überprüft und reaktiviert werden.')
+        _, party = binding(unit, access.kind, access.tenant_id or access.contact_id, access.contract_id or access.ownership_id)
+        if not party.email or party.email.strip().casefold() != identity.email:
+            raise HTTPException(409, 'Die aktuelle persönliche E-Mail-Adresse und der bestehende Portalzugang stimmen nicht überein. Bitte zuerst die Identität und Stammdaten klären.')
+        identity = db.put(unit, PortalIdentityORM, {**db.values(identity), 'password_hash': None,
+            'revision': identity.revision + 1, 'updated_at': db.now()})
+        for item in rows(unit, PortalGrantORM, identity_id=identity.id):
+            db.put(unit, PortalGrantORM, {**db.values(item), 'active': False, 'revision': item.revision + 1, 'updated_at': db.now()})
+            for invitation in rows(unit, PortalInvitationORM, grant_id=item.id):
+                if not invitation.revoked_at:
+                    db.put(unit, PortalInvitationORM, {**db.values(invitation), 'revoked_at': db.now()})
+            event(unit, item.id, 'access_recovery', command.verification, {'identity_revision': identity.revision})
+        for session in rows(unit, PortalSessionORM, identity_id=identity.id):
+            if not session.revoked_at:
+                db.put(unit, PortalSessionORM, {**db.values(session), 'revoked_at': db.now()})
+        token = secrets.token_urlsafe(32)
+        invitation = db.put(unit, PortalInvitationORM, {'id': str(uuid4()), 'grant_id': access.id, 'token_sha256': token_hash(token),
+            'expires_at': db.now() + timedelta(hours=24), 'consumed_at': None, 'revoked_at': None,
+            'created_by': actor_id, 'created_at': db.now()})
+        result = receipt(unit, operation, command, {'email': identity.email, 'invitation_id': invitation.id,
+            'expires_at': invitation.expires_at.isoformat(), 'identity_revision': identity.revision})
+        return {**result, 'invitation_url': address + '/portal/accept#' + token}

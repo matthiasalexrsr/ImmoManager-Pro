@@ -21,6 +21,7 @@ class PrivacyControlORM(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     actor_id: Mapped[str] = mapped_column(String(50), nullable=False)
     source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_keys_sha256: Mapped[list[str] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

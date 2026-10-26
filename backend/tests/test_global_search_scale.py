@@ -8,6 +8,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from backend.db.orm_models import TenantORM
+from backend.db.privacy_models import PrivacyControlORM, RestoreReviewORM
 from backend.services import global_search as search
 
 
@@ -44,6 +45,10 @@ def test_native_and_unicode_branches_match_memory_counts_pages_and_export(query)
     table = TenantORM.__table__
     assert isinstance(table, Table)
     table.create(engine)
+    for model in (PrivacyControlORM, RestoreReviewORM):
+        private_table = model.__table__
+        assert isinstance(private_table, Table)
+        private_table.create(engine)
     names = ["SEARCH ordinary", "SEARCH ÖZTÜRK ÄRGER", "SEARCH Straße ẞ", "SEARCH İSTANBUL I",
              "SEARCH ΟΣ", "SEARCH a_%\\line\nBREAK", "SEARCH tail"]
     rows = [SimpleNamespace(id=f"row-{index:03d}", full_name=name,

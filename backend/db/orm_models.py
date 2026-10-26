@@ -1036,7 +1036,8 @@ class ChangeHistoryORM(Base):
     field_name: Mapped[str] = mapped_column(String(100))
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
-    changed_by: Mapped[str | None] = mapped_column(String(36))
+    # External actors have a distinct namespace: portal:<UUID> (43 chars).
+    changed_by: Mapped[str | None] = mapped_column(String(50))
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     reason: Mapped[str | None] = mapped_column(Text)
 

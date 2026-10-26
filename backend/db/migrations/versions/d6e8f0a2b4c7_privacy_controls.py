@@ -80,6 +80,11 @@ def upgrade():
         raise RuntimeError("Partial privacy schema; verify retained sources before upgrading")
     for table in tables():
         if existing:
+            # A metadata-created current schema may already contain the later,
+            # explicitly reviewed additive file tombstones. Verify them too.
+            if table.name == 'privacy_controls' and any(column['name'] == 'file_keys_sha256'
+                    for column in inspector.get_columns(table.name)):
+                table.append_column(sa.Column('file_keys_sha256', sa.JSON, nullable=True))
             verify_table(connection, table)
         else:
             table.create(connection)

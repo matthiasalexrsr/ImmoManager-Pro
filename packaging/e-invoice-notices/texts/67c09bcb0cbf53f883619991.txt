@@ -1,0 +1,170 @@
+Source files: module-info.java
+/*
+ * Copyright (c) 2017, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/AccessorFactory.java, org/glassfish/jaxb/runtime/AccessorFactoryImpl.java, org/glassfish/jaxb/runtime/InternalAccessorFactory.java, org/glassfish/jaxb/runtime/Messages.java, org/glassfish/jaxb/runtime/ValidationEventLocatorEx.java, org/glassfish/jaxb/runtime/XmlAccessorFactory.java, org/glassfish/jaxb/runtime/api/Messages.java, org/glassfish/jaxb/runtime/api/package-info.java, org/glassfish/jaxb/runtime/marshaller/NioEscapeHandler.java, org/glassfish/jaxb/runtime/unmarshaller/Patcher.java, org/glassfish/jaxb/runtime/v2/JAXBContextFactory.java, org/glassfish/jaxb/runtime/v2/model/annotation/ClassLocatable.java, org/glassfish/jaxb/runtime/v2/model/annotation/FieldLocatable.java, org/glassfish/jaxb/runtime/v2/model/annotation/Messages.java, org/glassfish/jaxb/runtime/v2/model/annotation/MethodLocatable.java, org/glassfish/jaxb/runtime/v2/model/annotation/RuntimeAnnotationReader.java, org/glassfish/jaxb/runtime/v2/model/annotation/SecureLoader.java, org/glassfish/jaxb/runtime/v2/model/impl/AnyTypeImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/AttributePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/ERPropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/ElementInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/EnumConstantImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/FieldPropertySeed.java, org/glassfish/jaxb/runtime/v2/model/impl/LeafInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/MapPropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeAnyTypeImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeArrayInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeAttributePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeElementPropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeEnumConstantImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeEnumLeafInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeReferencePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeTypeInfoSetImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeTypeRefImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeValuePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/SecureLoader.java, org/glassfish/jaxb/runtime/v2/model/impl/TypeInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/TypeRefImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/Util.java, org/glassfish/jaxb/runtime/v2/model/impl/ValuePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeArrayInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeAttributePropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeBuiltinLeafInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeClassInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeElement.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeElementInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeElementPropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeEnumLeafInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeLeafInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeMapPropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeNonElement.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeReferencePropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeTypeInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeTypeInfoSet.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeTypeRef.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeValuePropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/runtime/package-info.java, org/glassfish/jaxb/runtime/v2/package-info.java, org/glassfish/jaxb/runtime/v2/runtime/BridgeAdapter.java, org/glassfish/jaxb/runtime/v2/runtime/CompositeStructureBeanInfo.java, org/glassfish/jaxb/runtime/v2/runtime/DomPostInitAction.java, org/glassfish/jaxb/runtime/v2/runtime/FilterTransducer.java, org/glassfish/jaxb/runtime/v2/runtime/InlineBinaryTransducer.java, org/glassfish/jaxb/runtime/v2/runtime/InternalBridge.java, org/glassfish/jaxb/runtime/v2/runtime/LifecycleMethods.java, org/glassfish/jaxb/runtime/v2/runtime/Messages.java, org/glassfish/jaxb/runtime/v2/runtime/MimeTypedTransducer.java, org/glassfish/jaxb/runtime/v2/runtime/Name.java, org/glassfish/jaxb/runtime/v2/runtime/NameList.java, org/glassfish/jaxb/runtime/v2/runtime/NamespaceContext2.java, org/glassfish/jaxb/runtime/v2/runtime/StAXPostInitAction.java, org/glassfish/jaxb/runtime/v2/runtime/SwaRefAdapter.java, org/glassfish/jaxb/runtime/v2/runtime/output/DOMOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/ForkXmlOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/MTOMXmlOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/SAXOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/SecureLoader.java, org/glassfish/jaxb/runtime/v2/runtime/output/StAXExStreamWriterOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/XMLEventWriterOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/XMLStreamWriterOutput.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayERProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayElementLeafProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayElementNodeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayReferenceNodeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/AttributeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/ListElementProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/Messages.java, org/glassfish/jaxb/runtime/v2/runtime/property/PropertyImpl.java, org/glassfish/jaxb/runtime/v2/runtime/property/SingleElementNodeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/TagAndType.java, org/glassfish/jaxb/runtime/v2/runtime/property/UnmarshallerChain.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/AdaptedAccessor.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/AdaptedLister.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/ListIterator.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/ListTransducedAccessorImpl.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/Messages.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/NullSafeAccessor.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/Bean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/Const.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/Ref.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/SecureLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/AttributesEx.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/ChildLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/DefaultValueLoaderDecorator.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Discarder.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/IntArrayData.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Intercepter.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/InterningXmlVisitor.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/LeafPropertyLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/LocatorExWrapper.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/MTOMDecorator.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Messages.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Patcher.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/ProxyLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Receiver.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Scope.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/SecureLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/StAXConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/StAXEventConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/StAXExConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/StAXStreamConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/TagName.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/TextLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/ValuePropertyLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/WildcardLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/XmlVisitor.java, org/glassfish/jaxb/runtime/v2/schemagen/FoolProofResolver.java, org/glassfish/jaxb/runtime/v2/schemagen/Form.java, org/glassfish/jaxb/runtime/v2/schemagen/GroupKind.java, org/glassfish/jaxb/runtime/v2/schemagen/Messages.java, org/glassfish/jaxb/runtime/v2/schemagen/Util.java, org/glassfish/jaxb/runtime/v2/schemagen/package-info.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ContentModelContainer.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Particle.java, org/glassfish/jaxb/runtime/v2/util/ByteArrayOutputStreamEx.java, org/glassfish/jaxb/runtime/v2/util/CollisionCheckStack.java, org/glassfish/jaxb/runtime/v2/util/DataSourceSource.java, org/glassfish/jaxb/runtime/v2/util/FatalAdapter.java
+/*
+ * Copyright (c) 1997, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/AnyTypeAdapter.java, org/glassfish/jaxb/runtime/CycleRecoverable.java, org/glassfish/jaxb/runtime/IDResolver.java, org/glassfish/jaxb/runtime/api/AccessorException.java, org/glassfish/jaxb/runtime/api/Bridge.java, org/glassfish/jaxb/runtime/api/ClassResolver.java, org/glassfish/jaxb/runtime/api/CompositeStructure.java, org/glassfish/jaxb/runtime/api/JAXBRIContext.java, org/glassfish/jaxb/runtime/api/RawAccessor.java, org/glassfish/jaxb/runtime/api/TypeReference.java, org/glassfish/jaxb/runtime/marshaller/NamespacePrefixMapper.java, org/glassfish/jaxb/runtime/unmarshaller/Messages.java, org/glassfish/jaxb/runtime/util/AttributesImpl.java, org/glassfish/jaxb/runtime/util/ValidationEventLocatorExImpl.java, org/glassfish/jaxb/runtime/v2/model/annotation/AbstractInlineAnnotationReaderImpl.java, org/glassfish/jaxb/runtime/v2/model/annotation/LocatableAnnotation.java, org/glassfish/jaxb/runtime/v2/model/annotation/Quick.java, org/glassfish/jaxb/runtime/v2/model/annotation/RuntimeInlineAnnotationReader.java, org/glassfish/jaxb/runtime/v2/model/impl/ArrayInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/BuiltinLeafInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/ClassInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/DummyPropertyInfo.java, org/glassfish/jaxb/runtime/v2/model/impl/ElementPropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/EnumLeafInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/PropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/PropertySeed.java, org/glassfish/jaxb/runtime/v2/model/impl/ReferencePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RegistryInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeClassInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeElementInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeMapPropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/RuntimeModelBuilder.java, org/glassfish/jaxb/runtime/v2/model/impl/SingleTypePropertyInfoImpl.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimeNonElementRef.java, org/glassfish/jaxb/runtime/v2/model/runtime/RuntimePropertyInfo.java, org/glassfish/jaxb/runtime/v2/runtime/AnyTypeBeanInfo.java, org/glassfish/jaxb/runtime/v2/runtime/ArrayBeanInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/AssociationMap.java, org/glassfish/jaxb/runtime/v2/runtime/AttributeAccessor.java, org/glassfish/jaxb/runtime/v2/runtime/BinderImpl.java, org/glassfish/jaxb/runtime/v2/runtime/BridgeImpl.java, org/glassfish/jaxb/runtime/v2/runtime/ClassBeanInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/ContentHandlerAdaptor.java, org/glassfish/jaxb/runtime/v2/runtime/Coordinator.java, org/glassfish/jaxb/runtime/v2/runtime/ElementBeanInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/JAXBContextImpl.java, org/glassfish/jaxb/runtime/v2/runtime/JaxBeanInfo.java, org/glassfish/jaxb/runtime/v2/runtime/LeafBeanInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/MarshallerImpl.java, org/glassfish/jaxb/runtime/v2/runtime/NameBuilder.java, org/glassfish/jaxb/runtime/v2/runtime/SchemaTypeTransducer.java, org/glassfish/jaxb/runtime/v2/runtime/Transducer.java, org/glassfish/jaxb/runtime/v2/runtime/ValueListBeanInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/XMLSerializer.java, org/glassfish/jaxb/runtime/v2/runtime/output/Encoded.java, org/glassfish/jaxb/runtime/v2/runtime/output/FastInfosetStreamWriterOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/NamespaceContextImpl.java, org/glassfish/jaxb/runtime/v2/runtime/output/Pcdata.java, org/glassfish/jaxb/runtime/v2/runtime/output/XmlOutput.java, org/glassfish/jaxb/runtime/v2/runtime/output/XmlOutputAbstractImpl.java, org/glassfish/jaxb/runtime/v2/runtime/output/package-info.java, org/glassfish/jaxb/runtime/v2/runtime/property/ArrayElementProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/Property.java, org/glassfish/jaxb/runtime/v2/runtime/property/SingleElementLeafProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/SingleMapNodeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/SingleReferenceNodeProperty.java, org/glassfish/jaxb/runtime/v2/runtime/property/StructureLoaderBuilder.java, org/glassfish/jaxb/runtime/v2/runtime/property/ValueProperty.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/DefaultTransducedAccessor.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/Lister.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerBoolean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerByte.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerCharacter.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerDouble.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerFloat.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerInteger.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerLong.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/PrimitiveArrayListerShort.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/TransducedAccessor.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Boolean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Byte.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Character.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Double.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Float.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Integer.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Long.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Ref.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/FieldAccessor_Short.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/Injector.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Boolean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Byte.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Character.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Double.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Float.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Integer.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Long.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Ref.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/MethodAccessor_Short.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Boolean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Byte.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Double.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Float.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Integer.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Long.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_field_Short.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Boolean.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Byte.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Double.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Float.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Integer.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Long.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/TransducedAccessor_method_Short.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/AttributesExImpl.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Base64Data.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/DefaultIDResolver.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/DomLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/FastInfosetConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/LeafPropertyXsiLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/Loader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/SAXConnector.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/StructureLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/XsiNilLoader.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/XsiTypeLoader.java, org/glassfish/jaxb/runtime/v2/schemagen/MultiMap.java, org/glassfish/jaxb/runtime/v2/schemagen/Tree.java, org/glassfish/jaxb/runtime/v2/util/QNameMap.java, org/glassfish/jaxb/runtime/v2/util/StackRecorder.java, org/glassfish/jaxb/runtime/v2/util/TypeCast.java
+/*
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/DatatypeConverterImpl.java, org/glassfish/jaxb/runtime/v2/model/impl/Messages.java, org/glassfish/jaxb/runtime/v2/model/impl/ModelBuilder.java, org/glassfish/jaxb/runtime/v2/runtime/output/C14nXmlOutput.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/UnmarshallingContext.java, org/glassfish/jaxb/runtime/v2/schemagen/XmlSchemaGenerator.java
+/*
+ * Copyright (c) 1997, 2023 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/api/Utils.java, org/glassfish/jaxb/runtime/v2/model/impl/Utils.java, org/glassfish/jaxb/runtime/v2/runtime/Utils.java, org/glassfish/jaxb/runtime/v2/runtime/property/Utils.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/Utils.java
+/*
+ * Copyright (c) 2013, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/util/StringBuilderWriter.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/ContextFactory.java, org/glassfish/jaxb/runtime/v2/model/impl/TypeInfoSetImpl.java, org/glassfish/jaxb/runtime/v2/runtime/IllegalAnnotationsException.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/IntData.java, org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/UnmarshallerImpl.java
+/*
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/MUtils.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ * Copyright (c) 2021, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/model/annotation/package-info.java, org/glassfish/jaxb/runtime/v2/model/impl/package-info.java, org/glassfish/jaxb/runtime/v2/runtime/package-info.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/opt/package-info.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/package-info.java
+/*
+ * Copyright (c) 2017, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/model/impl/GetterSetterPropertySeed.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ * Copyright (c) 1997, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/model/impl/RuntimeBuiltinLeafInfoImpl.java, org/glassfish/jaxb/runtime/v2/runtime/reflect/Accessor.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/runtime/output/IndentingUTF8XmlOutput.java
+/*
+ * Copyright (c) 1997, 2025 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/runtime/output/UTF8XmlOutput.java, org/glassfish/jaxb/runtime/v2/runtime/property/PropertyFactory.java
+/*
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/runtime/unmarshaller/ValidatingUnmarshaller.java
+/*
+ * Copyright (c) 1997, 2021 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Annotated.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Annotation.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Any.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Appinfo.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/AttrDecls.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/AttributeType.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexContent.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexExtension.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexRestriction.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexType.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexTypeHost.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ComplexTypeModel.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Documentation.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Element.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ExplicitGroup.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/ExtensionType.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/FixedOrDefault.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Import.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/List.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/LocalAttribute.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/LocalElement.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/NestedParticle.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/NoFixedFacet.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Occurs.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Redefinable.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Schema.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SchemaTop.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleContent.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleDerivation.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleExtension.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleRestriction.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleRestrictionModel.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleType.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/SimpleTypeHost.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/TopLevelAttribute.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/TopLevelElement.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/TypeDefParticle.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/TypeHost.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Union.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/Wildcard.java, org/glassfish/jaxb/runtime/v2/schemagen/xmlschema/package-info.java, org/glassfish/jaxb/runtime/v2/model/annotation/Init.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAccessorOrderQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAccessorTypeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAnyAttributeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAnyElementQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAttachmentRefQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlAttributeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementDeclQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementRefQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementRefsQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementWrapperQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlElementsQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlEnumQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlEnumValueQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlIDQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlIDREFQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlInlineBinaryDataQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlJavaTypeAdapterQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlJavaTypeAdaptersQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlListQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlMimeTypeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlMixedQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlNsQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlRegistryQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlRootElementQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlSchemaQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlSchemaTypeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlSchemaTypesQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlSeeAlsoQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlTransientQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlTypeQuick.java, org/glassfish/jaxb/runtime/v2/model/annotation/XmlValueQuick.java
+/*
+ * Copyright (c) 2026 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */

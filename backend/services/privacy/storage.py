@@ -62,13 +62,31 @@ def ensure_available(store, kind, identifier):
         raise HTTPException(404, "Diese Quelle ist für Veröffentlichung, Suche und KI-Verarbeitung gesperrt.")
 
 
+def file_fingerprints(file_url):
+    from hashlib import sha256
+
+    from ...routers.files import _file_url_to_key
+    target = _file_url_to_key(file_url)
+    keys = {target} if target else set()
+    if target.endswith('_ocr.txt'):
+        keys.update(target[:-8] + '.' + extension for extension in ('pdf', 'png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp', 'webp'))
+    return sorted(sha256(key.encode('utf-8')).hexdigest() for key in keys)
+
+
+def remember_file(existing, file_url):
+    return sorted(set((existing.file_keys_sha256 or []) if existing else []) | set(file_fingerprints(file_url)))
+
+
 def ensure_file_available(store, file_url):
     """An upload locator must not bypass a restriction on its linked document."""
     from ...routers.files import _file_url_to_key
     target = _file_url_to_key(file_url)
     unit = read_unit(store)
-    blocked = [item.record_id for item in rows(unit, PrivacyControlORM, kind="document")
-               if item.restricted or item.erased_at]
+    policies = [item for item in rows(unit, PrivacyControlORM, kind="document") if item.restricted or item.erased_at or item.erasure_due]
+    candidates = set(file_fingerprints(file_url))
+    if any(candidates.intersection(item.file_keys_sha256 or []) for item in policies):
+        raise HTTPException(404, "Die Quelldatei ist aufgrund einer Datenschutzentscheidung gesperrt.")
+    blocked = [item.record_id for item in policies]
     if not target or not blocked:
         return
     if unit.db is not None:
@@ -77,8 +95,8 @@ def ensure_file_available(store, file_url):
         urls = unit.db.scalars(select(table.c.file_url).where(table.c.id.in_(blocked)))
     else:
         urls = [item.file_url for item in store.documents.values() if item.id in blocked]
-    if any(_file_url_to_key(url) == target for url in urls):
-        raise HTTPException(404, "Die Quelldatei ist für KI-Verarbeitung gesperrt.")
+    if any(candidates.intersection(file_fingerprints(url)) for url in urls):
+        raise HTTPException(404, "Die Quelldatei ist aufgrund einer Datenschutzentscheidung gesperrt.")
 
 
 def ensure_no_hold(store, kind, identifier):

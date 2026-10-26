@@ -36,7 +36,7 @@ dependencies = {file = ["requirements-runtime.txt"]}
 include = ["backend*"]
 
 [tool.setuptools.package-data]
-backend = ["assets/fonts/*", "resources/tessdata/*"]
+backend = ["assets/fonts/*", "resources/tessdata/*", "services/e_invoice/assets.json"]
 
 [tool.ruff]
 line-length = 120

@@ -1,0 +1,151 @@
+Source files: org/apache/xmpbox/DateConverter.java, org/apache/xmpbox/XMPMetadata.java, org/apache/xmpbox/schema/AdobePDFSchema.java, org/apache/xmpbox/schema/DublinCoreSchema.java, org/apache/xmpbox/schema/PDFAExtensionSchema.java, org/apache/xmpbox/schema/PDFAIdentificationSchema.java, org/apache/xmpbox/schema/PhotoshopSchema.java, org/apache/xmpbox/schema/XMPBasicJobTicketSchema.java, org/apache/xmpbox/schema/XMPBasicSchema.java, org/apache/xmpbox/schema/XMPMediaManagementSchema.java, org/apache/xmpbox/schema/XMPRightsManagementSchema.java, org/apache/xmpbox/schema/XMPSchema.java, org/apache/xmpbox/schema/XMPSchemaFactory.java, org/apache/xmpbox/schema/XmpSchemaException.java, org/apache/xmpbox/type/AbstractComplexProperty.java, org/apache/xmpbox/type/AbstractField.java, org/apache/xmpbox/type/AbstractSimpleProperty.java, org/apache/xmpbox/type/AbstractStructuredType.java, org/apache/xmpbox/type/AgentNameType.java, org/apache/xmpbox/type/ArrayProperty.java, org/apache/xmpbox/type/Attribute.java, org/apache/xmpbox/type/BadFieldValueException.java, org/apache/xmpbox/type/BooleanType.java, org/apache/xmpbox/type/Cardinality.java, org/apache/xmpbox/type/ChoiceType.java, org/apache/xmpbox/type/ComplexPropertyContainer.java, org/apache/xmpbox/type/DateType.java, org/apache/xmpbox/type/DefinedStructuredType.java, org/apache/xmpbox/type/GPSCoordinateType.java, org/apache/xmpbox/type/GUIDType.java, org/apache/xmpbox/type/IntegerType.java, org/apache/xmpbox/type/JobType.java, org/apache/xmpbox/type/LayerType.java, org/apache/xmpbox/type/LocaleType.java, org/apache/xmpbox/type/MIMEType.java, org/apache/xmpbox/type/PDFAFieldType.java, org/apache/xmpbox/type/PDFAPropertyType.java, org/apache/xmpbox/type/PDFASchemaType.java, org/apache/xmpbox/type/PDFATypeType.java, org/apache/xmpbox/type/PartType.java, org/apache/xmpbox/type/ProperNameType.java, org/apache/xmpbox/type/PropertiesDescription.java, org/apache/xmpbox/type/PropertyType.java, org/apache/xmpbox/type/RationalType.java, org/apache/xmpbox/type/RealType.java, org/apache/xmpbox/type/RenditionClassType.java, org/apache/xmpbox/type/StructuredType.java, org/apache/xmpbox/type/TextType.java, org/apache/xmpbox/type/ThumbnailType.java, org/apache/xmpbox/type/Types.java, org/apache/xmpbox/type/URLType.java, org/apache/xmpbox/type/XPathType.java, org/apache/xmpbox/xml/DomHelper.java, org/apache/xmpbox/xml/PdfaExtensionHelper.java, org/apache/xmpbox/xml/XmpParsingException.java, org/apache/xmpbox/xml/XmpSerializationException.java
+/*****************************************************************************
+ * 
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/XmpConstants.java
+/*****************************************************************************
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/schema/ExifSchema.java, org/apache/xmpbox/schema/TiffSchema.java, org/apache/xmpbox/schema/XMPageTextSchema.java, org/apache/xmpbox/type/CFAPatternType.java, org/apache/xmpbox/type/DeviceSettingsType.java, org/apache/xmpbox/type/DimensionsType.java, org/apache/xmpbox/type/FlashType.java, org/apache/xmpbox/type/OECFType.java
+/*****************************************************************************
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/type/ColorantType.java, org/apache/xmpbox/type/FontType.java
+/*****************************************************************************
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/type/ResourceEventType.java, org/apache/xmpbox/type/ResourceRefType.java, org/apache/xmpbox/type/TypeMapping.java, org/apache/xmpbox/type/VersionType.java, org/apache/xmpbox/xml/DomXmpParser.java
+/*****************************************************************************
+ * 
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/type/URIType.java
+/*****************************************************************************
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/xmpbox/xml/XmpSerializer.java
+/*****************************************************************************
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/

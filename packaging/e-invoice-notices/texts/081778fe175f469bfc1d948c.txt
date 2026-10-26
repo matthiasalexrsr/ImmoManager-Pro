@@ -1,0 +1,82 @@
+Source files: org/apache/pdfbox/preflight/Format.java, org/apache/pdfbox/preflight/PreflightConfiguration.java, org/apache/pdfbox/preflight/PreflightConstants.java, org/apache/pdfbox/preflight/PreflightContext.java, org/apache/pdfbox/preflight/PreflightDocument.java, org/apache/pdfbox/preflight/PreflightPath.java, org/apache/pdfbox/preflight/ValidationResult.java, org/apache/pdfbox/preflight/Validator_A1b.java, org/apache/pdfbox/preflight/action/AbstractActionManager.java, org/apache/pdfbox/preflight/action/ActionManagerFactory.java, org/apache/pdfbox/preflight/action/GoToAction.java, org/apache/pdfbox/preflight/action/GoToRemoteAction.java, org/apache/pdfbox/preflight/action/HideAction.java, org/apache/pdfbox/preflight/action/InvalidAction.java, org/apache/pdfbox/preflight/action/NamedAction.java, org/apache/pdfbox/preflight/action/SubmitAction.java, org/apache/pdfbox/preflight/action/ThreadAction.java, org/apache/pdfbox/preflight/action/UndefAction.java, org/apache/pdfbox/preflight/action/UriAction.java, org/apache/pdfbox/preflight/annotation/AnnotationValidator.java, org/apache/pdfbox/preflight/annotation/AnnotationValidatorFactory.java, org/apache/pdfbox/preflight/annotation/CircleAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/FreeTextAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/InkAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/LineAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/LinkAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/MarkupAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/PopupAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/PrintMarkAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/RubberStampAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/SquareAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/SquareCircleAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/TextAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/TrapNetAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/WidgetAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/pdfa/PDFAbAnnotationFactory.java, org/apache/pdfbox/preflight/content/ContentStreamException.java, org/apache/pdfbox/preflight/content/PreflightContentStream.java, org/apache/pdfbox/preflight/content/PreflightStreamEngine.java, org/apache/pdfbox/preflight/content/StubOperator.java, org/apache/pdfbox/preflight/exception/MissingValidationProcessException.java, org/apache/pdfbox/preflight/exception/SyntaxValidationException.java, org/apache/pdfbox/preflight/exception/ValidationException.java, org/apache/pdfbox/preflight/font/CIDType0FontValidator.java, org/apache/pdfbox/preflight/font/CIDType2FontValidator.java, org/apache/pdfbox/preflight/font/DescendantFontValidator.java, org/apache/pdfbox/preflight/font/FontValidator.java, org/apache/pdfbox/preflight/font/SimpleFontValidator.java, org/apache/pdfbox/preflight/font/TrueTypeFontValidator.java, org/apache/pdfbox/preflight/font/Type0FontValidator.java, org/apache/pdfbox/preflight/font/Type1FontValidator.java, org/apache/pdfbox/preflight/font/Type3FontValidator.java, org/apache/pdfbox/preflight/font/container/CIDType0Container.java, org/apache/pdfbox/preflight/font/container/CIDType2Container.java, org/apache/pdfbox/preflight/font/container/FontContainer.java, org/apache/pdfbox/preflight/font/container/TrueTypeContainer.java, org/apache/pdfbox/preflight/font/container/Type0Container.java, org/apache/pdfbox/preflight/font/container/Type1Container.java, org/apache/pdfbox/preflight/font/container/Type3Container.java, org/apache/pdfbox/preflight/font/descriptor/CIDType0DescriptorHelper.java, org/apache/pdfbox/preflight/font/descriptor/CIDType2DescriptorHelper.java, org/apache/pdfbox/preflight/font/descriptor/FontDescriptorHelper.java, org/apache/pdfbox/preflight/font/descriptor/TrueTypeDescriptorHelper.java, org/apache/pdfbox/preflight/font/descriptor/Type1DescriptorHelper.java, org/apache/pdfbox/preflight/font/util/FontMetaDataValidation.java, org/apache/pdfbox/preflight/font/util/GlyphDetail.java, org/apache/pdfbox/preflight/font/util/GlyphException.java, org/apache/pdfbox/preflight/font/util/PreflightType3Stream.java, org/apache/pdfbox/preflight/graphic/ColorSpaceHelper.java, org/apache/pdfbox/preflight/graphic/ColorSpaceHelperFactory.java, org/apache/pdfbox/preflight/graphic/ColorSpaces.java, org/apache/pdfbox/preflight/graphic/DeviceColorSpaceHelper.java, org/apache/pdfbox/preflight/graphic/ICCProfileWrapper.java, org/apache/pdfbox/preflight/graphic/NoPatternColorSpaceHelper.java, org/apache/pdfbox/preflight/graphic/StandardColorSpaceHelper.java, org/apache/pdfbox/preflight/metadata/PDFAIdentificationValidation.java, org/apache/pdfbox/preflight/metadata/RDFAboutAttributeConcordanceValidation.java, org/apache/pdfbox/preflight/metadata/SynchronizedMetaDataValidation.java, org/apache/pdfbox/preflight/metadata/XpacketParsingException.java, org/apache/pdfbox/preflight/parser/PreflightParser.java, org/apache/pdfbox/preflight/process/AbstractProcess.java, org/apache/pdfbox/preflight/process/AcroFormValidationProcess.java, org/apache/pdfbox/preflight/process/BookmarkValidationProcess.java, org/apache/pdfbox/preflight/process/CatalogValidationProcess.java, org/apache/pdfbox/preflight/process/EmptyValidationProcess.java, org/apache/pdfbox/preflight/process/FileSpecificationValidationProcess.java, org/apache/pdfbox/preflight/process/MetadataValidationProcess.java, org/apache/pdfbox/preflight/process/PageTreeValidationProcess.java, org/apache/pdfbox/preflight/process/StreamValidationProcess.java, org/apache/pdfbox/preflight/process/TrailerValidationProcess.java, org/apache/pdfbox/preflight/process/ValidationProcess.java, org/apache/pdfbox/preflight/process/XRefValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/ActionsValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/AnnotationValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/ExtGStateValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/FontValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/GraphicObjectPageValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/ResourcesValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/ShadingPatternValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/SinglePageValidationProcess.java, org/apache/pdfbox/preflight/process/reflect/TilingPatternValidationProcess.java, org/apache/pdfbox/preflight/utils/ContextHelper.java, org/apache/pdfbox/preflight/utils/FilterHelper.java, org/apache/pdfbox/preflight/utils/RenderingIntents.java, org/apache/pdfbox/preflight/xobject/AbstractXObjValidator.java, org/apache/pdfbox/preflight/xobject/XObjFormValidator.java, org/apache/pdfbox/preflight/xobject/XObjImageValidator.java, org/apache/pdfbox/preflight/xobject/XObjPostscriptValidator.java, org/apache/pdfbox/preflight/xobject/XObjectValidator.java
+/*****************************************************************************
+ * 
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/pdfbox/preflight/annotation/HighlightAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/SquigglyAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/StrikeoutAnnotationValidator.java, org/apache/pdfbox/preflight/annotation/UnderlineAnnotationValidator.java, org/apache/pdfbox/preflight/metadata/UniquePropertiesValidation.java
+/** ***************************************************************************
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ *************************************************************************** */
+
+Source files: org/apache/pdfbox/preflight/parser/XmlResultParser.java
+/*****************************************************************************
+ * 
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ * 
+ ****************************************************************************/
+
+Source files: org/apache/pdfbox/preflight/process/reflect/DestinationValidationProcess.java
+/*
+ * Copyright 2015 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

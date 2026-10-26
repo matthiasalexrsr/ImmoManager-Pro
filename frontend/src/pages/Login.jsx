@@ -95,6 +95,7 @@ export default function Login() {
             {loading ? `${t('ui.table.loading')}` : (isRegister ? t('auth.register.submit') : t('auth.login.submit'))}
           </button>
         </form>
+        <p className="login-toggle"><a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzen und Quellarchive</a></p>
         {registration.open && !registration.initial_setup && (
           <p className="login-toggle">
             <button disabled={loading} onClick={() => { setIsRegister(!isRegister); setError(null); setTotpRequired(false); setTotpCode(''); }} className="link-btn">

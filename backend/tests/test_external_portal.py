@@ -18,7 +18,7 @@ from backend.config import settings
 from backend.db import external_portal_models as pm
 from backend.db.orm_models import Base
 from backend.dependencies import store
-from backend.external_portal_models import ChangeAccess, InviteParty, PublishDocument
+from backend.external_portal_models import ChangeAccess, InviteParty, PublishDocument, RecoverAccess
 from backend.models import (
     ContactCreate,
     ContractCreate,
@@ -110,6 +110,52 @@ def damage(household, image=False):
     result = client.post("/api/v1/portal/me/cases", data={"command": json.dumps(command)}, files=files)
     assert result.status_code == 201, result.text
     return result.json(), command, files
+
+
+def test_verified_password_recovery_revokes_sessions_and_all_other_relations(portal):
+    first, second = portal['households']
+    place = store.create_unit(UnitCreate(property_id=portal['prop'].id, label='Zusätzliche Wohnung', unit_type='residential'))
+    additional = store.create_contract(ContractCreate(property_id=portal['prop'].id, unit_id=place.id,
+        tenant_id=first['tenant'].id, contract_number='MV-recovery', start_date=date(2025, 1, 1)))
+    invite = admin.invite(store, portal['owner'].id, InviteParty(kind='tenant', party_id=first['tenant'].id,
+        relation_id=additional.id, email=first['tenant'].email, verification='Zusätzliches Mietverhältnis persönlich geprüft.', idempotency_key=uuid4().hex))
+    assert first['client'].post('/api/v1/portal/accept', json={'token': invite['invitation_url'].split('#')[1],
+        'password': 'PortalPassword123'}).status_code == 200
+    assert len(first['client'].get('/api/v1/portal/me').json()['grants']) == 2
+    current = next(row for row in admin.listing(store, portal['owner'].id)['items'] if row['id'] == first['grant_id'])
+    command = RecoverAccess(expected_revision=current['identity_revision'], grant_revision=current['revision'],
+        verification='Persönlichen Ausweis und bekannte Rückrufnummer unabhängig geprüft.', idempotency_key=uuid4().hex)
+    result = admin.recover_access(store, portal['owner'].id, first['grant_id'], command)
+    token = result['invitation_url'].split('#')[1]
+    assert first['client'].get('/api/v1/portal/me').status_code == 401
+    assert second['client'].get('/api/v1/portal/me').status_code == 200
+    assert first['client'].post('/api/v1/portal/login', json={'email': first['tenant'].email,
+        'password': 'PortalPassword123'}).status_code == 401
+    with common.raw_work(store) as unit:
+        assert all(token not in str(db.values(row)) for model in (pm.PortalInvitationORM, pm.PortalCommandORM, pm.PortalEventORM)
+                   for row in common.rows(unit, model))
+    response = first['client'].post('/api/v1/portal/accept', json={'token': token, 'password': 'NewPortalPassword456'})
+    assert response.status_code == 200, response.text
+    assert [row['id'] for row in first['client'].get('/api/v1/portal/me').json()['grants']] == [first['grant_id']]
+    replayed = admin.recover_access(store, portal['owner'].id, first['grant_id'], command)
+    assert replayed['invitation_url'] is None and replayed['invitation_id'] == result['invitation_id']
+    assert first['client'].get('/api/v1/portal/me').status_code == 200
+    assert first['client'].post('/api/v1/portal/accept', json={'token': token, 'password': 'AnotherPortalPass789'}).status_code == 401
+
+
+def test_password_recovery_checks_revision_revocation_and_internal_role(portal):
+    first = portal['households'][0]
+    current = next(row for row in admin.listing(store, portal['owner'].id)['items'] if row['id'] == first['grant_id'])
+    payload = dict(expected_revision=current['identity_revision'], grant_revision=current['revision'],
+        verification='Identität und persönliche Kontaktadresse unabhängig gegengeprüft.', idempotency_key=uuid4().hex)
+    path = '/api/v1/portal-admin/grants/' + first['grant_id'] + '/recovery-invitation'
+    assert first['client'].post(path, json=payload).status_code == 401
+    stale = {**payload, 'expected_revision': current['identity_revision'] + 1}
+    assert portal['office'].post(path, json=stale).status_code == 409
+    admin.change_identity(store, portal['owner'].id, first['grant_id'], ChangeAccess(expected_revision=current['identity_revision'],
+        active=False, reason='Zugang auf Wunsch der betroffenen Person gesperrt.', idempotency_key=uuid4().hex))
+    payload['expected_revision'] += 1
+    assert portal['office'].post(path, json=payload).status_code == 409
 
 
 def test_two_households_are_isolated_from_search_preview_download_and_export(portal):

@@ -17,7 +17,10 @@ def verify(connection, *, normalize=False):
         raise ValueError("Incomplete privacy schema")
     controls = []
     if present:
-        for row in connection.execute(select(PrivacyControlORM.__table__)).mappings():
+        # Older backups precede the additive locator hashes. Validate only the
+        # columns actually present; migration adds the nullable field later.
+        columns = {item['name'] for item in inspect(connection).get_columns('privacy_controls')}
+        for row in connection.execute(select(*[column for column in PrivacyControlORM.__table__.c if column.name in columns])).mappings():
             value = JournalControl.model_validate(dict(row))
             if value.id != key(value.kind, value.record_id) or (value.erased_at and not value.restricted):
                 raise ValueError("Invalid privacy control")
@@ -37,5 +40,6 @@ def verify(connection, *, normalize=False):
         values = {"id": "current", "pending": True, "revision": current["revision"] + 1 if current else 1,
             "reason": "Aktuelle Lösch- und Sperrentscheidungen nach Wiederherstellung abgleichen.", "actor_id": None,
             "journal_sha256": None, "restore_id": None, "created_at": current["created_at"] if current else db.now(), "updated_at": db.now()}
-        connection.execute(update(RestoreReviewORM).where(table.c.id == "current").values(**values) if current else insert(RestoreReviewORM).values(**values))
+        connection.execute(update(RestoreReviewORM).where(table.c.id == "current").values(**values) if current else insert(RestoreReviewORM).values(**values),
+                           execution_options={"stream_results": False, "yield_per": None})
     return {"present": bool(present), "controls": len(controls), "access_suspended": normalize}

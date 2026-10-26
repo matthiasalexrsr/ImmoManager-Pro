@@ -26,7 +26,10 @@ def rows(connection, model, *conditions, order=None):
     query = select(model.__table__).where(*conditions)
     if order is not None:
         query = query.order_by(order)
-    for row in connection.execution_options(stream_results=True).execute(query).mappings():
+    # Connection.execution_options mutates the SQLAlchemy 2 connection. Keep
+    # the server-side cursor local to this SELECT: restore later writes the
+    # portal revocations and must not turn UPDATE into DECLARE ... CURSOR.
+    for row in connection.execute(query.execution_options(stream_results=True)).mappings():
         yield SimpleNamespace(**row)
 
 

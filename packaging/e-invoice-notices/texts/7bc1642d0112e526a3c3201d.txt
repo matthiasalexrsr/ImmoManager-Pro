@@ -1,0 +1,17 @@
+Source files: org/apache/commons/logging/Log.java, org/apache/commons/logging/LogConfigurationException.java, org/apache/commons/logging/LogFactory.java, org/apache/commons/logging/LogSource.java, org/apache/commons/logging/impl/AvalonLogger.java, org/apache/commons/logging/impl/Jdk13LumberjackLogger.java, org/apache/commons/logging/impl/Jdk14Logger.java, org/apache/commons/logging/impl/Log4JLogger.java, org/apache/commons/logging/impl/Log4jApiLogFactory.java, org/apache/commons/logging/impl/LogFactoryImpl.java, org/apache/commons/logging/impl/LogKitLogger.java, org/apache/commons/logging/impl/NoOpLog.java, org/apache/commons/logging/impl/ServletContextCleaner.java, org/apache/commons/logging/impl/SimpleLog.java, org/apache/commons/logging/impl/Slf4jLogFactory.java, org/apache/commons/logging/impl/WeakHashtable.java, org/apache/commons/logging/impl/package-info.java, org/apache/commons/logging/package-info.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

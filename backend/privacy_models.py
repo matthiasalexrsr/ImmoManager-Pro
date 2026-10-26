@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,6 +53,7 @@ class JournalControl(BaseModel):
     reason: str = Field(min_length=10, max_length=2000)
     actor_id: str = Field(min_length=1, max_length=50)
     source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    file_keys_sha256: list[Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]] | None = Field(default=None, max_length=1000)
     created_at: datetime
     updated_at: datetime
 

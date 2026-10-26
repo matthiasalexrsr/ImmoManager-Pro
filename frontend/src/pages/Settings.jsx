@@ -109,9 +109,10 @@ export default function Settings() {
                 <div className="settings-row">
                   <label>{tr('settings.about.type', 'Typ')}</label>
                   <div className="settings-control">
-                    <span className="text-muted">{tr('settings.about.localApp', 'Lokale Anwendung (Non-Cloud, Privat)')}</span>
+                    <span className="text-muted">Lokale Installation oder getrennte Hostinginstanz Ihrer Verwaltung</span>
                   </div>
                 </div>
+                <p><a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzbestand und mitgelieferte Quellarchive öffnen</a></p>
               </div>
             </div>
           </>
