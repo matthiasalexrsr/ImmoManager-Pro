@@ -102,12 +102,12 @@ try {
     const item = page.locator('.work-item').filter({ hasText: task.title });
     await item.getByRole('button', { name: 'Fälligkeit bearbeiten: ' + task.title }).click();
     await item.getByLabel('Fälligkeit', { exact: true }).fill('2026-11-06');
-    await item.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await item.locator('form').filter({ has: page.getByLabel('Fälligkeit', { exact: true }) }).getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect.poll(async () => (await call('GET', '/tasks/' + task.id)).due_date).toBe('2026-11-06');
     await expect(item.getByRole('button', { name: 'Zuständigkeit bearbeiten: ' + task.title })).toBeVisible();
     await item.getByRole('button', { name: 'Zuständigkeit bearbeiten: ' + task.title }).click();
     await item.getByLabel('Zuständigkeit', { exact: true }).fill('QA Verwaltung');
-    await item.getByRole('button', { name: 'Speichern', exact: true }).click();
+    await item.locator('form').filter({ has: page.getByLabel('Zuständigkeit', { exact: true }) }).getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect.poll(async () => (await call('GET', '/tasks/' + task.id)).assignee).toBe('QA Verwaltung');
     await page.getByRole('button', { name: 'Rückgängig', exact: true }).click();
     await expect.poll(async () => (await call('GET', '/tasks/' + task.id)).assignee).toBe(null);

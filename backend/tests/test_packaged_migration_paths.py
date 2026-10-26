@@ -20,7 +20,8 @@ def test_alembic_loads_packaged_migrations_from_deep_install_directory(tmp_path,
     shutil.copytree(filesystem_path(schema_state.MIGRATIONS_DIR), target, ignore=shutil.ignore_patterns("__pycache__"))
     monkeypatch.setattr(schema_state, "MIGRATIONS_DIR", nested / "backend" / "db" / "migrations")
     config = schema_state.alembic_config()
-    assert config.get_main_option("script_location").startswith("\\\\?\\")
+    location = config.get_main_option("script_location")
+    assert location is not None and location.startswith("\\\\?\\")
     scripts = ScriptDirectory.from_config(config)
     assert scripts.get_current_head() == expected
     assert len(list(scripts.walk_revisions())) > 40

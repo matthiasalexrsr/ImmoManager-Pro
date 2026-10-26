@@ -46,6 +46,19 @@ def test_changed_package_file_fails_closed(notices):
     assert client.get('/api/v1/legal/files/' + value['files'][0]['id']).status_code == 503
 
 
+@pytest.mark.parametrize('mutation', ['missing', 'changed'])
+def test_assembled_package_gate_rejects_lost_or_changed_licensed_files(notices, mutation):
+    from tools.e_invoice_notices import verify_catalog
+    root, _, _, _ = notices
+    assert verify_catalog(root) == 1
+    if mutation == 'missing':
+        (root / 'vendor.txt').unlink()
+    else:
+        (root / 'vendor.txt').write_bytes(b'changed after catalog generation')
+    with pytest.raises(RuntimeError, match='assembled license/source file'):
+        verify_catalog(root)
+
+
 @pytest.mark.parametrize('name', ['../customer.txt', '/customer.txt', 'C:/customer.txt', 'sub\\customer.txt'])
 def test_unsafe_catalog_does_not_expose_other_files(notices, name):
     root, value, save, client = notices

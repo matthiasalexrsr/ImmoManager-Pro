@@ -79,3 +79,28 @@ def catalog(output: Path, components: list[dict]) -> None:
     (output / 'catalog.json').write_text(json.dumps({'format': 'immomanager-public-notices/1',
         'components': [{key: row.get(key) for key in ('ecosystem', 'name', 'version', 'license', 'notice')} for row in components],
         'files': files}, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def verify_catalog(output: Path) -> int:
+    """Verify the assembled distribution, not merely the build's input folder."""
+    import hashlib
+
+    root = filesystem_path(Path(output).resolve())
+    value = json.loads((root / 'catalog.json').read_text(encoding='utf-8'))
+    if value['format'] != 'immomanager-public-notices/1':
+        raise RuntimeError('Unrecognized assembled license catalog')
+    names = set()
+    for entry in value['files']:
+        name = safe_name(entry['path'])
+        path = root / name
+        if name in names or hashlib.sha256(name.encode()).hexdigest() != entry['id']:
+            raise RuntimeError('Ambiguous assembled license catalog')
+        names.add(name)
+        try:
+            if path.is_symlink() or not path.resolve().is_relative_to(root) or path.stat().st_size != entry['bytes'] or file_sha(path) != entry['sha256']:
+                raise RuntimeError('Changed assembled license/source file: ' + name)
+        except OSError:
+            raise RuntimeError('Missing assembled license/source file: ' + name) from None
+    if not names:
+        raise RuntimeError('Empty assembled license catalog')
+    return len(names)

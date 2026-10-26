@@ -234,7 +234,10 @@ prepare_invoice_bundle(invoice_bundle)
 backend_data.append((str(invoice_bundle), 'e-invoice'))
 backend_data.append((os.path.join(ROOT, 'backend', 'services', 'e_invoice', 'assets.json'), 'backend/services/e_invoice'))
 notices = generate_notices()
-backend_data.append((str(notices), 'THIRD_PARTY_NOTICES'))
+# PyInstaller walks this folder itself; unprefixed long Win32 source paths
+# silently omitted the deepest JRE notices even when COLLECT succeeded.
+from backend.services.filesystem_paths import filesystem_path
+backend_data.append((str(filesystem_path(notices)), 'THIRD_PARTY_NOTICES'))
 backend_data.append((os.path.join(ROOT, 'LICENSE'), '.'))
 
 # Public, pinned DE/EN model data; the local PDF worker needs no separate Tesseract installation.
@@ -455,3 +458,6 @@ coll = COLLECT(
     upx_exclude=[],
     name='ImmoManager-Pro',
 )
+
+from tools.e_invoice_notices import verify_catalog
+verify_catalog(Path(coll.name) / '_internal' / 'THIRD_PARTY_NOTICES')

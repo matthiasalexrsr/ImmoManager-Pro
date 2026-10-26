@@ -9,10 +9,10 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,8 +43,9 @@ def app_gate(spec: dict) -> dict:
     def disabled(*args, **kwargs):
         raise RuntimeError("Integrations are disabled in restore probe")
     integration_manager.run = disabled
-    from backend.app import app
     from fastapi.testclient import TestClient
+
+    from backend.app import app
     from backend.services.portable_runtime import inventory
     references, _ = inventory(Path(settings.database_url.removeprefix("sqlite:///")))
     expected = spec["originals"]
@@ -59,18 +60,35 @@ def app_gate(spec: dict) -> dict:
         timings.append(time.perf_counter() - started)
         token = response.json()["access_token"]
         headers = {"Authorization": "Bearer " + token}
+        review = client.get("/api/v1/privacy/restore-review", headers=headers)
+        if review.status_code != 200:
+            raise RuntimeError("Restored privacy gate cannot be inspected")
+        privacy_pending = review.json()["pending"]
+        # A probe never reconciles or releases real privacy decisions. Verify
+        # retained bytes privately while proving that the new HTTP gate stays shut.
+        from backend.services.file_storage import LocalStorage
+        local = LocalStorage(Path(settings.uploads_dir))
         for key, digest in expected.items():
             started = time.perf_counter()
             response = client.get("/uploads/" + key, headers=headers)
-            if response.status_code != 200 or hashlib.sha256(response.content).hexdigest() != digest:
-                raise RuntimeError("Restored authenticated original differs")
             ranged = client.get("/uploads/" + key, headers={**headers, "Range": "bytes=0-3"})
-            if ranged.status_code != 206 or ranged.content != response.content[:4]:
-                raise RuntimeError("Restored original Range gate failed")
+            if privacy_pending:
+                content = local.get(key)
+                if content is None or hashlib.sha256(content).hexdigest() != digest:
+                    raise RuntimeError("Restored private original differs")
+                if response.status_code != 503 or ranged.status_code != 503:
+                    raise RuntimeError("Restored original bypasses pending privacy review")
+            else:
+                if response.status_code != 200 or hashlib.sha256(response.content).hexdigest() != digest:
+                    raise RuntimeError("Restored authenticated original differs")
+                if ranged.status_code != 206 or ranged.content != response.content[:4]:
+                    raise RuntimeError("Restored original Range gate failed")
             if TestClient(app).get("/uploads/" + key).status_code != 401:
                 raise RuntimeError("Restored original is public")
             timings.append(time.perf_counter() - started)
     return {"ok": True, "readiness": "application_verified", "login": True,
+            "access_readiness": "privacy_review_required" if privacy_pending else "reviewed",
+            "privacy_review_released_by_probe": False,
             "originals": len(expected), "attachment_references": len(references),
             "browser": "not_run", "schedulers": "disabled", "integrations": "disabled",
             "durations_s": timings}
