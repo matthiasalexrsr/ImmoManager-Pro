@@ -37,12 +37,17 @@ jobs:
         run: npm run lint
       - name: Run frontend tests
         run: npm run test
+      - name: Verify distribution asset profiles
+        run: node --test scripts/productAssets.checks.mjs
       - name: Build frontend
         run: npm run build
 
   document-tools:
     name: Native document engines and browser workflow
     runs-on: ubuntu-latest
+    env:
+      IMMO_BUILD_DOCUMENT_TOOLS: '1'
+      IMMO_BUILD_PURPOSE: validation
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,10 +64,11 @@ jobs:
           sudo apt-get install --yes tesseract-ocr-deu tesseract-ocr-eng
           python -c "import glob, os; from pathlib import Path; paths=[p for p in glob.glob('/usr/share/tesseract-ocr/*/tessdata') if Path(p,'deu.traineddata').is_file() and Path(p,'eng.traineddata').is_file()]; assert len(paths)==1; print('TESSDATA_PREFIX='+paths[0], file=open(os.environ['GITHUB_ENV'],'a'))"
           npm ci --prefix optional/document-editor
+          npm audit --prefix optional/document-editor --audit-level=low
           npm run build --prefix optional/document-editor
           npm ci --prefix frontend
           npm run build --prefix frontend
-          npm install --prefix "$RUNNER_TEMP/document-browser" playwright@1.62.1
+          npm install --prefix "$RUNNER_TEMP/document-browser" @playwright/test@1.62.1
           "$RUNNER_TEMP/document-browser/node_modules/.bin/playwright" install --with-deps chromium
       - name: Exercise actual native engines and isolated application
         run: |
@@ -77,6 +83,7 @@ jobs:
           python scripts/run_daily_browser_qa.py --suite reports --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/reports-browser
           python scripts/run_daily_browser_qa.py --suite reading --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/reading-browser
           python scripts/run_assistant_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/assistant-browser
+          python scripts/run_auth_party_browser_qa.py "$RUNNER_TEMP/document-browser/node_modules/@playwright/test/index.mjs"
           python scripts/run_pdf_toolbar_browser_qa.py --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/pdf-toolbar-browser
           python scripts/run_pdf_toolbar_browser_qa.py --suite statement-letter --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/statement-letter-browser
           python scripts/run_pdf_toolbar_browser_qa.py --suite task-cost-workspace --playwright "$RUNNER_TEMP/document-browser/node_modules/playwright/index.mjs" --output artifacts/task-cost-browser
@@ -97,6 +104,7 @@ jobs:
             artifacts/reports-browser
             artifacts/reading-browser
             artifacts/assistant-browser
+            artifacts/auth-party-browser
             artifacts/pdf-toolbar-browser
             artifacts/statement-letter-browser
             artifacts/task-cost-browser
@@ -121,9 +129,10 @@ jobs:
           python -m pip install -r requirements-pip.txt
           pip install -r requirements.txt -r requirements-bank.txt -c constraints.txt
           pip install ruff==0.15.20 pytest-cov==7.1.0 mypy==2.4.0 pdfplumber==0.11.10 -c constraints.txt
-          # the audit tool stays current on purpose (it judges the pinned set above)
-          pip install pip-audit
-          pip install bandit==1.8.6
+          # Isolate the auditor: installing it must not re-resolve the application under test.
+          python -m venv .audit-venv
+          .audit-venv/bin/python -m pip install pip-audit
+          pip install bandit==1.9.4
       - name: Lint (ruff)
         if: matrix.store-backend == 'memory'
         run: ruff check backend
@@ -132,7 +141,7 @@ jobs:
         run: mypy backend
       - name: Security audit (pip-audit)
         if: matrix.store-backend == 'memory'
-        run: pip-audit -r requirements.txt --strict --desc
+        run: .audit-venv/bin/pip-audit --path "$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" --strict --desc
       - name: Static security analysis (bandit, medium and up)
         if: matrix.store-backend == 'memory'
         run: bandit -r backend -x backend/tests,backend/services/autotest -ll -ii -q
@@ -143,6 +152,27 @@ jobs:
       - name: Import smoke check
         if: matrix.store-backend == 'memory'
         run: python -c "from backend.app import app; print('App imports OK')"
+
+  windows-paths:
+    name: Windows native path and recovery regressions
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned validation engines
+        run: |
+          python -m pip install -r requirements-pip.txt
+          python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
+      - name: Verify long paths, encrypted keys, native PDF worker and wizard assets
+        run: python scripts/run_pro_matrix.py --backend sql --label windows-paths backend/tests/test_audit_backup_paths.py backend/tests/test_app_contract_wizard.py
+      - name: Preserve Windows test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-paths
+          path: artifacts/pro-tests
 
   postgres:
     name: PostgreSQL regression gate
@@ -191,6 +221,8 @@ jobs:
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label assistant-release backend/tests/test_assistant_context.py backend/tests/test_assistant_proposals.py backend/tests/test_assistant_workspace.py backend/tests/test_assistant_migration.py backend/tests/test_assistant_tools.py backend/tests/test_assistant_handoff.py backend/tests/test_assistant_findings.py backend/tests/test_assistant_investigation.py
       - name: Verify scoped history traversal on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label history-release backend/tests/test_history_native.py
+      - name: Verify two-factor and cached-reading access on PostgreSQL
+        run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label security-release backend/tests/test_audit_regressions.py backend/tests/test_ai_reading.py
       - name: Preserve PostgreSQL test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -218,7 +250,7 @@ jobs:
   deploy-readiness:
     name: Deployment readiness
     runs-on: ubuntu-latest
-    needs: [frontend, document-tools, backend, postgres, e2e-smoke]
+    needs: [frontend, document-tools, backend, windows-paths, postgres, e2e-smoke]
     if: ${{ always() }}
     steps:
       - name: Gate on pipeline status
@@ -226,6 +258,7 @@ jobs:
           if [ "${{ needs.frontend.result }}" != "success" ] || \
              [ "${{ needs.document-tools.result }}" != "success" ] || \
              [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.windows-paths.result }}" != "success" ] || \
              [ "${{ needs.postgres.result }}" != "success" ] || \
              [ "${{ needs.e2e-smoke.result }}" != "success" ]; then
             echo "Pipeline not deployment-ready"

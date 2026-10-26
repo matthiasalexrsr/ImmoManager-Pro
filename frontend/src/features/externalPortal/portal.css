@@ -1,0 +1,20 @@
+.portal-shell { min-height: 100vh; background: #f3f6fa; color: #172333; font-family: system-ui, sans-serif; font-size: 1rem; line-height: 1.5; }
+.portal-header { background: #173d5b; color: white; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; padding: 1.2rem max(1rem, calc((100vw - 66rem)/2)); }
+.portal-shell main, .portal-shell footer { max-width: 66rem; margin: auto; padding: 1.3rem; }
+.portal-shell h1 { font-size: clamp(1.55rem, 4vw, 2.1rem); }
+.portal-shell label { display: flex; flex-direction: column; gap: .4rem; margin: 1rem 0; font-weight: 600; }
+.portal-shell input, .portal-shell select, .portal-shell textarea { background: white; color: #172333; border: 1px solid #6a7b89; border-radius: .35rem; padding: .7rem; font: inherit; min-width: 0; max-width: 100%; }
+.portal-shell textarea { min-height: 7rem; }
+.portal-shell button { background: #17517d; color: white; border: 1px solid #17517d; border-radius: .4rem; padding: .7rem 1rem; min-height: 44px; font: inherit; cursor: pointer; white-space: normal; }
+.portal-shell button:disabled { background: #dce3e9; border-color: #8a96a1; color: #43505c; cursor: default; }
+.portal-shell a { color: #14517d; text-decoration: underline; display: inline-block; padding: .55rem 0; }
+.portal-actions, .portal-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin: 1rem 0; }
+.portal-tabs [aria-current] { background: #f3f6fa; color: #173d5b; box-shadow: inset 0 -4px #17517d; }
+.portal-card { background: white; border: 1px solid #bac7d1; padding: 1.2rem; border-radius: .65rem; margin: 1rem 0; overflow-wrap: anywhere; }
+.portal-error { background: #fff0ef; color: #862518; padding: 1rem; border-left: 4px solid #a93020; }
+.portal-list { padding: 0; list-style: none; }
+.portal-text { white-space: pre-wrap; }
+.portal-shell :focus-visible { outline: 3px solid #a85700; outline-offset: 4px; }
+.portal-skip { position: absolute; top: -100px; background: white; padding: 1rem; }
+.portal-skip:focus { top: 0; }
+@media (max-width: 500px) { .portal-shell main { padding: .8rem; } .portal-card { padding: .85rem; } .portal-actions > button { flex: 1; } }

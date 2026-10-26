@@ -1,0 +1,195 @@
+Source files: org/mozilla/classfile/ByteCode.java, org/mozilla/classfile/ClassFileField.java, org/mozilla/classfile/ClassFileMethod.java, org/mozilla/classfile/ClassFileWriter.java, org/mozilla/classfile/ConstantEntry.java, org/mozilla/classfile/ConstantPool.java, org/mozilla/classfile/ExceptionTableEntry.java, org/mozilla/classfile/FieldOrMethodRef.java, org/mozilla/classfile/SuperBlock.java, org/mozilla/classfile/TypeInfo.java, org/mozilla/javascript/Arguments.java, org/mozilla/javascript/ArrowFunction.java, org/mozilla/javascript/BaseFunction.java, org/mozilla/javascript/BoundFunction.java, org/mozilla/javascript/Callable.java, org/mozilla/javascript/ClassCache.java, org/mozilla/javascript/ClassShutter.java, org/mozilla/javascript/CodeGenerator.java, org/mozilla/javascript/CompilerEnvirons.java, org/mozilla/javascript/ConsString.java, org/mozilla/javascript/ConstProperties.java, org/mozilla/javascript/Context.java, org/mozilla/javascript/ContextAction.java, org/mozilla/javascript/ContextFactory.java, org/mozilla/javascript/ContextListener.java, org/mozilla/javascript/ContinuationPending.java, org/mozilla/javascript/DToA.java, org/mozilla/javascript/Decompiler.java, org/mozilla/javascript/DefaultErrorReporter.java, org/mozilla/javascript/Delegator.java, org/mozilla/javascript/ES6Generator.java, org/mozilla/javascript/ES6Iterator.java, org/mozilla/javascript/EcmaError.java, org/mozilla/javascript/EmbeddedSlotMap.java, org/mozilla/javascript/EqualObjectGraphs.java, org/mozilla/javascript/ErrorReporter.java, org/mozilla/javascript/Evaluator.java, org/mozilla/javascript/EvaluatorException.java, org/mozilla/javascript/ExternalArrayData.java, org/mozilla/javascript/Function.java, org/mozilla/javascript/FunctionObject.java, org/mozilla/javascript/GeneratedClassLoader.java, org/mozilla/javascript/HashSlotMap.java, org/mozilla/javascript/Hashtable.java, org/mozilla/javascript/IRFactory.java, org/mozilla/javascript/Icode.java, org/mozilla/javascript/IdFunctionCall.java, org/mozilla/javascript/IdFunctionObject.java, org/mozilla/javascript/ImporterTopLevel.java, org/mozilla/javascript/InterfaceAdapter.java, org/mozilla/javascript/InterpretedFunction.java, org/mozilla/javascript/Interpreter.java, org/mozilla/javascript/InterpreterData.java, org/mozilla/javascript/JavaAdapter.java, org/mozilla/javascript/JavaMembers.java, org/mozilla/javascript/JavaMembers_jdk11.java, org/mozilla/javascript/JavaScriptException.java, org/mozilla/javascript/Kit.java, org/mozilla/javascript/LambdaConstructor.java, org/mozilla/javascript/LambdaFunction.java, org/mozilla/javascript/LazilyLoadedCtor.java, org/mozilla/javascript/MemberBox.java, org/mozilla/javascript/NativeArray.java, org/mozilla/javascript/NativeArrayIterator.java, org/mozilla/javascript/NativeBigInt.java, org/mozilla/javascript/NativeBoolean.java, org/mozilla/javascript/NativeCall.java, org/mozilla/javascript/NativeCallSite.java, org/mozilla/javascript/NativeConsole.java, org/mozilla/javascript/NativeContinuation.java, org/mozilla/javascript/NativeDate.java, org/mozilla/javascript/NativeError.java, org/mozilla/javascript/NativeFunction.java, org/mozilla/javascript/NativeGenerator.java, org/mozilla/javascript/NativeGlobal.java, org/mozilla/javascript/NativeIterator.java, org/mozilla/javascript/NativeJavaArray.java, org/mozilla/javascript/NativeJavaClass.java, org/mozilla/javascript/NativeJavaConstructor.java, org/mozilla/javascript/NativeJavaList.java, org/mozilla/javascript/NativeJavaMap.java, org/mozilla/javascript/NativeJavaMethod.java, org/mozilla/javascript/NativeJavaObject.java, org/mozilla/javascript/NativeJavaPackage.java, org/mozilla/javascript/NativeJavaTopPackage.java, org/mozilla/javascript/NativeMap.java, org/mozilla/javascript/NativeNumber.java, org/mozilla/javascript/NativeObject.java, org/mozilla/javascript/NativeScript.java, org/mozilla/javascript/NativeSet.java, org/mozilla/javascript/NativeString.java, org/mozilla/javascript/NativeStringIterator.java, org/mozilla/javascript/NativeSymbol.java, org/mozilla/javascript/NativeWeakMap.java, org/mozilla/javascript/NativeWeakSet.java, org/mozilla/javascript/NativeWith.java, org/mozilla/javascript/Node.java, org/mozilla/javascript/NodeTransformer.java, org/mozilla/javascript/ObjArray.java, org/mozilla/javascript/ObjToIntMap.java, org/mozilla/javascript/Parser.java, org/mozilla/javascript/Ref.java, org/mozilla/javascript/RefCallable.java, org/mozilla/javascript/RegExpProxy.java, org/mozilla/javascript/RhinoException.java, org/mozilla/javascript/Script.java, org/mozilla/javascript/ScriptRuntime.java, org/mozilla/javascript/ScriptRuntimeES6.java, org/mozilla/javascript/Scriptable.java, org/mozilla/javascript/ScriptableObject.java, org/mozilla/javascript/SecurityController.java, org/mozilla/javascript/SecurityUtilities.java, org/mozilla/javascript/SlotMap.java, org/mozilla/javascript/SlotMapContainer.java, org/mozilla/javascript/SpecialRef.java, org/mozilla/javascript/Symbol.java, org/mozilla/javascript/SymbolScriptable.java, org/mozilla/javascript/Synchronizer.java, org/mozilla/javascript/ThreadSafeSlotMapContainer.java, org/mozilla/javascript/Token.java, org/mozilla/javascript/TokenStream.java, org/mozilla/javascript/TopLevel.java, org/mozilla/javascript/UintMap.java, org/mozilla/javascript/Undefined.java, org/mozilla/javascript/UniqueTag.java, org/mozilla/javascript/VMBridge.java, org/mozilla/javascript/WrapFactory.java, org/mozilla/javascript/WrappedException.java, org/mozilla/javascript/Wrapper.java, org/mozilla/javascript/ast/ArrayComprehension.java, org/mozilla/javascript/ast/ArrayComprehensionLoop.java, org/mozilla/javascript/ast/ArrayLiteral.java, org/mozilla/javascript/ast/Assignment.java, org/mozilla/javascript/ast/AstNode.java, org/mozilla/javascript/ast/AstRoot.java, org/mozilla/javascript/ast/BigIntLiteral.java, org/mozilla/javascript/ast/Block.java, org/mozilla/javascript/ast/BreakStatement.java, org/mozilla/javascript/ast/CatchClause.java, org/mozilla/javascript/ast/Comment.java, org/mozilla/javascript/ast/ConditionalExpression.java, org/mozilla/javascript/ast/ContinueStatement.java, org/mozilla/javascript/ast/DestructuringForm.java, org/mozilla/javascript/ast/DoLoop.java, org/mozilla/javascript/ast/ElementGet.java, org/mozilla/javascript/ast/EmptyExpression.java, org/mozilla/javascript/ast/EmptyStatement.java, org/mozilla/javascript/ast/ErrorCollector.java, org/mozilla/javascript/ast/ErrorNode.java, org/mozilla/javascript/ast/ExpressionStatement.java, org/mozilla/javascript/ast/ForInLoop.java, org/mozilla/javascript/ast/ForLoop.java, org/mozilla/javascript/ast/FunctionCall.java, org/mozilla/javascript/ast/FunctionNode.java, org/mozilla/javascript/ast/GeneratorExpression.java, org/mozilla/javascript/ast/GeneratorExpressionLoop.java, org/mozilla/javascript/ast/IdeErrorReporter.java, org/mozilla/javascript/ast/IfStatement.java, org/mozilla/javascript/ast/InfixExpression.java, org/mozilla/javascript/ast/Jump.java, org/mozilla/javascript/ast/KeywordLiteral.java, org/mozilla/javascript/ast/Label.java, org/mozilla/javascript/ast/LabeledStatement.java, org/mozilla/javascript/ast/LetNode.java, org/mozilla/javascript/ast/Loop.java, org/mozilla/javascript/ast/Name.java, org/mozilla/javascript/ast/NewExpression.java, org/mozilla/javascript/ast/NodeVisitor.java, org/mozilla/javascript/ast/NumberLiteral.java, org/mozilla/javascript/ast/ObjectLiteral.java, org/mozilla/javascript/ast/ObjectProperty.java, org/mozilla/javascript/ast/ParenthesizedExpression.java, org/mozilla/javascript/ast/ParseProblem.java, org/mozilla/javascript/ast/PropertyGet.java, org/mozilla/javascript/ast/RegExpLiteral.java, org/mozilla/javascript/ast/ReturnStatement.java, org/mozilla/javascript/ast/Scope.java, org/mozilla/javascript/ast/ScriptNode.java, org/mozilla/javascript/ast/StringLiteral.java, org/mozilla/javascript/ast/SwitchCase.java, org/mozilla/javascript/ast/SwitchStatement.java, org/mozilla/javascript/ast/Symbol.java, org/mozilla/javascript/ast/ThrowStatement.java, org/mozilla/javascript/ast/TryStatement.java, org/mozilla/javascript/ast/UnaryExpression.java, org/mozilla/javascript/ast/UpdateExpression.java, org/mozilla/javascript/ast/VariableDeclaration.java, org/mozilla/javascript/ast/VariableInitializer.java, org/mozilla/javascript/ast/WhileLoop.java, org/mozilla/javascript/ast/WithStatement.java, org/mozilla/javascript/ast/XmlDotQuery.java, org/mozilla/javascript/ast/XmlElemRef.java, org/mozilla/javascript/ast/XmlExpression.java, org/mozilla/javascript/ast/XmlFragment.java, org/mozilla/javascript/ast/XmlLiteral.java, org/mozilla/javascript/ast/XmlMemberGet.java, org/mozilla/javascript/ast/XmlPropRef.java, org/mozilla/javascript/ast/XmlRef.java, org/mozilla/javascript/ast/XmlString.java, org/mozilla/javascript/ast/Yield.java, org/mozilla/javascript/debug/DebugFrame.java, org/mozilla/javascript/debug/DebuggableObject.java, org/mozilla/javascript/debug/DebuggableScript.java, org/mozilla/javascript/debug/Debugger.java, org/mozilla/javascript/jdk18/VMBridge_jdk18.java, org/mozilla/javascript/optimizer/ClassCompiler.java, org/mozilla/javascript/optimizer/Codegen.java, org/mozilla/javascript/regexp/NativeRegExp.java, org/mozilla/javascript/regexp/NativeRegExpCtor.java, org/mozilla/javascript/regexp/RegExpImpl.java, org/mozilla/javascript/regexp/SubString.java, org/mozilla/javascript/serialize/ScriptableInputStream.java, org/mozilla/javascript/serialize/ScriptableOutputStream.java, org/mozilla/javascript/typedarrays/ByteIo.java, org/mozilla/javascript/typedarrays/Conversions.java, org/mozilla/javascript/typedarrays/NativeArrayBuffer.java, org/mozilla/javascript/typedarrays/NativeArrayBufferView.java, org/mozilla/javascript/typedarrays/NativeDataView.java, org/mozilla/javascript/typedarrays/NativeFloat32Array.java, org/mozilla/javascript/typedarrays/NativeFloat64Array.java, org/mozilla/javascript/typedarrays/NativeInt16Array.java, org/mozilla/javascript/typedarrays/NativeInt32Array.java, org/mozilla/javascript/typedarrays/NativeInt8Array.java, org/mozilla/javascript/typedarrays/NativeTypedArrayIterator.java, org/mozilla/javascript/typedarrays/NativeTypedArrayView.java, org/mozilla/javascript/typedarrays/NativeUint16Array.java, org/mozilla/javascript/typedarrays/NativeUint32Array.java, org/mozilla/javascript/typedarrays/NativeUint8Array.java, org/mozilla/javascript/typedarrays/NativeUint8ClampedArray.java, org/mozilla/javascript/xml/XMLLib.java, org/mozilla/javascript/xml/XMLObject.java, org/mozilla/javascript/tools/ToolErrorReporter.java, org/mozilla/javascript/tools/debugger/Dim.java, org/mozilla/javascript/tools/debugger/GuiCallback.java, org/mozilla/javascript/tools/debugger/Main.java, org/mozilla/javascript/tools/debugger/ScopeProvider.java, org/mozilla/javascript/tools/debugger/SourceProvider.java, org/mozilla/javascript/tools/debugger/SwingGui.java, org/mozilla/javascript/tools/shell/ConsoleTextArea.java, org/mozilla/javascript/tools/shell/Environment.java, org/mozilla/javascript/tools/shell/Global.java, org/mozilla/javascript/tools/shell/JSConsole.java, org/mozilla/javascript/tools/shell/JavaPolicySecurity.java, org/mozilla/javascript/tools/shell/Main.java, org/mozilla/javascript/tools/shell/QuitAction.java, org/mozilla/javascript/tools/shell/SecurityProxy.java, org/mozilla/javascript/tools/shell/ShellContextFactory.java, org/mozilla/javascript/tools/shell/ShellLine.java, org/mozilla/javascript/xmlimpl/Namespace.java, org/mozilla/javascript/xmlimpl/QName.java, org/mozilla/javascript/xmlimpl/XML.java, org/mozilla/javascript/xmlimpl/XMLCtor.java, org/mozilla/javascript/xmlimpl/XMLLibImpl.java, org/mozilla/javascript/xmlimpl/XMLList.java, org/mozilla/javascript/xmlimpl/XMLName.java, org/mozilla/javascript/xmlimpl/XMLObjectImpl.java, org/mozilla/javascript/xmlimpl/XMLWithScope.java
+/* -*- Mode: java; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+Source files: org/mozilla/javascript/DToA.java
+/**
+ * **************************************************************
+ *
+ * <p>The author of this software is David M. Gay.
+ *
+ * <p>Copyright (c) 1991, 2000, 2001 by Lucent Technologies.
+ *
+ * <p>Permission to use, copy, modify, and distribute this software for any purpose without fee is
+ * hereby granted, provided that this entire notice is included in all copies of any software which
+ * is or includes a copy or modification of this software and in all copies of the supporting
+ * documentation for such software.
+ *
+ * <p>THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTY. IN
+ * PARTICULAR, NEITHER THE AUTHOR NOR LUCENT MAKES ANY REPRESENTATION OR WARRANTY OF ANY KIND
+ * CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+ *
+ * <p>*************************************************************
+ */
+
+Source files: org/mozilla/javascript/DefiningClassLoader.java, org/mozilla/javascript/IteratorLikeIterable.java, org/mozilla/javascript/NativePromise.java, org/mozilla/javascript/PolicySecurityController.java, org/mozilla/javascript/RhinoSecurityManager.java, org/mozilla/javascript/ScriptStackElement.java, org/mozilla/javascript/SecureCaller.java, org/mozilla/javascript/Sorting.java, org/mozilla/javascript/StackStyle.java, org/mozilla/javascript/annotations/JSConstructor.java, org/mozilla/javascript/annotations/JSFunction.java, org/mozilla/javascript/annotations/JSGetter.java, org/mozilla/javascript/annotations/JSSetter.java, org/mozilla/javascript/annotations/JSStaticFunction.java, org/mozilla/javascript/ast/TaggedTemplateLiteral.java, org/mozilla/javascript/ast/TemplateCharacters.java, org/mozilla/javascript/ast/TemplateLiteral.java, org/mozilla/javascript/commonjs/module/ModuleScope.java, org/mozilla/javascript/commonjs/module/ModuleScript.java, org/mozilla/javascript/commonjs/module/ModuleScriptProvider.java, org/mozilla/javascript/commonjs/module/Require.java, org/mozilla/javascript/commonjs/module/RequireBuilder.java, org/mozilla/javascript/commonjs/module/provider/CachingModuleScriptProviderBase.java, org/mozilla/javascript/commonjs/module/provider/DefaultUrlConnectionExpiryCalculator.java, org/mozilla/javascript/commonjs/module/provider/ModuleSource.java, org/mozilla/javascript/commonjs/module/provider/ModuleSourceProvider.java, org/mozilla/javascript/commonjs/module/provider/ModuleSourceProviderBase.java, org/mozilla/javascript/commonjs/module/provider/MultiModuleScriptProvider.java, org/mozilla/javascript/commonjs/module/provider/ParsedContentType.java, org/mozilla/javascript/commonjs/module/provider/SoftCachingModuleScriptProvider.java, org/mozilla/javascript/commonjs/module/provider/StrongCachingModuleScriptProvider.java, org/mozilla/javascript/commonjs/module/provider/UrlConnectionExpiryCalculator.java, org/mozilla/javascript/commonjs/module/provider/UrlConnectionSecurityDomainProvider.java, org/mozilla/javascript/commonjs/module/provider/UrlModuleSourceProvider.java, org/mozilla/javascript/engine/BindingsObject.java, org/mozilla/javascript/engine/Builtins.java, org/mozilla/javascript/engine/RhinoCompiledScript.java, org/mozilla/javascript/engine/RhinoInvocationHandler.java, org/mozilla/javascript/engine/RhinoScriptEngine.java, org/mozilla/javascript/engine/RhinoScriptEngineFactory.java, org/mozilla/javascript/optimizer/Block.java, org/mozilla/javascript/optimizer/OptFunctionNode.java, org/mozilla/javascript/optimizer/OptRuntime.java, org/mozilla/javascript/optimizer/OptTransformer.java, org/mozilla/javascript/optimizer/Optimizer.java, org/mozilla/javascript/tools/SourceReader.java, org/mozilla/javascript/tools/jsc/Main.java, org/mozilla/javascript/tools/shell/ShellConsole.java, org/mozilla/javascript/tools/shell/ShellConsolePrinter.java, org/mozilla/javascript/xmlimpl/XmlNode.java, org/mozilla/javascript/xmlimpl/XmlProcessor.java
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+Source files: org/mozilla/javascript/IdScriptableObject.java, org/mozilla/javascript/JavaToJSONConverters.java, org/mozilla/javascript/NativeJSON.java, org/mozilla/javascript/NativeMath.java, org/mozilla/javascript/json/JsonParser.java
+/* -*- Mode: java; tab-width: 4; indent-tabs-mode: 1; c-basic-offset: 4 -*-
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+Source files: org/mozilla/javascript/dtoa/MathUtils.java
+/*
+ * Copyright 2018-2020 Raffaello Giulietti
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+Source files: org/mozilla/javascript/tools/debugger/treetable/AbstractCellEditor.java
+/*
+ * Copyright 1998 Sun Microsystems, Inc.  All Rights Reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *   - Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   - Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *
+ *   - Neither the name of Sun Microsystems nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/mozilla/javascript/tools/debugger/treetable/JTreeTable.java
+/*
+ * @(#)JTreeTable.java  1.2 98/10/27
+ *
+ * Copyright 1997, 1998 Sun Microsystems, Inc.  All Rights Reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *   - Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   - Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *
+ *   - Neither the name of Sun Microsystems nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/mozilla/javascript/tools/debugger/treetable/TreeTableModel.java
+/*
+ * TreeTableModel.java
+ *
+ * Copyright 1998 Sun Microsystems, Inc.  All Rights Reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *   - Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   - Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *
+ *   - Neither the name of Sun Microsystems nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/mozilla/javascript/tools/debugger/treetable/TreeTableModelAdapter.java
+/*
+ * @(#)TreeTableModelAdapter.java       1.2 98/10/27
+ *
+ * Copyright 1997, 1998 Sun Microsystems, Inc.  All Rights Reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *   - Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   - Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *
+ *   - Neither the name of Sun Microsystems nor the names of its
+ *     contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */

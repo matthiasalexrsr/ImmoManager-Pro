@@ -100,7 +100,7 @@ function observe(page) {
   page.setDefaultTimeout(10000);
   page.setDefaultNavigationTimeout(15000);
   page.on('pageerror', error => results.consoleErrors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) results.consoleErrors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) results.consoleErrors.push(`UI console: ${message.text()}`); });
   page.on('response', async response => {
     const url = new URL(response.url());
     if (url.pathname.startsWith('/api/') && response.status() >= 400) results.apiFailures.push({ path: url.pathname, status: response.status() });
@@ -310,7 +310,7 @@ try {
     const dialog = owner.getByRole('dialog', { name: 'Dokument erstellen' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Mieter / Partei', { exact: true })).toHaveValue(tenant.id);
-    await dialog.getByLabel(/^Titel/).fill(`${marker} Browser Einzelupload`);
+    await dialog.getByRole('textbox', { name: /^Titel/ }).fill(`${marker} Browser Einzelupload`);
     const confirmAll = dialog.getByRole('button', { name: 'Alle bestätigen' });
     if (await confirmAll.count()) await confirmAll.click();
     const saveResponse = owner.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/documents' && response.request().method() === 'POST', { timeout: 10000 });

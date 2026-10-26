@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import DataTable from '../components/DataTable';
 import { useCanWrite } from '../contexts/AuthContext';
@@ -12,6 +12,8 @@ import '../features/reletting/reletting.css';
 // Neuvermietung: every vacant unit as a project, from the offer to the new tenancy.
 export default function Reletting() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const unitFilter = params.get('unit_id');
   const toast = useToast();
   const canWrite = useCanWrite('/reletting');
   const [data, setData] = useState(null);
@@ -47,7 +49,7 @@ export default function Reletting() {
 
   const totals = data.totals;
   // the next step as text (search, filter and CSV), with where it is done
-  const projects = data.projects.map(row => ({ ...row, next_step: row.next_step?.label || '', next_key: row.next_step?.key,
+  const projects = data.projects.filter(row => !unitFilter || row.unit_id === unitFilter).map(row => ({ ...row, next_step: row.next_step?.label || '', next_key: row.next_step?.key,
     next_detail: row.next_step?.detail }));
   const projectColumns = [
     { key: 'unit_label', label: 'Einheit', filterType: 'text',
@@ -96,9 +98,10 @@ export default function Reletting() {
           <div className="stat-value">{totals.purge_due}</div>
           {totals.purge_due > 0 && <div className="text-muted reletting-small">Absage länger als drei Monate her</div>}</div>
       </div>
+      {unitFilter && <p>Neuvermietung der ausgewählten Einheit.{' '}<button type="button" className="btn btn-secondary btn-sm" onClick={() => { const next = new URLSearchParams(params); next.delete('unit_id'); setParams(next); }}>Alle Einheiten anzeigen</button></p>}
       <DataTable title="Neuvermietungsprojekte" columns={projectColumns} data={projects} writeArea="/reletting"
         onRowClick={row => navigate(row.href)} emptyText="Noch kein Projekt. Unten eine freie Einheit wählen und die Neuvermietung starten." />
-      <DataTable title="Freie und frei werdende Einheiten" columns={vacancyColumns} data={data.vacancies} writeArea="/reletting"
+      <DataTable title="Freie und frei werdende Einheiten" columns={vacancyColumns} data={data.vacancies.filter(row => !unitFilter || row.unit_id === unitFilter)} writeArea="/reletting"
         settingsKey="reletting-vacancies"
         emptyText="Keine freie Einheit ohne Projekt. Einheiten, deren Mietvertrag in den nächsten vier Monaten endet, erscheinen hier ebenfalls." />
     </div>

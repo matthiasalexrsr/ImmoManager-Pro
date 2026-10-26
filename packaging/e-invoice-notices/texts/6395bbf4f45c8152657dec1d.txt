@@ -1,0 +1,19 @@
+Source files: org/apache/batik/parser/PathArrayProducer.java, org/apache/batik/parser/DefaultTimingSpecifierListHandler.java, org/apache/batik/parser/TimingParser.java, org/apache/batik/parser/LengthPairListParser.java, org/apache/batik/parser/PathParser.java, org/apache/batik/parser/ShapeProducer.java, org/apache/batik/parser/PreserveAspectRatioHandler.java, org/apache/batik/parser/ClockHandler.java, org/apache/batik/parser/AbstractScanner.java, org/apache/batik/parser/UnitProcessor.java, org/apache/batik/parser/DefaultErrorHandler.java, org/apache/batik/parser/DefaultAngleHandler.java, org/apache/batik/parser/DefaultTransformListHandler.java, org/apache/batik/parser/DefaultLengthListHandler.java, org/apache/batik/parser/LengthHandler.java, org/apache/batik/parser/PointsHandler.java, org/apache/batik/parser/LengthParser.java, org/apache/batik/parser/FragmentIdentifierHandler.java, org/apache/batik/parser/TimingSpecifierHandler.java, org/apache/batik/parser/NumberListHandler.java, org/apache/batik/parser/DefaultLengthHandler.java, org/apache/batik/parser/AngleParser.java, org/apache/batik/parser/DefaultFragmentIdentifierHandler.java, org/apache/batik/parser/DefaultPreserveAspectRatioHandler.java, org/apache/batik/parser/DefaultPointsHandler.java, org/apache/batik/parser/AWTTransformProducer.java, org/apache/batik/parser/TransformListHandler.java, org/apache/batik/parser/LengthListHandler.java, org/apache/batik/parser/TimingSpecifierListParser.java, org/apache/batik/parser/DefaultTimingSpecifierHandler.java, org/apache/batik/parser/PointsParser.java, org/apache/batik/parser/ErrorHandler.java, org/apache/batik/parser/PathHandler.java, org/apache/batik/parser/AWTPolygonProducer.java, org/apache/batik/parser/AWTPathProducer.java, org/apache/batik/parser/AbstractParser.java, org/apache/batik/parser/PreserveAspectRatioParser.java, org/apache/batik/parser/Parser.java, org/apache/batik/parser/ClockParser.java, org/apache/batik/parser/AngleHandler.java, org/apache/batik/parser/TimingSpecifierListHandler.java, org/apache/batik/parser/NumberListParser.java, org/apache/batik/parser/LengthListParser.java, org/apache/batik/parser/NumberParser.java, org/apache/batik/parser/ParseException.java, org/apache/batik/parser/FragmentIdentifierParser.java, org/apache/batik/parser/FloatArrayProducer.java, org/apache/batik/parser/DefaultNumberListHandler.java, org/apache/batik/parser/DefaultPathHandler.java, org/apache/batik/parser/AWTPolylineProducer.java, org/apache/batik/parser/TransformListParser.java, org/apache/batik/parser/LengthArrayProducer.java, org/apache/batik/parser/TimingSpecifierParser.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */

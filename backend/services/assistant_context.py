@@ -97,6 +97,10 @@ def content_hash(value: Any) -> str:
 
 
 def _source(store, kind: str, identifier: str, actor_id: str) -> dict:
+    from .privacy.storage import ensure_available, ensure_restore_reviewed
+    ensure_restore_reviewed(store)
+    if kind == "document":
+        ensure_available(store, kind, identifier)
     if kind not in FIELDS:
         raise HTTPException(422, "Diese Quellenart ist nicht für den Assistenten freigegeben.")
     user = workspace_contexts.actor(actor_id, store)
@@ -108,7 +112,18 @@ def _source(store, kind: str, identifier: str, actor_id: str) -> dict:
                   "content_role": "untrusted_evidence"}
         if kind == "document":
             # Includes mutable upload bytes or the verified immutable original.
-            source["file_sha256"] = business_documents.document_hash(store, identifier, actor_id)
+            unit = document_versions.Unit(store, getattr(store, "db", None), user,
+                None if hasattr(store, "db") else document_versions.memory_archive(store))
+            original = document_versions.head(unit, identifier)
+            if original is not None:
+                _, binding = document_versions.bind_document(unit, identifier)
+                original = document_versions.authorized_version(unit, identifier, original.id, binding)
+                for _ in document_versions.verified_blocks(unit, original):
+                    pass
+                source.update(file_sha256=original.sha256, version_id=original.id, version_number=original.number)
+            else:
+                source["file_sha256"] = business_documents.document_hash(store, identifier, actor_id)
+                source.update(version_id=None, version_number=None)
     source["sha256"] = content_hash(source)
     return source
 
@@ -130,6 +145,8 @@ def build_context(store, selection: ContextSelection | dict, actor_id: str) -> d
 
 def assert_context_access(store, bundle: dict, actor_id: str) -> None:
     """Old replies stay readable after ordinary edits, never after lost access."""
+    from .privacy.storage import ensure_available, ensure_restore_reviewed
+    ensure_restore_reviewed(store)
     workspace_contexts.actor(actor_id, store)
     selected = ContextSelection.model_validate(bundle["selection"])
     expected = {(kind, identifier) for field, kind in SELECTIONS.items()
@@ -138,6 +155,8 @@ def assert_context_access(store, bundle: dict, actor_id: str) -> None:
     if expected != actual or bundle.get("format") != FORMAT:
         raise HTTPException(409, "Der gespeicherte Kontext ist unvollständig. Bitte neu auswählen.")
     for kind, identifier in sorted(expected):
+        if kind == "document":
+            ensure_available(store, kind, identifier)
         workspace_contexts.resolve_context(store, kind, identifier, actor_id)
 
 
@@ -199,6 +218,10 @@ def _document_analysis(store, source: dict, actor_id: str) -> dict:
                            "sha256": source["sha256"], "file_sha256": source["file_sha256"],
                            "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                            "text_sha256_scope": "selected_excerpt" if intake and intake["text_truncated"] else "full_extracted_text"}
+    extracted["source"].update(version_id=source.get("version_id"), version_number=source.get("version_number"))
+    extracted["source_warnings"] = []
+    if not source.get("version_id"):
+        extracted["source_warnings"].append("Noch keine archivierte Originalversion; diese Auswertung ist nur an die Datei-Prüfsumme gebunden.")
     return extracted
 
 

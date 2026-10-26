@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright (C) 2019-2025 Philip Helger
+    http://www.helger.com
+    philip[at]helger[dot]com
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+            http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.helger</groupId>
+    <artifactId>parent-pom</artifactId>
+    <version>2.1.4</version>
+  </parent>
+  <artifactId>en16931-cii2ubl-parent-pom</artifactId>
+  <version>2.3.1</version>
+  <packaging>pom</packaging>
+  <name>en16931-cii2ubl-parent-pom</name>
+  <inceptionYear>2019</inceptionYear>
+  <url>https://github.com/phax/en16931-cii2ubl</url>
+
+  <licenses>
+    <license>
+      <name>Apache 2</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <scm>
+    <connection>scm:git:https://github.com/phax/en16931-cii2ubl.git</connection>
+    <developerConnection>scm:git:https://github.com/phax/en16931-cii2ubl.git</developerConnection>
+    <url>https://github.com/phax/en16931-cii2ubl</url>
+    <tag>en16931-cii2ubl-parent-pom-2.3.1</tag>
+  </scm>
+
+  <developers>
+    <developer>
+      <id>philip</id>
+      <name>Philip Helger</name>
+      <email>ph(at)helger.com</email>
+      <url>https://www.helger.com</url>
+    </developer>
+  </developers>
+  
+  <properties>
+    <phive-rules.version>3.2.11</phive-rules.version>
+    <picocli.version>4.7.7</picocli.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.helger.commons</groupId>
+        <artifactId>ph-commons-parent-pom</artifactId>
+        <version>11.2.6</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.ubl</groupId>
+        <artifactId>ph-ubl-parent-pom</artifactId>
+        <version>9.0.3</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.helger.cii</groupId>
+        <artifactId>ph-cii-parent-pom</artifactId>
+        <version>3.1.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      
+      <dependency>
+        <groupId>com.helger</groupId>
+        <artifactId>en16931-cii2ubl</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>en16931-cii2ubl</module>
+    <module>en16931-cii2ubl-cli</module>
+  </modules>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <source>8</source>
+        </configuration>
+      </plugin> 
+    </plugins>
+  </build>
+</project>

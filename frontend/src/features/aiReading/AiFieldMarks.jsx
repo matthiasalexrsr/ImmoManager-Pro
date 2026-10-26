@@ -14,6 +14,8 @@ export function AiFieldNote({ label, state, mark, onConfirm, disabled }) {
     {mark && (mark.evidence || mark.confidence) && <small className="ai-evidence-hint">
       {mark.evidence ? `Beleg: „${mark.evidence}“` : ''}{mark.evidence && mark.confidence ? ' · ' : ''}
       {mark.confidence ? AI_CONFIDENCE[mark.confidence] : ''}</small>}
+    {mark?.citation?.verified ? <small className="ai-evidence-hint">Fundstelle geprüft: Zeile {mark.citation.line} im extrahierten Text{mark.citation.version_id ? ' · archivierte Originalversion' : ' · Datei mit Prüfsumme'}</small>
+      : mark?.evidence_status && <small className="ai-evidence-hint">Keine bestätigte Textfundstelle. Angabe am Original prüfen.</small>}
   </>;
 }
 

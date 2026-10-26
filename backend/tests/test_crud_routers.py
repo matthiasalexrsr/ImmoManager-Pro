@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
+from backend import auth
 from backend.dependencies import store
 from backend.models import (
     AccountCreate,
@@ -93,6 +94,14 @@ from backend.routers import (
 # Default pagination values (Query defaults aren't resolved outside FastAPI).
 # We define wrapper helpers for each list function so that tests stay concise.
 S, L = 0, 100
+
+
+@pytest.fixture
+def document_deleter():
+    auth.clear_users()
+    actor = auth.register_user("crud-document-owner", "crud-owner@example.test", "Testverwaltung", "CrudDocumentProof-823!", "eigentuemer")
+    yield actor
+    auth.clear_users()
 
 
 def _list_portfolios(**kw):
@@ -1094,7 +1103,7 @@ class TestMaintenance:
         maintenance.create_maintenance_case(self._make_payload("A"))
         maintenance.create_maintenance_case(
             MaintenanceCaseCreate(
-                property_id=self.prop.id, title="B", status="done"
+                property_id=self.prop.id, title="B", status="in_progress"
             )
         )
         assert len(_list_maintenance(status_filter="open")) == 1
@@ -1190,14 +1199,14 @@ class TestDocuments:
             documents.update_document("nonexistent", self._make_payload())
         assert exc_info.value.status_code == 404
 
-    def test_delete_document(self) -> None:
+    def test_delete_document(self, document_deleter) -> None:
         d = documents.create_document(self._make_payload())
-        documents.delete_document(d.id)
+        documents.delete_document(d.id, actor=document_deleter)
         assert _list_documents() == []
 
-    def test_delete_document_not_found(self) -> None:
+    def test_delete_document_not_found(self, document_deleter) -> None:
         with pytest.raises(HTTPException) as exc_info:
-            documents.delete_document("nonexistent")
+            documents.delete_document("nonexistent", actor=document_deleter)
         assert exc_info.value.status_code == 404
 
 
@@ -1626,8 +1635,11 @@ class TestPatchEndpoints:
         m = maintenance.create_maintenance_case(
             MaintenanceCaseCreate(property_id=prop.id, title="Old", status="open")
         )
-        patched = maintenance.patch_maintenance_case(m.id, MaintenanceCasePatch(status="done"))
-        assert patched.status == "done"
+        with pytest.raises(HTTPException) as denied:
+            maintenance.patch_maintenance_case(m.id, MaintenanceCasePatch(status="done"))
+        assert denied.value.status_code == 409
+        patched = maintenance.patch_maintenance_case(m.id, MaintenanceCasePatch(status="in_progress"))
+        assert patched.status == "in_progress"
         assert patched.title == "Old"
 
     def test_patch_listing(self) -> None:

@@ -10,7 +10,7 @@ import { usePartyText } from '../features/partyWorkspace/text';
 import { isOwnUploadUrl, prepareUploadAccess } from '../utils/uploadAccess';
 import '../features/partyWorkspace/fileViewer.css';
 
-export default function FileViewer({ fileUrl, title, onClose }) {
+export default function FileViewer({ fileUrl, title, onClose, returnFocus = null }) {
   const { text } = usePartyText();
   const [ocr, setOcr] = useState(null);
   const [showOcr, setShowOcr] = useState(false);
@@ -33,7 +33,7 @@ export default function FileViewer({ fileUrl, title, onClose }) {
   const ownFile = isOwnUploadUrl(resolvedUrl);
   const activeAccess = access?.url === resolvedUrl && access.attempt === accessAttempt ? access : null;
   const accessReady = !ownFile || kind === 'pdf' || activeAccess?.ready;
-  useModalDialog(dialogRef, onClose, Boolean(fileUrl));
+  useModalDialog(dialogRef, onClose, Boolean(fileUrl), returnFocus);
 
   useEffect(() => {
     const controller = new AbortController();

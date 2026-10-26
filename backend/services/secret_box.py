@@ -32,6 +32,8 @@ from pathlib import Path
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from .filesystem_paths import filesystem_path
+
 logger = logging.getLogger(__name__)
 
 TOKEN_PREFIX = "enc:v1:"
@@ -119,6 +121,7 @@ def parse_env_keys(value: str) -> list[Key]:
 
 def write_private_file(path: Path, data: bytes) -> None:
     """Atomically replace path with owner-only permissions (0600; directory 0700 on POSIX)."""
+    path = filesystem_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
         try:
@@ -146,6 +149,7 @@ def _keyring_write_lock(path: Path):
     Keep the lock file in place: removing it would let another worker lock a
     different inode while an existing waiter still owns the previous one.
     """
+    path = filesystem_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_file = path.with_name(path.name + ".lock")
     descriptor = os.open(lock_file, os.O_CREAT | os.O_RDWR, 0o600)
@@ -224,7 +228,7 @@ class SecretBox:
     # --- key ring -------------------------------------------------------------------
     def _file_stamp(self) -> tuple[int, int] | None:
         try:
-            stat = self.key_file.stat()
+            stat = filesystem_path(self.key_file).stat()
         except FileNotFoundError:
             return None
         return stat.st_mtime_ns, stat.st_size
@@ -236,7 +240,7 @@ class SecretBox:
                 return self._cache[1]
             keys: list[Key] = []
             if stamp is not None:
-                keys = parse_keyring(self.key_file.read_bytes())
+                keys = parse_keyring(filesystem_path(self.key_file).read_bytes())
                 if os.name != "nt" and self.key_file.stat().st_mode & 0o077:
                     logger.warning("Key file %s is readable by other users; restrict it to the owner (chmod 600)",
                                    self.key_file)
@@ -295,7 +299,7 @@ class SecretBox:
 
     def keyring_file_bytes(self) -> bytes | None:
         try:
-            return self.key_file.read_bytes()
+            return filesystem_path(self.key_file).read_bytes()
         except FileNotFoundError:
             return None
 

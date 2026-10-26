@@ -1,0 +1,17 @@
+.ei-upload { display:flex; flex-wrap:wrap; align-items:end; gap:1rem; margin:1rem 0; }
+.ei-upload .form-group { flex:1 1 15rem; min-width:0; }
+.ei-intakes input[type=file] { max-width:100%; }
+.ei-open { display:flex; gap:1rem; justify-content:space-between; align-items:center; width:100%; text-align:left; background:transparent; color:inherit; border:0; cursor:pointer; padding:1rem; font:inherit; flex-wrap:wrap; }
+.ei-open:focus-visible { outline:3px solid var(--primary, #2563eb); outline-offset:-3px; }
+.ei-intakes .ir-row { display:block; }
+.ei-blocker { margin:0 1rem 1rem; overflow-wrap:anywhere; }
+.ei-detail { overflow-wrap:anywhere; }
+.ei-detail details, .ei-detail form { margin-top:1rem; }
+.ei-detail summary { cursor:pointer; padding:.5rem 0; }
+.ei-detail dd { margin:0; }
+.ei-detail dt { font-weight:600; }
+.ei-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(16rem,100%),1fr)); gap:1rem; }
+.ei-table { overflow-x:auto; }
+.ei-table table { width:100%; border-collapse:collapse; }
+.ei-table th, .ei-table td { text-align:left; padding:.5rem; border-bottom:1px solid var(--border-color, #d1d5db); }
+.ei-detail textarea { min-height:5rem; }

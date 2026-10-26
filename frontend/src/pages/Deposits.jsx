@@ -74,6 +74,7 @@ function LegacyTakeover({ say, service, refresh, onDone }) {
 /** Every deposit file the account may see, with what was received and where it stands; all counted, paged. */
 export default function Deposits({ service = depositService }) {
   const [params, setParams] = useSearchParams();
+  const contractFilter = params.get('contract_id');
   const { locale } = useTranslation();
   const say = useCallback((key, params) => depositText(locale, key, params), [locale]);
   const auth = useAuth();
@@ -99,19 +100,19 @@ export default function Deposits({ service = depositService }) {
     next.delete('deposit_id');
     return next;
   }, { replace: true });
-  const [contractId, setContractId] = useState('');
+  const [contractId, setContractId] = useState(contractFilter || '');
   const [contractDialog, setContractDialog] = useState(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      service.files({ stage, query: query.trim(), skip, limit: PAGE }, { signal: controller.signal })
+      service.files({ stage, query: query.trim(), skip, limit: PAGE, ...(contractFilter ? { contract_id: contractFilter } : {}) }, { signal: controller.signal })
         .then(value => { if (!controller.signal.aborted) { setData(value); setError(null); } })
         .catch(failure => { if (!controller.signal.aborted && failure?.name !== 'AbortError') setError(failure?.message || say('loadFailed')); });
     }, query ? 250 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [attempt, query, say, service, skip, stage]);
+  }, [attempt, query, say, service, skip, stage, contractFilter]);
 
   const changed = useCallback(() => {
     setAttempt(value => value + 1);
@@ -123,6 +124,8 @@ export default function Deposits({ service = depositService }) {
 
   return <div className="page">
     <div className="page-header"><h1>{say('pageTitle')}</h1></div>
+    {contractFilter && <p>Gefiltert auf Mietvertrag {contracts.find(contract => contract.id === contractFilter)?.contract_number || contractFilter}.{' '}
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { const next = new URLSearchParams(params); next.delete('contract_id'); setParams(next); setSkip(0); }}>Alle Kautionsakten anzeigen</button></p>}
     {error && <div className="alert alert-error" role="alert">{error}{' '}
       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAttempt(v => v + 1)}>{say('retry')}</button></div>}
     {canEdit && <LegacyTakeover say={say} service={service} refresh={attempt} onDone={changed} />}

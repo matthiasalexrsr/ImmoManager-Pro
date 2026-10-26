@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from archive_helpers import purge_originals
+from archive_helpers import purge_originals, purge_payment_evidence
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -127,10 +127,12 @@ def test_settlement_partial_approval_credit_dispute_and_skonto():
 
 @pytest.fixture(autouse=True)
 def _clean():
+    purge_payment_evidence(store)
     purge_originals(store)
     clear_business_data(store)
     auth.clear_users()
     yield
+    purge_payment_evidence(store)
     purge_originals(store)
     clear_business_data(store)
     auth.clear_users()
@@ -208,6 +210,19 @@ def _decide(client, invoice_id, decision="approve", **extra):
     return client.post(f"{API}/invoices/{invoice_id}/review/decision", json={"decision": decision, **extra})
 
 
+def _bank_ready(client, invoice_id):
+    """These financial-flow cases also satisfy the new, independent bank gate."""
+    clerk = _client(_user("bank-" + os.urandom(4).hex(), "buchhaltung"))
+    current = _ok(clerk.get(f"{API}/invoices/{invoice_id}/payment-authorization"))
+    current = _ok(clerk.post(f"{API}/invoices/{invoice_id}/payment-recipient", json={
+        "expected_revision": current["revision"], "idempotency_key": os.urandom(16).hex(),
+        "name": "Geprüfter Lieferant", "iban": "DE89370400440532013000", "reason": "Kontodaten am Originalbeleg geprüft."}))
+    _ok(client.post(f"{API}/invoices/{invoice_id}/payment-authorization", json={
+        "expected_revision": current["revision"], "idempotency_key": os.urandom(16).hex(),
+        "reason": "Zahlbetrag mit Rechnungsfreigabe verglichen.",
+        "bank_verification": "Bankverbindung über bekannte Vertragskontaktnummer bestätigt."}))
+
+
 def _booking(estate, amount, day=None):
     return store.create_booking(BookingCreate(account_id=estate["account"].id, property_id=estate["property"].id,
                                               booking_date=day or TODAY, amount=amount))
@@ -229,6 +244,24 @@ def _history(client, invoice_id):
 
 
 # ─── receipt and duplicates ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize("change", ["invoice", "receipt"])
+def test_changed_facts_require_fresh_checks_before_decision(owner, estate, change):
+    invoice = _invoice(owner, estate, gross=119, net=100)
+    key = invoice["id"]
+    _ok(_receive(owner, key), 201)
+    _checked(owner, key)
+    if change == "invoice":
+        _ok(owner.patch(f"{API}/invoices/{key}", json={"supplier": "Berichtigter Lieferant"}))
+    else:
+        _ok(owner.patch(f"{API}/invoices/{key}/review", json={"vat_lines": [
+            {"rate": 19, "net": 100, "vat": 19, "category": "S", "exemption_reason": "Berichtigung"}]}))
+    assert any(f["code"] == "changed_after_check" for f in _view(owner, key)["findings"])
+    assert "Erneut nötig" in _error(_decide(owner, key), 409)
+    _checked(owner, key)
+    assert not any(f["code"] == "changed_after_check" for f in _view(owner, key)["findings"])
+    _ok(_decide(owner, key))
+
 
 def test_receipt_records_original_and_refuses_a_duplicate_key_without_reason(owner, estate):
     document, key = _document(estate)
@@ -297,8 +330,12 @@ def test_new_invoice_and_receipt_in_one_step(owner, estate):
         "received_on": TODAY.isoformat(), "property_id": estate["property"].id, "cost_category": "Reinigung",
         "recoverable": True,
         "invoice": {"property_id": estate["property"].id, "supplier": "Glanz GmbH", "invoice_number": "G-7",
+                    "due_date": "2026-12-31", "performance_start": "2025-01-01", "performance_end": "2025-12-31",
                     "invoice_date": TODAY.isoformat(), "net_amount": 100, "vat_rate": 19, "gross_amount": 119}}), 201)
     assert created["invoice"]["vat_amount"] == 19.0 and created["review"]["recoverable"] is True
+    persisted = _ok(owner.get(f"{API}/invoices/{created['invoice']['id']}"))
+    assert persisted['due_date'] == '2026-12-31'
+    assert persisted['performance_start'] == '2025-01-01' and persisted['performance_end'] == '2025-12-31'
     # a refused receipt leaves no invoice behind
     before = len(_ok(owner.get(f"{API}/invoices")))
     bad = owner.post(f"{API}/invoice-review/receipts", json={
@@ -482,6 +519,7 @@ def test_partial_approval_dispute_credit_note_and_result(owner, estate):
     costs = _ok(owner.get(f"{API}/maintenance/{case['id']}/costs"))
     assert costs["invoiced"] == 990.0                                      # the approved amount feeds the project
     # proposed for payment: the approved part only
+    _bank_ready(owner, invoice["id"])
     proposal = {p["invoice_id"]: p for p in _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"]}
     assert proposal[invoice["id"]]["proposed_amount"] == 990.0 and proposal[invoice["id"]]["dispute_open"] == 200.0
     _ok(_pay(owner, invoice["id"], _booking(estate, -990), 990), 201)
@@ -627,6 +665,7 @@ def test_explicit_service_contract_payments_and_refunds_reach_the_invoice(owner,
         "booking_id": refund.id, "service_contract_invoice_id": bill["id"]}), 201)
     settlement = _view(owner, invoice_id)["settlement"]
     assert (settlement["paid"], settlement["open"]) == (80, 20)
+    _bank_ready(owner, invoice_id)
     assert _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"][0]["proposed_amount"] == 20
     due = _ok(owner.get(f"{API}/invoice-review/inbox", params={"due": "overdue", "limit": 1}))
     assert due["total"] == 1 and due["items"][0]["invoice_id"] == invoice_id
@@ -638,6 +677,7 @@ def test_payment_status_with_skonto_and_overpayment(owner, estate):
                  property_id=estate["property"].id), 201)
     _checked(owner, invoice["id"])
     _ok(_decide(owner, invoice["id"]))
+    _bank_ready(owner, invoice["id"])
     proposal = _ok(owner.get(f"{API}/invoice-review/payment-proposals"))["items"][0]
     assert (proposal["proposed_amount"], proposal["skonto_amount"]) == (1166.2, 23.8)
     assert proposal["pay_by"] == (TODAY + timedelta(days=7)).isoformat()

@@ -1,0 +1,35 @@
+Source files: org/apache/commons/cli/AlreadySelectedException.java, org/apache/commons/cli/AmbiguousOptionException.java, org/apache/commons/cli/BasicParser.java, org/apache/commons/cli/Char.java, org/apache/commons/cli/CommandLine.java, org/apache/commons/cli/CommandLineParser.java, org/apache/commons/cli/Converter.java, org/apache/commons/cli/DefaultParser.java, org/apache/commons/cli/DeprecatedAttributes.java, org/apache/commons/cli/GnuParser.java, org/apache/commons/cli/HelpFormatter.java, org/apache/commons/cli/MissingArgumentException.java, org/apache/commons/cli/MissingOptionException.java, org/apache/commons/cli/Option.java, org/apache/commons/cli/OptionBuilder.java, org/apache/commons/cli/OptionGroup.java, org/apache/commons/cli/OptionValidator.java, org/apache/commons/cli/Options.java, org/apache/commons/cli/ParseException.java, org/apache/commons/cli/Parser.java, org/apache/commons/cli/PatternOptionBuilder.java, org/apache/commons/cli/PosixParser.java, org/apache/commons/cli/TypeHandler.java, org/apache/commons/cli/UnrecognizedOptionException.java, org/apache/commons/cli/Util.java, org/apache/commons/cli/help/AbstractHelpFormatter.java, org/apache/commons/cli/help/FilterHelpAppendable.java, org/apache/commons/cli/help/HelpAppendable.java, org/apache/commons/cli/help/HelpFormatter.java, org/apache/commons/cli/help/OptionFormatter.java, org/apache/commons/cli/help/TableDefinition.java, org/apache/commons/cli/help/TextHelpAppendable.java, org/apache/commons/cli/help/TextStyle.java, org/apache/commons/cli/help/Util.java, org/apache/commons/cli/help/package-info.java
+/*
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+ */
+
+Source files: org/apache/commons/cli/package-info.java
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

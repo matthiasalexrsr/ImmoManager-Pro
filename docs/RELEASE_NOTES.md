@@ -2,7 +2,13 @@
 
 **Erste Beta von 2.0.0.** Der Funktionsumfang von 2.0.0 ist vollständig; die Beta dient der Erprobung mit echten Daten vor dem endgültigen Release. Vorher bitte ein Vollbackup anlegen (Einstellungen → System → Betrieb). Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.
 
-Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal unter Windows (oder als Server). Es gibt keine Cloud, und das Programm versendet nichts von selbst.
+Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal unter Windows oder als Server. Daten werden im Datenordner gespeichert. Verbundene externe Dienste erhalten die für sie ausgewählten Daten, etwa Dokumente und Kontext für Claude oder ChatGPT, E-Mails oder externe Sicherungen. Geplante Aufträge können diese Übertragungen automatisch ausführen.
+
+**Sicherheitskorrektur beim Einlesen:** Gespeicherte Lesevorgänge ohne den neuen Berechtigungsnachweis sowie Vorgänge nach einer Änderung der Kontorechte müssen neu eingelesen werden. Das Originaldokument und bereits gespeicherte Rechnungen bleiben erhalten. Auch hinterlegte Dubletten und Kontextbezüge werden beim erneuten Zugriff geprüft.
+
+**Auditkorrekturen:** Zwei-Faktor-Anmeldung, Gutschrift-/Rechnungsübernahme, Wiederholung nach Verbindungsabbruch und verschachtelte Dokumentdialoge wurden korrigiert. Lange Windows-Pfade funktionieren auch bei Sicherung, Wiederherstellung, DATEV und PDF-Verarbeitung. Bereits früher mit falschem Typ oder fehlender Fälligkeit gespeicherte Belege lassen sich nicht zuverlässig automatisch erkennen; diese Bestandsdaten sind anhand der Originalbelege zu prüfen.
+
+**Mietvertragsassistent:** Vorschau und beide PDF-Exporte verwenden denselben Vertragstext. Dezimalbeträge bleiben erhalten; eingegebene HTML-Zeichen erscheinen als Text. Bereits erzeugte Vertragsdateien werden nicht verändert. Die rechtliche Prüfung der verwendeten Klauseln bleibt erforderlich.
 
 **Installieren:** ZIP entpacken und `ImmoManager-Pro.exe` starten. Beim ersten Start führt „Erste Schritte“ durch die Einrichtung. Einzelheiten stehen in der Datei „LIES MICH.txt“ im Paket.
 
@@ -174,4 +180,4 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Eigentümer:** DATEV-Export und WISO-Übertragungsbogen je Eigentümer verteilen nach den erfassten Anteilen; ob das steuerlich so zuzurechnen ist, prüfen sie nicht. Rückgängig machen lässt sich nur der letzte Wechsel eines Objekts, und nur, solange seine Anteile nicht von Hand geändert wurden. Die DSGVO-Auskunft für Kontakte gibt es nur über die Programmschnittstelle.
 - **Vollbackup zurückspielen:** nur über die Kommandozeile (`ImmoManager-Pro.exe ops restore …`), siehe „LIES MICH.txt“.
 - **Signaturen:** keine elektronische Unterschrift auf Übergabeprotokollen.
-- **Windows-Warnung:** Das Windows-Paket ist nicht signiert. Beim ersten Start meldet Windows das; über „Weitere Informationen → Trotzdem ausführen“ geht es weiter.
+- **Windows-Auslieferung:** Veröffentlichte Kundenpakete benötigen eine gültige Herausgebersignatur. Interne Testpakete können unsigniert sein; Herkunft und Prüfsummen müssen vor dem Start geprüft werden. Eine Windows-Warnung ist kein Anlass, diese Prüfung zu überspringen.

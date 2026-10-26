@@ -96,6 +96,13 @@ def test_the_test_version_builds_a_consistent_history(client):
     assert max(open_accounts) > 1000          # four months of arrears
     assert len(open_accounts) <= 12
     assert get("/dashboard/stats")["active_contracts_missing_documents"] == 0
+    completed = [case for case in get("/maintenance?limit=1000") if case["status"] == "completed"]
+    assert completed
+    for case in completed:
+        history = get(f"/maintenance/{case['id']}/project")["history"]
+        closure = next(entry for entry in history if entry["new_value"] == "completed")
+        assert closure["old_value"] == "in_progress"
+        assert closure["changed_by"] and len(closure["reason"]) >= 10
 
 
 def test_builder_plans_the_stories_for_the_tester():

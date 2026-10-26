@@ -44,7 +44,7 @@ try {
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem('immo.tutorial.' + id, JSON.stringify({ offered: true })); }, fixture.actor_id);
   page = await context.newPage(); page.setDefaultTimeout(30000);
   page.on('pageerror', error => report.page_errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) report.page_errors.push(`UI console: ${message.text()}`); });
   page.on('request', req => { if (/^https?:/.test(req.url()) && new URL(req.url()).origin !== base.origin) report.external.push(req.url()); if (/\/assistant\/connections\/[^/]+\/login/.test(req.url())) throw Error('Provider login forbidden in this harness'); });
   await page.goto(base.origin + '/login'); await page.locator('input[autocomplete="username"]').fill('owner'); await page.locator('input[type="password"]').fill(process.env.QA_PASSWORD); await page.locator('form button[type="submit"]').click(); await page.waitForURL(url => url.pathname === '/');
   let conversationId;

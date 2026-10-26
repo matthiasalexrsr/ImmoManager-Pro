@@ -475,6 +475,24 @@ def forecast(store, d):
 
 
 def compute(store, definition):
+    from datetime import datetime, timezone
+
+    from . import report_provenance
+    from .portfolio_scope import current_scope, refresh_scope
+    captured = current_scope()
+    with report_provenance.snapshot(store) as (source, mode):
+        sampled_at = datetime.now(timezone.utc).isoformat()
+        result = _compute(source, definition)
+        report_provenance.enrich(source, result, mode)
+        result["result_hash"] = digest(result)
+    # The changing retrieval clock is not part of the reproducible result hash.
+    result["generated_at"] = sampled_at
+    refresh_scope(captured)
+    report_provenance.recheck_originals(store, result)
+    return result
+
+
+def _compute(store, definition):
     validate_scope(store, definition)
     dims = Dimensions(store, _filter(definition))
     currencies = {p.currency for p in store.list_portfolios() if
@@ -507,9 +525,6 @@ def compute(store, definition):
     result = {"definition": definition.model_dump(mode="json"), "definition_hash": digest(definition.model_dump(mode="json")),
               "currency": next(iter(currencies), "EUR"), "basis": definition.kind,
               "filters": _filter(definition).with_period(period_from, period_to).echo(), **data}
-    result["result_hash"] = digest(result)
-    from .portfolio_scope import current_scope, refresh_scope
-    refresh_scope(current_scope())
     return result
 
 

@@ -1,0 +1,14 @@
+Source files: org/xmlunit/assertj/AssertFactoryProvider.java, org/xmlunit/assertj/AssertionsAdapter.java, org/xmlunit/assertj/ValidationAssert.java, org/xmlunit/assertj/ValueAssert.java, org/xmlunit/assertj/CompareAssert.java, org/xmlunit/assertj/package-info.java, org/xmlunit/assertj/error/ShouldHaveXPath.java, org/xmlunit/assertj/error/ShouldBeConvertible.java, org/xmlunit/assertj/error/ShouldBeValid.java, org/xmlunit/assertj/error/ShouldBeSimilar.java, org/xmlunit/assertj/error/package-info.java, org/xmlunit/assertj/error/ShouldAnyNodeHaveXPath.java, org/xmlunit/assertj/error/ShouldNotHaveThrown.java, org/xmlunit/assertj/error/ShouldBeNotSimilar.java, org/xmlunit/assertj/error/ElementsShouldSatisfy.java, org/xmlunit/assertj/error/ShouldBeInvalid.java, org/xmlunit/assertj/error/ShouldNotHaveAttribute.java, org/xmlunit/assertj/error/ComparisonFailureErrorFactory.java, org/xmlunit/assertj/error/ShouldHaveAttribute.java, org/xmlunit/assertj/MultipleNodeAssert.java, org/xmlunit/assertj/NodeAssertFactory.java, org/xmlunit/assertj/XmlAssertConfig.java, org/xmlunit/assertj/CustomAbstractAssert.java, org/xmlunit/assertj/SingleNodeAssert.java, org/xmlunit/assertj/NodeUtils.java, org/xmlunit/assertj/XmlAssert.java, org/xmlunit/assertj/XPathEngineFactory.java
+/*
+  This file is licensed to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/

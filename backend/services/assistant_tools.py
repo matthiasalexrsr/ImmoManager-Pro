@@ -414,12 +414,26 @@ def _full_text(raw: bytes, name: str) -> tuple[str, list[str]]:
             return "\n".join("".join(node.text or "" for node in paragraph.iter(namespace + "t"))
                              for part in parts for paragraph in safe_xml.fromstring(package.read(part)).iter(namespace + "p")), []
     if ext == "pdf":
-        import fitz
-        with fitz.open(stream=raw, filetype="pdf") as document:
-            if document.needs_pass:
-                raise HTTPException(422, "Das PDF ist passwortgeschützt.")
-            text = "\n".join(f"\n[Seite {index + 1}]\n" + page.get_text() for index, page in enumerate(document))
-            return text, ["Es wurde nur vorhandener PDF-Text gelesen; Bildseiten benötigen separate Texterkennung."]
+        from pypdf import PdfReader
+        document = PdfReader(io.BytesIO(raw), strict=False)
+        if document.is_encrypted and not document.decrypt(""):
+            raise HTTPException(422, "Das PDF ist passwortgeschützt.")
+        parts, length, cut = [], 0, len(document.pages) > 500
+        warnings = ["Es wurde nur vorhandener PDF-Text gelesen; Bildseiten benötigen separate Texterkennung."]
+        for index, page in enumerate(document.pages):
+            if index >= 500 or length >= 2_000_000:
+                cut = True
+                break
+            part = f"\n[Seite {index + 1}]\n" + (page.extract_text() or "") + "\n"
+            cut = cut or len(part) > 2_000_000 - length
+            parts.append(part[:2_000_000 - length])
+            length += len(part)
+        if cut:
+            warnings.append("Textauszug begrenzt: höchstens 500 PDF-Seiten und 2.000.000 Zeichen; weitere Inhalte sind nicht geprüft.")
+        return "".join(parts), warnings
+    if ext == "xml":
+        root = safe_xml.fromstring(raw)
+        return "\n".join(value.strip() for value in root.itertext() if value.strip()), []
     return "", ["Kein lokal extrahierbarer Text. Das Original bleibt erhalten; Bilder benötigen visuelle Prüfung."]
 
 
@@ -453,9 +467,12 @@ def _document(unit, row, data, args):
     offset = _cursor(unit, row.id, "immo_document", fingerprint, token=args.cursor) if args.cursor else 0
     end = min(offset + args.limit_chars, len(text))
     return {"ok": True, "items": [{"text": text[offset:end], "start_char": offset, "end_char": end,
-            "text_sha256": hashlib.sha256(text.encode()).hexdigest(), "source": source}], "sources": [source], "warnings": warnings,
-            "coverage": {"returned": end - offset, "total": len(text), "has_more": end < len(text), "truncated": False,
-                         "text_available": bool(text.strip()), "complete": end >= len(text),
+            "text_sha256": hashlib.sha256(text.encode()).hexdigest(), "text_format": "immomanager-extracted-text/1", "source": source}], "sources": [source], "warnings": warnings,
+            "coverage": {"returned": end - offset, "total": len(text), "has_more": end < len(text),
+                         "truncated": any(warning.startswith("Textauszug begrenzt:") for warning in warnings),
+                         "text_available": bool(text.strip()),
+                         "complete": end >= len(text) and bool(text.strip()) and not warnings,
+                         "extracted_text_complete": end >= len(text) and not any(warning.startswith("Textauszug begrenzt:") for warning in warnings),
                          "next_cursor": _cursor(unit, row.id, "immo_document", fingerprint, value=end) if end < len(text) else None}}
 
 

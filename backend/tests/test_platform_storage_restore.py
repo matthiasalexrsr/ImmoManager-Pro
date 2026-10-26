@@ -160,6 +160,8 @@ def test_standalone_restore_logs_into_actual_app_in_clean_child(installation, tm
         {"passphrase": fixture.sources.passphrase, "username": "staff", "password": "Synthetic123",
          "originals": {"documents/vertrag.pdf": hashlib.sha256(original.read_bytes()).hexdigest()}})
     assert result["ok"] and result["readiness"] == "application_verified"
+    assert result["access_readiness"] == "privacy_review_required"
+    assert result["privacy_review_released_by_probe"] is False
     assert result["browser"] == "not_run" and result["originals"] == 1
 
 

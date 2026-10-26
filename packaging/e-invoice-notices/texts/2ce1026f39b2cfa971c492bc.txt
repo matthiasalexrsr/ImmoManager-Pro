@@ -1,0 +1,28 @@
+Source files: com/fasterxml/jackson/core/Base64Variant.java, com/fasterxml/jackson/core/Base64Variants.java, com/fasterxml/jackson/core/FormatSchema.java, com/fasterxml/jackson/core/JsonEncoding.java, com/fasterxml/jackson/core/JsonFactory.java, com/fasterxml/jackson/core/JsonGenerationException.java, com/fasterxml/jackson/core/JsonGenerator.java, com/fasterxml/jackson/core/JsonLocation.java, com/fasterxml/jackson/core/JsonParseException.java, com/fasterxml/jackson/core/JsonParser.java, com/fasterxml/jackson/core/JsonProcessingException.java, com/fasterxml/jackson/core/JsonStreamContext.java, com/fasterxml/jackson/core/JsonToken.java, com/fasterxml/jackson/core/ObjectCodec.java, com/fasterxml/jackson/core/PrettyPrinter.java, com/fasterxml/jackson/core/SerializableString.java, com/fasterxml/jackson/core/TokenStreamFactory.java, com/fasterxml/jackson/core/TreeNode.java, com/fasterxml/jackson/core/Version.java, com/fasterxml/jackson/core/Versioned.java, com/fasterxml/jackson/core/util/ByteArrayBuilder.java
+/* Jackson JSON-processor.
+ *
+ * Copyright (c) 2007- Tatu Saloranta, tatu.saloranta@iki.fi
+ */
+
+Source files: com/fasterxml/jackson/core/io/schubfach/DoubleToDecimal.java, com/fasterxml/jackson/core/io/schubfach/FloatToDecimal.java, com/fasterxml/jackson/core/io/schubfach/MathUtils.java
+/*
+ * Copyright 2018-2020 Raffaello Giulietti
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */

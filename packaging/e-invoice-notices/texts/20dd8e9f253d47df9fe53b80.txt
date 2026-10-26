@@ -1,0 +1,39 @@
+Source files: org/apache/batik/transcoder/TranscoderInput.java, org/apache/batik/transcoder/keys/Rectangle2DKey.java, org/apache/batik/transcoder/keys/LengthKey.java, org/apache/batik/transcoder/TranscoderOutput.java, org/apache/batik/transcoder/image/resources/Messages.java, org/apache/batik/transcoder/image/TIFFTranscoder.java, org/apache/batik/transcoder/svg2svg/SVGTranscoder.java, org/apache/batik/transcoder/TranscoderException.java, org/apache/batik/transcoder/AbstractTranscoder.java, org/apache/batik/transcoder/SVGAbstractTranscoder.java, org/apache/batik/transcoder/wmf/tosvg/WMFFont.java, org/apache/batik/transcoder/wmf/tosvg/WMFPainter.java, org/apache/batik/transcoder/ErrorHandler.java, org/apache/batik/transcoder/keys/BooleanKey.java, org/apache/batik/transcoder/XMLAbstractTranscoder.java, org/apache/batik/transcoder/image/JPEGTranscoder.java, org/apache/batik/transcoder/image/ImageTranscoder.java, org/apache/batik/transcoder/svg2svg/OutputManager.java, org/apache/batik/transcoder/wmf/tosvg/GdiObject.java, org/apache/batik/transcoder/wmf/tosvg/WMFTranscoder.java, org/apache/batik/transcoder/wmf/tosvg/RecordStore.java, org/apache/batik/transcoder/wmf/tosvg/AbstractWMFPainter.java, org/apache/batik/transcoder/wmf/tosvg/WMFHeaderProperties.java, org/apache/batik/transcoder/Transcoder.java, org/apache/batik/transcoder/TranscoderSupport.java, org/apache/batik/transcoder/image/PNGTranscoder.java, org/apache/batik/transcoder/svg2svg/PrettyPrinter.java, org/apache/batik/transcoder/wmf/tosvg/TextureFactory.java, org/apache/batik/transcoder/wmf/tosvg/AbstractWMFReader.java, org/apache/batik/transcoder/TranscodingHints.java, org/apache/batik/transcoder/DefaultErrorHandler.java, org/apache/batik/transcoder/keys/DOMImplementationKey.java, org/apache/batik/transcoder/keys/StringKey.java, org/apache/batik/transcoder/keys/IntegerKey.java, org/apache/batik/transcoder/keys/PaintKey.java, org/apache/batik/transcoder/keys/FloatKey.java, org/apache/batik/transcoder/ToSVGAbstractTranscoder.java, org/apache/batik/transcoder/wmf/tosvg/WMFRecordStore.java, org/apache/batik/transcoder/wmf/tosvg/MetaRecord.java, org/apache/batik/transcoder/wmf/WMFConstants.java, org/apache/batik/transcoder/print/PrintTranscoder.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */
+
+Source files: org/apache/batik/transcoder/wmf/tosvg/WMFUtilities.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+
+ */

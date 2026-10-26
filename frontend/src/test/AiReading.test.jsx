@@ -126,7 +126,7 @@ describe('Lesepanel', () => {
     const box = await screen.findByLabelText('Nachricht an Claude');
     fireEvent.change(box, { target: { value: 'Der Betrag ist netto.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Senden' }));
-    await waitFor(() => expect(api.say).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', revision: 1 }), 'Der Betrag ist netto.'));
+    await waitFor(() => expect(api.say).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', revision: 1 }), 'Der Betrag ist netto.', expect.any(String)));
     const chat = screen.getByRole('list', { name: 'Gespräch zum Dokument' });
     expect(await within(chat).findByText('Ich habe Netto und Brutto getrennt.')).toBeInTheDocument();
     expect(within(chat).getByText('Geändert: Brutto')).toBeInTheDocument();

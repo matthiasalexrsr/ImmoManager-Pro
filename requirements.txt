@@ -1,40 +1,5 @@
-# Direct dependencies, exact versions. Transitive ones: constraints.txt
-#   pip install -r requirements.txt -c constraints.txt
-fastapi==0.135.1
-pydantic==2.12.5
-pydantic-settings==2.14.2
-python-multipart==0.0.31
-uvicorn==0.41.0
+# Runtime dependencies also drive pyproject.toml metadata.
+-r requirements-runtime.txt
 
-# Database
-sqlalchemy==2.0.48
-alembic==1.18.4
-aiosqlite==0.22.1
-
-# Time zones: zoneinfo needs it where the OS has no tz database (Windows)
-tzdata==2026.4
-psycopg2-binary==2.9.13
-
-# Authentication; cryptography also seals integration secrets at rest (AES-256-GCM)
-PyJWT==2.15.1
-cryptography==50.0.0
-cffi==2.0.0
-
-# Mietvertrag-Wizard; PDFs (Pillow: photos of handover protocols, also needed by reportlab)
-jinja2==3.1.6
-reportlab==4.4.10
-pillow==13.0.0
-python-docx==1.2.0
-# Text layer of PDFs for the full-text search of documents (pure Python, BSD)
-pypdf==6.21.2
-# XML of uploads, bank files and office archives read without entity expansion (services/safe_xml.py)
-defusedxml==0.7.1
-
-# HTTP client (updater + autotest)
-httpx==0.28.1
-
-# AI / Hugging Face — optional, see requirements-ai.txt
-# Install with: pip install -r requirements-ai.txt
-
-# Testing
+# Tests (not part of the application metadata)
 pytest==9.0.3

@@ -1,0 +1,263 @@
+Source files: org/apache/pdfbox/Loader.java, org/apache/pdfbox/contentstream/PDContentStream.java, org/apache/pdfbox/contentstream/PDFStreamEngine.java, org/apache/pdfbox/contentstream/operator/DrawObject.java, org/apache/pdfbox/contentstream/operator/MissingOperandException.java, org/apache/pdfbox/contentstream/operator/Operator.java, org/apache/pdfbox/contentstream/operator/OperatorName.java, org/apache/pdfbox/contentstream/operator/OperatorProcessor.java, org/apache/pdfbox/contentstream/operator/color/SetColor.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColor.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColorN.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColorSpace.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceCMYKColor.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceGrayColor.java, org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceRGBColor.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingColor.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingColorN.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingColorSpace.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceCMYKColor.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceGrayColor.java, org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceRGBColor.java, org/apache/pdfbox/contentstream/operator/graphics/AppendRectangleToPath.java, org/apache/pdfbox/contentstream/operator/graphics/BeginInlineImage.java, org/apache/pdfbox/contentstream/operator/graphics/ClipEvenOddRule.java, org/apache/pdfbox/contentstream/operator/graphics/ClipNonZeroRule.java, org/apache/pdfbox/contentstream/operator/graphics/CloseAndStrokePath.java, org/apache/pdfbox/contentstream/operator/graphics/CloseFillEvenOddAndStrokePath.java, org/apache/pdfbox/contentstream/operator/graphics/CloseFillNonZeroAndStrokePath.java, org/apache/pdfbox/contentstream/operator/graphics/ClosePath.java, org/apache/pdfbox/contentstream/operator/graphics/CurveTo.java, org/apache/pdfbox/contentstream/operator/graphics/CurveToReplicateFinalPoint.java, org/apache/pdfbox/contentstream/operator/graphics/CurveToReplicateInitialPoint.java, org/apache/pdfbox/contentstream/operator/graphics/DrawObject.java, org/apache/pdfbox/contentstream/operator/graphics/EndPath.java, org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddAndStrokePath.java, org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddRule.java, org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroAndStrokePath.java, org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroRule.java, org/apache/pdfbox/contentstream/operator/graphics/GraphicsOperatorProcessor.java, org/apache/pdfbox/contentstream/operator/graphics/LegacyFillNonZeroRule.java, org/apache/pdfbox/contentstream/operator/graphics/LineTo.java, org/apache/pdfbox/contentstream/operator/graphics/MoveTo.java, org/apache/pdfbox/contentstream/operator/graphics/ShadingFill.java, org/apache/pdfbox/contentstream/operator/graphics/StrokePath.java, org/apache/pdfbox/contentstream/operator/markedcontent/DrawObject.java, org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPoint.java, org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPointWithProperties.java, org/apache/pdfbox/contentstream/operator/state/Concatenate.java, org/apache/pdfbox/contentstream/operator/state/EmptyGraphicsStackException.java, org/apache/pdfbox/contentstream/operator/state/Restore.java, org/apache/pdfbox/contentstream/operator/state/Save.java, org/apache/pdfbox/contentstream/operator/state/SetFlatness.java, org/apache/pdfbox/contentstream/operator/state/SetGraphicsStateParameters.java, org/apache/pdfbox/contentstream/operator/state/SetLineCapStyle.java, org/apache/pdfbox/contentstream/operator/state/SetLineDashPattern.java, org/apache/pdfbox/contentstream/operator/state/SetLineJoinStyle.java, org/apache/pdfbox/contentstream/operator/state/SetLineMiterLimit.java, org/apache/pdfbox/contentstream/operator/state/SetLineWidth.java, org/apache/pdfbox/contentstream/operator/state/SetMatrix.java, org/apache/pdfbox/contentstream/operator/state/SetRenderingIntent.java, org/apache/pdfbox/contentstream/operator/text/BeginText.java, org/apache/pdfbox/contentstream/operator/text/EndText.java, org/apache/pdfbox/contentstream/operator/text/MoveText.java, org/apache/pdfbox/contentstream/operator/text/MoveTextSetLeading.java, org/apache/pdfbox/contentstream/operator/text/NextLine.java, org/apache/pdfbox/contentstream/operator/text/SetCharSpacing.java, org/apache/pdfbox/contentstream/operator/text/SetFontAndSize.java, org/apache/pdfbox/contentstream/operator/text/SetTextHorizontalScaling.java, org/apache/pdfbox/contentstream/operator/text/SetTextLeading.java, org/apache/pdfbox/contentstream/operator/text/SetTextRenderingMode.java, org/apache/pdfbox/contentstream/operator/text/SetTextRise.java, org/apache/pdfbox/contentstream/operator/text/SetWordSpacing.java, org/apache/pdfbox/contentstream/operator/text/ShowText.java, org/apache/pdfbox/contentstream/operator/text/ShowTextAdjusted.java, org/apache/pdfbox/contentstream/operator/text/ShowTextLine.java, org/apache/pdfbox/contentstream/operator/text/ShowTextLineAndSpace.java, org/apache/pdfbox/cos/COSArray.java, org/apache/pdfbox/cos/COSBase.java, org/apache/pdfbox/cos/COSBoolean.java, org/apache/pdfbox/cos/COSDictionary.java, org/apache/pdfbox/cos/COSDocument.java, org/apache/pdfbox/cos/COSDocumentState.java, org/apache/pdfbox/cos/COSFloat.java, org/apache/pdfbox/cos/COSIncrement.java, org/apache/pdfbox/cos/COSInputStream.java, org/apache/pdfbox/cos/COSInteger.java, org/apache/pdfbox/cos/COSName.java, org/apache/pdfbox/cos/COSNull.java, org/apache/pdfbox/cos/COSNumber.java, org/apache/pdfbox/cos/COSObject.java, org/apache/pdfbox/cos/COSObjectKey.java, org/apache/pdfbox/cos/COSOutputStream.java, org/apache/pdfbox/cos/COSStream.java, org/apache/pdfbox/cos/COSString.java, org/apache/pdfbox/cos/COSUpdateInfo.java, org/apache/pdfbox/cos/COSUpdateState.java, org/apache/pdfbox/cos/ICOSParser.java, org/apache/pdfbox/cos/ICOSVisitor.java, org/apache/pdfbox/cos/PDFDocEncoding.java, org/apache/pdfbox/cos/UnmodifiableCOSDictionary.java, org/apache/pdfbox/filter/ASCII85Filter.java, org/apache/pdfbox/filter/ASCII85InputStream.java, org/apache/pdfbox/filter/ASCII85OutputStream.java, org/apache/pdfbox/filter/ASCIIHexFilter.java, org/apache/pdfbox/filter/CCITTFaxFilter.java, org/apache/pdfbox/filter/CryptFilter.java, org/apache/pdfbox/filter/DCTFilter.java, org/apache/pdfbox/filter/DecodeOptions.java, org/apache/pdfbox/filter/DecodeResult.java, org/apache/pdfbox/filter/Filter.java, org/apache/pdfbox/filter/FilterFactory.java, org/apache/pdfbox/filter/FlateFilter.java, org/apache/pdfbox/filter/FlateFilterDecoderStream.java, org/apache/pdfbox/filter/IdentityFilter.java, org/apache/pdfbox/filter/JBIG2Filter.java, org/apache/pdfbox/filter/JPXFilter.java, org/apache/pdfbox/filter/MissingImageReaderException.java, org/apache/pdfbox/filter/RunLengthDecodeFilter.java, org/apache/pdfbox/multipdf/LayerUtility.java, org/apache/pdfbox/multipdf/Overlay.java, org/apache/pdfbox/multipdf/PDFCloneUtility.java, org/apache/pdfbox/multipdf/PDFMergerUtility.java, org/apache/pdfbox/multipdf/PageExtractor.java, org/apache/pdfbox/multipdf/Splitter.java, org/apache/pdfbox/pdfparser/BaseParser.java, org/apache/pdfbox/pdfparser/BruteForceParser.java, org/apache/pdfbox/pdfparser/COSParser.java, org/apache/pdfbox/pdfparser/FDFParser.java, org/apache/pdfbox/pdfparser/PDFObjectStreamParser.java, org/apache/pdfbox/pdfparser/PDFParser.java, org/apache/pdfbox/pdfparser/PDFStreamParser.java, org/apache/pdfbox/pdfparser/PDFXRefStream.java, org/apache/pdfbox/pdfparser/PDFXrefStreamParser.java, org/apache/pdfbox/pdfparser/xref/AbstractXReference.java, org/apache/pdfbox/pdfparser/xref/FreeXReference.java, org/apache/pdfbox/pdfparser/xref/NormalXReference.java, org/apache/pdfbox/pdfparser/xref/ObjectStreamXReference.java, org/apache/pdfbox/pdfparser/xref/XReferenceEntry.java, org/apache/pdfbox/pdfparser/xref/XReferenceType.java, org/apache/pdfbox/pdfwriter/COSStandardOutputStream.java, org/apache/pdfbox/pdfwriter/COSWriter.java, org/apache/pdfbox/pdfwriter/ContentStreamWriter.java, org/apache/pdfbox/pdfwriter/compress/COSObjectPool.java, org/apache/pdfbox/pdfwriter/compress/COSWriterCompressionPool.java, org/apache/pdfbox/pdfwriter/compress/COSWriterObjectStream.java, org/apache/pdfbox/pdfwriter/compress/CompressParameters.java, org/apache/pdfbox/pdmodel/DefaultResourceCache.java, org/apache/pdfbox/pdmodel/DefaultResourceCacheCreateImpl.java, org/apache/pdfbox/pdmodel/MissingResourceException.java, org/apache/pdfbox/pdmodel/PDAbstractContentStream.java, org/apache/pdfbox/pdmodel/PDAppearanceContentStream.java, org/apache/pdfbox/pdmodel/PDDestinationNameTreeNode.java, org/apache/pdfbox/pdmodel/PDDocument.java, org/apache/pdfbox/pdmodel/PDDocumentInformation.java, org/apache/pdfbox/pdmodel/PDDocumentNameDictionary.java, org/apache/pdfbox/pdmodel/PDEmbeddedFilesNameTreeNode.java, org/apache/pdfbox/pdmodel/PDJavascriptNameTreeNode.java, org/apache/pdfbox/pdmodel/PDPage.java, org/apache/pdfbox/pdmodel/PDPageContentStream.java, org/apache/pdfbox/pdmodel/PDStructureElementNameTreeNode.java, org/apache/pdfbox/pdmodel/PageMode.java, org/apache/pdfbox/pdmodel/ResourceCache.java, org/apache/pdfbox/pdmodel/ResourceCacheCreateFunction.java, org/apache/pdfbox/pdmodel/ResourceCacheFactory.java, org/apache/pdfbox/pdmodel/common/COSArrayList.java, org/apache/pdfbox/pdmodel/common/COSDictionaryMap.java, org/apache/pdfbox/pdmodel/common/COSObjectable.java, org/apache/pdfbox/pdmodel/common/PDDestinationOrAction.java, org/apache/pdfbox/pdmodel/common/PDDictionaryWrapper.java, org/apache/pdfbox/pdmodel/common/PDImmutableRectangle.java, org/apache/pdfbox/pdmodel/common/PDMetadata.java, org/apache/pdfbox/pdmodel/common/PDNameTreeNode.java, org/apache/pdfbox/pdmodel/common/PDNumberTreeNode.java, org/apache/pdfbox/pdmodel/common/PDObjectStream.java, org/apache/pdfbox/pdmodel/common/PDPageLabelRange.java, org/apache/pdfbox/pdmodel/common/PDPageLabels.java, org/apache/pdfbox/pdmodel/common/PDRange.java, org/apache/pdfbox/pdmodel/common/PDRectangle.java, org/apache/pdfbox/pdmodel/common/PDStream.java, org/apache/pdfbox/pdmodel/common/PDTypedDictionaryWrapper.java, org/apache/pdfbox/pdmodel/common/filespecification/PDComplexFileSpecification.java, org/apache/pdfbox/pdmodel/common/filespecification/PDEmbeddedFile.java, org/apache/pdfbox/pdmodel/common/filespecification/PDFileSpecification.java, org/apache/pdfbox/pdmodel/common/filespecification/PDSimpleFileSpecification.java, org/apache/pdfbox/pdmodel/common/function/PDFunction.java, org/apache/pdfbox/pdmodel/common/function/PDFunctionType0.java, org/apache/pdfbox/pdmodel/common/function/PDFunctionType2.java, org/apache/pdfbox/pdmodel/common/function/PDFunctionType3.java, org/apache/pdfbox/pdmodel/common/function/PDFunctionType4.java, org/apache/pdfbox/pdmodel/common/function/type4/ArithmeticOperators.java, org/apache/pdfbox/pdmodel/common/function/type4/BitwiseOperators.java, org/apache/pdfbox/pdmodel/common/function/type4/ConditionalOperators.java, org/apache/pdfbox/pdmodel/common/function/type4/ExecutionContext.java, org/apache/pdfbox/pdmodel/common/function/type4/InstructionSequence.java, org/apache/pdfbox/pdmodel/common/function/type4/InstructionSequenceBuilder.java, org/apache/pdfbox/pdmodel/common/function/type4/Operator.java, org/apache/pdfbox/pdmodel/common/function/type4/Operators.java, org/apache/pdfbox/pdmodel/common/function/type4/Parser.java, org/apache/pdfbox/pdmodel/common/function/type4/RelationalOperators.java, org/apache/pdfbox/pdmodel/common/function/type4/StackOperators.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDDefaultAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkInfo.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureElement.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureTreeRoot.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserProperty.java, org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDPropertyList.java, org/apache/pdfbox/pdmodel/documentinterchange/prepress/PDBoxStyle.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDArtifactMarkedContent.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDExportFormatAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDFourColours.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDListAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDPrintFieldAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDStandardAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDTableAttributeObject.java, org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/StandardStructureTypes.java, org/apache/pdfbox/pdmodel/encryption/AccessPermission.java, org/apache/pdfbox/pdmodel/encryption/DecryptionMaterial.java, org/apache/pdfbox/pdmodel/encryption/InvalidPasswordException.java, org/apache/pdfbox/pdmodel/encryption/MessageDigests.java, org/apache/pdfbox/pdmodel/encryption/PDCryptFilterDictionary.java, org/apache/pdfbox/pdmodel/encryption/PDEncryption.java, org/apache/pdfbox/pdmodel/encryption/ProtectionPolicy.java, org/apache/pdfbox/pdmodel/encryption/PublicKeyDecryptionMaterial.java, org/apache/pdfbox/pdmodel/encryption/PublicKeyProtectionPolicy.java, org/apache/pdfbox/pdmodel/encryption/PublicKeyRecipient.java, org/apache/pdfbox/pdmodel/encryption/PublicKeySecurityHandler.java, org/apache/pdfbox/pdmodel/encryption/RC4Cipher.java, org/apache/pdfbox/pdmodel/encryption/SaslPrep.java, org/apache/pdfbox/pdmodel/encryption/SecurityHandler.java, org/apache/pdfbox/pdmodel/encryption/SecurityHandlerFactory.java, org/apache/pdfbox/pdmodel/encryption/SecurityProvider.java, org/apache/pdfbox/pdmodel/encryption/StandardDecryptionMaterial.java, org/apache/pdfbox/pdmodel/encryption/StandardProtectionPolicy.java, org/apache/pdfbox/pdmodel/encryption/StandardSecurityHandler.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotation.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationCaret.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFileAttachment.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFreeText.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationHighlight.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationInk.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationLine.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationLink.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationPolygon.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationPolyline.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSound.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSquare.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSquiggly.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationStamp.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationStrikeOut.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationText.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationTextMarkup.java, org/apache/pdfbox/pdmodel/fdf/FDFAnnotationUnderline.java, org/apache/pdfbox/pdmodel/fdf/FDFCatalog.java, org/apache/pdfbox/pdmodel/fdf/FDFDictionary.java, org/apache/pdfbox/pdmodel/fdf/FDFDocument.java, org/apache/pdfbox/pdmodel/fdf/FDFField.java, org/apache/pdfbox/pdmodel/fdf/FDFIconFit.java, org/apache/pdfbox/pdmodel/fdf/FDFJavaScript.java, org/apache/pdfbox/pdmodel/fdf/FDFNamedPageReference.java, org/apache/pdfbox/pdmodel/fdf/FDFOptionElement.java, org/apache/pdfbox/pdmodel/fdf/FDFPage.java, org/apache/pdfbox/pdmodel/fdf/FDFPageInfo.java, org/apache/pdfbox/pdmodel/fdf/FDFTemplate.java, org/apache/pdfbox/pdmodel/fixup/AcroFormDefaultFixup.java, org/apache/pdfbox/pdmodel/fixup/PDDocumentFixup.java, org/apache/pdfbox/pdmodel/fixup/processor/AcroFormDefaultsProcessor.java, org/apache/pdfbox/pdmodel/fixup/processor/AcroFormGenerateAppearancesProcessor.java, org/apache/pdfbox/pdmodel/fixup/processor/AcroFormOrphanWidgetsProcessor.java, org/apache/pdfbox/pdmodel/fixup/processor/PDDocumentProcessor.java, org/apache/pdfbox/pdmodel/font/CIDFontMapping.java, org/apache/pdfbox/pdmodel/font/CIDSystemInfo.java, org/apache/pdfbox/pdmodel/font/FontCache.java, org/apache/pdfbox/pdmodel/font/FontFormat.java, org/apache/pdfbox/pdmodel/font/FontInfo.java, org/apache/pdfbox/pdmodel/font/FontMapper.java, org/apache/pdfbox/pdmodel/font/FontMapperImpl.java, org/apache/pdfbox/pdmodel/font/FontMappers.java, org/apache/pdfbox/pdmodel/font/FontMapping.java, org/apache/pdfbox/pdmodel/font/FontProvider.java, org/apache/pdfbox/pdmodel/font/PDCIDFont.java, org/apache/pdfbox/pdmodel/font/PDCIDFontType0.java, org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java, org/apache/pdfbox/pdmodel/font/PDCIDFontType2Embedder.java, org/apache/pdfbox/pdmodel/font/PDCIDSystemInfo.java, org/apache/pdfbox/pdmodel/font/PDFont.java, org/apache/pdfbox/pdmodel/font/PDFontDescriptor.java, org/apache/pdfbox/pdmodel/font/PDFontFactory.java, org/apache/pdfbox/pdmodel/font/PDFontLike.java, org/apache/pdfbox/pdmodel/font/PDMMType1Font.java, org/apache/pdfbox/pdmodel/font/PDPanose.java, org/apache/pdfbox/pdmodel/font/PDPanoseClassification.java, org/apache/pdfbox/pdmodel/font/PDTrueTypeFont.java, org/apache/pdfbox/pdmodel/font/PDType0Font.java, org/apache/pdfbox/pdmodel/font/PDType1CFont.java, org/apache/pdfbox/pdmodel/font/PDType1Font.java, org/apache/pdfbox/pdmodel/font/PDType1FontEmbedder.java, org/apache/pdfbox/pdmodel/font/PDType3CharProc.java, org/apache/pdfbox/pdmodel/font/PDType3Font.java, org/apache/pdfbox/pdmodel/font/PDVectorFont.java, org/apache/pdfbox/pdmodel/font/Subsetter.java, org/apache/pdfbox/pdmodel/font/ToUnicodeWriter.java, org/apache/pdfbox/pdmodel/font/TrueTypeEmbedder.java, org/apache/pdfbox/pdmodel/font/encoding/BuiltInEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/DictionaryEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/Encoding.java, org/apache/pdfbox/pdmodel/font/encoding/MacExpertEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/MacOSRomanEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/MacRomanEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/StandardEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/SymbolEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/Type1Encoding.java, org/apache/pdfbox/pdmodel/font/encoding/WinAnsiEncoding.java, org/apache/pdfbox/pdmodel/font/encoding/ZapfDingbatsEncoding.java, org/apache/pdfbox/pdmodel/graphics/PDFontSetting.java, org/apache/pdfbox/pdmodel/graphics/PDLineDashPattern.java, org/apache/pdfbox/pdmodel/graphics/PDPostScriptXObject.java, org/apache/pdfbox/pdmodel/graphics/color/PDCIEBasedColorSpace.java, org/apache/pdfbox/pdmodel/graphics/color/PDCalGray.java, org/apache/pdfbox/pdmodel/graphics/color/PDCalRGB.java, org/apache/pdfbox/pdmodel/graphics/color/PDColor.java, org/apache/pdfbox/pdmodel/graphics/color/PDColorSpace.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceCMYK.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceColorSpace.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceGray.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceNAttributes.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceNProcess.java, org/apache/pdfbox/pdmodel/graphics/color/PDDeviceRGB.java, org/apache/pdfbox/pdmodel/graphics/color/PDGamma.java, org/apache/pdfbox/pdmodel/graphics/color/PDICCBased.java, org/apache/pdfbox/pdmodel/graphics/color/PDIndexed.java, org/apache/pdfbox/pdmodel/graphics/color/PDJPXColorSpace.java, org/apache/pdfbox/pdmodel/graphics/color/PDLab.java, org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java, org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java, org/apache/pdfbox/pdmodel/graphics/color/PDSpecialColorSpace.java, org/apache/pdfbox/pdmodel/graphics/color/PDTristimulus.java, org/apache/pdfbox/pdmodel/graphics/form/PDFormXObject.java, org/apache/pdfbox/pdmodel/graphics/form/PDTransparencyGroup.java, org/apache/pdfbox/pdmodel/graphics/form/PDTransparencyGroupAttributes.java, org/apache/pdfbox/pdmodel/graphics/image/CustomFactory.java, org/apache/pdfbox/pdmodel/graphics/image/PNGConverter.java, org/apache/pdfbox/pdmodel/graphics/optionalcontent/PDOptionalContentGroup.java, org/apache/pdfbox/pdmodel/graphics/optionalcontent/PDOptionalContentMembershipDictionary.java, org/apache/pdfbox/pdmodel/graphics/optionalcontent/PDOptionalContentProperties.java, org/apache/pdfbox/pdmodel/graphics/pattern/PDAbstractPattern.java, org/apache/pdfbox/pdmodel/graphics/pattern/PDShadingPattern.java, org/apache/pdfbox/pdmodel/graphics/pattern/PDTilingPattern.java, org/apache/pdfbox/pdmodel/graphics/shading/GouraudShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/IntPoint.java, org/apache/pdfbox/pdmodel/graphics/shading/PDMeshBasedShadingType.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShading.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType1.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType2.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType3.java, org/apache/pdfbox/pdmodel/graphics/shading/ShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/Type1ShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/Type4ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type4ShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/Type5ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type5ShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/Vertex.java, org/apache/pdfbox/pdmodel/graphics/state/PDExtendedGraphicsState.java, org/apache/pdfbox/pdmodel/graphics/state/PDGraphicsState.java, org/apache/pdfbox/pdmodel/graphics/state/PDTextState.java, org/apache/pdfbox/pdmodel/interactive/action/PDAction.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionEmbeddedGoTo.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionFactory.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionGoTo.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionHide.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionImportData.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionJavaScript.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionLaunch.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionMovie.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionNamed.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionRemoteGoTo.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionResetForm.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionSound.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionSubmitForm.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionThread.java, org/apache/pdfbox/pdmodel/interactive/action/PDActionURI.java, org/apache/pdfbox/pdmodel/interactive/action/PDAdditionalActions.java, org/apache/pdfbox/pdmodel/interactive/action/PDAnnotationAdditionalActions.java, org/apache/pdfbox/pdmodel/interactive/action/PDDocumentCatalogAdditionalActions.java, org/apache/pdfbox/pdmodel/interactive/action/PDFormFieldAdditionalActions.java, org/apache/pdfbox/pdmodel/interactive/action/PDPageAdditionalActions.java, org/apache/pdfbox/pdmodel/interactive/action/PDURIDictionary.java, org/apache/pdfbox/pdmodel/interactive/action/PDWindowsLaunchParams.java, org/apache/pdfbox/pdmodel/interactive/annotation/AnnotationFilter.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotation.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationFileAttachment.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationLine.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationLink.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationMarkup.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPopup.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationRubberStamp.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSquareCircle.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationText.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationTextMarkup.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationUnknown.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWidget.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAppearanceCharacteristicsDictionary.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAppearanceDictionary.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAppearanceEntry.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAppearanceStream.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDBorderEffectDictionary.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDBorderStyleDictionary.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDExternalDataDictionary.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/CloudyBorder.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDAbstractAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDCircleAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDFileAttachmentAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDLinkAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDPolygonAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDPolylineAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDSquareAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/layout/AppearanceStyle.java, org/apache/pdfbox/pdmodel/interactive/annotation/layout/PlainText.java, org/apache/pdfbox/pdmodel/interactive/annotation/layout/PlainTextFormatter.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/COSFilterInputStream.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/ExternalSigningSupport.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDPropBuild.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDPropBuildDataDict.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValue.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueMDP.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueTimeStamp.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSignature.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/SignatureInterface.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/SignatureOptions.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/SigningSupport.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDFTemplateBuilder.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDFTemplateCreator.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDFTemplateStructure.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDVisibleSigBuilder.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDVisibleSigProperties.java, org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PDVisibleSignDesigner.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDNamedDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitHeightDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitRectangleDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitWidthDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageXYZDestination.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDDocumentOutline.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineItem.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineItemIterator.java, org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineNode.java, org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelper.java, org/apache/pdfbox/pdmodel/interactive/form/AppearanceStyle.java, org/apache/pdfbox/pdmodel/interactive/form/FieldUtils.java, org/apache/pdfbox/pdmodel/interactive/form/PDAcroForm.java, org/apache/pdfbox/pdmodel/interactive/form/PDButton.java, org/apache/pdfbox/pdmodel/interactive/form/PDCheckBox.java, org/apache/pdfbox/pdmodel/interactive/form/PDChoice.java, org/apache/pdfbox/pdmodel/interactive/form/PDComboBox.java, org/apache/pdfbox/pdmodel/interactive/form/PDDefaultAppearanceString.java, org/apache/pdfbox/pdmodel/interactive/form/PDField.java, org/apache/pdfbox/pdmodel/interactive/form/PDFieldFactory.java, org/apache/pdfbox/pdmodel/interactive/form/PDFieldTree.java, org/apache/pdfbox/pdmodel/interactive/form/PDListBox.java, org/apache/pdfbox/pdmodel/interactive/form/PDNonTerminalField.java, org/apache/pdfbox/pdmodel/interactive/form/PDPushButton.java, org/apache/pdfbox/pdmodel/interactive/form/PDRadioButton.java, org/apache/pdfbox/pdmodel/interactive/form/PDSignatureField.java, org/apache/pdfbox/pdmodel/interactive/form/PDTerminalField.java, org/apache/pdfbox/pdmodel/interactive/form/PDTextField.java, org/apache/pdfbox/pdmodel/interactive/form/PDVariableText.java, org/apache/pdfbox/pdmodel/interactive/form/PDXFAResource.java, org/apache/pdfbox/pdmodel/interactive/form/PlainText.java, org/apache/pdfbox/pdmodel/interactive/form/PlainTextFormatter.java, org/apache/pdfbox/pdmodel/interactive/form/ScriptingHandler.java, org/apache/pdfbox/pdmodel/interactive/measurement/PDMeasureDictionary.java, org/apache/pdfbox/pdmodel/interactive/measurement/PDRectlinearMeasureDictionary.java, org/apache/pdfbox/pdmodel/interactive/measurement/PDViewportDictionary.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThread.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThreadBead.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransition.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDimension.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDirection.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionMotion.java, org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionStyle.java, org/apache/pdfbox/pdmodel/interactive/viewerpreferences/PDViewerPreferences.java, org/apache/pdfbox/printing/PDFPageable.java, org/apache/pdfbox/printing/PDFPrintable.java, org/apache/pdfbox/printing/Scaling.java, org/apache/pdfbox/rendering/GlyphCache.java, org/apache/pdfbox/rendering/GroupGraphics.java, org/apache/pdfbox/rendering/ImageType.java, org/apache/pdfbox/rendering/PageDrawerParameters.java, org/apache/pdfbox/rendering/RenderDestination.java, org/apache/pdfbox/rendering/SoftMask.java, org/apache/pdfbox/rendering/TilingPaint.java, org/apache/pdfbox/text/PDFMarkedContentExtractor.java, org/apache/pdfbox/text/PDFTextStripper.java, org/apache/pdfbox/text/PDFTextStripperByArea.java, org/apache/pdfbox/text/TextPosition.java, org/apache/pdfbox/text/TextPositionComparator.java, org/apache/pdfbox/util/DateConverter.java, org/apache/pdfbox/util/Hex.java, org/apache/pdfbox/util/IterativeMergeSort.java, org/apache/pdfbox/util/Matrix.java, org/apache/pdfbox/util/SmallMap.java, org/apache/pdfbox/util/StringUtil.java, org/apache/pdfbox/util/Vector.java, org/apache/pdfbox/util/XMLUtil.java, org/apache/pdfbox/util/filetypedetector/ByteTrie.java, org/apache/pdfbox/util/filetypedetector/FileType.java, org/apache/pdfbox/util/filetypedetector/FileTypeDetector.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/contentstream/PDFGraphicsStreamEngine.java, org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequence.java, org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequenceWithProperties.java, org/apache/pdfbox/contentstream/operator/markedcontent/EndMarkedContentSequence.java, org/apache/pdfbox/pdfparser/XrefTrailerResolver.java, org/apache/pdfbox/pdmodel/PDPageTree.java, org/apache/pdfbox/pdmodel/PDResources.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkedContentReference.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDObjectReference.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDParentTreeValue.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureNode.java, org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/Revisions.java, org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDMarkedContent.java, org/apache/pdfbox/pdmodel/fixup/AbstractFixup.java, org/apache/pdfbox/pdmodel/fixup/processor/AbstractProcessor.java, org/apache/pdfbox/pdmodel/font/CMapManager.java, org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java, org/apache/pdfbox/pdmodel/font/PDSimpleFont.java, org/apache/pdfbox/pdmodel/font/PDTrueTypeFontEmbedder.java, org/apache/pdfbox/pdmodel/font/Standard14Fonts.java, org/apache/pdfbox/pdmodel/font/encoding/GlyphList.java, org/apache/pdfbox/pdmodel/graphics/PDXObject.java, org/apache/pdfbox/pdmodel/graphics/blend/BlendComposite.java, org/apache/pdfbox/pdmodel/graphics/blend/BlendMode.java, org/apache/pdfbox/pdmodel/graphics/color/PDOutputIntent.java, org/apache/pdfbox/pdmodel/graphics/image/CCITTFactory.java, org/apache/pdfbox/pdmodel/graphics/image/JPEGFactory.java, org/apache/pdfbox/pdmodel/graphics/image/PDImage.java, org/apache/pdfbox/pdmodel/graphics/image/PDImageXObject.java, org/apache/pdfbox/pdmodel/graphics/image/PDInlineImage.java, org/apache/pdfbox/pdmodel/graphics/image/SampledImageReader.java, org/apache/pdfbox/pdmodel/graphics/shading/AxialShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/AxialShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType4.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType5.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType6.java, org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType7.java, org/apache/pdfbox/pdmodel/graphics/shading/RadialShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/RadialShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/state/PDSoftMask.java, org/apache/pdfbox/pdmodel/graphics/state/RenderingIntent.java, org/apache/pdfbox/pdmodel/graphics/state/RenderingMode.java, org/apache/pdfbox/pdmodel/interactive/measurement/PDNumberFormatDictionary.java, org/apache/pdfbox/printing/Orientation.java, org/apache/pdfbox/rendering/PDFRenderer.java, org/apache/pdfbox/rendering/PageDrawer.java, org/apache/pdfbox/text/LegacyPDFStreamEngine.java, org/apache/pdfbox/util/Version.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/filter/CCITTFaxDecoderStream.java
+/*
+ * Copyright (c) 2012, Harald Kuhr
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * * Neither the name of the copyright holder nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/apache/pdfbox/filter/CCITTFaxEncoderStream.java
+/*
+ * Copyright (c) 2013, Harald Kuhr
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name "TwelveMonkeys" nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/apache/pdfbox/filter/LZWFilter.java, org/apache/pdfbox/filter/Predictor.java, org/apache/pdfbox/pdfparser/EndstreamFilterStream.java, org/apache/pdfbox/pdmodel/common/function/PDFunctionTypeIdentity.java, org/apache/pdfbox/pdmodel/graphics/color/PDCIEDictionaryBasedColorSpace.java, org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java, org/apache/pdfbox/pdmodel/graphics/shading/CoonsPatch.java, org/apache/pdfbox/pdmodel/graphics/shading/CoordinateColorPair.java, org/apache/pdfbox/pdmodel/graphics/shading/CubicBezierCurve.java, org/apache/pdfbox/pdmodel/graphics/shading/Line.java, org/apache/pdfbox/pdmodel/graphics/shading/PDTriangleBasedShadingType.java, org/apache/pdfbox/pdmodel/graphics/shading/Patch.java, org/apache/pdfbox/pdmodel/graphics/shading/PatchMeshesShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/ShadedTriangle.java, org/apache/pdfbox/pdmodel/graphics/shading/ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/TensorPatch.java, org/apache/pdfbox/pdmodel/graphics/shading/TriangleBasedShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type1ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type6ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type6ShadingPaint.java, org/apache/pdfbox/pdmodel/graphics/shading/Type7ShadingContext.java, org/apache/pdfbox/pdmodel/graphics/shading/Type7ShadingPaint.java
+/*
+ * Copyright 2014 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/filter/TIFFExtension.java
+/*
+ * Copyright (c) 2012, Harald Kuhr
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name "TwelveMonkeys" nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/PDDocumentCatalog.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/PDDocumentNameDestinationDictionary.java, org/apache/pdfbox/pdmodel/font/UniUtil.java
+/*
+ * Copyright 2015 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/PDFormContentStream.java, org/apache/pdfbox/pdmodel/PDPatternContentStream.java, org/apache/pdfbox/pdmodel/interactive/action/OpenMode.java, org/apache/pdfbox/pdmodel/interactive/action/PDTargetDirectory.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationCaret.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationCircle.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationFreeText.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationHighlight.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationInk.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolygon.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolyline.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSound.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSquare.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSquiggly.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationStrikeout.java, org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationUnderline.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/AnnotationBorder.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDCaretAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDFreeTextAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDHighlightAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDInkAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDLineAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDSoundAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDSquigglyAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDStrikeoutAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDTextAppearanceHandler.java, org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDUnderlineAppearanceHandler.java
+/*
+ * Copyright 2018 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/PageLayout.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License), Version 2.0
+ * (the "License")), you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing), software
+ * distributed under the License is distributed on an "AS IS" BASIS),
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND), either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/fdf/FDFAnnotationCircle.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueCertificate.java, org/apache/pdfbox/rendering/TilingPaintFactory.java
+/*
+ * Copyright 2017 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/pdfbox/util/NumberFormatUtil.java
+/*
+ * Copyright 2016 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

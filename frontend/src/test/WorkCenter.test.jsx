@@ -35,6 +35,22 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it('shows source-derived blockers and waiting reason without offering an unauthorized decision', async () => {
+  api.get.mockImplementation(path => path.startsWith('/work-center/items') ? Promise.resolve({ items: [{
+    work_item_key: 'invoice:i:invoice_due', kind: 'invoice', entity_id: 'i', title: 'Rechnung R-1',
+    href: '/invoice-review/i', revision: rev1, actions: [], can_edit: false, workflow: {
+      next_action: { label: 'Bankverbindung freigeben', href: '/invoice-review/i#bankfreigabe', allowed: false, reason: 'Andere Person erforderlich.' },
+      blockers: ['Die aktuelle Bankdatenfreigabe fehlt.'], waiting_for: 'Vier-Augen-Prüfung',
+      deadline_basis: 'Fälligkeit laut Beleg', escalation: { status: 'overdue', days_overdue: 3 },
+    } }], next_cursor: null }) : path.startsWith('/work-center/summary') ? Promise.resolve({ counts: {}, drilldowns: {} }) : Promise.resolve(empty()));
+  show(<WorkCenter />, '/work-center');
+  expect(await screen.findByText('Andere Person erforderlich.')).toBeInTheDocument();
+  expect(screen.getByText('Wartet auf: Vier-Augen-Prüfung')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Bankverbindung freigeben' })).not.toBeInTheDocument();
+  expect(screen.getByText('Bearbeitungsfrist seit 3 Tagen überschritten.')).toBeInTheDocument();
+  expect(api.post).not.toHaveBeenCalled();
+});
+
 describe('shared entity activities', () => {
   it('does not display a previous entity response after changing the dossier', async () => {
     const old = deferred();
@@ -142,6 +158,24 @@ describe('safe task edits and undo', () => {
 });
 
 describe('source-bound work lists', () => {
+  it('returns to the exact deferral trigger after asynchronous opening lost its focus', async () => {
+    const pending = deferred();
+    api.get.mockImplementation(path => path.startsWith('/workspace/deferrals/') ? pending.promise : Promise.resolve(empty()));
+    show(<><DeferralControl item={{ work_item_key: 'task:t1:overdue', title: 'Erster Rückruf' }} />
+      <DeferralControl item={{ work_item_key: 'task:t2:overdue', title: 'Zweiter Rückruf' }} /></>);
+    const trigger = screen.getAllByRole('button', { name: 'Später bearbeiten' })[1];
+    trigger.focus(); fireEvent.click(trigger);
+    expect(trigger).toBeDisabled();
+    // A native browser blurs the disabled opener while the lookup is pending.
+    trigger.blur();
+    await act(async () => pending.reject(missing()));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Zweiter Rückruf');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
   it('requires a reason before saving a personal deferral and keeps business due dates untouched', async () => {
     api.get.mockImplementation(path => path.startsWith('/workspace/deferrals/') ? Promise.reject(missing()) : Promise.resolve(empty()));
     show(<DeferralControl item={{ work_item_key: 'task:t1:overdue', title: 'Rückruf' }} />);

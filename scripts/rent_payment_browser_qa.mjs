@@ -65,7 +65,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   const page = await context.newPage();
   page.on('pageerror', error => result.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) result.errors.push(`UI console: ${message.text()}`); });
   await step('Real login and computed monthly rent', async () => {
     await login(page, 'owner'); await month(page);
     await expect(page.getByText('QA Mia Mieterin', { exact: true })).toBeVisible();

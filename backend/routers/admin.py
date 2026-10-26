@@ -5,17 +5,22 @@ import logging
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
+from ..auth import require_auth
 from ..config import settings
 from ..dependencies import store
+from ..models import UserRead
 from ..plugins import get_plugins
 from ..services.data_snapshot import SnapshotError, export_snapshot, import_snapshot
 from ..services.deletion_guard import ensure_deletable
 from ..services.document_versions import ensure_no_originals
+from ..services.privacy import subjects as privacy_subjects
+from ..services.privacy.storage import read_unit
+from ..services.privacy.storage import work as privacy_work
 
 # Re-export the CONTRACT_WIZARD_STATUS lazily to avoid circular imports.
 _CONTRACT_WIZARD_STATUS = None
@@ -35,6 +40,7 @@ def _get_wizard_status() -> dict:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+Actor = Annotated[UserRead, Depends(require_auth)]
 
 
 
@@ -303,49 +309,50 @@ def bulk_delete(entity_type: str, payload: dict):
 # ─── DSGVO / GDPR Compliance ────────────────────────────────────────────────
 
 
-def _tenant_records(tenant_id: str) -> dict[str, list]:
+def _tenant_records(tenant_id: str, *, source=None) -> dict[str, list]:
     """Everything stored about a tenant: by tenant id or through the tenant's contracts."""
-    contracts = [c for c in store.list_contracts() if c.tenant_id == tenant_id]
+    source = source if source is not None else store
+    contracts = [c for c in source.list_contracts() if c.tenant_id == tenant_id]
     contract_ids = {c.id for c in contracts}
-    threads = [t for t in store.list_message_threads() if t.contract_id in contract_ids]
+    threads = [t for t in source.list_message_threads() if t.contract_id in contract_ids]
     thread_ids = {t.id for t in threads}
 
     def of_contracts(items: list) -> list:
         return [item for item in items if item.contract_id in contract_ids]
 
-    documents = of_contracts(store.list_documents())
+    documents = [d for d in source.list_documents() if d.contract_id in contract_ids or d.tenant_id == tenant_id]
     from ..services.invoice_review import records_for_documents
 
-    statements = of_contracts(store.list_utility_statements())
+    statements = of_contracts(source.list_utility_statements())
     statement_ids = {s.id for s in statements}
-    protocols = of_contracts(store.list_handover_protocols())
-    deposits = of_contracts(store.list_deposits())
+    protocols = of_contracts(source.list_handover_protocols())
+    deposits = of_contracts(source.list_deposits())
     from ..services.deposits import records_of as deposit_records
     from ..services.dunning import records_of_contracts
     from ..services.handover_protocol import parts_of
 
     return {
         "contracts": contracts,
-        "bookings": [b for b in store.list_bookings() if b.tenant_id == tenant_id],
+        "bookings": [b for b in source.list_bookings() if b.tenant_id == tenant_id],
         "deposits": deposits,
         # instalments, payments (booking shares), interest rates and settlements of those deposits
-        **deposit_records(store, {d.id for d in deposits}),
-        "receivables": of_contracts(store.list_receivables()),
-        "rent_charges": of_contracts(store.list_rent_charges()),
-        "rent_adjustments": of_contracts(store.list_rent_adjustments()),
+        **deposit_records(source, {d.id for d in deposits}),
+        "receivables": of_contracts(source.list_receivables()),
+        "rent_charges": of_contracts(source.list_rent_charges()),
+        "rent_adjustments": of_contracts(source.list_rent_adjustments()),
         "utility_statements": statements,
-        "billing_objections": [o for o in store.list_billing_objections() if o.statement_id in statement_ids],
-        "contract_occupancies": of_contracts(store.list_contract_occupancies()),
+        "billing_objections": [o for o in source.list_billing_objections() if o.statement_id in statement_ids],
+        "contract_occupancies": of_contracts(source.list_contract_occupancies()),
         "documents": documents,
         # invoice reviews whose original document is one of the tenant's documents, with their history
-        **records_for_documents(store, {d.id for d in documents}),
+        **records_for_documents(source, {d.id for d in documents}),
         "handover_protocols": protocols,
         # rooms, defects, keys, meter readings and photos (references) of those protocols
-        **parts_of(store, {p.id for p in protocols}),
+        **parts_of(source, {p.id for p in protocols}),
         "message_threads": threads,
-        "messages": [m for m in store.list_messages() if m.thread_id in thread_ids],
+        "messages": [m for m in source.list_messages() if m.thread_id in thread_ids],
         # dunning cases with their claims, letters, outbox entries, blocks, disputes, replies and timeline
-        **records_of_contracts(store, contract_ids),
+        **records_of_contracts(source, contract_ids),
     }
 
 
@@ -370,6 +377,7 @@ def dsgvo_export_tenant_data(tenant_id: str):
         "export_type": "DSGVO_Datenauskunft",
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "tenant": tenant.model_dump(mode="json"),
+        "extensions": privacy_subjects.extension(read_unit(store), "tenant", tenant_id),
         **{
             name: [item.model_dump(mode="json") for item in items]
             for name, items in _tenant_records(tenant_id).items()
@@ -393,7 +401,7 @@ _TENANT_PERSONAL_FIELDS = ("email", "phone", "address_line", "postal_code", "cit
 
 
 @router.post("/dsgvo/tenant/{tenant_id}/anonymize", response_model=None)
-def dsgvo_anonymize_tenant(tenant_id: str):
+def dsgvo_anonymize_tenant(tenant_id: str, actor: Actor):
     """T11: DSGVO Art. 17 — Right to erasure / anonymization.
 
     Replaces the tenant's name with a placeholder, clears contact, address,
@@ -401,7 +409,6 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     records, documents and messages stay (retention under § 147 AO and
     § 257 HGB) and are counted in the answer; they refer to the tenant only by id.
     """
-    from ..models import TenantPatch
 
     try:
         tenant = store.get_tenant(tenant_id)
@@ -410,7 +417,8 @@ def dsgvo_anonymize_tenant(tenant_id: str):
 
     patch: dict[str, Any] = {"full_name": f"Anonymisiert-{tenant_id[:8]}", "archived": True}
     patch.update({field: None for field in _TENANT_PERSONAL_FIELDS if getattr(tenant, field) is not None})
-    store._patch_entity("tenant", tenant_id, TenantPatch(**patch))
+    with privacy_work(store, actor.id) as unit:
+        extension_result = privacy_subjects.anonymize(unit, "tenant", tenant_id, patch)
 
     retained = {name: len(items) for name, items in _tenant_records(tenant_id).items() if items}
     logger.info("DSGVO anonymization for tenant %s: fields=%s", tenant_id, sorted(patch))
@@ -418,6 +426,7 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     return {
         "status": "anonymized",
         "tenant_id": tenant_id,
+        "extensions": extension_result,
         "anonymized_fields": sorted(field for field in patch if field != "archived"),
         "retained_records": retained,
         "note": "Verträge, Finanzdaten, Dokumente und Nachrichten bleiben wegen der Aufbewahrungspflichten"
@@ -425,18 +434,19 @@ def dsgvo_anonymize_tenant(tenant_id: str):
     }
 
 
-def _contact_records(contact_id: str) -> dict[str, list]:
+def _contact_records(contact_id: str, *, source=None) -> dict[str, list]:
     """Everything stored about a contact: an owner's shares, owner changes, own bookings and accounts;
     the service contracts of a provider."""
+    source = source if source is not None else store
     from ..services.ownership import list_shares
 
     return {
-        "ownership_shares": list_shares(store, owner_contact_id=contact_id),
-        "ownership_transfers": [t for t in store.list_ownership_transfers() if t.from_owner_contact_id == contact_id
+        "ownership_shares": list_shares(source, owner_contact_id=contact_id),
+        "ownership_transfers": [t for t in source.list_ownership_transfers() if t.from_owner_contact_id == contact_id
                                 or any(r.get("owner_contact_id") == contact_id for r in t.receivers)],
-        "bookings": [b for b in store.list_bookings() if b.owner_contact_id == contact_id],
-        "accounts": [a for a in store.list_accounts() if a.owner_contact_id == contact_id],
-        "service_contracts": [c for c in store.list_service_contracts() if c.provider_contact_id == contact_id],
+        "bookings": [b for b in source.list_bookings() if b.owner_contact_id == contact_id],
+        "accounts": [a for a in source.list_accounts() if a.owner_contact_id == contact_id],
+        "service_contracts": [c for c in source.list_service_contracts() if c.provider_contact_id == contact_id],
     }
 
 
@@ -452,6 +462,7 @@ def dsgvo_export_contact_data(contact_id: str):
         "export_type": "DSGVO_Datenauskunft",
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "contact": contact.model_dump(mode="json"),
+        "extensions": privacy_subjects.extension(read_unit(store), "contact", contact_id),
         # an owner change without its internal undo record (the shares of all involved)
         **{name: [item.model_dump(mode="json", exclude={"changes"} if name == "ownership_transfers" else None)
                   for item in items] for name, items in _contact_records(contact_id).items()},
@@ -467,11 +478,10 @@ _CONTACT_PERSONAL_FIELDS = ("first_name", "company_name", "email", "phone", "mob
 
 
 @router.post("/dsgvo/contact/{contact_id}/anonymize", response_model=None)
-def dsgvo_anonymize_contact(contact_id: str):
+def dsgvo_anonymize_contact(contact_id: str, actor: Actor):
     """DSGVO Art. 17 for a contact: the name becomes a placeholder, contact, address, bank and tax fields
     are cleared. Shares, owner changes, bookings and accounts stay for the retention duties and keep
     counting for the placeholder in the reports by owner."""
-    from ..models import ContactPatch
 
     try:
         contact = store.get_contact(contact_id)
@@ -479,12 +489,14 @@ def dsgvo_anonymize_contact(contact_id: str):
         raise HTTPException(404, f"Kontakt mit ID {contact_id} nicht gefunden")
     patch: dict[str, Any] = {"last_name": f"Anonymisiert-{contact_id[:8]}"}
     patch.update({field: None for field in _CONTACT_PERSONAL_FIELDS if getattr(contact, field) is not None})
-    store._patch_entity("contact", contact_id, ContactPatch(**patch))
+    with privacy_work(store, actor.id) as unit:
+        extension_result = privacy_subjects.anonymize(unit, "contact", contact_id, patch)
     retained = {name: len(items) for name, items in _contact_records(contact_id).items() if items}
     logger.info("DSGVO anonymization for contact %s: fields=%s", contact_id, sorted(patch))
     return {
         "status": "anonymized",
         "contact_id": contact_id,
+        "extensions": extension_result,
         "anonymized_fields": sorted(patch),
         "retained_records": retained,
         "note": "Eigentumsanteile, Eigentümerwechsel, Buchungen und Konten bleiben wegen der Aufbewahrungspflichten"

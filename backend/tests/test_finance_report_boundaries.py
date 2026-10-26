@@ -194,7 +194,9 @@ def test_invalid_legacy_invoice_only_blocks_its_own_report_scope(estate, monkeyp
     # Explicitly emulate a legacy reader returning incomplete performance data;
     # current creation/read validators reject such a row before it can be saved.
     invalid = invoice.model_copy(update={"performance_start": date(2026, 1, 1), "performance_end": None})
-    monkeypatch.setattr(store, "list_invoices", lambda: [invalid])
+    # Reports bind a fresh SQL store to their repeatable snapshot. The legacy
+    # reader adapter, rather than one caller Session, must emulate the old row.
+    monkeypatch.setattr(type(store), "list_invoices", lambda self: [invalid])
     result = finance_reports.compute(store, ReportDefinition(kind="performance-period-v2", as_of=date(2026, 1, 31),
                                                              property_id=estate[1].id))
     assert result["totals"]["costs"] == "0.00"

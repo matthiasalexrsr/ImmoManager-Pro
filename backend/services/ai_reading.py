@@ -186,32 +186,67 @@ class Source:
     text_source: str
     document: Any = None
     file_url: Optional[str] = None
+    source_ref: Optional[str] = None
 
 
 def _source(store: Any, command: StartCommand) -> Source:
     from . import document_share, document_text
+    from .privacy.storage import ensure_available, ensure_file_available, ensure_restore_reviewed
+    ensure_restore_reviewed(store)
     if bool(command.document_id) == bool(command.file_url):
         raise HTTPException(422, "Bitte genau ein Dokument oder eine hochgeladene Datei angeben.")
     document = None
+    reference = None
     if command.document_id:
+        ensure_available(store, "document", command.document_id)
         try:
             document = store.get_document(command.document_id)
         except NotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
         file = document_share.current_file(store, document)
         content, filename, media_type = file.content, file.filename, file.media_type
+        reference = file.source_ref
     else:
         from ..routers.files import _file_url_to_key
         from .business_documents import _file
         key = _file_url_to_key(command.file_url or "")
         if not key:
             raise HTTPException(422, "Ungültige Datei-URL.")
+        ensure_file_available(store, command.file_url)
         content = _file(command.file_url or "")
         filename = document_share.shown_name(key.rsplit("/", 1)[-1])
         media_type = mimetypes.guess_type(filename)[0] or ("application/pdf" if content.startswith(b"%PDF-") else "application/octet-stream")
+        reference = "file:" + (command.file_url or "")
     text, text_source = document_text.extract(content, filename)
     return Source(content, filename, media_type, hashlib.sha256(content).hexdigest(), text or "", text_source,
-                  document, command.file_url)
+                  document, command.file_url, reference)
+
+
+def _version(source):
+    return source.source_ref.partition(":")[2] if source.source_ref and source.source_ref.startswith("version:") else None
+
+
+def _citations(found, source, reader):
+    from .source_citations import annotate_values
+    # An AI can cite only the excerpt actually sent. Local rules use their full
+    # extracted input. Image-only observations are visibly unverified text quotes.
+    text = source.text if reader == "local" else source.text[:MAX_TEXT]
+    return annotate_values(found, text, version_id=_version(source), file_sha256=source.sha256)
+
+
+def _current_source_proof(unit, data):
+    from . import document_share
+    document_id = (data.get("document") or {}).get("id")
+    if document_id:
+        file = document_share.current_file(unit.store, unit.store.get_document(document_id))
+        raw, reference = file.content, file.source_ref
+    else:
+        from .business_documents import _file
+        url = (data.get("file") or {}).get("file_url") or ""
+        raw, reference = _file(url), "file:" + url
+    saved = data.get("file") or {}
+    if hashlib.sha256(raw).hexdigest() != saved.get("sha256") or (saved.get("source_ref") and reference != saved["source_ref"]):
+        raise HTTPException(409, "Die Quelldatei oder Originalversion wurde seit dem Einlesen geändert. Bitte erneut einlesen.")
 
 
 def _params(store: Any, surface: surfaces.Surface, params: Params, document: Any) -> dict:
@@ -297,7 +332,9 @@ def _request(surface: surfaces.Surface, source: Source, known: dict, values: dic
     messages += conversation
     text = source.text[:MAX_TEXT]
     attachment = {"name": source.filename, "mime": source.media_type, "text": text,
-                  "text_truncated": len(source.text) > MAX_TEXT, "omissions": []}
+                  "text_truncated": len(source.text) > MAX_TEXT,
+                  "version_id": _version(source), "sha256": source.sha256,
+                  "omissions": ["Text auf 120.000 Zeichen begrenzt."] if len(source.text) > MAX_TEXT else []}
     images = []
     if values.get("ai_send_images", True) and (len(text.strip()) < 200 or source.media_type.startswith("image/")):
         images = _images(source, int(values.get("ai_max_pages") or 4))
@@ -398,6 +435,7 @@ def _read(store: Any, actor: Any, surface: surfaces.Surface, source: Source, par
                     "known": known, "images": 0, "dropped": []}
         raw = surfaces.local_values(surface, source.text, filename=source.filename, known=known)
         found, dropped = surfaces.clean_values(surface, raw, known, source="local")
+        _citations(found, source, reader)
         return {"values": found, "questions": [], "notes": [], "dropped": dropped, "known": known, "images": 0,
                 "answer": f"Mit den lokalen Regeln {len(found)} Werte gefunden. Ein Gespräch über das Dokument ist mit "
                           "Claude oder ChatGPT möglich."}
@@ -416,6 +454,7 @@ def _read(store: Any, actor: Any, surface: surfaces.Surface, source: Source, par
         result["extraction"] = _extraction_dict(extraction)
     else:
         result["values"], result["dropped"] = surfaces.clean_values(surface, (data or {}).get("values"), known, source=reader)
+        _citations(result["values"], source, reader)
     return result
 
 
@@ -425,7 +464,54 @@ def _row(unit: Any, identifier: str, *, lock: bool = False) -> Any:
     row = db.get(unit, Conversation, identifier, lock=lock)
     if row.state != STATE:
         raise HTTPException(404, "Lesevorgang nicht gefunden.")
+    _check_source_access(unit, db.payload(row))
     return row
+
+
+def _check_source_access(unit: Any, data: dict) -> None:
+    from .privacy.storage import ensure_available, ensure_file_available, ensure_restore_reviewed
+    ensure_restore_reviewed(unit.store)
+    if (data.get("document") or {}).get("id"):
+        ensure_available(unit.store, "document", data["document"]["id"])
+    # Receipts retain identifiers only: every read, replay and mutation must
+    # resolve both the original source and all context anchors with today's rights.
+    try:
+        # Cached duplicate titles and AI answers may include context beyond the
+        # source document. An old scope must never survive a grant change.
+        if data.get('_access_scope') != _access_scope(unit.user):
+            raise HTTPException(404, 'Berechtigungen geändert; Dokument bitte neu einlesen.')
+        document_id = (data.get("document") or {}).get("id")
+        document = unit.store.get_document(document_id) if document_id else None
+        if not document_id:
+            from ..routers.files import _file_url_to_key
+            from .portfolio_scope import require_file_access
+            file_key = _file_url_to_key((data.get("file") or {}).get("file_url") or "")
+            if not file_key:
+                raise HTTPException(404, "Quelldatei nicht gefunden.")
+            ensure_file_available(unit.store, (data.get("file") or {}).get("file_url") or "")
+            require_file_access(file_key)
+        _params(unit.store, _surface(data["surface"]), Params(**(data.get("params") or {})), document)
+        getters = {'document': unit.store.get_document, 'invoice': unit.store.get_invoice,
+                   'cost_item': unit.store.get_cost_item, 'meter_reading': unit.store.get_standalone_meter_reading}
+        for candidate in data.get('duplicates') or []:
+            if candidate['kind'] == 'document':
+                ensure_available(unit.store, 'document', candidate['id'])
+            getter = getters.get(candidate['kind'])
+            if getter is None:
+                raise HTTPException(404, 'Unbekannter Quellenbezug.')
+            getter(candidate['id'])
+        for field, getter in (('known_units', unit.store.get_unit), ('known_tenants', unit.store.get_tenant)):
+            for reference in data.get(field) or []:
+                getter(reference['id'])
+    except (NotFoundError, HTTPException):
+        raise HTTPException(404, "Lesevorgang aufgrund geänderter Quellenrechte nicht verfügbar.") from None
+
+
+def _access_scope(user: dict) -> dict:
+    from .portfolio_scope import scope_from_user
+    scope = scope_from_user(user)
+    return {'user': scope.user_id, 'role': scope.role, 'all': scope.unrestricted,
+            'portfolios': list(scope.portfolio_ids)}
 
 
 def _messages(unit: Any, identifier: str) -> list[dict]:
@@ -462,6 +548,10 @@ def _purge(unit: Any, keep_days: int) -> None:
 
 def public(store: Any, unit: Any, row: Any, confirm_mode: str = "confirm") -> dict:
     data = db.payload(row)
+    # The account is reloaded by the write transaction after an external reader
+    # returns. A newly created reading must also honour a revocation during that call.
+    _check_source_access(unit, data)
+    _current_source_proof(unit, data)
     surface = surfaces.SURFACES[data["surface"]]
     result = {key: data.get(key) for key in ("surface", "reader", "model", "params", "values", "duplicates", "decision",
                                               "questions", "notes", "dropped", "status", "record", "file", "document",
@@ -503,9 +593,9 @@ def options(store: Any, actor: Any, surface_id: Optional[str] = None) -> dict:
     """Who can read, what is switched on and how values appear in the form, for one surface or all."""
     values = settings(store, actor.id)
     available = readers(actor.id)
-    shown = [surfaces.SURFACES[surface_id]] if surface_id else list(surfaces.SURFACES.values())
     if surface_id and surface_id not in surfaces.SURFACES:
         raise HTTPException(404, "Diese Einlesestelle gibt es nicht.")
+    shown = [surfaces.SURFACES[surface_id]] if surface_id else list(surfaces.SURFACES.values())
     return {"readers": available, "confirm_mode": values.get("ai_confirm_mode", "confirm"),
             "default_reader": values.get("ai_default_reader", "auto"),
             "chat": bool(values.get("ai_chat_enabled", True)) and bool(values.get("ai_reading_enabled", True)),
@@ -528,6 +618,7 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
     _check_role(actor, surface)
     values = settings(store, actor.id)
     with db.work(store, actor.id) as unit:
+        access_scope = _access_scope(unit.user)
         replayed = db.replay(unit, "reading:start", command)
         if replayed:
             return public(store, unit, _row(unit, replayed), values.get("ai_confirm_mode", "confirm"))
@@ -543,12 +634,17 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
             raise HTTPException(422, str(error)) from error
     read = _read(store, actor, surface, source, params, values, reader, model=model, instruction=command.instruction)
     file_info = {"name": source.filename, "media_type": source.media_type, "sha256": source.sha256, "size": len(source.content),
-                 "characters": len(source.text), "text_source": source.text_source, "file_url": source.file_url}
+                 "characters": len(source.text), "text_source": source.text_source, "file_url": source.file_url,
+                 "source_ref": source.source_ref, "version_id": _version(source),
+                 "read_characters": len(source.text) if reader == "local" else min(len(source.text), MAX_TEXT),
+                 "text_truncated": len(source.text) >= 500_000 or (reader != "local" and len(source.text) > MAX_TEXT),
+                 "text_available": bool(source.text.strip())}
     found_values = read.get("values") or {}
     duplicates = _duplicates(store, surface, params, found_values, file_info, source.document.id if source.document else None,
                              source.text, bool(values.get("ai_check_duplicates", True)))
     known = read["known"]
     data = {"kind": "reading", "surface": surface.id, "reader": reader, "model": model, "params": params,
+            "_access_scope": access_scope,
             "document": {"id": source.document.id, "title": source.document.title, "href": f"/documents/{source.document.id}"}
             if source.document is not None else None,
             "file": file_info, "values": found_values if not surface.rows else None, "extraction": read.get("extraction"),
@@ -623,6 +719,7 @@ def say(store: Any, actor: Any, identifier: str, command: MessageCommand) -> dic
         offered = (answer or {}).get("values")
         incoming: dict = offered if isinstance(offered, dict) else {}
         cleaned, dropped = surfaces.clean_values(surface, incoming, known, source=data["reader"])
+        _citations(cleaned, source, data["reader"])
         merged = dict(data.get("values") or {})
         for name, item in incoming.items():
             entry = item if isinstance(item, dict) else {"value": item}

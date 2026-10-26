@@ -68,7 +68,7 @@ try {
   }, profile.id);
   page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on('pageerror', error => result.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) result.errors.push(`UI console: ${message.text()}`); });
 
   await step('Real login, bounded 100-row rendering and complete server count beyond 10,000', async () => {
     await login(page); await openThreads(); await choose(a); await ready(a);
@@ -175,7 +175,7 @@ try {
     await expect(page.getByRole('heading', { name: /Vorgang A/ })).toBeVisible();
     const overflow = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, window: innerWidth }));
     assert.ok(overflow.doc <= overflow.window + 1, `${width}px horizontal overflow: ${JSON.stringify(overflow)}`);
-    await body().focus(); await expect(body()).toBeFocused();
+    await expect(body()).toBeEnabled(); await body().focus(); await expect(body()).toBeFocused();
     const editorBounds = await body().boundingBox();
     assert.ok(editorBounds && editorBounds.width >= 200 && editorBounds.height >= 100,
       `The reply editor is not usable at ${width}px: ${JSON.stringify(editorBounds)}`);

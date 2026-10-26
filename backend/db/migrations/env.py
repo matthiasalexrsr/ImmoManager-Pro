@@ -37,14 +37,15 @@ ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c0
                                    "e2b4d6f8a0c1", "f4c6e8a0b2d3", "a5c7e9b1d3f5", "c7e9a1b3d5f7",
                                    "d1f3a5c7e9b2", "e4b6d8f0a2c3", "f5c7e9a1b3d4", "a6d8f0b2c4e5",
                                    "b8f0a2c4d6e7", "c9a1b3d5e7f9", "d0b2c4e6f8a1",
-                                   "e1a3c5e7f9b2"})
+                                   "e1a3c5e7f9b2", "f2a4c6e8b0d3", "a3b5d7f9c1e4", "b4c6d8e0f2a5", "c5d7e9f1a3b6", "d6e8f0a2b4c7",
+                                   "e7f9013c5d8a", "f8a0124d6e9b"})
 
 
 def _current_addition_names():
     modules = {
         'bank_models', 'finance_models', 'datev_models', 'tax_models',
         'communication_models', 'daily_models', 'document_work_models',
-        'teha_models', 'channel_models', 'integration_attempt_models',
+        'teha_models', 'channel_models', 'integration_attempt_models', 'e_invoice_models', 'payment_security_models', 'data_transfer_models', 'external_portal_models', 'privacy_models',
     }
     names = {getattr(mapper.local_table, 'name') for mapper in Base.registry.mappers
              if mapper.class_.__module__.rsplit('.', 1)[-1] in modules}
@@ -83,6 +84,10 @@ def _current_additions_are_present(connection) -> bool:
             return False
 
     def compare_type(context_, reflected, declared, existing_type, declared_type):
+        if (reflected.table.name == 'change_history' and reflected.name == 'changed_by'
+                and isinstance(existing_type, String) and existing_type.length == 36
+                and isinstance(declared_type, String) and declared_type.length == 50):
+            return False  # e7f9013c5d8a widens this exact legacy actor reference
         # The explicit successor widens this exact legacy column, preserving its
         # occurrence identities instead of replacing or re-creating job history.
         if (reflected.table.name == "job_occurrences" and reflected.name == "occurrence_key"
@@ -103,6 +108,9 @@ def _current_additions_are_present(connection) -> bool:
         if not isinstance(difference, tuple):
             return False
         action, item, *_ = difference
+        if (action == 'add_column' and difference[2] == 'privacy_controls'
+                and difference[3].name == 'file_keys_sha256'):
+            continue  # f8a0124d6e9b adds the nullable locator tombstones
         # These fields are owned by the reviewed successor migration. It must
         # run after the additive families are adopted, including its validation.
         if (action == 'add_column' and difference[2] == 'billing_objections'

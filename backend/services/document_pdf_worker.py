@@ -2,16 +2,18 @@
 import json
 import os
 import sys
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from .document_pdf import inspect_pdf, transform, validate_annotations
+from .filesystem_paths import filesystem_path
 
 
 def main(folder_argument: str | None = None):
-    folder = Path(folder_argument or sys.argv[1]).resolve(strict=True)
-    if folder != Path.cwd().resolve() or not folder.name.startswith("work-"):
+    folder = filesystem_path(folder_argument or sys.argv[1]).resolve(strict=True)
+    owned = os.environ.get('IMMO_PDF_WORK_DIR')
+    if (not owned or folder != filesystem_path(owned).resolve(strict=True)
+            or not folder.name.startswith('work-') or folder.parent.name != 'document-pdf-jobs'):
         raise RuntimeError("Owned PDF work folder required")
     request = json.loads((folder / "input.json").read_text(encoding="utf-8"))
     content = (folder / "source.pdf").read_bytes()

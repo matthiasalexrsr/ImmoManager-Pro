@@ -1,4 +1,4 @@
-.file-viewer-overlay { z-index: 260; }
+.modal-overlay.file-viewer-overlay { z-index: 260; }
 .file-viewer-modal { background: var(--color-surface); min-width: 0; max-height: 92dvh; }
 .file-viewer-header { gap: 1rem; flex-wrap: wrap; padding: 1rem 1.25rem; }
 .file-viewer-header h3 { min-width: 0; overflow-wrap: anywhere; flex: 1 1 180px; }

@@ -19,6 +19,8 @@ INSTALLATION_PREFIXES = (
     "/api/v1/diagnostics",
     "/api/v1/autotest",
     "/api/v1/task-status",
+    "/api/v1/privacy",
+    "/api/v1/payment-security/settings",
     "/api/v1/escalation/run",
     "/api/v1/tasks/generate-recurring",
 )

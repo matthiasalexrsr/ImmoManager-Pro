@@ -50,7 +50,7 @@ _scope: ContextVar[AccessScope | None] = ContextVar("immo_portfolio_scope", defa
 _guarding: ContextVar[bool] = ContextVar("immo_scope_guarding", default=False)
 # installation definitions: everyone reads them, only all-access accounts change them
 GLOBAL_READ = frozenset({"tax_rates", "notification_templates", "escalation_rules", "invoice_review_settings",
-                         "dunning_stage_settings", "dunning_base_rates"})
+                         "dunning_stage_settings", "dunning_base_rates", "payment_security_settings"})
 # a shared address book: every account reads it; changing a record needs its binding (or all access)
 SHARED_READ = frozenset({"contacts"})
 _owning: ContextVar[bool] = ContextVar("immo_scope_owning", default=False)
@@ -93,6 +93,9 @@ def created_together(records) -> Iterator[None]:
     finally:
         _created_together.reset(token)
 INTERNAL = frozenset({
+    "privacy_controls", "privacy_decisions", "privacy_requests", "privacy_restore_reviews",
+    "external_portal_identities", "external_portal_sessions", "external_portal_attempts", "external_portal_commands",
+    "payment_totp_uses", "payment_totp_attempts",  # locked-account predicates; no general API
     "assistant_conversations", "assistant_messages", "assistant_runs", "assistant_attachments", "assistant_proposals",
     # Each service predicates by owner/current source grants before any private read.
     "bank_imports", "bank_source_links", "bank_fints_sessions",
@@ -632,6 +635,11 @@ def require_file_access(value: str, *, source=None):
     from ..routers.files import _file_url_to_key
     if _file_url_to_key(value).startswith(("assistant-private/", "assistant/")):
         raise HTTPException(404, "Datei nicht gefunden.")
+    if source is None:
+        from ..dependencies import store as source
+        from .privacy.storage import ensure_file_available, ensure_restore_reviewed
+        ensure_restore_reviewed(source)
+        ensure_file_available(source, value)
     scope = current_scope()
     if scope is None or scope.unrestricted:
         return

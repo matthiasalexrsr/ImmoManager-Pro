@@ -242,7 +242,7 @@ def test_no_read_endpoint_shows_anything_of_another_portfolio(client, estate):
         if not isinstance(route, APIRoute) or "GET" not in route.methods:
             continue
         path = route.path
-        if not path.startswith("/api/v1/") or "{" in path or path.startswith(INSTALLATION_PREFIXES):
+        if not path.startswith("/api/v1/") or "{" in path or path.startswith((*INSTALLATION_PREFIXES, '/api/v1/legal')):
             continue
         response = client.get(path, headers=staff)
         if response.status_code >= 500:
@@ -265,7 +265,7 @@ def _read_endpoints():
 
     return sorted(route.path for route in app.routes
                   if isinstance(route, APIRoute) and "GET" in route.methods and route.path.startswith("/api/v1/")
-                  and "{" not in route.path and not route.path.startswith(INSTALLATION_PREFIXES)
+                  and "{" not in route.path and not route.path.startswith((*INSTALLATION_PREFIXES, '/api/v1/legal'))
                   and not route.path.startswith("/api/v1/auth"))
 
 
@@ -367,7 +367,9 @@ def test_no_read_endpoint_opens_a_record_of_another_portfolio_by_its_id(client, 
     for route in app.routes:
         if not isinstance(route, APIRoute) or "GET" not in route.methods or "{" not in route.path:
             continue
-        if not route.path.startswith("/api/v1/") or route.path.startswith(INSTALLATION_PREFIXES):
+        # Package-only public licenses have their own traversal/hash tests and
+        # may legitimately be unavailable in a source-only developer checkout.
+        if not route.path.startswith("/api/v1/") or route.path.startswith((*INSTALLATION_PREFIXES, '/api/v1/legal')):
             continue
         params = re.findall(r"{(\w+)(?::[^}]*)?}", route.path)
         for key in keys:

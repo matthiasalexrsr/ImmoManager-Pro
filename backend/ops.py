@@ -70,14 +70,19 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "backup":
-            _print(full_backup.create_full_backup("cli"))
+            report = full_backup.create_full_backup("cli")
+            _print(report)
+            copied = report.get('second_target')
+            return 0 if report.get('ok') is True and (not copied or copied.get('ok') is True) else 1
         elif args.command == "verify":
             report = full_backup.verify_archive(_archive_path(args.archive))
             _print(report)
             return 0 if report["ok"] else 1
         elif args.command == "probe":
             archive = _archive_path(args.archive) if args.archive else None
-            _print(full_backup.restore_probe(archive, passphrase=_passphrase(args, required=False)))
+            report = full_backup.restore_probe(archive, passphrase=_passphrase(args, required=False))
+            _print(report)
+            return 0 if report.get('ok') is True else 1
         elif args.command == "restore":
             _print(full_backup.restore_archive(_archive_path(args.archive), Path(args.target).expanduser(),
                                                passphrase=_passphrase(args, required=True),

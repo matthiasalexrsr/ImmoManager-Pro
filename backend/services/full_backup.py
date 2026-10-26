@@ -663,10 +663,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         raise BackupError(f"Vollbackup für {dialect} wird nicht unterstützt (nur SQLite und PostgreSQL).")
     sources.root.mkdir(parents=True, exist_ok=True)
     work = sources.root / f".work-{secrets.token_hex(4)}"
-    work.mkdir()
+    filesystem_path(work).mkdir()
     name = _archive_name(trigger, now)
-    final = sources.root / name
-    partial = sources.root / (name + ".partial")
+    final = filesystem_path(sources.root / name)
+    partial = filesystem_path(sources.root / (name + ".partial"))
     try:
         # These exact bytes both decrypt the snapshot inventory and enter the
         # archive. Never use an ambient/default keyring for private AI sources.
@@ -855,6 +855,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
 
 
 def _copy_verified(archive: Path, digest: str, directory: Path, pulse: _Pulse) -> None:
+    archive, directory = filesystem_path(archive), filesystem_path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     partial = directory / (archive.name + ".partial")
     try:
@@ -884,6 +885,7 @@ def _recorded_digest(root: Path, name: str) -> str | None:
 
 def verify_archive(path: Path, *, expected_sha256: str | None = None, pulse: _Pulse | None = None) -> dict[str, Any]:
     """Digest of the archive (sidecar, expected), every file's digest/size, no unlisted files."""
+    path = filesystem_path(path)
     pulse = pulse or _Pulse(None)
     problems: list[str] = []
     if not path.is_file():
@@ -1148,7 +1150,25 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
         assistant_proof["vault_key_ids"] = sorted(assistant_proof["vault_key_ids"])
     except Exception:
         raise BackupError("Geschützte KI-Gespräche, Anhänge und Kontozugänge konnten nicht vollständig geprüft werden.") from None
+    from .data_transfer.backup import verify as verify_data_transfer
+    from .e_invoice.backup import verify as verify_e_invoices
+    from .external_portal.backup import verify as verify_portal
+    from .payment_security_backup import verify as verify_payment_security
+    from .privacy.backup import verify as verify_privacy
+    try:
+        e_invoice_proof = verify_e_invoices(connection)
+        payment_proof = verify_payment_security(connection)
+        data_transfer_proof = verify_data_transfer(connection)
+        portal_proof = verify_portal(connection, normalize=normalize)
+        privacy_proof = verify_privacy(connection, normalize=normalize)
+    except Exception:
+        raise BackupError("E-Rechnungsoriginale, Zuordnungen und Prüfnachweise konnten nicht vollständig geprüft werden.") from None
     return {
+        "e_invoices": e_invoice_proof,
+        "payment_security": payment_proof,
+        "data_transfer": data_transfer_proof,
+        "external_portal": portal_proof,
+        "privacy": privacy_proof,
         "assistant": assistant_proof,
         "channels": channel_proof,
         "teha": teha_proof,
@@ -1376,7 +1396,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
     if target.exists() and any(target.iterdir()):
         raise BackupError(f"Zielverzeichnis ist nicht leer: {target}")
     staging = target.parent / f".{target.name}.restore-{secrets.token_hex(4)}"
-    staging.mkdir(parents=True)
+    filesystem_path(staging).mkdir(parents=True)
     try:
         manifest = _extract(path, staging, _Pulse(None))
         files, warning = _secret_files(manifest, staging, passphrase)
@@ -1439,9 +1459,18 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             secret_box.write_private_file(target / "runtime.from-backup.json", files[RUNTIME])
         if manifest.get("runtime"):
             (target / "runtime-manifest.json").write_text(json.dumps(manifest["runtime"], indent=2), encoding="utf-8")
+        # Always fence a restored installation, even a PostgreSQL dump which the
+        # operator loads later. Each restore has a new epoch, so an older completed
+        # review cannot reopen search/AI/portal access.
+        restored_env = target / ".env"
+        lines = restored_env.read_text(encoding="utf-8").splitlines() if restored_env.exists() else []
+        lines = [line for line in lines if line.strip().partition("=")[0].strip() != "PRIVACY_RESTORE_ID"]
+        lines.append("PRIVACY_RESTORE_ID=" + secrets.token_hex(24))
+        secret_box.write_private_file(restored_env, ("\n".join(lines) + "\n").encode())
+        steps.append("Vor Freigabe von Portal, Suche und KI: aktuelles Datenschutzjournal importieren, Löschungen/Sperren abgleichen und die Wiederherstellungsprüfung in Einstellungen → Datenschutz bestätigen.")
         if final_target.exists():
             final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
-        os.replace(target, final_target)
+        os.replace(filesystem_path(target), filesystem_path(final_target))
     finally:
         shutil.rmtree(filesystem_path(staging), ignore_errors=True)
     target = final_target

@@ -165,6 +165,8 @@ def source(store, document) -> tuple[str, bytes, str] | None:
     unit = _archive_unit(store)
     row = archive.head(unit, document.id)
     if row is not None:
+        _, binding = archive.bind_document(unit, document.id)
+        row = archive.authorized_version(unit, document.id, row.id, binding)
         return f"version:{row.id}", archive.original_bytes(unit, row), row.filename or document.file_url
     url = document.file_url or ""
     if not url.startswith("/uploads/"):

@@ -22,6 +22,8 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.pool import NullPool
 
+from ..services.filesystem_paths import filesystem_path
+
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 UPGRADE_COMMAND = "python -m backend.upgrade"
 UPGRADE_COMMAND_WINDOWS = "ImmoManager-Pro.exe upgrade"
@@ -77,7 +79,9 @@ class SchemaUpgradeRequired(RuntimeError):
 def alembic_config(database_url: str | None = None) -> Config:
     """A Config without ini file: never reconfigures the running process's logging."""
     config = Config()
-    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    # Alembic opens migration source files itself. Preserve the extended Win32
+    # path through its loader, including deeply nested frozen installations.
+    config.set_main_option("script_location", str(filesystem_path(MIGRATIONS_DIR)))
     if database_url:
         config.attributes["database_url"] = database_url
     return config

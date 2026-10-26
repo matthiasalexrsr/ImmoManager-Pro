@@ -5,13 +5,13 @@ let previousOverflow;
 const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 /** Only the topmost dialog owns Escape, Tab and focus restoration. */
-export function useModalDialog(ref, onClose, active = true) {
+export function useModalDialog(ref, onClose, active = true, returnFocus = null) {
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
     const dialog = ref.current;
     if (!active || !dialog) return;
-    const priorFocus = document.activeElement;
+    const priorFocus = returnFocus || document.activeElement;
     const token = { dialog };
     if (stack.length === 0) {
       previousOverflow = document.body.style.overflow;
@@ -54,5 +54,5 @@ export function useModalDialog(ref, onClose, active = true) {
       if (stack.length === 0) document.body.style.overflow = previousOverflow || '';
       if (wasTop && priorFocus?.isConnected) priorFocus.focus();
     };
-  }, [active, ref]);
+  }, [active, ref, returnFocus]);
 }

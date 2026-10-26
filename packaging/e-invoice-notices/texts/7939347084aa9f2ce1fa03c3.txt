@@ -1,0 +1,17 @@
+Source files: com/helger/schematron/CSchematronXML.java, com/helger/schematron/AbstractSchematronResource.java, com/helger/schematron/ISchematronErrorHandler.java, com/helger/schematron/ISchematronResource.java, com/helger/schematron/resolve/DefaultSchematronIncludeResolver.java, com/helger/schematron/resolve/ISchematronIncludeResolver.java, com/helger/schematron/config/ThirdPartyModuleProvider_ph_schematron.java, com/helger/schematron/svrl/SVRLHelper.java, com/helger/schematron/svrl/SVRLMarshaller.java, com/helger/schematron/svrl/ISVRLErrorLevelDeterminator.java, com/helger/schematron/svrl/SVRLLocationBeautifierRegistry.java, com/helger/schematron/svrl/ISVRLLocationBeautifier.java, com/helger/schematron/svrl/SVRLNamespaceContext.java, com/helger/schematron/svrl/SVRLFailedAssert.java, com/helger/schematron/svrl/CSVRL.java, com/helger/schematron/svrl/SVRLSuccessfulReport.java, com/helger/schematron/svrl/DefaultSVRLErrorLevelDeterminator.java, com/helger/schematron/svrl/ISVRLLocationBeautifierSPI.java, com/helger/schematron/svrl/AbstractSVRLMessage.java, com/helger/schematron/svrl/SVRLResourceError.java, com/helger/schematron/ESchematronVersion.java, com/helger/schematron/SchematronInterruptedException.java, com/helger/schematron/CSchematron.java, com/helger/schematron/SchematronHelper.java, com/helger/schematron/SchematronException.java, com/helger/schematron/saxon/SchematronTransformerFactory.java, com/helger/schematron/saxon/SaxonNamespaceContext.java, com/helger/schematron/SchematronResourceHelper.java, com/helger/schematron/api/xslt/ISchematronXSLTBasedProvider.java, com/helger/schematron/api/xslt/validator/ISchematronOutputValidityDeterminator.java, com/helger/schematron/api/xslt/validator/SchematronOutputValidityDeterminatorDefault.java, com/helger/schematron/api/xslt/validator/SchematronOutputValidityDeterminatorFailedAssertOnly.java, com/helger/schematron/api/xslt/validator/SchematronOutputValidityDeterminatorSuccessfulReportOnly.java, com/helger/schematron/api/xslt/ISchematronXSLTBasedResource.java, com/helger/schematron/api/xslt/AbstractSchematronXSLTBasedResource.java, com/helger/schematron/ESchematronMode.java, com/helger/schematron/SchematronDebug.java
+/*
+ * Copyright (C) 2014-2025 Philip Helger (www.helger.com)
+ * philip[at]helger[dot]com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */

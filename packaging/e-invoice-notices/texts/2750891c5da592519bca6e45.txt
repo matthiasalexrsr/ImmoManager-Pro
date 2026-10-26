@@ -1,0 +1,128 @@
+Source files: org/apache/commons/io/ByteBuffers.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+Source files: org/apache/commons/io/ByteOrderMark.java, org/apache/commons/io/ByteOrderParser.java, org/apache/commons/io/Charsets.java, org/apache/commons/io/CloseableURLConnection.java, org/apache/commons/io/CopyUtils.java, org/apache/commons/io/DirectoryWalker.java, org/apache/commons/io/EndianUtils.java, org/apache/commons/io/FileCleaner.java, org/apache/commons/io/FileCleaningTracker.java, org/apache/commons/io/FileDeleteStrategy.java, org/apache/commons/io/FileExistsException.java, org/apache/commons/io/FileSystem.java, org/apache/commons/io/FileSystemUtils.java, org/apache/commons/io/FileUtils.java, org/apache/commons/io/FilenameUtils.java, org/apache/commons/io/HexDump.java, org/apache/commons/io/IO.java, org/apache/commons/io/IOCase.java, org/apache/commons/io/IOExceptionList.java, org/apache/commons/io/IOExceptionWithCause.java, org/apache/commons/io/IOIndexedException.java, org/apache/commons/io/IORandomAccessFile.java, org/apache/commons/io/IOUtils.java, org/apache/commons/io/LineIterator.java, org/apache/commons/io/RandomAccessFileMode.java, org/apache/commons/io/RandomAccessFiles.java, org/apache/commons/io/StandardLineSeparator.java, org/apache/commons/io/StreamIterator.java, org/apache/commons/io/TaggedIOException.java, org/apache/commons/io/ThreadMonitor.java, org/apache/commons/io/ThreadUtils.java, org/apache/commons/io/UncheckedIOExceptions.java, org/apache/commons/io/build/AbstractOrigin.java, org/apache/commons/io/build/AbstractOriginSupplier.java, org/apache/commons/io/build/AbstractStreamBuilder.java, org/apache/commons/io/build/AbstractSupplier.java, org/apache/commons/io/build/package-info.java, org/apache/commons/io/channels/CloseShieldChannel.java, org/apache/commons/io/channels/CloseShieldChannelHandler.java, org/apache/commons/io/channels/FileChannels.java, org/apache/commons/io/channels/FilterByteChannel.java, org/apache/commons/io/channels/FilterChannel.java, org/apache/commons/io/channels/FilterFileChannel.java, org/apache/commons/io/channels/FilterReadableByteChannel.java, org/apache/commons/io/channels/FilterSeekableByteChannel.java, org/apache/commons/io/channels/FilterWritableByteChannel.java, org/apache/commons/io/channels/package-info.java, org/apache/commons/io/charset/CharsetDecoders.java, org/apache/commons/io/charset/CharsetEncoders.java, org/apache/commons/io/charset/package-info.java, org/apache/commons/io/comparator/AbstractFileComparator.java, org/apache/commons/io/comparator/CompositeFileComparator.java, org/apache/commons/io/comparator/DefaultFileComparator.java, org/apache/commons/io/comparator/DirectoryFileComparator.java, org/apache/commons/io/comparator/ExtensionFileComparator.java, org/apache/commons/io/comparator/LastModifiedFileComparator.java, org/apache/commons/io/comparator/NameFileComparator.java, org/apache/commons/io/comparator/PathFileComparator.java, org/apache/commons/io/comparator/ReverseFileComparator.java, org/apache/commons/io/comparator/SizeFileComparator.java, org/apache/commons/io/comparator/package-info.java, org/apache/commons/io/file/AccumulatorPathVisitor.java, org/apache/commons/io/file/CleaningPathVisitor.java, org/apache/commons/io/file/CopyDirectoryVisitor.java, org/apache/commons/io/file/Counters.java, org/apache/commons/io/file/CountingPathVisitor.java, org/apache/commons/io/file/DeleteOption.java, org/apache/commons/io/file/DeletingPathVisitor.java, org/apache/commons/io/file/DirectoryStreamFilter.java, org/apache/commons/io/file/FilesUncheck.java, org/apache/commons/io/file/NoopPathVisitor.java, org/apache/commons/io/file/PathFilter.java, org/apache/commons/io/file/PathUtils.java, org/apache/commons/io/file/PathVisitor.java, org/apache/commons/io/file/SimplePathVisitor.java, org/apache/commons/io/file/StandardDeleteOption.java, org/apache/commons/io/file/attribute/FileTimes.java, org/apache/commons/io/file/attribute/package-info.java, org/apache/commons/io/file/package-info.java, org/apache/commons/io/file/spi/FileSystemProviders.java, org/apache/commons/io/file/spi/package-info.java, org/apache/commons/io/filefilter/AbstractFileFilter.java, org/apache/commons/io/filefilter/AgeFileFilter.java, org/apache/commons/io/filefilter/AndFileFilter.java, org/apache/commons/io/filefilter/CanExecuteFileFilter.java, org/apache/commons/io/filefilter/CanReadFileFilter.java, org/apache/commons/io/filefilter/CanWriteFileFilter.java, org/apache/commons/io/filefilter/ConditionalFileFilter.java, org/apache/commons/io/filefilter/DelegateFileFilter.java, org/apache/commons/io/filefilter/DirectoryFileFilter.java, org/apache/commons/io/filefilter/EmptyFileFilter.java, org/apache/commons/io/filefilter/FalseFileFilter.java, org/apache/commons/io/filefilter/FileEqualsFileFilter.java, org/apache/commons/io/filefilter/FileFileFilter.java, org/apache/commons/io/filefilter/FileFilterUtils.java, org/apache/commons/io/filefilter/HiddenFileFilter.java, org/apache/commons/io/filefilter/IOFileFilter.java, org/apache/commons/io/filefilter/MagicNumberFileFilter.java, org/apache/commons/io/filefilter/NameFileFilter.java, org/apache/commons/io/filefilter/NotFileFilter.java, org/apache/commons/io/filefilter/OrFileFilter.java, org/apache/commons/io/filefilter/PathEqualsFileFilter.java, org/apache/commons/io/filefilter/PathMatcherFileFilter.java, org/apache/commons/io/filefilter/PathVisitorFileFilter.java, org/apache/commons/io/filefilter/PrefixFileFilter.java, org/apache/commons/io/filefilter/RegexFileFilter.java, org/apache/commons/io/filefilter/SizeFileFilter.java, org/apache/commons/io/filefilter/SuffixFileFilter.java, org/apache/commons/io/filefilter/SymbolicLinkFileFilter.java, org/apache/commons/io/filefilter/TrueFileFilter.java, org/apache/commons/io/filefilter/WildcardFileFilter.java, org/apache/commons/io/filefilter/WildcardFilter.java, org/apache/commons/io/filefilter/package-info.java, org/apache/commons/io/function/Constants.java, org/apache/commons/io/function/Erase.java, org/apache/commons/io/function/IOBaseStream.java, org/apache/commons/io/function/IOBaseStreamAdapter.java, org/apache/commons/io/function/IOBiConsumer.java, org/apache/commons/io/function/IOBiFunction.java, org/apache/commons/io/function/IOBinaryOperator.java, org/apache/commons/io/function/IOBooleanSupplier.java, org/apache/commons/io/function/IOComparator.java, org/apache/commons/io/function/IOConsumer.java, org/apache/commons/io/function/IOFunction.java, org/apache/commons/io/function/IOIntConsumer.java, org/apache/commons/io/function/IOIntSupplier.java, org/apache/commons/io/function/IOIterable.java, org/apache/commons/io/function/IOIterator.java, org/apache/commons/io/function/IOIteratorAdapter.java, org/apache/commons/io/function/IOLongSupplier.java, org/apache/commons/io/function/IOPredicate.java, org/apache/commons/io/function/IOQuadFunction.java, org/apache/commons/io/function/IORunnable.java, org/apache/commons/io/function/IOSpliterator.java, org/apache/commons/io/function/IOSpliteratorAdapter.java, org/apache/commons/io/function/IOStream.java, org/apache/commons/io/function/IOStreamAdapter.java, org/apache/commons/io/function/IOStreams.java, org/apache/commons/io/function/IOSupplier.java, org/apache/commons/io/function/IOTriConsumer.java, org/apache/commons/io/function/IOTriFunction.java, org/apache/commons/io/function/IOUnaryOperator.java, org/apache/commons/io/function/Uncheck.java, org/apache/commons/io/function/UncheckedIOBaseStream.java, org/apache/commons/io/function/UncheckedIOIterable.java, org/apache/commons/io/function/UncheckedIOIterator.java, org/apache/commons/io/function/UncheckedIOSpliterator.java, org/apache/commons/io/function/package-info.java, org/apache/commons/io/input/AbstractCharacterFilterReader.java, org/apache/commons/io/input/AbstractInputStream.java, org/apache/commons/io/input/AbstractLineEndingInputStream.java, org/apache/commons/io/input/AutoCloseInputStream.java, org/apache/commons/io/input/BOMInputStream.java, org/apache/commons/io/input/BoundedInputStream.java, org/apache/commons/io/input/BrokenInputStream.java, org/apache/commons/io/input/BrokenReader.java, org/apache/commons/io/input/ByteBufferCleaner.java, org/apache/commons/io/input/CharSequenceInputStream.java, org/apache/commons/io/input/CharSequenceReader.java, org/apache/commons/io/input/CharacterFilterReader.java, org/apache/commons/io/input/CharacterSetFilterReader.java, org/apache/commons/io/input/CircularInputStream.java, org/apache/commons/io/input/ClassLoaderObjectInputStream.java, org/apache/commons/io/input/CloseShieldInputStream.java, org/apache/commons/io/input/CloseShieldReader.java, org/apache/commons/io/input/ClosedInputStream.java, org/apache/commons/io/input/ClosedReader.java, org/apache/commons/io/input/CountingInputStream.java, org/apache/commons/io/input/DemuxInputStream.java, org/apache/commons/io/input/InfiniteCircularInputStream.java, org/apache/commons/io/input/Input.java, org/apache/commons/io/input/MarkShieldInputStream.java, org/apache/commons/io/input/MemoryMappedFileInputStream.java, org/apache/commons/io/input/MessageDigestCalculatingInputStream.java, org/apache/commons/io/input/MessageDigestInputStream.java, org/apache/commons/io/input/NullInputStream.java, org/apache/commons/io/input/NullReader.java, org/apache/commons/io/input/ObservableInputStream.java, org/apache/commons/io/input/ProxyInputStream.java, org/apache/commons/io/input/ProxyReader.java, org/apache/commons/io/input/QueueInputStream.java, org/apache/commons/io/input/RandomAccessFileInputStream.java, org/apache/commons/io/input/ReaderInputStream.java, org/apache/commons/io/input/ReversedLinesFileReader.java, org/apache/commons/io/input/SequenceReader.java, org/apache/commons/io/input/SwappedDataInputStream.java, org/apache/commons/io/input/TaggedInputStream.java, org/apache/commons/io/input/TaggedReader.java, org/apache/commons/io/input/Tailer.java, org/apache/commons/io/input/TailerListener.java, org/apache/commons/io/input/TailerListenerAdapter.java, org/apache/commons/io/input/TeeInputStream.java, org/apache/commons/io/input/TeeReader.java, org/apache/commons/io/input/ThrottledInputStream.java, org/apache/commons/io/input/TimestampedObserver.java, org/apache/commons/io/input/UncheckedBufferedReader.java, org/apache/commons/io/input/UncheckedFilterReader.java, org/apache/commons/io/input/UnixLineEndingInputStream.java, org/apache/commons/io/input/UnsupportedOperationExceptions.java, org/apache/commons/io/input/UnsynchronizedByteArrayInputStream.java, org/apache/commons/io/input/WindowsLineEndingInputStream.java, org/apache/commons/io/input/XmlStreamReader.java, org/apache/commons/io/input/XmlStreamReaderException.java, org/apache/commons/io/input/buffer/CircularBufferInputStream.java, org/apache/commons/io/input/buffer/CircularByteBuffer.java, org/apache/commons/io/input/buffer/PeekableInputStream.java, org/apache/commons/io/input/buffer/package-info.java, org/apache/commons/io/input/package-info.java, org/apache/commons/io/monitor/FileAlterationListener.java, org/apache/commons/io/monitor/FileAlterationListenerAdaptor.java, org/apache/commons/io/monitor/FileAlterationMonitor.java, org/apache/commons/io/monitor/FileAlterationObserver.java, org/apache/commons/io/monitor/FileEntry.java, org/apache/commons/io/monitor/SerializableFileTime.java, org/apache/commons/io/monitor/package-info.java, org/apache/commons/io/output/AbstractByteArrayOutputStream.java, org/apache/commons/io/output/AppendableOutputStream.java, org/apache/commons/io/output/AppendableWriter.java, org/apache/commons/io/output/BrokenOutputStream.java, org/apache/commons/io/output/BrokenWriter.java, org/apache/commons/io/output/ByteArrayOutputStream.java, org/apache/commons/io/output/ChunkedOutputStream.java, org/apache/commons/io/output/ChunkedWriter.java, org/apache/commons/io/output/CloseShieldOutputStream.java, org/apache/commons/io/output/CloseShieldWriter.java, org/apache/commons/io/output/ClosedOutputStream.java, org/apache/commons/io/output/ClosedWriter.java, org/apache/commons/io/output/CountingOutputStream.java, org/apache/commons/io/output/DeferredFileOutputStream.java, org/apache/commons/io/output/DemuxOutputStream.java, org/apache/commons/io/output/FileWriterWithEncoding.java, org/apache/commons/io/output/FilterCollectionWriter.java, org/apache/commons/io/output/LockableFileWriter.java, org/apache/commons/io/output/NullAppendable.java, org/apache/commons/io/output/NullOutputStream.java, org/apache/commons/io/output/NullPrintStream.java, org/apache/commons/io/output/NullWriter.java, org/apache/commons/io/output/ProxyCollectionWriter.java, org/apache/commons/io/output/ProxyOutputStream.java, org/apache/commons/io/output/ProxyWriter.java, org/apache/commons/io/output/QueueOutputStream.java, org/apache/commons/io/output/RandomAccessFileOutputStream.java, org/apache/commons/io/output/StringBuilderWriter.java, org/apache/commons/io/output/TaggedOutputStream.java, org/apache/commons/io/output/TaggedWriter.java, org/apache/commons/io/output/TeeOutputStream.java, org/apache/commons/io/output/TeeWriter.java, org/apache/commons/io/output/ThresholdingOutputStream.java, org/apache/commons/io/output/UncheckedAppendable.java, org/apache/commons/io/output/UncheckedAppendableImpl.java, org/apache/commons/io/output/UncheckedFilterOutputStream.java, org/apache/commons/io/output/UncheckedFilterWriter.java, org/apache/commons/io/output/UnsynchronizedByteArrayOutputStream.java, org/apache/commons/io/output/WriterOutputStream.java, org/apache/commons/io/output/XmlStreamWriter.java, org/apache/commons/io/output/package-info.java, org/apache/commons/io/package-info.java, org/apache/commons/io/serialization/package-info.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/commons/io/channels/ByteArraySeekableByteChannel.java, org/apache/commons/io/output/FlushShieldOutputStream.java, org/apache/commons/io/serialization/ClassNameMatcher.java, org/apache/commons/io/serialization/FullClassNameMatcher.java, org/apache/commons/io/serialization/ObjectStreamClassPredicate.java, org/apache/commons/io/serialization/RegexpClassNameMatcher.java, org/apache/commons/io/serialization/ValidatingObjectInputStream.java, org/apache/commons/io/serialization/WildcardClassNameMatcher.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+Source files: org/apache/commons/io/input/BoundedReader.java
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *    https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+Source files: org/apache/commons/io/input/BufferedFileChannelInputStream.java, org/apache/commons/io/input/ReadAheadInputStream.java
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Source files: org/apache/commons/io/input/ChecksumInputStream.java, org/apache/commons/io/input/UncheckedFilterInputStream.java
+/*
+ *  Licensed to the Apache Software Foundation (ASF) under one or more
+ *  contributor license agreements.  See the NOTICE file distributed with
+ *  this work for additional information regarding copyright ownership.
+ *  The ASF licenses this file to You under the Apache License, Version 2.0
+ *  (the "License"); you may not use this file except in compliance with
+ *  the License.  You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+Source files: org/apache/commons/io/input/UnsynchronizedBufferedInputStream.java, org/apache/commons/io/input/UnsynchronizedBufferedReader.java, org/apache/commons/io/input/UnsynchronizedFilterInputStream.java, org/apache/commons/io/input/UnsynchronizedReader.java
+/*
+ *  Licensed to the Apache Software Foundation (ASF) under one or more
+ *  contributor license agreements.  See the NOTICE file distributed with
+ *  this work for additional information regarding copyright ownership.
+ *  The ASF licenses this file to You under the Apache License, Version 2.0
+ *  (the "License"); you may not use this file except in compliance with
+ *  the License.  You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */

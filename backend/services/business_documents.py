@@ -31,6 +31,7 @@ from . import business_qol as office
 from . import document_versions as archive
 from .business_field_history import record_unit_changes
 from .file_storage import LocalStorage, S3Storage, get_file_storage
+from .filesystem_paths import filesystem_path
 from .portfolio_scope import require_file_access, scope_context, scope_from_user
 from .workspace_contexts import actor, resolve_context
 from .workspace_work_items import document_filed, memory_document_filed
@@ -77,11 +78,11 @@ def file_hash(file_url: str) -> str:
     stream: Any
     try:
         if isinstance(storage, LocalStorage):
-            stream = storage._path(key).open("rb")
+            stream = filesystem_path(storage._path(key)).open("rb")
         elif isinstance(storage, S3Storage) and storage._client is not None:
             bound = storage.binding(key)
             if storage.legacy_local is not None and bound is None:
-                stream = storage.legacy_local._path(key).open("rb")
+                stream = filesystem_path(storage.legacy_local._path(key)).open("rb")
             else:
                 response = storage._call("get_object", key)
                 if response is None:

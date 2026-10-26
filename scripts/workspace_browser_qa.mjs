@@ -70,8 +70,8 @@ try {
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, profile.id);
   page = await context.newPage(); page.on('pageerror', error => result.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); }); page.setDefaultTimeout(15000);
-  await step('Real login and exact source navigation', async () => { await login(); await page.goto(`${base.origin}/tasks?focus_id=${task.id}`); await expect(page.getByText('QA Rückruf Handwerker', { exact: true })).toBeVisible(); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) result.errors.push(`UI console: ${message.text()}`); }); page.setDefaultTimeout(15000);
+  await step('Real login and exact source navigation', async () => { await login(); await page.goto(`${base.origin}/tasks?focus_id=${task.id}`); await expect(page.getByRole('heading', { name: 'QA Rückruf Handwerker', exact: true })).toBeVisible(); });
   await step('Autosave preserves an edit without changing the tenant', async () => {
     const dialog = await editTenant(tenant.full_name);
     await dialog.getByLabel('Vollständiger Name', { exact: false }).fill('QA Anna Entwurf');
@@ -211,7 +211,7 @@ try {
     try {
       page = await readerContext.newPage(); page.setDefaultTimeout(15000);
       page.on('pageerror', error => result.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) result.errors.push(`UI console: ${message.text()}`); });
       await login('steuerberater');
       await page.goto(`${base.origin}/tenants`);
       await expect(page.locator('.data-table tbody')).toContainText(tenant.full_name);

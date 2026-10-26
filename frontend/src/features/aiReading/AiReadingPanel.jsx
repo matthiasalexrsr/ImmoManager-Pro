@@ -20,6 +20,8 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const started = useRef(false);
+  const inFlight = useRef(false);
+  const pendingMessage = useRef(null);
   const chatEnd = useRef(null);
   const info = options?.surfaces?.find(item => item.id === surface);
 
@@ -36,24 +38,46 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
   useEffect(() => { chatEnd.current?.scrollIntoView?.({ block: 'nearest' }); }, [reading?.messages?.length]);
 
   const run = async (key, task) => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(key); setError('');
     try { await task(); }
     catch (failure) { setError(failure?.message || 'Das hat nicht geklappt.'); }
-    finally { setBusy(''); }
+    finally { inFlight.current = false; setBusy(''); }
   };
   const start = () => run('start', async () => {
     const found = await service.start({ surface, document_id: source?.documentId || null, file_url: source?.fileUrl || null,
       params: params || {}, reader: reader || 'auto', instruction: instruction.trim() || null });
     setReading(found);
+    pendingMessage.current = null;
   });
   const send = event => {
     event?.preventDefault();
     const text = message.trim();
     if (!text || !reading) return;
     run('say', async () => {
-      const found = await service.say(reading, text);
-      setReading(found); setMessage('');
+      let current = reading;
+      if (pendingMessage.current && pendingMessage.current.text !== text) {
+        current = await service.get(reading.id);
+        setReading(current);
+        pendingMessage.current = null;
+      }
+      const command = pendingMessage.current?.reading.id === current.id ? pendingMessage.current
+        : { reading: current, text, key: crypto.randomUUID() };
+      pendingMessage.current = command;
+      try {
+        const found = await service.say(command.reading, command.text, command.key);
+        pendingMessage.current = null;
+        setReading(found); setMessage('');
+      } catch (failure) {
+        if (failure.statusCode === 409) {
+          const latest = await service.get(reading.id);
+          setReading(latest);
+          pendingMessage.current = null;
+          throw new Error('Der Lesevorgang wurde inzwischen geändert. Der aktuelle Stand ist geladen. Bitte die Nachricht prüfen und erneut senden.');
+        }
+        throw failure;
+      }
     });
   };
   const decide = (action, record) => run('decide', async () => {
@@ -127,6 +151,9 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
       {error && <p role="alert" className="alert alert-error">{error}</p>}
 
       {reading && <>
+        <p className="form-hint">{reading.file?.version_id ? 'Quelle: archivierte Originalversion.' : 'Quelle: Datei mit Prüfsumme, noch ohne archivierte Versionsbindung.'}
+          {reading.file?.text_truncated && ' Der Text wurde gekürzt; nicht übermittelte Inhalte sind ungeprüft.'}
+          {reading.file?.text_available === false && ' Kein Text extrahierbar. Bildbeobachtungen benötigen Prüfung am Original.'}</p>
         {waiting && <div className="ai-reading-duplicates" role="alertdialog" aria-labelledby={`${id}-dup`}>
           <p id={`${id}-dup`}><strong>Zu diesem Dokument gibt es vermutlich schon {duplicates.length === 1 ? 'einen Eintrag' : `${duplicates.length} Einträge`}.</strong> Was soll geschehen?</p>
           <ul>{duplicates.map(item => <li key={`${item.kind}:${item.id}`}>
@@ -167,7 +194,9 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
             return <tr key={field.name} className={changed.has(field.name) ? 'is-changed' : undefined}>
               <th scope="row">{field.label}{changed.has(field.name) && <span className="badge badge-blue ai-badge">neu</span>}</th>
               <td>{shownValue(field, item.value)}</td>
-              <td className="ai-evidence">{item.evidence ? `„${item.evidence}“` : '—'}</td>
+              <td className="ai-evidence">{item.evidence ? `„${item.evidence}“` : 'Keine Fundstelle angegeben'}
+                {item.citation?.verified ? <small> · Geprüfte Zeile {item.citation.line} im extrahierten Text{item.citation.multiple_occurrences && ' (mehrfach im Text)'}</small>
+                  : <small> · Am Original prüfen{item.evidence_status === 'not_found' ? ': Zitat im gelesenen Text nicht gefunden' : ''}</small>}</td>
               <td>{item.confidence ? <span className={`ai-confidence is-${item.confidence}`}>{CONFIDENCE_LABELS[item.confidence]}</span> : '—'}</td>
             </tr>;
           })}</tbody>

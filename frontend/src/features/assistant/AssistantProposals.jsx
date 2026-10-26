@@ -71,6 +71,11 @@ function Proposal({ owner, proposal, attachments, perform, disabled, onChanged }
     {saved ? <p role="status"><CheckCheck size={15} /> Fachlich gespeichert. {safeLocalHref(saved.href) && <Link to={safeLocalHref(saved.href)}>{saved.title || 'Gespeicherten Eintrag öffnen'} →</Link>}</p> : <>
       <dl>{Object.entries(values).filter(([key]) => labels[key]).map(([key, value]) => <div key={key} style={{ display: 'contents' }}><dt>{labels[key]}</dt><dd>{display(key, value)}</dd></div>)}</dl>
       {sourceList.length > 0 && <details><summary>Belegte Quellen ({sourceList.length})</summary>{sourceList.map((source, index) => source.kind === 'attachment' ? <AssistantAttachment key={source.id} attachment={attachments.find(item => item.id === source.id) || { id: source.id, name: source.title || 'Chatdatei', byte_length: 0 }} /> : <div key={index}>{contextHref(source) ? <Link to={contextHref(source)}>{source.title || 'Originalakte öffnen'}</Link> : source.title || 'Quelle'}<details><summary>Nachweisdetails</summary><small>Stand {source.revision}{source.sha256 ? ` · SHA-256 ${source.sha256}` : ''}</small></details></div>)}</details>}
+      {sourceList.filter(source => source.kind === 'document' || source.kind === 'attachment').map(source => <div key={`citation:${source.id}`}>
+        {source.version_number && <p>{source.title}: Originalversion {source.version_number}</p>}
+        {source.citation?.verified ? <blockquote>{source.citation.quote}<footer>Geprüfte Fundstelle: Zeile {source.citation.line} im extrahierten Text, Zeichen {source.citation.start_char}–{source.citation.end_char}.</footer></blockquote>
+          : <p className="form-hint">{source.title || 'Dokumentquelle'}: keine bestätigte Textfundstelle. Angabe am Original prüfen.</p>}
+      </div>)}
       {proposal.state === 'rejected' ? <p role="status">Vorschlag verworfen.</p> : <>
         <p>Die Angaben werden im bestehenden Fachformular geprüft. Erst „Speichern“ legt den Eintrag an.</p>
         {review?.allowed === false && <p role="status">Die Vorbereitung ist noch unvollständig. Bitte fehlende Angaben im Chat klären.</p>}

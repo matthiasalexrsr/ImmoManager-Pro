@@ -258,7 +258,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc.status_code, request.method, request.url.path,
             code.value, msg, ctx,
         )
-        return _error_response(exc.status_code, code, readable(msg))
+        response = _error_response(exc.status_code, code, readable(msg))
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(StorageUnavailable)
     async def storage_unavailable_handler(request: Request, exc: StorageUnavailable):

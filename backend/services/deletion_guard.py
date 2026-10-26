@@ -146,6 +146,10 @@ def dependents(store: Any, entity: str, entity_id: str) -> list[tuple[str, int]]
 
 def ensure_deletable(store: Any, entity: str, entity_id: str) -> None:
     """Raise 409 naming the dependents if the entity is still referenced."""
+    from .portfolio_scope import RESOURCE_ALIASES
+    from .private_dependencies import ensure_unbound
+    if table_name := RESOURCE_ALIASES.get(entity):
+        ensure_unbound(store, table_name, entity_id)
     if entity in ("booking", "receivable", "contract", "tenant", "unit", "property", "portfolio", "account"):
         from .receivable_residuals import settlement_rows
         edges = settlement_rows(store)

@@ -51,7 +51,8 @@ SNAPSHOT_FORMAT = "immomanager-snapshot"
 # 13: the retention class chosen on a document (likewise)
 # 14: a tenant's direct debit account and mandate date (likewise)
 # 15: owners' shares of properties and units, their changes and the owner a booking belongs to (likewise)
-SNAPSHOT_FORMAT_VERSION = 15
+# 16: explicitly disclosed invoice payable rounding (never folded into VAT)
+SNAPSHOT_FORMAT_VERSION = 16
 
 # Keys used by exports written before format 2.
 _KEY_ALIASES = {"viewing_appointments": ("viewings",)}
@@ -82,7 +83,9 @@ def _require_full_bank_backup(store: Any) -> None:
 
 def _require_full_private_backup(store: Any) -> None:
     """A partial business snapshot cannot replace private workflow evidence."""
-    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_')
+    prefixes = ('integration_', 'communication_', 'teha_', 'channel_', 'assistant_', 'e_invoice_', 'data_import', 'data_external_', 'data_portability_', 'external_portal_', 'privacy_')
+    payment_evidence = frozenset({'payment_recipient_versions', 'payment_authorizations', 'payment_security_settings',
+                                  'payment_totp_uses', 'payment_security_events', 'payment_totp_attempts'})
     if hasattr(store, 'db'):
         from sqlalchemy import inspect
 
@@ -90,11 +93,11 @@ def _require_full_private_backup(store: Any) -> None:
 
         existing = set(inspect(store.db.connection()).get_table_names())
         tables = [table for name, table in Base.metadata.tables.items()
-                  if name in existing and name.startswith(prefixes)]
+                  if name in existing and (name.startswith(prefixes) or name in payment_evidence)]
         present = any(store.db.scalar(select(1).select_from(table).limit(1)) is not None for table in tables)
     else:
         families = store.__dict__.get('_integration_connections', {})
-        present = any(rows for name, rows in families.items() if name.startswith(prefixes))
+        present = any(rows for name, rows in families.items() if name.startswith(prefixes) or name in payment_evidence)
     if present:
         raise SnapshotError(['Dieser Bestand enthält geschützte Schnittstellen-, Kommunikations- oder Dokumentnachweise. '
                              'Bitte die vollständige Sicherung mit Datenbank, Originaldateien und Schlüsselring verwenden; '
@@ -244,6 +247,34 @@ class PreparedImport:
     replace: bool
     skipped: dict[str, int] = field(default_factory=dict)
     fresh_originals: list = field(default_factory=list)
+    portability_plan: Any = None
+
+    def apply_in_unit(self, unit: Any) -> dict:
+        """Merge with a caller's durable command receipt; never commit independently."""
+        if self.replace:
+            raise SnapshotError(["Wiederherstellungen benötigen den vollständigen Sicherungsweg."])
+        if unit.db is not None:
+            if not isinstance(self.backend, _SQLBackend) or self.backend._session is not unit.db:
+                raise RuntimeError("Prepared import belongs to another transaction")
+            for spec, objects in self.plan:
+                columns = set(spec.table.columns.keys())
+                values = [{key: value for key, value in obj.model_dump().items() if key in columns} for obj in objects]
+                if values:
+                    unit.db.execute(spec.table.insert(), values)
+            originals.write_sql(unit.db, self.fresh_originals)
+        else:
+            for spec, objects in self.plan:
+                collection = getattr(unit.store, spec.key)
+                for obj in objects:
+                    unit.insert(collection, obj.id, obj)
+            for row, blocks in self.fresh_originals:
+                unit.insert(unit.archive.versions, row.id, row)
+                for chunk in originals._chunks(row, blocks):
+                    unit.insert(unit.archive.chunks, (chunk.version_id, chunk.position), chunk)
+        imported = {spec.key: len(objects) for spec, objects in self.plan if objects}
+        if self.fresh_originals:
+            imported[originals.SNAPSHOT_KEY] = len(self.fresh_originals)
+        return {"imported": imported, "skipped_existing": self.skipped, "replace_existing": False}
 
     def apply(self) -> dict:
         self.backend.apply(self.plan, replace=self.replace, fresh_originals=self.fresh_originals)
@@ -289,6 +320,15 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     specs = entity_specs()
     backend = _backend(store)
     parsed, problems = _parse(data, specs)
+    from .privacy.portability import guard as privacy_import_guard
+    from .privacy.storage import read_unit
+    privacy_unit = read_unit(store)
+    for spec in specs:
+        for record in parsed[spec.key]:
+            try:
+                privacy_import_guard(privacy_unit, spec.key, record.id)
+            except ValueError as error:
+                problems.append(str(error))
     incoming, original_problems = originals.parse(data.get(originals.SNAPSHOT_KEY))
     problems += original_problems
     existing: dict[str, dict[str, Record]] = {}

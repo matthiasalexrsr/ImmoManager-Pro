@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useCanWrite } from '../contexts/AuthContext';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
 import DataTable from '../components/DataTable';
@@ -13,6 +15,10 @@ import { handoverText } from '../features/handoverProtocol/handoverProtocolText'
 
 /** Every handover protocol; opening one leads to the editor, a new one starts prefilled from its contract. */
 export default function HandoverProtocols({ service = handoverProtocolService }) {
+  const [params, setParams] = useSearchParams();
+  const contractFilter = params.get('contract_id');
+  const focused = params.get('focus_id');
+  const canWrite = useCanWrite('/handover-protocols');
   const { t, locale } = useTranslation();
   const say = useCallback((key, params) => handoverText(locale, key, params), [locale]);
   const confirm = useConfirm();
@@ -37,8 +43,7 @@ export default function HandoverProtocols({ service = handoverProtocolService })
     return () => controller.abort();
   }, [attempt, say, service]);
 
-  const noticeProtocol = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('focus_id') : null;
-  useEffect(() => { if (noticeProtocol && !loading && !error && protocols.some(row => row.id === noticeProtocol)) setEditor(noticeProtocol); }, [noticeProtocol, loading, error, protocols]);
+  useEffect(() => { if (focused) setEditor(focused); }, [focused]);
 
   const refresh = useCallback(() => {
     setAttempt(value => value + 1);
@@ -49,14 +54,14 @@ export default function HandoverProtocols({ service = handoverProtocolService })
     const unitLabel = Object.fromEntries(units.map(unit => [unit.id, unit.label]));
     const contractNumber = Object.fromEntries(contracts.map(contract => [contract.id, contract.contract_number]));
     const superseded = new Set(protocols.filter(p => p.finalized_at && p.correction_of_id).map(p => p.correction_of_id));
-    return protocols.map(protocol => ({
+    return protocols.filter(protocol => !contractFilter || protocol.contract_id === contractFilter).map(protocol => ({
       ...protocol,
       unit_label: unitLabel[protocol.unit_id] || '—',
       contract_label: contractNumber[protocol.contract_id] || '—',
       type_label: say(`type_${protocol.protocol_type}`),
       state_label: say(`state_${superseded.has(protocol.id) ? 'superseded' : protocolState(protocol)}`),
     }));
-  }, [contracts, protocols, say, units]);
+  }, [contracts, protocols, say, units, contractFilter]);
 
   const columns = [
     { key: 'protocol_date', label: say('date'), type: 'date' },
@@ -98,6 +103,10 @@ export default function HandoverProtocols({ service = handoverProtocolService })
 
   return (
     <div className="page">
+      {contractFilter && <div className="panel mp-section-body"><p>Übergaben zum ausgewählten Mietvertrag: {contracts.find(contract => contract.id === contractFilter)?.contract_number || contractFilter}</p>
+        <button type="button" className="btn btn-secondary" onClick={() => { const next = new URLSearchParams(params); next.delete('contract_id'); setParams(next); }}>Alle Übergaben anzeigen</button>
+        {canWrite && contracts.some(contract => contract.id === contractFilter) && <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>Auszugsprotokoll zu diesem Vertrag anlegen</button>}
+      </div>}
       {error && <div className="alert alert-error" role="alert">{error}{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAttempt(value => value + 1)}>{say('retry')}</button></div>}
       <DataTable
@@ -110,10 +119,10 @@ export default function HandoverProtocols({ service = handoverProtocolService })
         rowActions={() => [{ label: say('open'), icon: <FolderOpen size={15} aria-hidden="true" />, onClick: row => setEditor(row.id) }]}
         onDelete={remove}
       />
-      {creating && <FormModal title={say('newProtocol')} fields={fields} initial={null} onSave={create}
+      {creating && <FormModal title={say('newProtocol')} fields={fields} initial={contractFilter ? { contract_id: contractFilter, protocol_type: 'move_out' } : null} onSave={create}
         onClose={() => setCreating(false)} />}
       {editor && <HandoverProtocolEditor key={editor} protocolId={editor} service={service}
-        onClose={() => setEditor(null)} onChanged={refresh} />}
+        onClose={() => { setEditor(null); if (focused) { const next = new URLSearchParams(params); next.delete('focus_id'); setParams(next, { replace: true }); } }} onChanged={refresh} />}
     </div>
   );
 }

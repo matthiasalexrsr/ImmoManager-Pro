@@ -7,6 +7,7 @@ import enum
 import importlib.metadata
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -15,6 +16,12 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 SETTING_ORIGINS: dict[str, str] = {}
 SETTING_ORIGIN_FILES: dict[str, str] = {}
+
+
+def _packaged_invoice_bundle() -> str:
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    candidate = root / ("e-invoice" if getattr(sys, "frozen", False) else "artifacts/e-invoice")
+    return str(candidate) if candidate.is_dir() else ""
 
 
 def _get_version(pyproject: Path | None = None) -> str:
@@ -105,6 +112,9 @@ class Settings(BaseSettings):
     # --- Application ---
     app_version: str = _get_version()
     app_title: str = "ImmoManager Pro API"
+    portal_enabled: bool = False
+    portal_public_url: str = ""
+    portal_local_test_mode: bool = False
 
     # --- Database ---
     database_url: str = "sqlite:///./immo_manager.db"
@@ -174,6 +184,9 @@ class Settings(BaseSettings):
     # --- Scheduled jobs ---
     # Every process ticks; durable runs and leases keep one worker per job.
     job_scheduler_enabled: bool = True
+    # Explicit, hash-verified local bundle; no download or ambient Java at runtime.
+    e_invoice_bundle: str = Field(default_factory=_packaged_invoice_bundle)
+    e_invoice_timeout_seconds: int = Field(default=90, ge=5, le=180)
     job_scheduler_interval_seconds: float = 60.0
     # "latest": only the newest missed occurrence of a series becomes a task; "all": every one
     recurring_catch_up: Literal["latest", "all"] = "latest"
@@ -181,6 +194,9 @@ class Settings(BaseSettings):
     # --- Auto-migration ---
     # Ignored since the explicit upgrade (python -m backend.upgrade); kept so old .env files load.
     auto_migrate: bool = False
+    # A unique epoch is written by full restore, including manual PostgreSQL restores.
+    # Search, AI and external portal access stay closed until the privacy review.
+    privacy_restore_id: str = ""
 
     # --- Secrets at rest ---
     # Key file for integration secrets (default: <DATA_DIR>/secrets/keyring.json, created on first use).

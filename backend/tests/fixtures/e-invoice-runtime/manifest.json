@@ -1,0 +1,42 @@
+{
+  "upstream": "https://github.com/ZUGFeRD/mustangproject/tree/core-2.26.0",
+  "source_sha256": "9dd17965923f864e042bf961555af11d9a4da98fd522b7659ab6653249c3f20d",
+  "license": "Apache-2.0; unchanged examples, upstream license included",
+  "files": [
+    {
+      "file": "xrechnung-ubl.xml",
+      "upstream_path": "library/src/test/resources/ubl/01.01a-INVOICE.ubl.xml",
+      "sha256": "3558d8eee6499350f69c150b54b4019556458667cfc972beaa9bb7bf1e11303f"
+    },
+    {
+      "file": "xrechnung-cii.xml",
+      "upstream_path": "validator/src/test/resources/validXRV30.xml",
+      "sha256": "bb8b84490f70bfdad52063dbef2f726fe3d7352835656a3e9855698ca3ecb978"
+    },
+    {
+      "file": "zugferd.xml",
+      "upstream_path": "validator/src/test/resources/validV2.xml",
+      "sha256": "4c489e49fa15898b768c373fd9405cbb3b3070c275dedf210cd365a024ef57c5"
+    },
+    {
+      "file": "zugferd.pdf",
+      "upstream_path": "library/src/test/resources/EN16931_Einfach.pdf",
+      "sha256": "05b5a382db8fdc60d1e9ec31fef7fb09c91d68413b9187f7ca116aed116ed1d0"
+    },
+    {
+      "file": "ambiguous.pdf",
+      "upstream_path": "validator/src/test/resources/validV2PDF.pdf",
+      "sha256": "10880e7507d2a5ba6545c1e5d1a2ff958943e541451a1ecbcb16b0538ca5f2e9"
+    },
+    {
+      "file": "broken.pdf",
+      "upstream_path": "validator/src/test/resources/corruptedV2PDF.pdf",
+      "sha256": "215e9b400363946931cd2f8503d6197c10c354ebf4c00a67dd5565d4beab333e"
+    },
+    {
+      "file": "invalid-xml.pdf",
+      "upstream_path": "validator/src/test/resources/XMLinvalidV2PDF.pdf",
+      "sha256": "50ab6691b8ebb72895339948459b33e2e570b440b2cb63ca6699642fba5142e2"
+    }
+  ]
+}

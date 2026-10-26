@@ -295,8 +295,9 @@ def prepare_download(entries: Iterable[Entry], profile: Profile, batch: Batch,
     Caller owns the source transaction and closes the download after transfer.
     """
     p, profile_hash = _plan(profile, batch)
+    from .filesystem_paths import filesystem_path
     try:
-        directory = tempfile.TemporaryDirectory(prefix="immo-extf-", dir=spool_dir)
+        directory = tempfile.TemporaryDirectory(prefix="immo-extf-", dir=filesystem_path(spool_dir))
     except OSError:
         raise ExportError("spool_unavailable") from None
     root = Path(directory.name)

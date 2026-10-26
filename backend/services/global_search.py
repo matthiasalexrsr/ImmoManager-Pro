@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import LargeBinary, case, cast, exists, func, literal, or_, select
+from sqlalchemy import LargeBinary, and_, case, cast, exists, func, literal, or_, select
 
 from ..db.orm_models import Base
 
@@ -178,6 +178,9 @@ def _sql_match(db, model, spec: SearchType, needle: str):
         match = or_(match, exists(select(1).where(
             DocumentTextORM.document_id == model.id,
             DocumentTextORM.search_text.like(f"%{escape_like(needle)}%", escape="\\"))))
+        from ..db.privacy_models import PrivacyControlORM as Control
+        match = and_(match, ~exists(select(1).where(Control.kind == "document", Control.record_id == model.id,
+                     or_(Control.restricted.is_(True), Control.erased_at.is_not(None)))))
     return match
 
 
@@ -195,12 +198,14 @@ def _sql_page(db, spec: SearchType, needle: str, limit: int, after: str | None, 
 # ── memory ──
 
 def _memory_page(store, spec: SearchType, needle: str, limit: int, after: str | None, with_total: bool) -> Page:
+    from .privacy.storage import is_restricted
     by_text: set[str] = set()
     if spec.entity_type == "document":
         from .document_text import memory_match_ids
         by_text = memory_match_ids(store, needle)
     matches = sorted((item for item in getattr(store, spec.list_method)()
-                      if _memory_match(item, spec, needle) or item.id in by_text),
+                      if (_memory_match(item, spec, needle) or item.id in by_text)
+                      and not (spec.entity_type == "document" and is_restricted(store, "document", item.id))),
                      key=lambda item: item.id)
     total = len(matches) if with_total else None
     if after is not None:
@@ -224,6 +229,8 @@ def _page(spec: SearchType, rows: list, limit: int, total: int | None) -> Page:
 
 def search_page(store, spec: SearchType, q: str, *, limit: int, cursor: str | None = None,
                 with_total: bool = True) -> Page:
+    from .privacy.storage import ensure_restore_reviewed
+    ensure_restore_reviewed(store)
     needle = normalize_query(q)
     after = decode_cursor(cursor, spec.entity_type) if cursor else None
     if hasattr(store, "db"):

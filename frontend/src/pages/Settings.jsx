@@ -15,6 +15,10 @@ import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
 import LetterheadSection from '../features/letters/LetterheadSection';
 import AiSettingsSection from './settings/AiSettingsSection';
+import ImportWizard from '../features/dataTransfer/ImportWizard';
+import CustomerExports from '../features/dataTransfer/CustomerExports';
+import PortalAdmin from '../features/externalPortal/PortalAdmin';
+import PrivacyCenter from '../features/privacy/PrivacyCenter';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -25,7 +29,9 @@ export default function Settings() {
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
-  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isAdmin ? ['users', 'dev'] : [])];
+  const isOwner = auth?.user?.role === 'eigentuemer';
+  const canManagePortal = ['eigentuemer', 'verwalter'].includes(auth?.user?.role);
+  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(canManagePortal ? ['portal', 'privacy'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
   const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
   const setSettingsTab = section => setParams(current => {
     const next = new URLSearchParams(current);
@@ -50,6 +56,9 @@ export default function Settings() {
     { key: 'letterhead', label: 'Briefkopf' },
     { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
+    ...(isOwner ? [{ key: 'migration', label: 'Datenübernahme / Kundenexport' }] : []),
+    ...(canManagePortal ? [{ key: 'portal', label: 'Mieter- und Eigentümerportale' }] : []),
+    ...(canManagePortal ? [{ key: 'privacy', label: 'Datenschutz / Aufbewahrung' }] : []),
     ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
   ];
@@ -78,6 +87,9 @@ export default function Settings() {
 
         {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
 
+        {settingsTab === 'migration' && isOwner && <><ImportWizard /><CustomerExports /></>}
+        {settingsTab === 'portal' && canManagePortal && <PortalAdmin />}
+        {settingsTab === 'privacy' && canManagePortal && <PrivacyCenter />}
         {/* System tab: Backup, Updates, About */}
         {settingsTab === 'system' && (
           <>
@@ -97,9 +109,10 @@ export default function Settings() {
                 <div className="settings-row">
                   <label>{tr('settings.about.type', 'Typ')}</label>
                   <div className="settings-control">
-                    <span className="text-muted">{tr('settings.about.localApp', 'Lokale Anwendung (Non-Cloud, Privat)')}</span>
+                    <span className="text-muted">Lokale Installation oder getrennte Hostinginstanz Ihrer Verwaltung</span>
                   </div>
                 </div>
+                <p><a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzbestand und mitgelieferte Quellarchive öffnen</a></p>
               </div>
             </div>
           </>

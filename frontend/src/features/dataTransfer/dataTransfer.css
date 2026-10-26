@@ -1,0 +1,14 @@
+.data-transfer { overflow-wrap: anywhere; }
+.data-transfer label { display: flex; flex-direction: column; gap: .4rem; margin: .75rem 0; }
+.data-transfer input, .data-transfer select, .data-transfer textarea { max-width: 100%; min-width: 0; padding: .55rem; }
+.transfer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .85rem; align-items: end; margin: 1rem 0; }
+.transfer-list { padding: 0; list-style: none; display: grid; gap: .5rem; }
+.transfer-list button { text-align: left; white-space: normal; }
+.transfer-detail { border-top: 1px solid var(--border-color, #a0a0a0); margin-top: 1rem; padding-top: 1rem; }
+.transfer-table { overflow-x: auto; }
+.transfer-table th, .transfer-table td { padding: .6rem; text-align: left; vertical-align: top; }
+.data-transfer details { margin: 1rem 0; }
+.data-transfer summary { cursor: pointer; padding: .4rem 0; }
+.data-transfer pre { max-height: 22rem; overflow: auto; white-space: pre-wrap; }
+.data-transfer label.transfer-check { flex-direction: row; align-items: baseline; }
+.data-transfer :focus-visible { outline: 3px solid var(--accent-color, #176bb4); outline-offset: 3px; }

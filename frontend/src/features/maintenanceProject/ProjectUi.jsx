@@ -34,6 +34,21 @@ export function Fact({ label, children }) {
   );
 }
 
+// Closed details keep their descendants in the DOM, but only the summary can
+// receive keyboard focus. Apply the same visibility rules to both trap ends.
+function isKeyboardVisible(element) {
+  if (element.tabIndex < 0 || element.matches(':disabled') || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  for (let node = element; node; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+    if (node.tagName === 'DETAILS' && !node.open) {
+      const summary = [...node.children].find(child => child.tagName === 'SUMMARY');
+      if (!summary?.contains(element)) return false;
+    }
+  }
+  return true;
+}
+
 /** A modal shell: Escape and the backdrop close it, focus starts inside and stays there. */
 export function Modal({ title, onClose, children, wide = false }) {
   const { tx } = useProjectText();
@@ -44,7 +59,7 @@ export function Modal({ title, onClose, children, wide = false }) {
     const previous = document.activeElement;
     const node = ref.current;
     const focusable = () => [...(node?.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || [])].filter(el => !el.disabled);
+      'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])') || [])].filter(isKeyboardVisible);
     focusable()[0]?.focus();
     const onKey = event => {
       if (event.key === 'Escape') { event.stopPropagation(); closeRef.current(); return; }

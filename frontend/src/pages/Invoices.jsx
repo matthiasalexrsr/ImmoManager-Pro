@@ -279,7 +279,10 @@ export default function Invoices() {
         rowName={row => `${row.supplier || 'Rechnung'} ${row.invoice_number || ''}`.trim()}
         // the invoice's document (received through the invoice review) for the document management system
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => documentExchangeId(row.source_document_id))] : []}
-        onAdd={values => { setPrefill(values || null); setModal('create'); }}
+        onAdd={values => {
+          if (assistantHandoff.identifier) return; // A queued generic New action must not overwrite the authoritative proposal.
+          setPrefill(values || null); setModal('create');
+        }}
         onEdit={row => setModal(row)}
         onDelete={handleDelete}
         rowActions={row => [{

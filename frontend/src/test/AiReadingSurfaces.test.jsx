@@ -44,7 +44,9 @@ const field = (scope, name) => within(scope).getByLabelText(new RegExp(`^${name}
 describe('Beleg einlesen im Rechnungseingang', () => {
   it('liest den Beleg, lässt die Werte bestätigen und legt Rechnung und Beleg aus derselben Datei an', async () => {
     render(<MemoryRouter><InvoiceReview /></MemoryRouter>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Rechnung erfassen' }));
+    const create = await screen.findByRole('button', { name: 'Rechnung erfassen' });
+    await waitFor(() => expect(create).toBeEnabled());
+    fireEvent.click(create);
     const dialog = await screen.findByRole('dialog', { name: 'Rechnung erfassen' });
     fireEvent.change(within(dialog).getByLabelText('Beleg'), { target: { files: [new File(['%PDF-1.4'], 'rechnung.pdf', { type: 'application/pdf' })] } });
     fireEvent.click(within(dialog).getByRole('button', { name: /Beleg einlesen/ }));

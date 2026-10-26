@@ -465,6 +465,9 @@ def local_values(surface: Surface, text: str, *, filename: str = "", known: Opti
 
 def _document_title(store: Any, document_id: str) -> Optional[Any]:
     from ..storage import NotFoundError
+    from .privacy.storage import is_restricted
+    if is_restricted(store, "document", document_id):
+        return None
     try:
         return store.get_document(document_id)
     except NotFoundError:
@@ -477,6 +480,7 @@ def _same_stored_files(store: Any, sha256: str, size: Optional[int], ids: dict[s
     from urllib.parse import unquote
 
     from .file_storage import LocalStorage, get_file_storage
+    from .filesystem_paths import filesystem_path
     storage = get_file_storage()
     if not size or not isinstance(storage, LocalStorage):
         return
@@ -485,7 +489,7 @@ def _same_stored_files(store: Any, sha256: str, size: Optional[int], ids: dict[s
         if ids.get(document.id) == "same_file" or not url.startswith("/uploads/"):
             continue
         try:
-            path = storage._path(unquote(url.removeprefix("/uploads/").split("?", 1)[0]))
+            path = filesystem_path(storage._path(unquote(url.removeprefix("/uploads/").split("?", 1)[0])))
             if path.stat().st_size != size:
                 continue
             digest = hashlib.sha256()
@@ -563,6 +567,9 @@ def duplicates(store: Any, surface: Surface, params: dict, values: dict, *, sha2
     seen: set[tuple[str, str]] = set()
 
     def add(kind: str, record_id: str, title: str, href: str, reason: str, details: str = "", *, can_update: bool = False):
+        from .privacy.storage import is_restricted
+        if kind == "document" and is_restricted(store, kind, record_id):
+            return
         if (kind, record_id) in seen:
             return
         seen.add((kind, record_id))

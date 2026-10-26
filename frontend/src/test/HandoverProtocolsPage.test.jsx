@@ -1,6 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { detailFixture } from './handoverFixtures';
+
+vi.mock('../api', () => ({ api: {
+  get: vi.fn(async path => path.includes('/view-state/') ? null : { items: [] }),
+  put: vi.fn(async (_path, body) => ({ ...body, revision: 1 })),
+  del: vi.fn(async () => ({})), captureSession: vi.fn(() => () => {}),
+} }));
 
 const context = vi.hoisted(() => ({
   store: { invalidateRelated: () => {} },
@@ -23,6 +30,7 @@ vi.mock('../components/PdfPreview', () => ({ default: () => <div /> }));
 vi.mock('../utils/uploadAccess', () => ({ prepareUploadAccess: vi.fn(async () => {}), isOwnUploadUrl: () => true }));
 
 import HandoverProtocols from '../pages/HandoverProtocols';
+const show = (node, path = '/handover-protocols') => render(<MemoryRouter initialEntries={[path]}>{node}</MemoryRouter>);
 
 function service() {
   return {
@@ -39,9 +47,15 @@ function service() {
 }
 
 describe('HandoverProtocols page', () => {
+  it('opens the exact protocol from a work-center link and preselects the linked contract', async () => {
+    const api = service();
+    show(<HandoverProtocols service={api} />, '/handover-protocols?contract_id=c-1&focus_id=p-2');
+    await waitFor(() => expect(api.load).toHaveBeenCalledWith('p-2', expect.anything()));
+    expect(await screen.findByRole('button', { name: 'Auszugsprotokoll zu diesem Vertrag anlegen' })).toBeInTheDocument();
+  });
   it('lists every protocol with its kind and state and opens one in the editor', async () => {
     const api = service();
-    render(<HandoverProtocols service={api} />);
+    show(<HandoverProtocols service={api} />);
     expect(await screen.findByText('Korrektur (Entwurf)')).toBeInTheDocument();
     expect(screen.getByText('Abgeschlossen')).toBeInTheDocument();
     expect(screen.getAllByText('Auszug')).toHaveLength(2);
@@ -52,7 +66,7 @@ describe('HandoverProtocols page', () => {
 
   it('creates a prefilled protocol for the chosen contract and opens it', async () => {
     const api = service();
-    render(<HandoverProtocols service={api} />);
+    show(<HandoverProtocols service={api} />);
     await screen.findByText('Abgeschlossen');
     fireEvent.click(screen.getByRole('button', { name: /ui\.buttons\.new/ }));
     const modal = await screen.findByRole('dialog', { name: 'Neues Übergabeprotokoll' });

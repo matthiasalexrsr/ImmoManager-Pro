@@ -1,0 +1,21 @@
+Source files: org/verapdf/features/gf/objects/GFPageFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFExtGStateFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFShadingFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFInfoDictFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFFormXObjectFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFAnnotationFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFEmbeddedFileFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFDocSecurityFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFFontFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFTilingPatternFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFShadingPatternFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFLowLvlInfoFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFICCProfileFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFPostScriptXObjectFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFOutputIntentsFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFActionFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFColorSpaceFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFImageXObjectFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFInteractiveFormFieldFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFSignatureFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFMetadataFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFPropertiesDictFeaturesObjectAdapter.java, org/verapdf/features/gf/objects/GFOutlinesFeaturesObjectAdapter.java, org/verapdf/features/gf/GFFeaturesObjectCreator.java, org/verapdf/features/gf/tools/GFAdapterHelper.java, org/verapdf/features/gf/GFFeatureParser.java
+/*
+ * This file is part of veraPDF Feature Reporting for Jakarta EE, a module of the veraPDF project.
+ * Copyright (c) 2015-2026, veraPDF Consortium <info@verapdf.org>
+ * All rights reserved.
+ *
+ * veraPDF Feature Reporting for Jakarta EE is free software: you can redistribute it and/or modify
+ * it under the terms of either:
+ *
+ * The GNU General public license GPLv3+.
+ * You should have received a copy of the GNU General Public License
+ * along with veraPDF Feature Reporting for Jakarta EE as the LICENSE.GPL file in the root of the source
+ * tree.  If not, see http://www.gnu.org/licenses/ or
+ * https://www.gnu.org/licenses/gpl-3.0.en.html.
+ *
+ * The Mozilla Public License MPLv2+.
+ * You should have received a copy of the Mozilla Public License along with
+ * veraPDF Feature Reporting for Jakarta EE as the LICENSE.MPL file in the root of the source tree.
+ * If a copy of the MPL was not distributed with this file, you can obtain one at
+ * http://mozilla.org/MPL/2.0/.
+ */
