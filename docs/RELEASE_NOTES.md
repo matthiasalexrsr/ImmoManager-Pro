@@ -118,6 +118,17 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Jeder Wert mit Beleg:** zu jedem gelesenen Wert stehen die Stelle im Dokument und wie sicher er ist. In der Maske ist jeder Wert markiert und wird – je nach Einstellung – einzeln bestätigt, bevor gespeichert wird; von Hand geänderte und neu eingetragene Werte sind ebenfalls markiert.
 - **Gibt es den Eintrag schon?** Vor dem Übernehmen sucht das Programm nach einem Datensatz zum selben Dokument (gleiche Datei, gleicher Inhalt, gleiche Rechnung, gleicher Zählerstand) und fragt: öffnen, ergänzen, trotzdem neu anlegen oder abbrechen.
 - **Einstellungen → KI-Verarbeitung:** erklärt, was an die KI geht, zeigt die verbundenen Konten und enthält alle Vorgaben – KI an oder aus (auch je Stelle), Hausregeln je Stelle, Seitenbilder, Angaben zur Immobilie, Aufbewahrung, und persönlich: wer liest, bestätigen oder nur markieren.
+- **Quellen mit Fassung:** KI-Antworten nennen die Fassung des Dokuments und die Fundstelle; Finanzberichte nennen, wie sie rechnen, welchen Datenstand sie zeigen und wo sie unvollständig sind.
+
+### E-Rechnungen, Zahlungsfreigaben, Datenübernahme und Portale
+- **E-Rechnungseingang** (Rechnungsprüfung → „E-Rechnungseingang“): XRechnung und ZUGFeRD werden mit den offiziellen Prüfwerkzeugen geprüft, die im Programm mitgeliefert sind (KoSIT und Mustang; dafür enthält das Paket eine Java-Laufzeit). Das Original, die gelesenen Angaben und der Prüfbericht bleiben getrennt. Man sieht, ob die Rechnung gültig ist, Warnungen hat, ungültig ist oder nicht geprüft werden konnte, und übernimmt sie nach Bestätigung in die Rechnungsprüfung.
+- **Bankdaten vor der Zahlung prüfen:** In der Rechnung werden Empfänger und Bankverbindung freigegeben, und zwar mit vier Augen: Wer die Bankdaten erfasst hat, gibt sie nicht selbst frei. Die Freigabe gilt für genau diesen Betrag, diesen Empfänger und diesen Stand der Rechnung; ändert sich etwas, muss neu freigegeben werden. Wer allein arbeitet, schaltet als Eigentümer den Einzelbenutzermodus ausdrücklich ein und bestätigt dann jede Freigabe mit dem Zwei-Faktor-Code und einer Begründung. Das Programm zahlt nichts selbst.
+- **Nächster Schritt in der Arbeitszentrale:** Zu jedem Vorgang stehen der nächste Schritt, was ihn blockiert, wer zuständig ist, worauf gewartet wird und woher die Frist kommt. Rechnungseingang, Schaden bis zur Rechnungsfreigabe und Mieterwechsel laufen als durchgehende Abläufe. Einen Hinweis auszublenden erledigt den Vorgang nicht.
+- **Daten aus einem anderen Programm übernehmen** (Einstellungen → „Datenübernahme / Kundenexport“, nur Eigentümer): sechs beschriebene CSV-Vorlagen, Zuordnung der Spalten, Liste möglicher Dubletten und eine Vorschau, die nichts speichert, mit Abgleich von Anzahl und Beträgen. Gibt es einen Konflikt, wird nichts halb übernommen.
+- **Kundenexport:** ein eigener Export aller Daten mit Beschreibung, Verknüpfungen, Originaldokumenten und Prüfsummen, ohne Zugangsdaten und ohne persönliche Einstellungen der Mitarbeiter. Er ist kein Ersatz für das Vollbackup.
+- **Mieter- und Eigentümerportal** (Einstellungen → „Mieter- und Eigentümerportale“; nur im Serverbetrieb mit HTTPS und ausdrücklich eingeschaltet): Mieter und Eigentümer bekommen eine einmalige, befristete Einladung und sehen nur ihren Vertrag oder ihr Eigentum, die für sie freigegebenen Dokumente und ihre eigenen Vorgänge. Schäden melden sie mit Fotos; interne Notizen bleiben intern.
+- **Datenschutz und Aufbewahrung** (Einstellungen → „Datenschutz / Aufbewahrung“): Sperren, Aufbewahren und Löschen, Anfragen von Betroffenen und ein eigenes Journal, auch für die neuen Bereiche. Nach dem Zurückspielen einer Sicherung bleiben Portal, Suche und KI gesperrt, bis die aktuellen Lösch- und Sperrentscheidungen abgeglichen sind.
+- **Lizenzen und Quellarchive:** Lizenztexte und Quellen der mitgelieferten Fremdbestandteile lassen sich im Programm einsehen und herunterladen.
 
 ### Sicherheit, Sicherung, Updates
 - **Rollen und Rechte:** Rollen (Verwaltung, Buchhaltung, Technik, Nur Lesen) mit Portfoliozugriff je Konto.
@@ -166,6 +177,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Entnahmen** ohne Kategorie zählen weiter als Ausgabe. Erst mit einer Kategorie „Privat (Entnahme/Einlage)“ fallen sie aus Ergebnis und Kosten.
 - **„Heute“ ist überall das Datum in Deutschland:** Im Docker-Betrieb galt bisher bis 1 bzw. 2 Uhr nachts noch der Vortag.
 - **Laufende Verträge, die vor der Nutzung des Programms begannen:** „Mietkonto hier geführt ab“ und den Saldo nachtragen, sonst gelten alle Monate seit Vertragsbeginn als offen.
+- **Serverbetrieb mit Docker:** `docker compose` startet nur noch mit eigenem `POSTGRES_PASSWORD` und `JWT_SECRET_KEY` (keine gemeinsamen Vorgabewerte mehr). Das Programm läuft im Container nicht mehr als Administrator, sondern als Benutzer 10001; ein bestehendes Datenvolume braucht vorher die passenden Rechte. Einzelheiten stehen in `docs/INTEGRATION_RELEASE.md`.
 
 ## Bekannte Grenzen
 - **Aufbewahrung:** Die Löschsperre schützt vor versehentlichem Löschen; sie macht das Programm nicht zu einem revisionssicheren Archiv (GoBD), und die Einstufung ersetzt keine steuerliche Beratung.
@@ -180,4 +192,8 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 - **Eigentümer:** DATEV-Export und WISO-Übertragungsbogen je Eigentümer verteilen nach den erfassten Anteilen; ob das steuerlich so zuzurechnen ist, prüfen sie nicht. Rückgängig machen lässt sich nur der letzte Wechsel eines Objekts, und nur, solange seine Anteile nicht von Hand geändert wurden. Die DSGVO-Auskunft für Kontakte gibt es nur über die Programmschnittstelle.
 - **Vollbackup zurückspielen:** nur über die Kommandozeile (`ImmoManager-Pro.exe ops restore …`), siehe „LIES MICH.txt“.
 - **Signaturen:** keine elektronische Unterschrift auf Übergabeprotokollen.
+- **E-Rechnungen:** Geprüft werden XRechnung und ZUGFeRD nach EN 16931. Die mitgelieferten Prüfwerkzeuge samt Java-Laufzeit machen das Windows-Paket rund 400 MB groß.
+- **Zahlungen:** Das Programm führt keine Bankzahlungen aus; freigegebene Zahlungen erledigt man selbst im Online-Banking.
+- **Datenübernahme:** Übernommen wird aus den sechs CSV-Vorlagen; einen direkten Import aus einem bestimmten anderen Programm gibt es nicht.
+- **Portal:** nur im eigenen Serverbetrieb mit HTTPS. Die Einrichtung auf einem gemieteten Server ist noch nicht praktisch erprobt.
 - **Windows-Auslieferung:** Veröffentlichte Kundenpakete benötigen eine gültige Herausgebersignatur. Interne Testpakete können unsigniert sein; Herkunft und Prüfsummen müssen vor dem Start geprüft werden. Eine Windows-Warnung ist kein Anlass, diese Prüfung zu überspringen.
