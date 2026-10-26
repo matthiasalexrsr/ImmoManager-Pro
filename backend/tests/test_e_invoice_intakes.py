@@ -179,11 +179,13 @@ def test_atomic_accept_and_lost_response_replay(estate, valid_engine):
         export_snapshot(store)
 
 
-def test_duplicate_accept_rolls_back_document_and_invoice(estate, valid_engine):
+@pytest.mark.parametrize("second_xml", [XML, XML.replace(b"><", b">\n   <")],
+                         ids=["identical_bytes", "different_serialization"])
+def test_duplicate_accept_rolls_back_document_and_invoice(estate, valid_engine, second_xml):
     owner, _, _ = estate
     one = receipt(estate)
     service.accept(store, owner.id, one["id"], command(one))
-    two = receipt(estate)
+    two = receipt(estate, second_xml)
     with pytest.raises(HTTPException) as error:
         service.accept(store, owner.id, two["id"], command(two))
     assert error.value.status_code == 409

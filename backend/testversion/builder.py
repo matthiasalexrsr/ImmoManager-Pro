@@ -561,16 +561,19 @@ class Builder:
                 continue
             recent = reported > self.today - timedelta(days=30)
             cost = round(self.rnd.uniform(120, 2800) if trade != "Maler" else self.rnd.uniform(3500, 7800), 2)
-            self.api("techniker", "POST", "/maintenance", {
+            case = self.api("techniker", "POST", "/maintenance", {
                 "property_id": prop.id, "unit_id": unit.id if trade in ("Heizung", "Sanitär", "Elektro") else None,
                 "title": title, "description": description, "category": trade,
                 "priority": self.rnd.choice(["low", "medium", "medium", "high"]),
-                "status": self.rnd.choice(["open", "in_progress"]) if recent else "completed",
+                "status": self.rnd.choice(["open", "in_progress"]) if recent else "in_progress",
                 "reported_by": "Jens Vogel", "assignee": "Jens Vogel",
                 "due_date": (reported + timedelta(days=14)).isoformat(), "estimated_cost": cost,
                 "contractor": self.contractors.get(trade, "Hausmeisterservice Weiß")})
             if recent:
                 continue
+            self.api("techniker", "POST", f"/maintenance/{case['id']}/transition", {
+                "status": "completed",
+                "reason": "Synthetischer Altfall der Testversion: Leistung erbracht und Abschluss geprüft."})
             invoice_day = reported + timedelta(days=self.rnd.randint(7, 25))
             paid = invoice_day + timedelta(days=14) <= self.today
             net = round(cost / 1.19, 2)
