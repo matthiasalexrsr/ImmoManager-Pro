@@ -30,7 +30,7 @@ export default function ImportWizard() {
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); });
     return () => controller.abort();
   }, [skip, refresh]);
-  useEffect(() => { if (selected) detailHeading.current?.focus(); }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selected) detailHeading.current?.focus(); }, [selected?.id, selected?.state]); // eslint-disable-line react-hooks/exhaustive-deps
   const act = async action => {
     if (busy) return;
     setBusy(true); setError('');

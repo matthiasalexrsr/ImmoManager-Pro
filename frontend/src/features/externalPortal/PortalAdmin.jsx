@@ -43,6 +43,7 @@ export default function PortalAdmin() {
 }
 
 function InviteParty({ available, onCreated }) {
+  const createButton = useRef(null), invitationSummary = useRef(null);
   const choices = useLookupChoices({ contracts: '/contracts', tenants: '/tenants', shares: '/ownership-shares', contacts: '/contacts', properties: '/properties', units: '/units' });
   const [kind, setKind] = useState('tenant'), [relation, setRelation] = useState(''), [email, setEmail] = useState(''), [verification, setVerification] = useState(''), [created, setCreated] = useState(null);
   const action = usePortalAdminAction();
@@ -54,7 +55,7 @@ function InviteParty({ available, onCreated }) {
     const name = person?.full_name || [person?.first_name, person?.last_name].filter(Boolean).join(' ') || person?.company || row.owner_contact_id;
     return [name, choices.data.properties?.find(p => p.id === row.property_id)?.name, choices.data.units?.find(p => p.id === row.unit_id)?.label, row.contract_number || `${row.share_percent} %`].filter(Boolean).join(' · ');
   };
-  return <details><summary>Geprüfte Partei einladen</summary><form className="transfer-grid" onSubmit={async event => {
+  return <details><summary ref={invitationSummary}>Geprüfte Partei einladen</summary><form className="transfer-grid" onSubmit={async event => {
     event.preventDefault(); if (!party || !selected) return;
     const result = await action.perform(`${BASE}/invitations`, { kind, party_id: party.id, relation_id: relation, email, verification, expires_hours: 48 });
     if (result) { setCreated(result); onCreated(); }
@@ -70,9 +71,9 @@ function InviteParty({ available, onCreated }) {
     }}><option value="">Bitte auswählen</option>{relations.map(row => <option key={row.id} value={row.id}>{title(row)}</option>)}</select></label>
     <label>Persönliche E-Mail-Adresse<input required type="email" maxLength={254} value={email} disabled={action.busy} onChange={event => setEmail(event.target.value)} /></label>
     <label>Dokumentierte Identitäts- und Verhältnisprüfung<textarea required minLength={10} maxLength={2000} value={verification} disabled={action.busy} onChange={event => setVerification(event.target.value)} /></label>
-    {action.error && <p role="alert">{action.error}</p>}<button className="btn btn-primary" disabled={action.busy || !available || !choices.ready || !party}>Einladungslink erstellen</button>
+    {action.error && <p role="alert">{action.error}</p>}<button ref={createButton} className="btn btn-primary" disabled={action.busy || !available || !choices.ready || !party}>Einladungslink erstellen</button>
     {created && <div role="status">{created.invitation_url ? <><p>Einladung an {created.email} · gültig bis {new Date(created.expires_at).toLocaleString('de-DE')}</p><label>Einmalig angezeigter Einladungslink<input readOnly value={created.invitation_url} onFocus={event => event.target.select()} /></label>
-      <button className="btn btn-secondary" type="button" onClick={() => setCreated(null)}>Linkanzeige schließen</button></> : <p>{created.notice}</p>}</div>}
+      <button className="btn btn-secondary" type="button" onClick={() => { setCreated(null); (createButton.current?.disabled ? invitationSummary.current : createButton.current)?.focus(); }}>Linkanzeige schließen</button></> : <p>{created.notice}</p>}</div>}
   </form></details>;
 }
 

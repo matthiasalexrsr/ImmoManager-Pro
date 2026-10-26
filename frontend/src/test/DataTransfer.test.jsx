@@ -37,6 +37,7 @@ describe('reviewed data import', () => {
     api.post.mockResolvedValue({ ...batch, state: 'committed', revision: 2, result: { reason: 'Geprüft' } });
     await userEvent.click(screen.getByRole('button', { name: 'Übernahme verbindlich bestätigen' }));
     await screen.findByText(/Die bestätigte Übernahme wurde gemeinsam gespeichert/);
+    expect(screen.getByRole('heading', { name: 'Übernahme: Altsystem' })).toHaveFocus();
     expect(api.post.mock.calls[0][1].expected_revision).toBe(1);
   });
 

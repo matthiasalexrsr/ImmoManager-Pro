@@ -9,21 +9,178 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ...config import settings
 from ..assistant_provider_process import CliProcess
+from ..filesystem_paths import filesystem_path
 from ..safe_xml import fromstring
+from .asset_bundle import safe_name
 from .asset_bundle import verify as verify_bundle
 
 MAX_REPORT = 4 * 1024 * 1024
+# The JDK's Windows launcher still bounds the path to bin/server/jvm.dll,
+# independently of Python/Windows extended-path support. Leave room below
+# MAX_PATH for all native launcher suffixes and the terminating NUL.
+MAX_JAVA_NATIVE_PATH = 240
 
 
 class ValidatorUnavailable(RuntimeError):
     pass
+
+
+def _windows_display_path(path: str | Path) -> Path:
+    """Remove the I/O-only prefix; do not resolve an 8.3 alias back to long form."""
+    value = str(path)
+    if value.startswith('\\\\?\\UNC\\'):
+        return Path('\\\\' + value[8:])
+    return Path(value[4:] if value.startswith('\\\\?\\') else value)
+
+
+def _local_windows_path(path: Path) -> bool:
+    return path.is_absolute() and len(path.drive) == 2 and path.drive[1] == ':'
+
+
+def _short_windows_path(path: Path) -> Path | None:
+    """Use an existing alias only. No global mapping, rename or 8.3 setting."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = getattr(ctypes, 'WinDLL')('kernel32', use_last_error=True)
+    short_name = kernel.GetShortPathNameW
+    short_name.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    short_name.restype = wintypes.DWORD
+    source = str(filesystem_path(path))
+    required = short_name(source, None, 0)
+    if not required or required > 32768:
+        return None
+    buffer = ctypes.create_unicode_buffer(required)
+    written = short_name(source, buffer, required)
+    if not written or written >= required:
+        return None
+    candidate = _windows_display_path(buffer.value)
+    try:
+        if _local_windows_path(candidate) and filesystem_path(candidate).samefile(filesystem_path(path)):
+            return candidate
+    except OSError:
+        pass
+    return None
+
+
+def _native_path_fits(path: Path) -> bool:
+    return _local_windows_path(path) and len(str(path).encode('utf-16-le')) // 2 < MAX_JAVA_NATIVE_PATH
+
+
+def _runtime_path_fits(root: Path, java_relative: Path) -> bool:
+    java = root / java_relative
+    return _native_path_fits(java) and _native_path_fits(java.parent / 'server/jvm.dll')
+
+
+def _protect_windows_directory(path: Path) -> None:
+    """Protect the newly created empty directory before copying or writing.
+
+    Explicit inheritable owner/SYSTEM rights also cover Python 3.11/3.12,
+    where mkdir(mode=0o700) alone does not install a private Windows DACL.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    security = getattr(ctypes, 'WinDLL')('advapi32', use_last_error=True)
+    kernel = getattr(ctypes, 'WinDLL')('kernel32', use_last_error=True)
+    convert = security.ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+    convert.restype = wintypes.BOOL
+    get_dacl = security.GetSecurityDescriptorDacl
+    get_dacl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL), ctypes.POINTER(ctypes.c_void_p),
+                        ctypes.POINTER(wintypes.BOOL)]
+    get_dacl.restype = wintypes.BOOL
+    set_security = security.SetNamedSecurityInfoW
+    set_security.argtypes = [wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
+                            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    set_security.restype = wintypes.DWORD
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    descriptor, dacl = ctypes.c_void_p(), ctypes.c_void_p()
+    present, defaulted = wintypes.BOOL(), wintypes.BOOL()
+    if not convert('D:P(A;OICI;FA;;;OW)(A;OICI;FA;;;SY)', 1, ctypes.byref(descriptor), None):
+        raise ValidatorUnavailable('Der private Windows-Prüfordner konnte nicht geschützt werden.')
+    try:
+        if (not get_dacl(descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted))
+                or not present.value or not dacl.value
+                or set_security(str(filesystem_path(path)), 1, 0x80000004, None, None, dacl, None) != 0):
+            raise ValidatorUnavailable('Der private Windows-Prüfordner konnte nicht geschützt werden.')
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def _copy_verified_bundle(root: Path, destination: Path, manifest: dict, digest: str) -> None:
+    """Copy only the pinned inventory, then verify every archive/extracted byte.
+
+    A newly added file in the source tree is never copied. Changed files or
+    links fail the second verification before any Java process is launched.
+    """
+    target = filesystem_path(destination)
+    try:
+        target.mkdir()
+        for name in ('manifest.json', *manifest['files']):
+            relative = safe_name(name)
+            source = filesystem_path(root / relative)
+            if source.is_symlink() or getattr(source, 'is_junction', lambda: False)():
+                raise ValueError('Bundle links are forbidden')
+            output = target / relative
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, output, follow_symlinks=False)
+        copied_manifest, copied_digest = verify_bundle(destination)
+        if copied_manifest != manifest or copied_digest != digest:
+            raise ValueError('Copied bundle differs from the verified source')
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ValidatorUnavailable('Die temporäre Kopie des Prüfpakets konnte nicht vollständig geprüft werden.') from None
+
+
+@contextmanager
+def _execution_paths(root: Path, manifest: dict, digest: str, java_relative: Path) -> Iterator[tuple[Path, Path]]:
+    if os.name != 'nt':
+        with tempfile.TemporaryDirectory(prefix='immo-e-invoice-') as directory:
+            yield root, Path(directory)
+        return
+
+    try:
+        temp_base = _windows_display_path(tempfile.gettempdir())
+    except OSError:
+        raise ValidatorUnavailable('Der lokale TEMP/TMP-Prüfordner ist nicht verfügbar oder nicht beschreibbar.') from None
+    if not _local_windows_path(temp_base):
+        raise ValidatorUnavailable('Für die lokale Prüfung muss TEMP/TMP auf einen beschreibbaren lokalen Ordner zeigen.')
+    # Python's extended path is retained by TemporaryDirectory for reliable
+    # cleanup; only the Java-facing paths use the ordinary/8.3 spelling.
+    try:
+        temporary = tempfile.TemporaryDirectory(prefix='imv-', dir=filesystem_path(temp_base))
+    except OSError:
+        raise ValidatorUnavailable('Der lokale TEMP/TMP-Prüfordner ist nicht verfügbar oder nicht beschreibbar.') from None
+    with temporary as directory:
+        owned = _windows_display_path(directory)
+        _protect_windows_directory(owned)
+        short_owned = _short_windows_path(owned) or owned
+        work = short_owned / 'w'
+        if not _native_path_fits(work / 'validator.policy'):
+            raise ValidatorUnavailable('Der temporäre Prüfpfad ist zu lang. Bitte TEMP/TMP auf einen kürzeren lokalen Ordner setzen.')
+        filesystem_path(work).mkdir()
+        execution_root = root
+        if not _runtime_path_fits(execution_root, java_relative):
+            alias = _short_windows_path(root)
+            if alias is not None and _runtime_path_fits(alias, java_relative):
+                execution_root = alias
+            else:
+                execution_root = short_owned / 'b'
+                if not _runtime_path_fits(execution_root, java_relative):
+                    raise ValidatorUnavailable('Die Java-Laufzeit benötigt einen kürzeren Prüfpfad. Bitte TEMP/TMP auf einen kürzeren lokalen Ordner setzen.')
+                _copy_verified_bundle(root, execution_root, manifest, digest)
+        yield execution_root, work
 
 
 def bundle() -> tuple[Path, dict, str]:
@@ -151,16 +308,16 @@ def validate(content: bytes, container: str, invoice_format: str) -> dict:
     try:
         root, manifest, digest = bundle()
         assets = {asset["name"]: asset for asset in manifest["assets"]}
-        javas = list((root / "runtime").rglob("java.exe" if os.name == "nt" else "java"))
+        javas = list((filesystem_path(root) / "runtime").rglob("java.exe" if os.name == "nt" else "java"))
         if len(javas) != 1:
             raise ValidatorUnavailable("Die gepinnte Java-Laufzeit fehlt oder ist nicht eindeutig.")
-        with tempfile.TemporaryDirectory(prefix="immo-e-invoice-") as directory:
-            work = Path(directory)
+        java_relative = javas[0].relative_to(filesystem_path(root))
+        with _execution_paths(root, manifest, digest, java_relative) as (root, work):
             source = work / ("invoice.pdf" if container == "pdf" else "invoice.xml")
             source.write_bytes(content)
             policy = work / "validator.policy"
             policy.write_text(_policy(root, work), encoding="utf-8")
-            argv = [str(javas[0]), "-Xmx384m", "-XX:MaxMetaspaceSize=128m", "-XX:MaxDirectMemorySize=64m",
+            argv = [str(root / java_relative), "-Xmx384m", "-XX:MaxMetaspaceSize=128m", "-XX:MaxDirectMemorySize=64m",
                     "-XX:CompressedClassSpaceSize=64m", "-XX:ReservedCodeCacheSize=64m", "-XX:ActiveProcessorCount=2", "-XX:+UseSerialGC",
                     "-Dfile.encoding=UTF-8", "-Djava.awt.headless=true", f"-Djava.io.tmpdir={work}",
                     f"-Duser.home={work}", "-Djava.security.manager", f"-Djava.security.policy=={policy.as_uri()}",

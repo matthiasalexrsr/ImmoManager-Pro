@@ -18,6 +18,21 @@ beforeEach(() => {
 });
 
 describe('isolated external portal', () => {
+  it('returns keyboard focus to the cases heading when leaving a conversation', async () => {
+    const item = { id: 'case-1', title: 'Tastaturschaden', status: 'open' };
+    fetch.mockImplementation(path => ok(path.endsWith('/me') ? profile
+      : path.startsWith('/api/v1/portal/me/cases/case-1?') ? { ...item, messages: [], skip: 0, limit: 50, total: 0 }
+        : path.startsWith('/api/v1/portal/me/cases?') ? list([item]) : list([])));
+    render(<PortalApp />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Meine Anliegen' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Verlauf und Rückfragen öffnen' }));
+    expect(await screen.findByRole('heading', { name: 'Tastaturschaden' })).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: 'Zurück zu meinen Anliegen' }));
+    expect(await screen.findByRole('heading', { name: 'Meine Anliegen', exact: true })).toHaveFocus();
+    await screen.findByRole('button', { name: 'Verlauf und Rückfragen öffnen' });
+    expect(screen.getByRole('heading', { name: 'Meine Anliegen', exact: true })).toHaveFocus();
+  });
+
   it('loads only its own session and documents without internal authorization or API calls', async () => {
     localStorage.setItem('access_token', 'internal-secret');
     render(<PortalApp />);
@@ -77,6 +92,24 @@ describe('explicit internal publication', () => {
     api.list.mockResolvedValue([]);
     api.get.mockImplementation(path => Promise.resolve(path.endsWith('/configuration') ? { available: true, url: 'https://portal.example.test' }
       : path.includes('/publications') ? [] : path.includes('/documents?') ? list([{ id: 'version-2', title: 'Meine Vertragsfassung', number: 2, filename: 'Vertrag.pdf', sha256: 'a'.repeat(64) }]) : list([access])));
+  });
+
+  it('restores the invitation action after dismissing the once-shown link', async () => {
+    api.list.mockImplementation(path => Promise.resolve(path.startsWith('/contracts') ? [{ id: 'contract-1', tenant_id: 'tenant-1', property_id: 'property-1', contract_number: 'Vertrag 1' }]
+      : path.startsWith('/tenants') ? [{ id: 'tenant-1', full_name: 'Testmieter', email: profile.email }] : []));
+    api.post.mockResolvedValue({ email: profile.email, invitation_url: 'https://portal.example.test/portal/accept#one-use', expires_at: '2026-10-27T12:00:00Z' });
+    render(<MemoryRouter><PortalAdmin /></MemoryRouter>);
+    await userEvent.click(screen.getByText('Geprüfte Partei einladen'));
+    await waitFor(() => expect(screen.getByLabelText('Geprüftes Verhältnis')).toBeEnabled());
+    await userEvent.selectOptions(screen.getByLabelText('Geprüftes Verhältnis'), 'contract-1');
+    await userEvent.type(screen.getByLabelText('Dokumentierte Identitäts- und Verhältnisprüfung'), 'Identität und Vertrag persönlich geprüft.');
+    const create = screen.getByRole('button', { name: 'Einladungslink erstellen' });
+    await userEvent.click(create);
+    await screen.findByLabelText('Einmalig angezeigter Einladungslink');
+    await waitFor(() => expect(create).toBeEnabled());
+    await userEvent.click(screen.getByRole('button', { name: 'Linkanzeige schließen' }));
+    expect(screen.queryByLabelText('Einmalig angezeigter Einladungslink')).not.toBeInTheDocument();
+    expect(create).toHaveFocus();
   });
 
   it('requires a written reason and binds revocation to the displayed grant revision', async () => {

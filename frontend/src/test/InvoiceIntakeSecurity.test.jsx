@@ -23,6 +23,22 @@ beforeEach(() => {
 });
 
 describe('structured invoice intake', () => {
+  it('returns focus to the uploaded intake after closing its asynchronously opened dialog', async () => {
+    let uploaded = false;
+    api.get.mockImplementation(path => Promise.resolve(path.includes('?') ? { items: uploaded ? [intake] : [], total: uploaded ? 1 : 0 } : intake));
+    api.upload.mockImplementation(async () => { uploaded = true; return intake; });
+    show(<EInvoiceIntakes properties={props} choicesReady />);
+    await userEvent.selectOptions(screen.getByLabelText('Immobilie'), 'p');
+    await userEvent.upload(screen.getByLabelText(/Originalbeleg/), new File(['<Invoice/>'], 'beleg.xml', { type: 'application/xml' }));
+    const upload = screen.getByRole('button', { name: 'Beleg einlesen' });
+    upload.focus(); fireEvent.submit(upload.closest('form'));
+    await screen.findByRole('dialog');
+    await screen.findByRole('button', { name: /beleg.xml.*Prüfhaus/ });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /beleg.xml.*Prüfhaus/ })).toHaveFocus();
+  });
+
   it('retains the upload command after a lost response', async () => {
     api.get.mockImplementation(path => Promise.resolve(path.includes('?') ? { items: [], total: 0 } : intake));
     api.upload.mockRejectedValueOnce(new Error('Antwort unterbrochen')).mockResolvedValueOnce(intake);
@@ -60,6 +76,15 @@ describe('structured invoice intake', () => {
     expect(screen.queryByRole('button', { name: 'Beleg einlesen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Erneut prüfen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Zuordnung bestätigen und übernehmen' })).not.toBeInTheDocument();
+  });
+
+  it('returns a readonly direct link to the named intake region if its row is outside the loaded page', async () => {
+    access.write = false;
+    api.get.mockImplementation(path => Promise.resolve(path.includes('?') ? { items: [], total: 0 } : intake));
+    show(<EInvoiceIntakes properties={props} choicesReady initialIntake="e" />);
+    await screen.findByRole('button', { name: 'Original herunterladen' });
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('region', { name: 'E-Rechnungseingang' })).toHaveFocus();
   });
 });
 

@@ -88,9 +88,13 @@ function PortalDocuments() {
 
 function PortalCases() {
   const [selected, setSelected] = useState(null), [skip, setSkip] = useState(0), [refresh, setRefresh] = useState(0);
+  const listHeading = useRef(null), returning = useRef(false);
   const [page, error] = usePage(`/me/cases?skip=${skip}&limit=25`, refresh);
-  if (selected) return <Conversation identifier={selected} onBack={() => { setSelected(null); setRefresh(value => value + 1); }} />;
-  return <><h2>Meine Anliegen</h2>{error && <p role="alert">{error} <button onClick={() => setRefresh(value => value + 1)}>Neu laden</button></p>}
+  useEffect(() => {
+    if (!selected && returning.current) { listHeading.current?.focus(); returning.current = false; }
+  }, [selected]);
+  if (selected) return <Conversation identifier={selected} onBack={() => { returning.current = true; setSelected(null); setRefresh(value => value + 1); }} />;
+  return <><h2 ref={listHeading} tabIndex={-1}>Meine Anliegen</h2>{error && <p role="alert">{error} <button onClick={() => setRefresh(value => value + 1)}>Neu laden</button></p>}
     {!page ? <p role="status">Anliegen werden geladen …</p> : <><ul className="portal-list">{page.items.map(row => <li key={row.id} className="portal-card"><h3>{row.title}</h3><p>{statusLabels[row.status] || row.status}</p>
       <button onClick={() => setSelected(row.id)}>Verlauf und Rückfragen öffnen</button></li>)}</ul>{!page.items.length && <p>Noch keine Anliegen vorhanden.</p>}<Pagination page={page} onSkip={setSkip} label="Vorgangsseiten" /></>}
   </>;

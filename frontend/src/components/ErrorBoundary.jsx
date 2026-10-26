@@ -4,19 +4,25 @@ import { useTranslation } from '../i18n';
 
 function ErrorContent({ error, onReload }) {
   const { t } = useTranslation();
+  // The root boundary also catches failures before the lazy application and
+  // its translation provider have loaded. In that case t returns the key.
+  const label = (key, fallback) => {
+    const translated = t(key);
+    return typeof translated === 'string' && translated && translated !== key ? translated : fallback;
+  };
   return (
     <div className="error-boundary">
       <div className="error-boundary-content">
-        <h1>{t('pages.errorBoundary.title') || 'Etwas ist schiefgelaufen'}</h1>
-        <p>{t('pages.errorBoundary.message') || 'Ein unerwarteter Fehler ist aufgetreten. Bitte laden Sie die Seite neu.'}</p>
+        <h1>{label('pages.errorBoundary.title', 'Etwas ist schiefgelaufen')}</h1>
+        <p>{label('pages.errorBoundary.message', 'Ein unerwarteter Fehler ist aufgetreten. Bitte laden Sie die Seite neu.')}</p>
         {error && (
           <details>
-            <summary>{t('pages.errorBoundary.details') || 'Fehlerdetails'}</summary>
+            <summary>{label('pages.errorBoundary.details', 'Fehlerdetails')}</summary>
             <pre>{error.toString()}</pre>
           </details>
         )}
         <button className="btn btn-primary" onClick={onReload}>
-          {t('pages.errorBoundary.reload') || 'Seite neu laden'}
+          {label('pages.errorBoundary.reload', 'Seite neu laden')}
         </button>
       </div>
     </div>

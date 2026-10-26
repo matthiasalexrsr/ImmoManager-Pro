@@ -158,6 +158,24 @@ describe('safe task edits and undo', () => {
 });
 
 describe('source-bound work lists', () => {
+  it('returns to the exact deferral trigger after asynchronous opening lost its focus', async () => {
+    const pending = deferred();
+    api.get.mockImplementation(path => path.startsWith('/workspace/deferrals/') ? pending.promise : Promise.resolve(empty()));
+    show(<><DeferralControl item={{ work_item_key: 'task:t1:overdue', title: 'Erster Rückruf' }} />
+      <DeferralControl item={{ work_item_key: 'task:t2:overdue', title: 'Zweiter Rückruf' }} /></>);
+    const trigger = screen.getAllByRole('button', { name: 'Später bearbeiten' })[1];
+    trigger.focus(); fireEvent.click(trigger);
+    expect(trigger).toBeDisabled();
+    // A native browser blurs the disabled opener while the lookup is pending.
+    trigger.blur();
+    await act(async () => pending.reject(missing()));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Zweiter Rückruf');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
   it('requires a reason before saving a personal deferral and keeps business due dates untouched', async () => {
     api.get.mockImplementation(path => path.startsWith('/workspace/deferrals/') ? Promise.reject(missing()) : Promise.resolve(empty()));
     show(<DeferralControl item={{ work_item_key: 'task:t1:overdue', title: 'Rückruf' }} />);

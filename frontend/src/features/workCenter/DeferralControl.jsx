@@ -12,6 +12,7 @@ export default function DeferralControl({ item, onChanged }) {
   const command = useRef(null);
   const payload = useRef(null);
   const lock = useRef(false);
+  const trigger = useRef(null);
   if (!auth?.user?.id) return null;
   const load = async () => {
     if (lock.current) return;
@@ -36,7 +37,7 @@ export default function DeferralControl({ item, onChanged }) {
     onChanged?.();
   };
   return <>
-    <button type="button" className="btn btn-sm btn-secondary" onClick={load} disabled={busy}>Später bearbeiten</button>
+    <button ref={trigger} type="button" className="btn btn-sm btn-secondary" onClick={load} disabled={busy}>Später bearbeiten</button>
     {error && <span role="alert" className="work-inline-error">{error}</span>}
     {open && <FormModal title={`Persönliche Wiedervorlage · ${item.title}`} fields={[
       ...(record ? [{ key: 'action', label: 'Wiedervorlage', type: 'select', default: 'keep', options: [
@@ -44,6 +45,6 @@ export default function DeferralControl({ item, onChanged }) {
       ] }] : []),
       { key: 'due_on', label: 'Wieder anzeigen am', type: 'date' },
       { key: 'reason', label: 'Notiz', type: 'textarea', hint: 'Beim Anlegen oder Ändern erforderlich. Die fachliche Fälligkeit des Vorgangs bleibt bestehen.' },
-    ]} initial={record} onSave={save} onClose={() => { if (!busy) setOpen(false); }} />}
+    ]} initial={record} onSave={save} onClose={() => { if (!busy) { setOpen(false); trigger.current?.focus(); } }} />}
   </>;
 }

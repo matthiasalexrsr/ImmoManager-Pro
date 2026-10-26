@@ -28,6 +28,15 @@ export default function EInvoiceIntakes({ properties, choicesReady, onAccepted, 
   const [notice, setNotice] = useState('');
   const uploadKey = useRef(key());
   const fileInput = useRef(null);
+  const intakeList = useRef(null), intakeRegion = useRef(null), returnToIntake = useRef(null);
+  useEffect(() => {
+    if (!selected && returnToIntake.current) {
+      const target = [...(intakeList.current?.querySelectorAll('[data-intake-id]') || [])]
+        .find(element => element.dataset.intakeId === returnToIntake.current);
+      (target || fileInput.current || intakeRegion.current)?.focus();
+      returnToIntake.current = null;
+    }
+  }, [selected]);
   useEffect(() => {
     const controller = new AbortController();
     let timer;
@@ -57,7 +66,7 @@ export default function EInvoiceIntakes({ properties, choicesReady, onAccepted, 
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
-  return <section aria-label="E-Rechnungseingang" className="ei-intakes">
+  return <section ref={intakeRegion} tabIndex={-1} aria-label="E-Rechnungseingang" className="ei-intakes">
     <p>XRechnung und ZUGFeRD EN 16931: Original einlesen, Prüfbericht und Zuordnung prüfen, anschließend in die Rechnungsprüfung übernehmen.</p>
     {canWrite && <form onSubmit={upload} className="ei-upload">
       <label className="form-group">Immobilie
@@ -75,8 +84,8 @@ export default function EInvoiceIntakes({ properties, choicesReady, onAccepted, 
       onClick={() => { setError(null); setReload(value => value + 1); }}>Status neu laden</button></p>}
     {notice && <p role="status">{notice}</p>}
     {!page ? <p role="status">Eingänge werden geladen …</p> : !page.items.length ? <Empty>Noch keine strukturierten Rechnungseingänge.</Empty> : <>
-      <ul className="ir-list">{page.items.map(row => <li className="ir-row" key={row.id}>
-        <button type="button" className="ei-open" onClick={() => setSelected(row.id)}>
+      <ul ref={intakeList} className="ir-list">{page.items.map(row => <li className="ir-row" key={row.id}>
+        <button type="button" data-intake-id={row.id} className="ei-open" onClick={() => setSelected(row.id)}>
           <span><strong>{row.reading.supplier || row.filename}</strong><br />{row.reading.number || 'Auswertung ausstehend'} · {properties.find(p => p.id === row.property_id)?.name || 'Immobilie'}</span>
           <span>{row.reading.due ? formatMoney(Number(row.reading.due)) : '—'}</span>
           <Pill tone={tone[row.state]}>{labels[row.state] || row.state}</Pill>
@@ -87,7 +96,7 @@ export default function EInvoiceIntakes({ properties, choicesReady, onAccepted, 
         <span>{skip + 1}–{skip + page.items.length} von {page.total}</span>
         <button className="btn btn-secondary btn-sm" type="button" disabled={skip + page.items.length >= page.total} onClick={() => setSkip(skip + 25)}>Weiter</button></div>
     </>}
-    {selected && <IntakeDetail id={selected} properties={properties} canWrite={canWrite} onClose={() => { setSelected(null); onIntakeClosed?.(); }}
+    {selected && <IntakeDetail id={selected} properties={properties} canWrite={canWrite} onClose={() => { returnToIntake.current = selected; setSelected(null); onIntakeClosed?.(); }}
       onChanged={() => { setReload(value => value + 1); onAccepted?.(); }} />}
   </section>;
 }
