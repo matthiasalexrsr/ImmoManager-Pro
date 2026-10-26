@@ -13,7 +13,6 @@ Result: dist/ImmoManager-Pro/ directory containing the executable and all depend
 """
 import os
 import sys
-from importlib.util import find_spec
 
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
@@ -93,8 +92,9 @@ _THIRD_PARTY_PACKAGES = [
 # Optional engines use runtime imports and native libraries that static import
 # analysis cannot infer. Include only installed, explicitly chosen components.
 # Their own upstream PyInstaller hooks collect native data/binaries.
-_THIRD_PARTY_PACKAGES += [name for name in ('pymupdf', 'fints', 'mt940', 'sepaxml', 'xmlschema', 'bleach')
-                          if find_spec(name) is not None]
+from tools.build_profile import selected_optional_packages, excluded_optional_packages, verify_frontend_profile
+_THIRD_PARTY_PACKAGES += selected_optional_packages()
+verify_frontend_profile(ROOT)
 
 collected_hiddenimports = []
 # All backend modules (services, routers, the test version …): imports inside functions are
@@ -226,6 +226,10 @@ _EXPLICIT_THIRD_PARTY = [
 # Collect bundled data files from project
 # ---------------------------------------------------------------------------
 backend_data = list(collected_datas)
+from tools.third_party_notices import generate as generate_notices
+notices = generate_notices()
+backend_data.append((str(notices), 'THIRD_PARTY_NOTICES'))
+backend_data.append((os.path.join(ROOT, 'LICENSE'), '.'))
 
 # Public, pinned DE/EN model data; the local PDF worker needs no separate Tesseract installation.
 tessdata_dir = os.path.join(ROOT, 'backend', 'resources', 'tessdata')
@@ -415,7 +419,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # not needed by the desktop program (SQLite; images without AVIF): keeps the package small enough to e-mail
-    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'],
+    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'] + excluded_optional_packages(),
     noarchive=False,
 )
 

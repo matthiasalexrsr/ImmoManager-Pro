@@ -46,7 +46,7 @@ def _context(actor_id: str, provider: str) -> str:
 
 
 def load(actor_id: str, provider: str) -> dict:
-    path = _vault_path(actor_id, provider)
+    path = filesystem_path(_vault_path(actor_id, provider))
     if not path.exists():
         return {"files": {}, "public": {}}
     try:
@@ -203,4 +203,4 @@ class ProfileLease:
 
 def disconnect(actor_id: str, provider: str) -> None:
     with ProfileLease(actor_id, provider, restore=False):
-        _vault_path(actor_id, provider).unlink(missing_ok=True)
+        filesystem_path(_vault_path(actor_id, provider)).unlink(missing_ok=True)

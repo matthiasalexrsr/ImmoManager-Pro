@@ -58,6 +58,10 @@ jobs:
   windows:
     name: Windows-Paket bauen, prüfen und veröffentlichen
     needs: ci-gate
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -106,6 +110,16 @@ jobs:
       - name: Build ImmoManager-Pro.exe
         run: python -m PyInstaller immomanager.spec --noconfirm
 
+      - name: Sign and verify customer executable
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $required = '${{ steps.version.outputs.tag }}' -ne ''
+          ./scripts/sign_release.ps1 -Executable 'dist/ImmoManager-Pro/ImmoManager-Pro.exe' -Required:$required
+
       - name: Assemble package
         id: package
         shell: pwsh
@@ -146,13 +160,22 @@ jobs:
           Get-Content (Join-Path $out 'SHA256SUMS.txt')
           "dir=$out" >> $env:GITHUB_OUTPUT
 
+      - name: Attest published archive and checksum manifest
+        if: steps.version.outputs.tag != ''
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.sbom.outputs.dir }}/SHA256SUMS.txt
+
       - name: Try the package and the update from the previous release
         shell: pwsh
         run: |
+          $env:BACKUP_PASSPHRASE = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
           function Start-App($exe, $data, $port) {
             $log = Join-Path $env:RUNNER_TEMP "app-$port.log"
             $proc = Start-Process -FilePath $exe -ArgumentList '--no-browser', '--port', "$port", '--data-dir', $data `
-              -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
+              -WindowStyle Hidden -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
             for ($i = 0; $i -lt 120; $i++) {
               Start-Sleep -Seconds 5
               try {

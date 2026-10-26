@@ -320,6 +320,7 @@ class Communication:
 
         from ..routers.files import _file_url_to_key
         from .file_storage import LocalStorage, get_file_storage
+        from .filesystem_paths import filesystem_path
         from .upload_policy import ARCHIVED_PREFIXES, DOCUMENT_EXTENSIONS, require_allowed_extension
 
         context = resolve_context(unit.store, 'document', document_id, unit.actor_id, lock=True)
@@ -332,7 +333,7 @@ class Communication:
         require_allowed_extension(key, DOCUMENT_EXTENSIONS)
         storage = get_file_storage()
         if isinstance(storage, LocalStorage):
-            path = storage._path(key)
+            path = filesystem_path(storage._path(key))
             if not path.is_file() or path.stat().st_size > MAX_BYTES:
                 raise HTTPException(413, 'Das Datei-Original fehlt oder überschreitet 25 MiB.')
         raw = storage.get(key)

@@ -12,9 +12,9 @@ Starten
 -------
 1. Den ZIP-Ordner vollständig entpacken (z. B. auf den Desktop), nicht aus dem ZIP heraus starten.
 2. Im entpackten Ordner "ImmoManager-Pro" doppelt auf "ImmoManager-Pro.exe" klicken.
-3. Windows meldet beim ersten Start eventuell "Der Computer wurde durch Windows geschützt".
-   Dann auf "Weitere Informationen" und "Trotzdem ausführen" klicken. (Das Programm ist
-   nicht signiert; das ist bei Testversionen üblich.)
+3. Interne Testpakete können unsigniert sein. Prüfen Sie vor dem Start die Herkunft und
+   die bereitgestellten Prüfsummen. Bei einer Windows-Warnung oder unklarer Herkunft
+   das Paket vom Anbieter bestätigen lassen; eine Warnung nicht pauschal übergehen.
 4. Beim allerersten Start werden die Testdaten angelegt. Das dauert ein bis zwei Minuten;
    im schwarzen Fenster ist der Fortschritt zu sehen.
 5. Danach öffnet sich der Browser mit http://127.0.0.1:8000 (sonst diese Adresse selbst öffnen).

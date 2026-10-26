@@ -45,7 +45,9 @@ def main() -> int:
                        DATABASE_URL='sqlite:///:memory:' if options.backend == 'memory' else f'sqlite:///{(output / "test.db").as_posix()}',
                        PYTHONPATH=str(ROOT), PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
     if options.coverage:
-        environment['COVERAGE_FILE'] = str(output / '.coverage')
+        sys.path.insert(0, str(ROOT))
+        from backend.services.filesystem_paths import filesystem_path
+        environment['COVERAGE_FILE'] = str(filesystem_path(output / '.coverage'))
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     paths = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], cwd=ROOT, text=True).splitlines()
     hashes = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths

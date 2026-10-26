@@ -1,2 +1,7 @@
 # Keep the pinned OCR assets and their provenance byte-identical on every platform.
 backend/resources/tessdata/* -text
+
+# Preserve reviewed upstream bytes: manifests verify their SHA-256 digests.
+packaging/third-party/* -text -whitespace
+mietvertrag_wizard_fastapi_reportlab_pro/mietvertrag_wizard/static/mietvertrag_wizard/vendor/* -text -whitespace
+mietvertrag_wizard_fastapi_reportlab_pro/mietvertrag_wizard/static/mietvertrag_wizard/vendor/*.js -diff

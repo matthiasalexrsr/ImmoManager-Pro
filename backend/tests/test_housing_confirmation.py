@@ -274,8 +274,9 @@ def _client_raising(client):
 
 
 def test_a_file_on_disk_never_shadows_the_archived_original(client, lease):
+    from backend.services.filesystem_paths import filesystem_path
     result = _publish(client, lease["contract"].id)
-    shadow = get_uploads_dir() / "housing-confirmations" / f"{result['document_id']}.pdf"
+    shadow = filesystem_path(get_uploads_dir() / "housing-confirmations" / f"{result['document_id']}.pdf")
     shadow.parent.mkdir(parents=True, exist_ok=True)
     shadow.write_bytes(b"%PDF-1.4 untergeschoben")
     try:

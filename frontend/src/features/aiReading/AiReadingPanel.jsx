@@ -20,6 +20,8 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const started = useRef(false);
+  const inFlight = useRef(false);
+  const pendingMessage = useRef(null);
   const chatEnd = useRef(null);
   const info = options?.surfaces?.find(item => item.id === surface);
 
@@ -36,24 +38,46 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
   useEffect(() => { chatEnd.current?.scrollIntoView?.({ block: 'nearest' }); }, [reading?.messages?.length]);
 
   const run = async (key, task) => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(key); setError('');
     try { await task(); }
     catch (failure) { setError(failure?.message || 'Das hat nicht geklappt.'); }
-    finally { setBusy(''); }
+    finally { inFlight.current = false; setBusy(''); }
   };
   const start = () => run('start', async () => {
     const found = await service.start({ surface, document_id: source?.documentId || null, file_url: source?.fileUrl || null,
       params: params || {}, reader: reader || 'auto', instruction: instruction.trim() || null });
     setReading(found);
+    pendingMessage.current = null;
   });
   const send = event => {
     event?.preventDefault();
     const text = message.trim();
     if (!text || !reading) return;
     run('say', async () => {
-      const found = await service.say(reading, text);
-      setReading(found); setMessage('');
+      let current = reading;
+      if (pendingMessage.current && pendingMessage.current.text !== text) {
+        current = await service.get(reading.id);
+        setReading(current);
+        pendingMessage.current = null;
+      }
+      const command = pendingMessage.current?.reading.id === current.id ? pendingMessage.current
+        : { reading: current, text, key: crypto.randomUUID() };
+      pendingMessage.current = command;
+      try {
+        const found = await service.say(command.reading, command.text, command.key);
+        pendingMessage.current = null;
+        setReading(found); setMessage('');
+      } catch (failure) {
+        if (failure.statusCode === 409) {
+          const latest = await service.get(reading.id);
+          setReading(latest);
+          pendingMessage.current = null;
+          throw new Error('Der Lesevorgang wurde inzwischen geändert. Der aktuelle Stand ist geladen. Bitte die Nachricht prüfen und erneut senden.');
+        }
+        throw failure;
+      }
     });
   };
   const decide = (action, record) => run('decide', async () => {

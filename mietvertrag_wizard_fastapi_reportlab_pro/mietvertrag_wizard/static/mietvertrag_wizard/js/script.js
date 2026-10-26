@@ -427,7 +427,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Hilfsfunktion: HTML‑Vertrag mit einfacher Formatierung erstellen
         function generateContractHTML() {
-            const v = formData;
+            // Every imported or entered string is data, never active HTML.
+            const escapeData = value => {
+                if (typeof value === 'string') return value.replace(/[&<>"']/g, char => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                })[char]);
+                if (Array.isArray(value)) return value.map(escapeData);
+                if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, escapeData(item)]));
+                return value;
+            };
+            const v = escapeData(formData);
             // Hilfsfunktionen zum Formatieren
             const parseDate = (dateStr) => {
                 if (!dateStr) return null;
@@ -676,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(apiBase.replace(/\/$/, '') + '/pdf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
+                    body: JSON.stringify({...formData, _preview_blocks: contractBlocks()})
                 });
                 if (!res.ok) return false;
                 const blob = await res.blob();
@@ -864,282 +873,31 @@ document.addEventListener('DOMContentLoaded', () => {
      * am bereitgestellten Muster: ein farbiger Kopfbereich, klar strukturierte
      * Abschnitte und gut lesbare Schrift.
      */
+    function contractBlocks() {
+        const document = new DOMParser().parseFromString(generateContractHTML(), 'text/html');
+        return Array.from(document.querySelectorAll('h1, h2, p, .party, li, .signature > div')).map(node => {
+            const copy = node.cloneNode(true);
+            copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            return {
+                kind: node.tagName === 'H1' ? 'title' : node.tagName === 'H2' ? 'heading' : 'paragraph',
+                text: copy.textContent.trim()
+            };
+        }).filter(block => block.text);
+    }
+
     function generateContractPDF() {
-        const v = formData;
-        // Hilfsfunktionen für Datums- und Währungsformat
-        const parseDate = (dateStr) => {
-            if (!dateStr) return null;
-            if (dateStr.includes('.')) {
-                const parts = dateStr.split('.');
-                if (parts.length === 3) {
-                    const day = parseInt(parts[0], 10);
-                    const month = parseInt(parts[1], 10) - 1;
-                    const year = parseInt(parts[2], 10);
-                    return new Date(year, month, day);
-                }
-            }
-            return new Date(dateStr);
-        };
-        const formatDate = (dateStr) => {
-            const d = parseDate(dateStr);
-            if (!d || isNaN(d)) return '';
-            return d.toLocaleDateString('de-DE');
-        };
-        const formatCurrency = (val) => {
-            if (!val || isNaN(parseFloat(val))) return '';
-            return parseFloat(val).toFixed(2).replace('.', ',');
-        };
-        // Listeneinträge für weitere Räume
-        const raeume = [];
-        const pluralize = (num, singular, plural) => (num > 1 ? plural : singular);
-        if (parseInt(v.objekt.kueche) > 0) raeume.push(v.objekt.kueche + ' ' + pluralize(v.objekt.kueche, 'Küche', 'Küchen'));
-        if (parseInt(v.objekt.bad) > 0) raeume.push(v.objekt.bad + ' ' + pluralize(v.objekt.bad, 'Bad', 'Bäder'));
-        if (parseInt(v.objekt.wc) > 0) raeume.push(v.objekt.wc + ' WC' + (v.objekt.wc > 1 ? 's' : ''));
-        if (parseInt(v.objekt.keller) > 0) raeume.push(v.objekt.keller + ' Keller');
-        if (parseInt(v.objekt.boden) > 0) raeume.push(v.objekt.boden + ' Bodenraum' + (v.objekt.boden > 1 ? 'e' : ''));
-        if (parseInt(v.objekt.abstell) > 0) raeume.push(v.objekt.abstell + ' Abstellraum' + (v.objekt.abstell > 1 ? 'e' : ''));
-        if (parseInt(v.objekt.balkon) > 0) raeume.push(v.objekt.balkon + ' Balkon/Terrasse');
-        if (parseInt(v.objekt.sonstige) > 0) raeume.push(v.objekt.sonstige + ' sonstige Räume');
-        if (parseInt(v.objekt.garage) > 0) raeume.push(v.objekt.garage + ' Garage/Einstellplatz');
-        if (parseInt(v.objekt.hofraum) > 0) raeume.push(v.objekt.hofraum + ' Hofraum');
-        const raeumeText = raeume.length > 0 ? raeume.join(', ') : 'Keine weiteren';
-        // Schlüssel
-        const keys = [];
-        if (parseInt(v.objekt.schluessel.haus) > 0) keys.push(v.objekt.schluessel.haus + ' Hausschlüssel');
-        if (parseInt(v.objekt.schluessel.wohnung) > 0) keys.push(v.objekt.schluessel.wohnung + ' Wohnungsschlüssel');
-        if (parseInt(v.objekt.schluessel.zimmer) > 0) keys.push(v.objekt.schluessel.zimmer + ' Zimmerschlüssel');
-        if (parseInt(v.objekt.schluessel.boden) > 0) keys.push(v.objekt.schluessel.boden + ' Bodenraumschlüssel');
-        if (parseInt(v.objekt.schluessel.keller) > 0) keys.push(v.objekt.schluessel.keller + ' Kellerschlüssel');
-        if (parseInt(v.objekt.schluessel.briefkasten) > 0) keys.push(v.objekt.schluessel.briefkasten + ' Briefkastenschlüssel');
-        if (v.objekt.schluessel.sonstige) keys.push(v.objekt.schluessel.sonstige);
-        const keysText = keys.length > 0 ? keys.join(', ') : 'keine';
-        // Staffelmieten
-        let staffelList = [];
-        if (v.miete.erhoehung === 'staffel' && v.miete.staffeln.length > 0) {
-            staffelList = v.miete.staffeln.map((st, idx) => ({
-                text: [
-                    { text: 'Stufe ' + (idx + 1) + ': ', bold: true },
-                    'ab Monat ' + st.ab + ' beträgt die Miete ' + formatCurrency(st.betrag) + ' Euro/Monat.'
-                ]
-            }));
-        }
-
-        // Weitere Vereinbarungen in ein Array von Absätzen umwandeln
-        let weitereParagraphs = [];
-        // Freitext für sonstige Vereinbarungen einfügen
-        if (v.sonstigeVereinbarungen && v.sonstigeVereinbarungen.length > 0) {
-            const lines = v.sonstigeVereinbarungen.split(/\n+/).map(l => l.trim()).filter(Boolean);
-            weitereParagraphs = lines.map(line => ({ text: line, margin: [0, 0, 0, 2] }));
-        }
-        // Erstellen der Parteistacks für Vermieter und Mieter (Unterstützung mehrerer Personen)
-        const vermieterStack = [];
-        // Überschrift für Vermieter
-        vermieterStack.push({ text: 'Vermieter', style: 'subheading' });
-        v.vermieter.forEach((ver) => {
-            // Name ggf. mit Vertreter
-            let nameLine = ver.name;
-            if (ver.vertreter && ver.vertreter.trim().length > 0) {
-                nameLine += ', vertreten durch ' + ver.vertreter.trim();
-            }
-            vermieterStack.push({ text: nameLine, bold: true });
-            vermieterStack.push({ text: ver.strasse + ', ' + ver.plz + ' ' + ver.ort });
-            if (ver.telefon) vermieterStack.push({ text: 'Tel.: ' + ver.telefon });
-            if (ver.email) vermieterStack.push({ text: 'E‑Mail: ' + ver.email });
-            // Leerzeile zwischen mehreren Vermietern
-            vermieterStack.push({ text: ' ' });
-        });
-        const mieterStack = [];
-        mieterStack.push({ text: 'Mieter', style: 'subheading' });
-        v.mieter.forEach((mi) => {
-            let nameLine = mi.name;
-            if (mi.geburtsdatum) nameLine += ' (geb. ' + formatDate(mi.geburtsdatum) + ')';
-            if (mi.vertreter && mi.vertreter.trim().length > 0) {
-                nameLine += ', vertreten durch ' + mi.vertreter.trim();
-            }
-            mieterStack.push({ text: nameLine, bold: true });
-            mieterStack.push({ text: mi.strasse + ', ' + mi.plz + ' ' + mi.ort });
-            if (mi.telefon) mieterStack.push({ text: 'Tel.: ' + mi.telefon });
-            if (mi.email) mieterStack.push({ text: 'E‑Mail: ' + mi.email });
-            mieterStack.push({ text: ' ' });
-        });
-
-        // Dokumentdefinition für pdfMake
-        const docDefinition = {
-            pageSize: 'A4',
-            // Großzügige Ränder für professionelles Layout
-            pageMargins: [50, 90, 50, 70],
-            // Kopfbereich: dunkler Balken mit weißer Schrift – gut lesbar auch in Schwarz‑Weiß
-            header: {
-                margin: [0, 0, 0, 0],
-                stack: [
-                    {
-                        canvas: [
-                            { type: 'rect', x: 0, y: 0, w: 515, h: 60, color: '#333333' }
-                        ]
-                    },
-                    {
-                        text: 'Wohnraum‑Mietvertrag',
-                        color: '#FFFFFF',
-                        fontSize: 22,
-                        bold: true,
-                        absolutePosition: { x: 50, y: 18 }
-                    }
-                ]
-            },
-            // Fußbereich: Seitenzahlen in kleinerer Schrift
-            footer: function(currentPage, pageCount) {
-                return {
-                    columns: [
-                        { text: '', width: '*' },
-                        { text: currentPage.toString() + ' / ' + pageCount, width: 'auto', fontSize: 8 }
-                    ],
-                    margin: [50, 10, 50, 10]
-                };
-            },
-            // Schrift und Farbe – Roboto ist in pdfMake eingebettet
-            defaultStyle: {
-                font: 'Roboto',
-                fontSize: 10,
-                color: '#000000'
-            },
-            styles: {
-                heading: { fontSize: 13, bold: true, margin: [0, 15, 0, 5] },
-                subheading: { fontSize: 11, bold: true, margin: [0, 8, 0, 3] }
-            },
-            // Inhalt des PDF
-            content: [
-                { text: 'Zwischen den nachstehend genannten Vertragsparteien wird folgender Mietvertrag geschlossen:', margin: [0, 0, 0, 10] },
-                {
-                    columns: [
-                        { width: '50%', stack: vermieterStack, margin: [0, 0, 10, 0] },
-                        { width: '50%', stack: mieterStack, margin: [10, 0, 0, 0] }
-                    ],
-                    columnGap: 10,
-                    margin: [0, 0, 0, 20]
-                },
-                { text: '§ 1 Mieträume', style: 'heading' },
-                // Trennlinie unter der Überschrift
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                { text: 'Der Vermieter vermietet dem Mieter zu Wohnzwecken folgendes Objekt: ' + v.objekt.art + '.', margin: [0, 0, 0, 2] },
-                { text: 'Adresse: ' + v.objekt.strasse + ', ' + v.objekt.plz + ' ' + v.objekt.ort, margin: [0, 0, 0, 2] },
-                v.objekt.wohnflaeche ? { text: 'Wohnfläche: ca. ' + v.objekt.wohnflaeche + ' m²', margin: [0, 0, 0, 2] } : {},
-                v.objekt.geschoss ? { text: 'Geschoss: ' + v.objekt.geschoss, margin: [0, 0, 0, 2] } : {},
-                v.objekt.zimmer ? { text: 'Zimmer: ' + v.objekt.zimmer, margin: [0, 0, 0, 2] } : {},
-                { text: 'Weitere Räume: ' + raeumeText, margin: [0, 0, 0, 2] },
-                v.objekt.nutzung ? { text: 'Nutzungszweck: ' + v.objekt.nutzung + '.', margin: [0, 0, 0, 2] } : {},
-                { text: 'Übergebene Schlüssel: ' + keysText + '.', margin: [0, 0, 0, 8] },
-                { text: '§ 2 Mietzeit', style: 'heading' },
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                (function() {
-                    if (v.mietzeit.art === 'unbefristet') {
-                        let arr = [];
-                        arr.push({ text: 'Das Mietverhältnis beginnt am ' + formatDate(v.mietzeit.beginn) + ' und läuft auf unbestimmte Zeit.', margin: [0, 0, 0, 2] });
-                        if (v.mietzeit.kuendigungAusschluss && v.mietzeit.kuendigungBis) {
-                            arr.push({ text: 'Die Vertragsparteien verzichten bis zum ' + formatDate(v.mietzeit.kuendigungBis) + ' wechselseitig auf das Recht zur ordentlichen Kündigung. Eine Kündigung ist erstmals zu diesem Datum mit gesetzlicher Frist zulässig.', margin: [0, 0, 0, 2] });
-                        } else {
-                            arr.push({ text: 'Die ordentliche Kündigung richtet sich nach den gesetzlichen Fristen (vgl. §§ 573a–573c BGB).', margin: [0, 0, 0, 2] });
-                        }
-                        return arr;
-                    } else {
-                        let arr = [];
-                        arr.push({ text: 'Das Mietverhältnis beginnt am ' + formatDate(v.mietzeit.beginn) + ' und endet am ' + formatDate(v.mietzeit.ende) + '.', margin: [0, 0, 0, 2] });
-                        if (v.mietzeit.grund) arr.push({ text: 'Befristungsgrund: ' + v.mietzeit.grund + '.', margin: [0, 0, 0, 2] });
-                        arr.push({ text: 'Ein Anspruch auf Fortsetzung des Mietverhältnisses besteht nicht.', margin: [0, 0, 0, 2] });
-                        return arr;
-                    }
-                })(),
-                { text: '§ 3 Miete', style: 'heading' },
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                { text: 'Die monatliche Grundmiete beträgt ' + formatCurrency(v.miete.grund) + ' Euro/Monat.', margin: [0, 0, 0, 2] },
-                v.miete.betrieb && parseFloat(v.miete.betrieb) > 0 ? { text: 'Vorauszahlung für Betriebskosten: ' + formatCurrency(v.miete.betrieb) + ' Euro/Monat.', margin: [0, 0, 0, 2] } : {},
-                v.miete.heizung && parseFloat(v.miete.heizung) > 0 ? { text: 'Vorauszahlung für Heizkosten: ' + formatCurrency(v.miete.heizung) + ' Euro/Monat.', margin: [0, 0, 0, 2] } : {},
-                v.miete.kaution && parseFloat(v.miete.kaution) > 0 ? { text: 'Der Mieter leistet eine Kaution in Höhe von ' + formatCurrency(v.miete.kaution) + ' Euro. Diese wird getrennt vom Vermögen des Vermieters verzinslich angelegt und nach Ende des Mietverhältnisses abzüglich offener Forderungen zurückerstattet (vgl. § 551 BGB).', margin: [0, 0, 0, 2] } : {},
-                v.miete.erhoehung === 'staffel' && staffelList.length > 0 ? { text: 'Es wird eine Staffelmiete gemäß § 557a BGB vereinbart. Die Miete erhöht sich wie folgt:', margin: [0, 2, 0, 2] } : {},
-                v.miete.erhoehung === 'staffel' && staffelList.length > 0 ? { ul: staffelList, margin: [0, 0, 0, 2] } : {},
-                v.miete.erhoehung === 'staffel' && staffelList.length > 0 ? { text: 'Während der Laufzeit der Staffelmiete ist eine Mieterhöhung nach §§ 558–559b BGB ausgeschlossen.', margin: [0, 0, 0, 2] } : {},
-                v.miete.erhoehung === 'index' ? { text: 'Es wird eine Indexmiete gemäß § 557b BGB vereinbart. Die Miete richtet sich nach dem vom Statistischen Bundesamt veröffentlichten Verbraucherpreisindex. Ausgangsindex: ' + (v.miete.indexAusgang || 'n. n.') + '.', margin: [0, 0, 0, 2] } : {},
-                { text: '§ 4 Betriebskosten', style: 'heading' },
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                { text: 'Neben der Grundmiete trägt der Mieter die Betriebskosten gemäß Betriebskostenverordnung, soweit sie tatsächlich anfallen, insbesondere für öffentliche Lasten des Grundstücks, Wasserversorgung, Entwässerung, Müllabfuhr, Straßenreinigung, Schnee‑ und Eisbeseitigung, Schornsteinreinigung, Beleuchtung, Versicherungen, Hausreinigung, Ungezieferbekämpfung, Hauswart, Gartenpflege, Aufzug, Gemeinschaftsantennenanlage, Breitbandkabel usw.', margin: [0, 0, 0, 8] },
-                // §5 Zahlung der Miete
-                { text: '§ 5 Zahlung der Miete', style: 'heading' },
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                (function() {
-                    const arr = [];
-                    if (v.zahlung && (v.zahlung.faelligkeit || v.zahlung.iban || v.zahlung.bic)) {
-                        let line = 'Die Miete ist monatlich im Voraus ';
-                        if (v.zahlung.faelligkeit) {
-                            line += 'spätestens ' + v.zahlung.faelligkeit + ' ';
-                        } else {
-                            line += 'bis zum dritten Werktag eines jeden Monats ';
-                        }
-                        line += 'auf folgendes Konto des Vermieters zu zahlen.';
-                        arr.push({ text: line, margin: [0, 0, 0, 2] });
-                        if (v.zahlung.iban) arr.push({ text: 'IBAN: ' + v.zahlung.iban, margin: [0, 0, 0, 2] });
-                        if (v.zahlung.bic) arr.push({ text: 'BIC: ' + v.zahlung.bic, margin: [0, 0, 0, 2] });
-                        // Wenn ein SEPA-Lastschriftmandat des Mieters vorliegt, dieses angeben
-                        if (v.mandat && (v.mandat.inhaber || v.mandat.iban || v.mandat.bic)) {
-                            let sepaText = 'Der Mieter erteilt dem Vermieter ein SEPA-Lastschriftmandat';
-                            const details = [];
-                            if (v.mandat.inhaber) details.push('Kontoinhaber: ' + v.mandat.inhaber);
-                            if (v.mandat.iban) details.push('IBAN: ' + v.mandat.iban);
-                            if (v.mandat.bic) details.push('BIC: ' + v.mandat.bic);
-                            if (details.length > 0) sepaText += ' (' + details.join(', ') + ')';
-                            sepaText += '.';
-                            arr.push({ text: sepaText, margin: [0, 0, 0, 2] });
-                        }
-                    } else {
-                        arr.push({ text: 'Die Miete ist monatlich im Voraus bis zum dritten Werktag eines jeden Monats zu entrichten. Die Bankverbindung des Vermieters wird separat mitgeteilt.', margin: [0, 0, 0, 2] });
-                    }
-                    return arr;
-                })(),
-                // §6 Weitere Vereinbarungen
-                { text: '§ 6 Weitere Vereinbarungen', style: 'heading' },
-                { canvas: [ { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, color: '#666666' } ], margin: [0, 0, 0, 5] },
-                (function() {
-                    const para = [];
-                    // Texte für gewählte Klauseln
-                    if (v.clauses) {
-                        if (v.clauses.schoenheits) para.push({ text: 'Der Mieter übernimmt die regelmäßigen Schönheitsreparaturen (z. B. das Streichen und Tapezieren von Wänden und Decken, Lackieren von Türen und Fenstern) auf eigene Kosten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.klein) para.push({ text: 'Der Mieter trägt die Kosten für Kleinreparaturen bis zu einem Betrag von 100 Euro pro Einzelfall, maximal 300 Euro pro Jahr.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.tierhaltung) para.push({ text: 'Die Haltung von Kleintieren (z. B. Zierfische, Hamster, Vögel) ist zulässig. Die Haltung von Hunden und Katzen bedarf der vorherigen Zustimmung des Vermieters. Blindenführhunde sind hiervon ausgenommen.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.untervermietung) para.push({ text: 'Eine Untervermietung des Mietobjekts oder von Teilen davon bedarf der schriftlichen Zustimmung des Vermieters.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.besichtigung) para.push({ text: 'Der Vermieter ist berechtigt, die Mieträume nach vorheriger Ankündigung während der üblichen Tageszeiten zu besichtigen, um deren Zustand zu überprüfen oder sie Interessenten vorzuführen.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.modernisierung) para.push({ text: 'Der Mieter hat Modernisierungsmaßnahmen und bauliche Veränderungen, die der Vermieter zur Erhaltung oder Verbesserung der Mietsache vornimmt, zu dulden. Eine Mieterhöhung nach gesetzlichen Vorschriften bleibt vorbehalten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.garten) para.push({ text: 'Der Mieter darf vorhandene Gartenflächen mitbenutzen und verpflichtet sich zu deren ordnungsgemäßer Pflege und Instandhaltung.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.mehrere) para.push({ text: 'Mehrere Mieter haften für die Verpflichtungen aus diesem Mietvertrag als Gesamtschuldner. Erklärungen, die einem Mieter gegenüber abgegeben werden, wirken für und gegen alle Mieter.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.hausordnung) para.push({ text: 'Der Mieter verpflichtet sich, die Hausordnung des Hauses einzuhalten.', margin: [0, 0, 0, 2] });
-                        if (v.clauses.umbauten) para.push({ text: 'Bauliche Veränderungen und Einbauten dürfen nur mit vorheriger schriftlicher Zustimmung des Vermieters durchgeführt werden. Der Vermieter kann bei Auszug den Rückbau verlangen.', margin: [0, 0, 0, 2] });
-                    // Neue optionale Klauseln
-                    if (v.clauses.haftung) para.push({ text: 'Der Mieter haftet für alle von ihm, seinen Familienangehörigen, Mitmietern oder Besuchern schuldhaft verursachten Schäden an der Mietsache und hat diese Schäden unverzüglich dem Vermieter anzuzeigen.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.rauchmelder) para.push({ text: 'Der Mieter ist verpflichtet, die gesetzlichen Rauchmelder in der Mietsache in funktionsfähigem Zustand zu halten und regelmäßig zu prüfen; Batterien sind rechtzeitig auszutauschen.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.schriftform) para.push({ text: 'Änderungen und Ergänzungen dieses Vertrages bedürfen zu ihrer Wirksamkeit der Schriftform. Mündliche Nebenabreden bestehen nicht.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.ruhezeiten) para.push({ text: 'Der Mieter verpflichtet sich, die üblichen Ruhezeiten (werktags zwischen 22:00 und 6:00 Uhr sowie an Sonn- und Feiertagen ganztägig) einzuhalten.', margin: [0, 0, 0, 2] });
-                    if (v.clauses.instandhaltung) para.push({ text: 'Der Mieter verpflichtet sich, die Mietsache pfleglich zu behandeln und kleinere Instandhaltungsmaßnahmen, insbesondere das Austauschen von Leuchtmitteln, Sicherungen und das Ölen von Scharnieren, selbst durchzuführen.', margin: [0, 0, 0, 2] });
-                    }
-                    // Sonstige Vereinbarungen des Nutzers
-                    if (v.sonstigeVereinbarungen && v.sonstigeVereinbarungen.length > 0) {
-                        const lines = v.sonstigeVereinbarungen.split(/\n+/).map(l => l.trim()).filter(Boolean);
-                        lines.forEach(line => para.push({ text: line, margin: [0, 0, 0, 2] }));
-                    }
-                    return para.length > 0 ? para : [];
-                })(),
-                { text: 'Im Übrigen gelten die gesetzlichen Bestimmungen des Bürgerlichen Gesetzbuches (BGB) und – soweit vorhanden – die Hausordnung.', margin: [0, 0, 0, 8] },
-                {
-                    columns: [
-                        { text: 'Ort, Datum: ______________________________', width: '33%', margin: [0, 20, 0, 0] },
-                        { text: 'Unterschrift Vermieter: ______________________________', width: '33%', margin: [0, 20, 0, 0] },
-                        { text: 'Unterschrift Mieter: ______________________________', width: '33%', margin: [0, 20, 0, 0] }
-                    ]
-                }
-            ]
-        };
-        // Erzeugt und lädt das PDF herunter
-        // Öffnen Sie das PDF zunächst in einem neuen Tab. Der Benutzer kann von dort drucken oder speichern.
-        const pdfDoc = pdfMake.createPdf(docDefinition);
-        // Erst öffnen, dann herunterladen als Fallback
-        pdfDoc.open();
-        pdfDoc.download('mietvertrag.pdf');
+        // Both PDF engines render exactly the text shown in the HTML preview.
+        const content = contractBlocks().map(block => ({
+            text: block.text,
+            fontSize: block.kind === 'title' ? 18 : block.kind === 'heading' ? 12 : 10,
+            bold: block.kind !== 'paragraph',
+            margin: [0, block.kind === 'heading' ? 10 : 0, 0, 7]
+        }));
+        pdfMake.createPdf({
+            pageSize: 'A4', pageMargins: [50, 50, 50, 50],
+            defaultStyle: {font: 'Roboto', fontSize: 10},
+            content
+        }).download('mietvertrag.pdf');
     }
 
     // Vertragstext generieren

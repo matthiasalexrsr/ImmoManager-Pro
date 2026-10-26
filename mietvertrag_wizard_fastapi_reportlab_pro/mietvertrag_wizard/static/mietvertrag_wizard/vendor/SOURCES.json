@@ -1,0 +1,28 @@
+{
+  "package": "pdfmake",
+  "version": "0.2.23",
+  "font": "Roboto",
+  "font_version": "3.014",
+  "files": [
+    {
+      "file": "pdfmake.min.js",
+      "sha256": "4410187c36ed6dd8cbfbaeea5b6fab6244238b3479c6de1cfe125d2c61fc2ba0",
+      "source": "https://registry.npmjs.org/pdfmake/-/pdfmake-0.2.23.tgz"
+    },
+    {
+      "file": "vfs_fonts.js",
+      "sha256": "23e7c970fa9e75d296ea565939502a69ab2184cf40756c7d4670b6dabf470b58",
+      "source": "https://registry.npmjs.org/pdfmake/-/pdfmake-0.2.23.tgz"
+    },
+    {
+      "file": "Roboto-OFL.txt",
+      "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41",
+      "source": "https://raw.githubusercontent.com/googlefonts/roboto-3-classic/v3.014/OFL.txt"
+    },
+    {
+      "file": "pdfmake-LICENSE.txt",
+      "sha256": "963c9bfe4117623556e66c36524176bf38948b749e983c35af93c961caad8ce9",
+      "source": "https://github.com/bpampuch/pdfmake/blob/0.2.23/LICENSE"
+    }
+  ]
+}

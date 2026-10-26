@@ -1057,6 +1057,44 @@ def update_user(user_id: str, updates: dict) -> UserRead:
     return _to_user_read(user)
 
 
+def update_totp(user_id: str, *, expected_secret: str | None, expected_enabled: bool,
+                secret: str | None, enabled: bool) -> None:
+    """Change exactly the factor that was checked, atomically across workers.
+
+    Disabled accounts cannot change a factor. A competing setup/verification
+    must retry against the current state; it may never replace an active key.
+    Unlike a profile patch, disabling explicitly clears the secret to NULL.
+    """
+    store = _user_store
+    if isinstance(store, SQLUserStore):
+        from sqlalchemy import update
+
+        from .db.orm_models import UserORM
+        session = store._session_factory()
+        try:
+            result = session.execute(update(UserORM).where(
+                UserORM.id == user_id, UserORM.is_active.is_(True),
+                UserORM.totp_secret == expected_secret, UserORM.totp_enabled.is_(expected_enabled),
+            ).values(totp_secret=secret, totp_enabled=enabled, updated_at=datetime.now(timezone.utc)))
+            if result.rowcount != 1:
+                raise HTTPException(409, "Der Zwei-Faktor-Status hat sich geändert. Bitte erneut öffnen.")
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            store._finalize_session(session)
+    elif isinstance(store, InMemoryUserStore):
+        with store.lock:
+            account = store.get_by_id(user_id)
+            if (not account or not account.get("is_active") or account.get("totp_secret") != expected_secret
+                    or bool(account.get("totp_enabled")) != expected_enabled):
+                raise HTTPException(409, "Der Zwei-Faktor-Status hat sich geändert. Bitte erneut öffnen.")
+            account.update(totp_secret=secret, totp_enabled=enabled, updated_at=datetime.now(timezone.utc))
+    else:
+        raise RuntimeError("The account store cannot atomically change a second factor")
+
+
 def set_user_password(user_id: str, password: str, *, keep_session: str | None = None) -> UserRead:
     """Set a new password for an existing account (admin reset); the account's other sessions end."""
     account = _user_store.get_by_id(user_id) if hasattr(_user_store, "get_by_id") else None

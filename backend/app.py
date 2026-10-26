@@ -206,6 +206,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=settings.cors_methods,
     allow_headers=settings.cors_headers,
+    expose_headers=["X-2FA-Required", "Content-Disposition", "X-Print-Skipped"],
 )
 
 # Application middleware (added in reverse execution order)
@@ -238,6 +239,8 @@ CONTRACT_WIZARD_STATUS = {
 
 
 def _wizard_assets_ready(pkg_path: Path) -> bool:
+    from .services.filesystem_paths import filesystem_path
+    pkg_path = filesystem_path(pkg_path)
     template_file = pkg_path / "templates" / "mietvertrag_wizard" / "index.html"
     static_dir = pkg_path / "static"
     return template_file.is_file() and static_dir.is_dir()
@@ -286,9 +289,13 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
     from fastapi.templating import Jinja2Templates
 
     build_contract_pdf, pkg_path = result
+    from .services.filesystem_paths import filesystem_path
+    pkg_path = filesystem_path(pkg_path)
 
     wizard_app = FastAPI()
     templates = Jinja2Templates(directory=str(pkg_path / "templates"))
+    from .services.template_loader import NativeTemplateLoader
+    templates.env.loader = NativeTemplateLoader(str(pkg_path / "templates"))
     wizard_app.mount(
         "/static",
         StaticFiles(directory=str(pkg_path / "static")),
@@ -309,7 +316,11 @@ def _mount_contract_wizard_if_available(target_app: FastAPI) -> bool:
 
     @wizard_app.post("/api/pdf")
     async def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
-        pdf_bytes = build_contract_pdf(payload)
+        from starlette.concurrency import run_in_threadpool
+        try:
+            pdf_bytes = await run_in_threadpool(build_contract_pdf, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

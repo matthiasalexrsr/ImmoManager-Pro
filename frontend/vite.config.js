@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import pdfjsAssets from './scripts/pdfjsAssets.mjs'
+import productAssets from './scripts/productAssets.mjs'
 
 export default defineConfig({
-  plugins: [react(), pdfjsAssets()],
+  plugins: [react(), pdfjsAssets(), productAssets()],
   server: {
     port: 3000,
     proxy: {

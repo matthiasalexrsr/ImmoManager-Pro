@@ -477,6 +477,7 @@ def _same_stored_files(store: Any, sha256: str, size: Optional[int], ids: dict[s
     from urllib.parse import unquote
 
     from .file_storage import LocalStorage, get_file_storage
+    from .filesystem_paths import filesystem_path
     storage = get_file_storage()
     if not size or not isinstance(storage, LocalStorage):
         return
@@ -485,7 +486,7 @@ def _same_stored_files(store: Any, sha256: str, size: Optional[int], ids: dict[s
         if ids.get(document.id) == "same_file" or not url.startswith("/uploads/"):
             continue
         try:
-            path = storage._path(unquote(url.removeprefix("/uploads/").split("?", 1)[0]))
+            path = filesystem_path(storage._path(unquote(url.removeprefix("/uploads/").split("?", 1)[0])))
             if path.stat().st_size != size:
                 continue
             digest = hashlib.sha256()

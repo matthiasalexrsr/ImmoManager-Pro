@@ -663,10 +663,10 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         raise BackupError(f"Vollbackup für {dialect} wird nicht unterstützt (nur SQLite und PostgreSQL).")
     sources.root.mkdir(parents=True, exist_ok=True)
     work = sources.root / f".work-{secrets.token_hex(4)}"
-    work.mkdir()
+    filesystem_path(work).mkdir()
     name = _archive_name(trigger, now)
-    final = sources.root / name
-    partial = sources.root / (name + ".partial")
+    final = filesystem_path(sources.root / name)
+    partial = filesystem_path(sources.root / (name + ".partial"))
     try:
         # These exact bytes both decrypt the snapshot inventory and enter the
         # archive. Never use an ambient/default keyring for private AI sources.
@@ -855,6 +855,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
 
 
 def _copy_verified(archive: Path, digest: str, directory: Path, pulse: _Pulse) -> None:
+    archive, directory = filesystem_path(archive), filesystem_path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     partial = directory / (archive.name + ".partial")
     try:
@@ -884,6 +885,7 @@ def _recorded_digest(root: Path, name: str) -> str | None:
 
 def verify_archive(path: Path, *, expected_sha256: str | None = None, pulse: _Pulse | None = None) -> dict[str, Any]:
     """Digest of the archive (sidecar, expected), every file's digest/size, no unlisted files."""
+    path = filesystem_path(path)
     pulse = pulse or _Pulse(None)
     problems: list[str] = []
     if not path.is_file():
@@ -1376,7 +1378,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
     if target.exists() and any(target.iterdir()):
         raise BackupError(f"Zielverzeichnis ist nicht leer: {target}")
     staging = target.parent / f".{target.name}.restore-{secrets.token_hex(4)}"
-    staging.mkdir(parents=True)
+    filesystem_path(staging).mkdir(parents=True)
     try:
         manifest = _extract(path, staging, _Pulse(None))
         files, warning = _secret_files(manifest, staging, passphrase)
@@ -1441,7 +1443,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
             (target / "runtime-manifest.json").write_text(json.dumps(manifest["runtime"], indent=2), encoding="utf-8")
         if final_target.exists():
             final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
-        os.replace(target, final_target)
+        os.replace(filesystem_path(target), filesystem_path(final_target))
     finally:
         shutil.rmtree(filesystem_path(staging), ignore_errors=True)
     target = final_target

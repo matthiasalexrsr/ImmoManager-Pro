@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from ..config import settings
+from .filesystem_paths import filesystem_path
 
 FORMAT = "immomanager-tax-spool-v1"
 
@@ -51,7 +52,7 @@ def _identity(path):
 
 
 def reap_abandoned(base):
-    base = base.resolve(strict=True)
+    base = filesystem_path(base).resolve(strict=True)
     for path in base.iterdir():
         if not path.name.startswith("tax-"):
             continue
@@ -77,7 +78,7 @@ def reap_abandoned(base):
 
 @contextmanager
 def tax_workspace(parent=None):
-    base = Path(parent) if parent else Path(settings.data_dir) / "tax-work"
+    base = filesystem_path(Path(parent) if parent else Path(settings.data_dir) / "tax-work")
     base.mkdir(parents=True, exist_ok=True)
     base = base.resolve(strict=True)
     reap_abandoned(base)

@@ -175,7 +175,7 @@ try {
     await expect(page.getByRole('heading', { name: /Vorgang A/ })).toBeVisible();
     const overflow = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, window: innerWidth }));
     assert.ok(overflow.doc <= overflow.window + 1, `${width}px horizontal overflow: ${JSON.stringify(overflow)}`);
-    await body().focus(); await expect(body()).toBeFocused();
+    await expect(body()).toBeEnabled(); await body().focus(); await expect(body()).toBeFocused();
     const editorBounds = await body().boundingBox();
     assert.ok(editorBounds && editorBounds.width >= 200 && editorBounds.height >= 100,
       `The reply editor is not usable at ${width}px: ${JSON.stringify(editorBounds)}`);

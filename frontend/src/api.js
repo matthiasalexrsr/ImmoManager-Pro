@@ -377,7 +377,7 @@ export const api = {
   upload: (path, formData, { signal } = {}) => request(path, { method: 'POST', body: formData, signal }),
 };
 
-export async function login(username, password) {
+export async function login(username, password, totpCode) {
   if (logoutInFlight) await logoutInFlight;
   if (refreshInFlight) await refreshInFlight;
   let res;
@@ -386,14 +386,16 @@ export async function login(username, password) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...COOKIE_TRANSPORT },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...(totpCode ? { totp_code: totpCode } : {}) }),
     });
   } catch (err) {
     throw networkError(err);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw parseApiError(body, res.status);
+    const error = parseApiError(body, res.status);
+    if (res.headers.get('X-2FA-Required') === 'true') error.requiresTotp = true;
+    throw error;
   }
   const data = await res.json();
   localStorage.setItem('access_token', data.access_token);

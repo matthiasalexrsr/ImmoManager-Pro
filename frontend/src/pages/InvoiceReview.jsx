@@ -196,7 +196,8 @@ function Proposals({ revision }) {
 
 const EMPTY_INVOICE = { supplier: '', invoice_number: '', invoice_date: '', net_amount: '', vat_rate: '19',
   gross_amount: '', property_id: '', skonto_percent: '', skonto_days: '', payment_days: '', cost_category: '',
-  recoverable: false, duplicate_reason: '' };
+  recoverable: false, duplicate_reason: '', kind: 'invoice', credit_for_invoice_id: '', due_date: '',
+  performance_start: '', performance_end: '', iban: '' };
 
 function NewInvoice({ properties, onClose, onSaved }) {
   const { tx } = useReviewText();
@@ -213,6 +214,17 @@ function NewInvoice({ properties, onClose, onSaved }) {
   const [duplicateAttempt, setDuplicateAttempt] = useState(0);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [creditInvoices, setCreditInvoices] = useState([]);
+  const [creditLoadError, setCreditLoadError] = useState(null);
+  useEffect(() => {
+    if (values.kind !== 'credit_note') return undefined;
+    const controller = new AbortController();
+    setCreditLoadError(null);
+    api.list('/invoices', { signal: controller.signal }).then(items => {
+      if (!controller.signal.aborted) setCreditInvoices(items);
+    }).catch(failure => { if (!controller.signal.aborted) setCreditLoadError(failure.message); });
+    return () => controller.abort();
+  }, [values.kind]);
   const set = (key, value) => setValues(current => ({ ...current, [key]: value }));
   const ready = values.supplier && values.gross_amount && values.invoice_date;
 
@@ -235,7 +247,8 @@ function NewInvoice({ properties, onClose, onSaved }) {
   const sameNumber = duplicates.some(d => d.reason === 'same_number');
   const labels = { supplier: tx.supplier, invoice_number: tx.number, invoice_date: tx.invoiceDate, net_amount: tx.net, vat_rate: tx.vatRate,
     gross_amount: tx.gross, cost_category: tx.costCategory, skonto_percent: tx.skontoPercent, skonto_days: tx.skontoDays,
-    payment_days: tx.paymentDays };
+    payment_days: tx.paymentDays, due_date: tx.due, performance_start: 'Leistung von', performance_end: 'Leistung bis',
+    iban: 'IBAN laut Beleg', kind: tx.kind };
   const pending = aiForm.pending(Object.keys(labels));
   const dropReading = () => {
     if (reading.current?.status === 'open') aiReadingApi.finish(reading.current, 'cancelled').catch(() => {});
@@ -256,6 +269,13 @@ function NewInvoice({ properties, onClose, onSaved }) {
   const submit = async event => {
     event.preventDefault();
     if (pending.length) { setError(pendingMessage(pending.map(key => labels[key]))); return; }
+    if (values.kind === 'credit_note' && !values.credit_for_invoice_id) {
+      setError('Bitte die Rechnung auswählen, die durch die Gutschrift gemindert wird.'); return;
+    }
+    if (Boolean(values.performance_start) !== Boolean(values.performance_end)
+      || (values.performance_start && values.performance_end < values.performance_start)) {
+      setError('Leistungsbeginn und Leistungsende gemeinsam und in zeitlicher Reihenfolge angeben.'); return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -274,13 +294,17 @@ function NewInvoice({ properties, onClose, onSaved }) {
       const net = Number(values.net_amount);
       const gross = Number(values.gross_amount);
       const created = await reviewApi.newReceipt(compact({
+        kind: values.kind, credit_for_invoice_id: values.kind === 'credit_note' ? values.credit_for_invoice_id : undefined,
         document_id: documentId, property_id: values.property_id, cost_category: values.cost_category,
         recoverable: values.recoverable, skonto_percent: values.skonto_percent ? Number(values.skonto_percent) : undefined,
         skonto_days: values.skonto_days ? Number(values.skonto_days) : undefined,
         payment_days: values.payment_days ? Number(values.payment_days) : undefined,
         accept_duplicate: sameNumber || undefined, duplicate_reason: sameNumber ? values.duplicate_reason : undefined,
         invoice: compact({ supplier: values.supplier, invoice_number: values.invoice_number,
-          invoice_date: values.invoice_date, net_amount: net, vat_rate: Number(values.vat_rate),
+          invoice_date: values.invoice_date, due_date: values.due_date,
+          performance_start: values.performance_start, performance_end: values.performance_end,
+          notes: values.iban ? `IBAN laut Beleg: ${values.iban}` : undefined,
+          net_amount: net, vat_rate: Number(values.vat_rate),
           vat_amount: Math.round((gross - net) * 100) / 100, gross_amount: gross, property_id: values.property_id }),
       }));
       if (reading.current) aiReadingApi.finish(reading.current, 'taken_over', { kind: 'invoice', id: created.invoice.id }).catch(() => {});
@@ -331,9 +355,31 @@ function NewInvoice({ properties, onClose, onSaved }) {
           <AiFormSummary aiMarks={marks} filled={aiForm.filled(Object.keys(labels))} pending={pending}
             onConfirmAll={() => aiForm.confirm(pending)} disabled={saving} />
           <div className="mp-form-grid">
+            <div className={`form-group${aiGroupClass(aiForm.state('kind'))}`}>
+              <label htmlFor="ir-new-kind">{tx.kind} <AiMarkChip state={aiForm.state('kind')} mark={aiForm.mark('kind')} /></label>
+              <select id="ir-new-kind" value={values.kind} onChange={event => set('kind', event.target.value)}>
+                <option value="invoice">{tx.kind_invoice}</option><option value="credit_note">{tx.kind_credit_note}</option>
+              </select>
+              <AiFieldNote label={tx.kind} state={aiForm.state('kind')} mark={aiForm.mark('kind')}
+                onConfirm={() => aiForm.confirm(['kind'])} disabled={saving} />
+            </div>
+            {values.kind === 'credit_note' && <label className="form-group">Mindert Rechnung
+              <select required value={values.credit_for_invoice_id} onChange={event => set('credit_for_invoice_id', event.target.value)}>
+                <option value="">Bitte Rechnung wählen</option>
+                {creditInvoices.map(invoice => <option key={invoice.id} value={invoice.id}>
+                  {invoice.supplier} · {invoice.invoice_number || formatDate(invoice.invoice_date)} · {formatMoney(invoice.gross_amount)}
+                </option>)}
+              </select>
+              {creditLoadError && <span role="alert">Rechnungen konnten nicht geladen werden: {creditLoadError}</span>}
+            </label>}
             {input('supplier', tx.supplier, 'text', { required: true })}
             {input('invoice_number', tx.number)}
             {input('invoice_date', tx.invoiceDate, 'date', { required: true })}
+            {input('due_date', tx.due, 'date')}
+            {input('performance_start', 'Leistung von', 'date')}
+            {input('performance_end', 'Leistung bis', 'date')}
+            {input('iban', 'IBAN laut Beleg')}
+            <small className="form-hint">Die IBAN wird als Belegnotiz gespeichert. Zahlungsdaten werden dadurch nicht geändert.</small>
             {input('net_amount', tx.net, 'number', { step: '0.01', min: '0', required: true })}
             {input('vat_rate', tx.vatRate, 'number', { step: '0.01', min: '0', max: '100' })}
             {input('gross_amount', tx.gross, 'number', { step: '0.01', min: '0.01', required: true })}

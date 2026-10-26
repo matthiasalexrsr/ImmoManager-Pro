@@ -425,7 +425,47 @@ def _row(unit: Any, identifier: str, *, lock: bool = False) -> Any:
     row = db.get(unit, Conversation, identifier, lock=lock)
     if row.state != STATE:
         raise HTTPException(404, "Lesevorgang nicht gefunden.")
+    _check_source_access(unit, db.payload(row))
     return row
+
+
+def _check_source_access(unit: Any, data: dict) -> None:
+    # Receipts retain identifiers only: every read, replay and mutation must
+    # resolve both the original source and all context anchors with today's rights.
+    try:
+        # Cached duplicate titles and AI answers may include context beyond the
+        # source document. An old scope must never survive a grant change.
+        if data.get('_access_scope') != _access_scope(unit.user):
+            raise HTTPException(404, 'Berechtigungen geändert; Dokument bitte neu einlesen.')
+        document_id = (data.get("document") or {}).get("id")
+        document = unit.store.get_document(document_id) if document_id else None
+        if not document_id:
+            from ..routers.files import _file_url_to_key
+            from .portfolio_scope import require_file_access
+            file_key = _file_url_to_key((data.get("file") or {}).get("file_url") or "")
+            if not file_key:
+                raise HTTPException(404, "Quelldatei nicht gefunden.")
+            require_file_access(file_key)
+        _params(unit.store, _surface(data["surface"]), Params(**(data.get("params") or {})), document)
+        getters = {'document': unit.store.get_document, 'invoice': unit.store.get_invoice,
+                   'cost_item': unit.store.get_cost_item, 'meter_reading': unit.store.get_standalone_meter_reading}
+        for candidate in data.get('duplicates') or []:
+            getter = getters.get(candidate['kind'])
+            if getter is None:
+                raise HTTPException(404, 'Unbekannter Quellenbezug.')
+            getter(candidate['id'])
+        for field, getter in (('known_units', unit.store.get_unit), ('known_tenants', unit.store.get_tenant)):
+            for reference in data.get(field) or []:
+                getter(reference['id'])
+    except (NotFoundError, HTTPException):
+        raise HTTPException(404, "Lesevorgang aufgrund geänderter Quellenrechte nicht verfügbar.") from None
+
+
+def _access_scope(user: dict) -> dict:
+    from .portfolio_scope import scope_from_user
+    scope = scope_from_user(user)
+    return {'user': scope.user_id, 'role': scope.role, 'all': scope.unrestricted,
+            'portfolios': list(scope.portfolio_ids)}
 
 
 def _messages(unit: Any, identifier: str) -> list[dict]:
@@ -462,6 +502,9 @@ def _purge(unit: Any, keep_days: int) -> None:
 
 def public(store: Any, unit: Any, row: Any, confirm_mode: str = "confirm") -> dict:
     data = db.payload(row)
+    # The account is reloaded by the write transaction after an external reader
+    # returns. A newly created reading must also honour a revocation during that call.
+    _check_source_access(unit, data)
     surface = surfaces.SURFACES[data["surface"]]
     result = {key: data.get(key) for key in ("surface", "reader", "model", "params", "values", "duplicates", "decision",
                                               "questions", "notes", "dropped", "status", "record", "file", "document",
@@ -503,9 +546,9 @@ def options(store: Any, actor: Any, surface_id: Optional[str] = None) -> dict:
     """Who can read, what is switched on and how values appear in the form, for one surface or all."""
     values = settings(store, actor.id)
     available = readers(actor.id)
-    shown = [surfaces.SURFACES[surface_id]] if surface_id else list(surfaces.SURFACES.values())
     if surface_id and surface_id not in surfaces.SURFACES:
         raise HTTPException(404, "Diese Einlesestelle gibt es nicht.")
+    shown = [surfaces.SURFACES[surface_id]] if surface_id else list(surfaces.SURFACES.values())
     return {"readers": available, "confirm_mode": values.get("ai_confirm_mode", "confirm"),
             "default_reader": values.get("ai_default_reader", "auto"),
             "chat": bool(values.get("ai_chat_enabled", True)) and bool(values.get("ai_reading_enabled", True)),
@@ -528,6 +571,7 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
     _check_role(actor, surface)
     values = settings(store, actor.id)
     with db.work(store, actor.id) as unit:
+        access_scope = _access_scope(unit.user)
         replayed = db.replay(unit, "reading:start", command)
         if replayed:
             return public(store, unit, _row(unit, replayed), values.get("ai_confirm_mode", "confirm"))
@@ -549,6 +593,7 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
                              source.text, bool(values.get("ai_check_duplicates", True)))
     known = read["known"]
     data = {"kind": "reading", "surface": surface.id, "reader": reader, "model": model, "params": params,
+            "_access_scope": access_scope,
             "document": {"id": source.document.id, "title": source.document.title, "href": f"/documents/{source.document.id}"}
             if source.document is not None else None,
             "file": file_info, "values": found_values if not surface.rows else None, "extraction": read.get("extraction"),

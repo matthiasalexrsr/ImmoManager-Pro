@@ -310,7 +310,7 @@ try {
     const dialog = owner.getByRole('dialog', { name: 'Dokument erstellen' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Mieter / Partei', { exact: true })).toHaveValue(tenant.id);
-    await dialog.getByLabel(/^Titel/).fill(`${marker} Browser Einzelupload`);
+    await dialog.getByRole('textbox', { name: /^Titel/ }).fill(`${marker} Browser Einzelupload`);
     const confirmAll = dialog.getByRole('button', { name: 'Alle bestätigen' });
     if (await confirmAll.count()) await confirmAll.click();
     const saveResponse = owner.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/documents' && response.request().method() === 'POST', { timeout: 10000 });

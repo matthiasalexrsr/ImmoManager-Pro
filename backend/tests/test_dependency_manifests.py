@@ -32,9 +32,17 @@ def _requirements(path: Path, seen: set[Path] | None = None) -> set[str]:
     return names
 
 
-def test_pyproject_declares_security_dependencies():
+def _project_dependency_names():
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    names = {_name(dep) for dep in data["project"]["dependencies"]}
+    if 'dependencies' in data['project'].get('dynamic', []):
+        files = data['tool']['setuptools']['dynamic']['dependencies']['file']
+        assert files, 'Dynamic runtime dependencies need an explicit source'
+        return set().union(*(_requirements(ROOT / name) for name in files))
+    return {_name(dep) for dep in data['project']['dependencies']}
+
+
+def test_pyproject_declares_security_dependencies():
+    names = _project_dependency_names()
     assert REQUIRED <= names
 
 
@@ -47,7 +55,7 @@ def test_pyproject_declares_every_runtime_dependency_of_requirements():
     """Regression: pypdf (full-text search of PDFs) was missing; build.bat/build.sh install the project
     from pyproject.toml and built a package without it."""
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    declared = {_name(dep) for dep in data["dependencies"] + data["optional-dependencies"]["postgres"]}
+    declared = _project_dependency_names() | {_name(dep) for dep in data["optional-dependencies"]["postgres"]}
     # pytest belongs to the checks, not to the program
     assert _requirements(ROOT / "requirements.txt") - {"pytest"} <= declared
 

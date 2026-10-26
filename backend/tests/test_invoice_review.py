@@ -297,8 +297,12 @@ def test_new_invoice_and_receipt_in_one_step(owner, estate):
         "received_on": TODAY.isoformat(), "property_id": estate["property"].id, "cost_category": "Reinigung",
         "recoverable": True,
         "invoice": {"property_id": estate["property"].id, "supplier": "Glanz GmbH", "invoice_number": "G-7",
+                    "due_date": "2026-12-31", "performance_start": "2025-01-01", "performance_end": "2025-12-31",
                     "invoice_date": TODAY.isoformat(), "net_amount": 100, "vat_rate": 19, "gross_amount": 119}}), 201)
     assert created["invoice"]["vat_amount"] == 19.0 and created["review"]["recoverable"] is True
+    persisted = _ok(owner.get(f"{API}/invoices/{created['invoice']['id']}"))
+    assert persisted['due_date'] == '2026-12-31'
+    assert persisted['performance_start'] == '2025-01-01' and persisted['performance_end'] == '2025-12-31'
     # a refused receipt leaves no invoice behind
     before = len(_ok(owner.get(f"{API}/invoices")))
     bad = owner.post(f"{API}/invoice-review/receipts", json={

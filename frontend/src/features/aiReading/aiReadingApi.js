@@ -115,8 +115,9 @@ export const DOCUMENT_FORM = {
 };
 
 /** Reading fields for the invoice receipt form. */
-export const INVOICE_FORM = Object.fromEntries(['supplier', 'invoice_number', 'invoice_date', 'net_amount', 'vat_rate', 'gross_amount',
-  'skonto_percent', 'skonto_days', 'payment_days', 'cost_category'].map(name => [name, name]));
+export const INVOICE_FORM = { ...Object.fromEntries(['supplier', 'invoice_number', 'invoice_date', 'due_date',
+  'performance_start', 'performance_end', 'iban', 'net_amount', 'vat_rate', 'gross_amount',
+  'skonto_percent', 'skonto_days', 'payment_days', 'cost_category'].map(name => [name, name])), kind: 'document_kind' };
 
 /** Reading fields for a cost item of a utility statement. */
 export const COST_FORM = {

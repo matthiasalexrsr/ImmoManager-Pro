@@ -13,6 +13,9 @@ import '../partyWorkspace/fileViewer.css';
 
 /** Every "Ansehen" action opens the current archived version, not a superseded upload. */
 export default function CurrentDocumentViewer({ document: record, onClose, service = documentDetailService }) {
+  // Retain the real opener across the loading-dialog -> FileViewer handoff.
+  // Native inert handling can remove focus before the later effect runs.
+  const [returnFocus] = useState(() => window.document.activeElement);
   const [state, setState] = useState({ loading: true, details: null, error: null });
   const [attempt, setAttempt] = useState(0);
   const [downloadError, setDownloadError] = useState(null);
@@ -20,7 +23,7 @@ export default function CurrentDocumentViewer({ document: record, onClose, servi
   const dialog = useRef(null);
   const head = state.details?.versions?.items?.[0];
   const original = !state.loading && !state.error && !head;
-  useModalDialog(dialog, onClose, !original);
+  useModalDialog(dialog, onClose, !original, returnFocus);
   useEffect(() => {
     const controller = new AbortController();
     setState({ loading: true, details: null, error: null });
@@ -32,7 +35,7 @@ export default function CurrentDocumentViewer({ document: record, onClose, servi
     });
     return () => controller.abort();
   }, [record.id, service, attempt]);
-  if (original) return <FileViewer fileUrl={state.details.document.file_url} title={state.details.document.title} onClose={onClose} />;
+  if (original) return <FileViewer fileUrl={state.details.document.file_url} title={state.details.document.title} onClose={onClose} returnFocus={returnFocus} />;
   const download = async () => {
     if (busy) return;
     setBusy(true); setDownloadError(null);

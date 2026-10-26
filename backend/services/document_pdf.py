@@ -20,6 +20,7 @@ from PIL import Image
 from ..config import settings
 from ..document_work_models import Annotation
 from .document_formats import decode
+from .filesystem_paths import filesystem_path
 
 
 def available():
@@ -50,7 +51,7 @@ def isolated(content, action, options=None, extra_contents=(), annotations=()):
     if not available():
         engine()  # the same explicit missing-component error, without a child
     from ..paths import get_data_dir
-    root = Path(get_data_dir()).resolve() / "document-pdf-jobs"
+    root = filesystem_path(Path(get_data_dir()).resolve() / "document-pdf-jobs")
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="work-", dir=root) as temporary:
         folder = Path(temporary)
@@ -63,12 +64,16 @@ def isolated(content, action, options=None, extra_contents=(), annotations=()):
         environment = {key: value for key, value in os.environ.items() if key.upper() in {
             "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TESSDATA_PREFIX"}}
         environment.update(PYTHONPATH=str(Path(__file__).resolve().parents[2]), PYTHONUTF8="1",
+            IMMO_PDF_WORK_DIR=str(folder),
             DATA_DIR=str(folder), DATABASE_URL="sqlite:///:memory:", JOB_SCHEDULER_ENABLED="false",
             BACKUP_SCHEDULE_ENABLED="false", INTEGRATION_STATE_FILE=str(folder / "integrations.json"),
             SECRET_KEY_FILE=str(folder / "keyring.json"), ENVIRONMENT="development")
         try:
             completed = subprocess.run(worker_command(folder),
-                cwd=folder, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                # CreateProcess still limits its current directory to MAX_PATH.
+                # All worker I/O uses the explicit, confined extended path instead.
+                cwd=Path(sys.executable).anchor if os.name == 'nt' else folder,
+                env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, timeout=120, check=False,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except subprocess.TimeoutExpired:

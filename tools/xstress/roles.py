@@ -41,6 +41,8 @@ ROLE_OF = {"owner": "eigentuemer", "verwalter": "verwalter", "buchhaltung": "buc
 
 def _actions(c: Client, refs: dict, username: str) -> dict:
     n = int(time.time() * 1000) % 100000
+    # Each role receives its own empty meter. A wall-clock modulo can decrease
+    # between roles and turn an authorization check into an invalid-reading test.
     booking = refs["booking"]
     return {
         "Buchung anlegen": ("POST", "/bookings", {"account_id": refs["account"], "booking_date": "2026-05-01", "amount": 1.0}),
@@ -54,8 +56,8 @@ def _actions(c: Client, refs: dict, username: str) -> dict:
         "Mieter löschen": ("DELETE", f"/tenants/{refs['spare_tenants'][username]}", None),
         "Kaution ändern": ("PATCH", f"/deposits/{refs['deposit']}", {"notes": f"geprüft von {username}"}),
         "Wartungsfall anlegen": ("POST", "/maintenance", {"property_id": refs["property"], "title": f"Test {username}"}),
-        "Zählerstand erfassen": ("POST", f"/meters/{refs['meter']}/readings",
-                                 {"meter_id": refs["meter"], "reading_date": "2026-09-30", "value": 99999 + n}),
+        "Zählerstand erfassen": ("POST", f"/meters/{refs['action_meters'][username]}/readings",
+                                 {"meter_id": refs['action_meters'][username], "reading_date": "2026-09-30", "value": 100}),
         "Daten exportieren": ("GET", "/data/export", None),
         "Backup wiederherstellen": ("POST", "/admin/restore/backup_gibt_es_nicht.db", {}),
         "Benutzer anlegen (Verwalter-Rolle)": ("POST", "/auth/users", {"username": f"neu{username}{n}",
@@ -82,8 +84,10 @@ def _prepare(users: dict[str, Client]) -> dict:
             "meter": meters[0]["id"], "deposit": deposits[0]["id"],
             "booking": v.require_entity("POST", "/bookings", {"account_id": account, "tenant_id": active[0]["tenant_id"],
                                                   "booking_date": "2026-05-02", "amount": 50.0}),
-            "spare_bookings": {}, "spare_contracts": {}, "spare_tenants": {}, "adjustments": {}, "action_units": {}}
+            "spare_bookings": {}, "spare_contracts": {}, "spare_tenants": {}, "adjustments": {}, "action_units": {}, "action_meters": {}}
     for username in users:
+        refs['action_meters'][username] = v.require_entity('POST', '/meters', {
+            'unit_id': free['id'], 'meter_type': 'cold_water', 'serial_number': f'ROLE-{username}-{uuid4().hex[:8]}'})['id']
         refs["action_units"][username] = v.require_entity("POST", "/units", {
             "property_id": free["property_id"], "label": f"Rechtetest {username}", "unit_type": "flat",
             "status": "vacant", "cold_rent": 500})["id"]

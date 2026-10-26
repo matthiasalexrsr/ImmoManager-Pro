@@ -146,6 +146,8 @@ class InvoiceDraft(_Request):
     invoice_number: Optional[str] = Field(default=None, max_length=100)
     invoice_date: date
     due_date: Optional[date] = None
+    performance_start: Optional[date] = None
+    performance_end: Optional[date] = None
     net_amount: float
     vat_rate: float = Field(default=19.0, ge=0, le=100)
     vat_amount: float = 0.0
@@ -162,6 +164,14 @@ class InvoiceDraft(_Request):
     @classmethod
     def _money(cls, value: float) -> float:
         return float(money(value))
+
+    @model_validator(mode="after")
+    def _performance_period(self):
+        if bool(self.performance_start) != bool(self.performance_end):
+            raise ValueError("Leistungsbeginn und Leistungsende gemeinsam angeben")
+        if self.performance_start and self.performance_end and self.performance_end < self.performance_start:
+            raise ValueError("Der Leistungszeitraum endet vor seinem Beginn")
+        return self
 
 
 class _ReceiptFields(_Request):

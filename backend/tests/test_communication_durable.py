@@ -364,8 +364,9 @@ def test_real_loopback_smtp_protocol_mime_and_disconnect(setup, lost_ack, quit_d
         assert seen['data'] is None and 'data' not in seen['commands']
     else:
         assert seen['data'] == service.download(row['id'], owner.id)[0]
-    assert [line for line in seen['commands'] if line.startswith('rcpt TO:')] == [
-        'rcpt TO:<to@example.test>', 'rcpt TO:<cc@example.test>', 'rcpt TO:<blind@example.test>'][:2 if reject_rcpt else 3]
+    # SMTP command keywords are case-insensitive (Python 3.14 normalizes "to").
+    assert [line.split(':', 1)[1] for line in seen['commands'] if line.lower().startswith('rcpt to:')] == [
+        '<to@example.test>', '<cc@example.test>', '<blind@example.test>'][:2 if reject_rcpt else 3]
     if seen['data']:
         assert b'Bcc:' not in seen['data']
     if not lost_ack and not reject_rcpt:
