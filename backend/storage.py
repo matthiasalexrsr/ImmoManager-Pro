@@ -123,6 +123,7 @@ from .models import (
 from .models_ownership import OwnershipShare, OwnershipTransfer
 from .models_reletting import LeadAttachment, RelettingProject
 from .services.memory_revisions import atomic_memory_update
+from .services.memory_transactions import LockedCollection, serialized_store
 from .storage_deposits import DepositMemoryStore
 from .storage_dunning import DunningMemoryStore
 from .storage_service_contracts import ServiceContractMemoryStore
@@ -160,6 +161,7 @@ def check_occupancy_dates(contract: Any, data: Any) -> None:
         raise ValidationError("Ein Bewohnerstand kann nicht nach Vertragsende gelten")
 
 
+@serialized_store
 @dataclass
 class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemoryStore):
     def __getattribute__(self, name):
@@ -169,7 +171,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             from .services.portfolio_scope import ScopedCollection, current_scope
             scope = current_scope()
             if scope is not None and not scope.unrestricted:
-                return ScopedCollection(self, name, value)
+                return LockedCollection(self, ScopedCollection(self, name, value))
+            return LockedCollection(self, value)
         return value
 
     accounts: Dict[str, Account] = field(default_factory=dict)
@@ -267,7 +270,7 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         guard_destructive_reset(self)
         for name, val in self.__dataclass_fields__.items():
             attr = getattr(self, name)
-            if isinstance(attr, dict):
+            if isinstance(attr, MutableMapping):
                 attr.clear()
 
     def count_entities(self, entity_type: str, filters: Dict[str, Any] | None = None) -> int:

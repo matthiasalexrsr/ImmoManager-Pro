@@ -1150,16 +1150,19 @@ def _private_connection_proof(connection, keys: list[secret_box.Key], *, normali
         assistant_proof["vault_key_ids"] = sorted(assistant_proof["vault_key_ids"])
     except Exception:
         raise BackupError("Geschützte KI-Gespräche, Anhänge und Kontozugänge konnten nicht vollständig geprüft werden.") from None
+    from .data_transfer.backup import verify as verify_data_transfer
     from .e_invoice.backup import verify as verify_e_invoices
     from .payment_security_backup import verify as verify_payment_security
     try:
         e_invoice_proof = verify_e_invoices(connection)
         payment_proof = verify_payment_security(connection)
+        data_transfer_proof = verify_data_transfer(connection)
     except Exception:
         raise BackupError("E-Rechnungsoriginale, Zuordnungen und Prüfnachweise konnten nicht vollständig geprüft werden.") from None
     return {
         "e_invoices": e_invoice_proof,
         "payment_security": payment_proof,
+        "data_transfer": data_transfer_proof,
         "assistant": assistant_proof,
         "channels": channel_proof,
         "teha": teha_proof,

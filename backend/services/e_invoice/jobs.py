@@ -1,11 +1,9 @@
 """Durable validation outbox; leased results commit with their execution receipt."""
-from contextlib import nullcontext
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ... import auth
 from ...db.e_invoice_models import EInvoiceIntakeORM as Intake
 from ...storage import NotFoundError
 from .. import document_versions as archive
@@ -79,37 +77,22 @@ def handler(ctx):
         # It neither reads originals nor grants access after a revocation.
         result = None
 
-    memory_unit = None
-    # Memory's lease and business journal must remain locked through the fence.
-    gate = ctx.jobs._lock if not hasattr(ctx.jobs, "engine") else nullcontext()
-    try:
-        with gate, ctx.unit() as job:
-            sql = getattr(job.store, "db", None)
-            if sql is not None:
-                archive.begin_writer(sql)
-            journal = None if sql is not None else archive.memory_archive(job.store)
-            with journal.lock if journal else nullcontext():
-                with auth.locked_account(actor_id, sql) if sql is not None else auth.locked_account(actor_id) as user:
-                    valid_user = bool(user and user.get("is_active"))
-                    unit = archive.Unit(job.store, sql, user or {"id": actor_id}, journal)
-                    memory_unit = unit if journal else None
-                    try:
-                        user = archive.check_account(user, write_areas=(service.AREA,))
-                        if result is None:
-                            raise HTTPException(403, "Prüfzugriff entzogen")
-                        with bound_actor(user), scope_context(scope_from_user(user)):
-                            service.apply_validation(unit, identifier, revision, result)
-                    except (HTTPException, NotFoundError) as error:
-                        if isinstance(error, HTTPException) and error.status_code not in {401, 403, 404}:
-                            raise
-                        with scope_context(None):
-                            row = db.row(unit, Intake, identifier, lock=True, required=False)
-                            if row is not None and row.state == "queued" and row.revision == revision:
-                                db.put(unit, Intake, {**db.values(row), "state": "technical_error", "revision": revision + 1,
-                                    "blockers": ["Die Prüfung wurde wegen geänderter Zugriffsrechte beendet."], "updated_at": db.now()})
-                    job.save({"done": True}, {"state": "processed" if valid_user else "access_revoked"})
-    except BaseException:
-        if memory_unit is not None:
-            memory_unit.rollback()
-        raise
+    from ..jobs.business_unit import business_unit
+    with business_unit(ctx, actor_id) as (job, unit, user):
+        valid_user = bool(user and user.get("is_active"))
+        try:
+            user = archive.check_account(user, write_areas=(service.AREA,))
+            if result is None:
+                raise HTTPException(403, "Prüfzugriff entzogen")
+            with bound_actor(user), scope_context(scope_from_user(user)):
+                service.apply_validation(unit, identifier, revision, result)
+        except (HTTPException, NotFoundError) as error:
+            if isinstance(error, HTTPException) and error.status_code not in {401, 403, 404}:
+                raise
+            with scope_context(None):
+                row = db.row(unit, Intake, identifier, lock=True, required=False)
+                if row is not None and row.state == "queued" and row.revision == revision:
+                    db.put(unit, Intake, {**db.values(row), "state": "technical_error", "revision": revision + 1,
+                        "blockers": ["Die Prüfung wurde wegen geänderter Zugriffsrechte beendet."], "updated_at": db.now()})
+        job.save({"done": True}, {"state": "processed" if valid_user else "access_revoked"})
     return True

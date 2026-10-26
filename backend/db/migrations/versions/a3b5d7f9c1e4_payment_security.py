@@ -88,15 +88,8 @@ def upgrade():
         raise RuntimeError("Partial payment security schema; verify private records before upgrading")
     for table in tables():
         if existing:
-            columns = {column["name"]: column for column in inspector.get_columns(table.name)}
-            if set(columns) != set(table.c.keys()) or any(
-                    columns[c.name]["type"].compile(dialect=connection.dialect).upper() != c.type.compile(dialect=connection.dialect).upper()
-                    or bool(columns[c.name]["nullable"]) != bool(c.nullable) for c in table.c):
-                raise RuntimeError("Payment security table mismatch: " + table.name)
-            indexes = {item["name"]: item for item in inspector.get_indexes(table.name)}
-            if any(index.name not in indexes or indexes[index.name]["column_names"] != [c.name for c in index.columns]
-                   for index in table.indexes):
-                raise RuntimeError("Payment security index mismatch: " + table.name)
+            from backend.db.migrations.additive_validation import verify_table
+            verify_table(connection, table)
         else:
             table.create(connection)
 

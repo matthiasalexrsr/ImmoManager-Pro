@@ -6,6 +6,7 @@ from . import (
     channel_models,  # noqa: F401 (external channel claims, originals and webhooks)
     communication_models,  # noqa: F401 (durable communication and original MIME)
     daily_models,  # noqa: F401 (personal notification receipts and commands)
+    data_transfer_models,  # noqa: F401 (reviewed imports and customer portability)
     datev_models,  # noqa: F401
     deposit_models,  # noqa: F401  (deposit file: instalments, payments, interest, settlements)
     document_version_models,  # noqa: F401  (registers the archive tables with Base)

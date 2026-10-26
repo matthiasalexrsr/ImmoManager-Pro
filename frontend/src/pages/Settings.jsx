@@ -15,6 +15,8 @@ import OperationsSection from './settings/OperationsSection';
 import UsersSection from './settings/UsersSection';
 import LetterheadSection from '../features/letters/LetterheadSection';
 import AiSettingsSection from './settings/AiSettingsSection';
+import ImportWizard from '../features/dataTransfer/ImportWizard';
+import CustomerExports from '../features/dataTransfer/CustomerExports';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -25,7 +27,8 @@ export default function Settings() {
   const toast = useToast();
   const isAdmin = auth?.isAdmin;
   const [versionInfo, setVersionInfo] = useState(null);
-  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isAdmin ? ['users', 'dev'] : [])];
+  const isOwner = auth?.user?.role === 'eigentuemer';
+  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
   const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
   const setSettingsTab = section => setParams(current => {
     const next = new URLSearchParams(current);
@@ -50,6 +53,7 @@ export default function Settings() {
     { key: 'letterhead', label: 'Briefkopf' },
     { key: 'security', label: 'Sicherheit / MFA' },
     { key: 'system', label: t('pages.settings.tabSystem') || 'System' },
+    ...(isOwner ? [{ key: 'migration', label: 'Datenübernahme / Kundenexport' }] : []),
     ...(isAdmin ? [{ key: 'users', label: t('pages.settings.users.tab') }] : []),
     ...(isAdmin ? [{ key: 'dev', label: t('pages.settings.tabDev') || 'Entwicklung' }] : []),
   ];
@@ -78,6 +82,7 @@ export default function Settings() {
 
         {settingsTab === 'users' && isAdmin && <UsersSection currentUser={auth?.user} />}
 
+        {settingsTab === 'migration' && isOwner && <><ImportWizard /><CustomerExports /></>}
         {/* System tab: Backup, Updates, About */}
         {settingsTab === 'system' && (
           <>

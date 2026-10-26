@@ -37,14 +37,14 @@ ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c0
                                    "e2b4d6f8a0c1", "f4c6e8a0b2d3", "a5c7e9b1d3f5", "c7e9a1b3d5f7",
                                    "d1f3a5c7e9b2", "e4b6d8f0a2c3", "f5c7e9a1b3d4", "a6d8f0b2c4e5",
                                    "b8f0a2c4d6e7", "c9a1b3d5e7f9", "d0b2c4e6f8a1",
-                                   "e1a3c5e7f9b2", "f2a4c6e8b0d3", "a3b5d7f9c1e4"})
+                                   "e1a3c5e7f9b2", "f2a4c6e8b0d3", "a3b5d7f9c1e4", "b4c6d8e0f2a5"})
 
 
 def _current_addition_names():
     modules = {
         'bank_models', 'finance_models', 'datev_models', 'tax_models',
         'communication_models', 'daily_models', 'document_work_models',
-        'teha_models', 'channel_models', 'integration_attempt_models', 'e_invoice_models', 'payment_security_models',
+        'teha_models', 'channel_models', 'integration_attempt_models', 'e_invoice_models', 'payment_security_models', 'data_transfer_models',
     }
     names = {getattr(mapper.local_table, 'name') for mapper in Base.registry.mappers
              if mapper.class_.__module__.rsplit('.', 1)[-1] in modules}
