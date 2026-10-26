@@ -6,6 +6,11 @@ COMPOSE_FILES=(
   -f docker-compose.monitoring.yml
 )
 
+# docker-compose.yml refuses to start without a database password and a signing
+# secret; the smoke run gets throwaway values that live only as long as this run.
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
+export JWT_SECRET_KEY="${JWT_SECRET_KEY:-$(openssl rand -hex 32)}"
+
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
