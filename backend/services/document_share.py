@@ -35,6 +35,7 @@ class CurrentFile:
     content: bytes
     filename: str
     media_type: str
+    source_ref: str | None = None
 
     @property
     def extension(self) -> str:
@@ -51,11 +52,11 @@ def current_file(store: Any, document: Any) -> CurrentFile:
     found = document_text.source(store, document)
     if found is None:
         raise HTTPException(404, f"Zum Dokument „{document.title}“ gibt es keine Datei in dieser Installation.")
-    _, content, name = found
+    reference, content, name = found
     filename = shown_name(name)
     media_type = mimetypes.guess_type(filename)[0] or ("application/pdf" if content.startswith(b"%PDF-")
                                                       else "application/octet-stream")
-    return CurrentFile(content, filename, media_type)
+    return CurrentFile(content, filename, media_type, reference)
 
 
 # ─── Printing ────────────────────────────────────────────────────────────────

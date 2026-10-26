@@ -61,6 +61,8 @@ export function readingToForm(reading, mapping) {
     if (item == null || item.value == null || item.value === '') continue;
     initial[formKey] = formValue(item);
     marks[formKey] = { value: String(formValue(item)), evidence: item.evidence || null, confidence: item.confidence || null,
+      ...(item.citation !== undefined ? { citation: item.citation } : {}),
+      ...(item.evidence_status !== undefined ? { evidence_status: item.evidence_status } : {}),
       source: item.source || reading.reader };
   }
   return { initial, marks };

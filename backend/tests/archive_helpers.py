@@ -23,7 +23,14 @@ def purge_originals(store) -> None:
         with connection.begin():
             drop_guards(connection)
             connection.exec_driver_sql(f"DELETE FROM {ARCHIVE_TABLES[1]}")
-            connection.exec_driver_sql(f"DELETE FROM {ARCHIVE_TABLES[0]}")
+            # SQLite RESTRICT checks each row immediately: later versions refer
+            # to predecessors and restores, even within a single bulk DELETE.
+            versions = connection.exec_driver_sql(f"SELECT id FROM {ARCHIVE_TABLES[0]} ORDER BY number DESC").scalars().all()
+            from sqlalchemy import delete
+
+            from backend.db.document_version_models import DocumentVersionORM
+            for identifier in versions:
+                connection.execute(delete(DocumentVersionORM).where(DocumentVersionORM.id == identifier))
             install_guards(connection)
 
 

@@ -62,6 +62,25 @@ def ensure_available(store, kind, identifier):
         raise HTTPException(404, "Diese Quelle ist für Veröffentlichung, Suche und KI-Verarbeitung gesperrt.")
 
 
+def ensure_file_available(store, file_url):
+    """An upload locator must not bypass a restriction on its linked document."""
+    from ...routers.files import _file_url_to_key
+    target = _file_url_to_key(file_url)
+    unit = read_unit(store)
+    blocked = [item.record_id for item in rows(unit, PrivacyControlORM, kind="document")
+               if item.restricted or item.erased_at]
+    if not target or not blocked:
+        return
+    if unit.db is not None:
+        from ...db.orm_models import DocumentORM
+        table = DocumentORM.__table__
+        urls = unit.db.scalars(select(table.c.file_url).where(table.c.id.in_(blocked)))
+    else:
+        urls = [item.file_url for item in store.documents.values() if item.id in blocked]
+    if any(_file_url_to_key(url) == target for url in urls):
+        raise HTTPException(404, "Die Quelldatei ist für KI-Verarbeitung gesperrt.")
+
+
 def ensure_no_hold(store, kind, identifier):
     item = control(read_unit(store), kind, identifier)
     if item and item.held:

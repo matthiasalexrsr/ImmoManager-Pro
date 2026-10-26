@@ -465,6 +465,9 @@ def local_values(surface: Surface, text: str, *, filename: str = "", known: Opti
 
 def _document_title(store: Any, document_id: str) -> Optional[Any]:
     from ..storage import NotFoundError
+    from .privacy.storage import is_restricted
+    if is_restricted(store, "document", document_id):
+        return None
     try:
         return store.get_document(document_id)
     except NotFoundError:
@@ -564,6 +567,9 @@ def duplicates(store: Any, surface: Surface, params: dict, values: dict, *, sha2
     seen: set[tuple[str, str]] = set()
 
     def add(kind: str, record_id: str, title: str, href: str, reason: str, details: str = "", *, can_update: bool = False):
+        from .privacy.storage import is_restricted
+        if kind == "document" and is_restricted(store, kind, record_id):
+            return
         if (kind, record_id) in seen:
             return
         seen.add((kind, record_id))

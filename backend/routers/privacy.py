@@ -18,7 +18,13 @@ from ..privacy_models import (
 from ..services.privacy import controls, journal, requests
 from .invoice_review import _call
 
-router = APIRouter(prefix="/privacy", tags=["Datenschutz"])
+
+def private_response(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+
+router = APIRouter(prefix="/privacy", tags=["Datenschutz"], dependencies=[Depends(private_response)])
 Actor = Annotated[UserRead, Depends(require_auth)]
 
 

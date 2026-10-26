@@ -151,6 +151,9 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
       {error && <p role="alert" className="alert alert-error">{error}</p>}
 
       {reading && <>
+        <p className="form-hint">{reading.file?.version_id ? 'Quelle: archivierte Originalversion.' : 'Quelle: Datei mit Prüfsumme, noch ohne archivierte Versionsbindung.'}
+          {reading.file?.text_truncated && ' Der Text wurde gekürzt; nicht übermittelte Inhalte sind ungeprüft.'}
+          {reading.file?.text_available === false && ' Kein Text extrahierbar. Bildbeobachtungen benötigen Prüfung am Original.'}</p>
         {waiting && <div className="ai-reading-duplicates" role="alertdialog" aria-labelledby={`${id}-dup`}>
           <p id={`${id}-dup`}><strong>Zu diesem Dokument gibt es vermutlich schon {duplicates.length === 1 ? 'einen Eintrag' : `${duplicates.length} Einträge`}.</strong> Was soll geschehen?</p>
           <ul>{duplicates.map(item => <li key={`${item.kind}:${item.id}`}>
@@ -191,7 +194,9 @@ export default function AiReadingPanel({ surface, source, params, title, onApply
             return <tr key={field.name} className={changed.has(field.name) ? 'is-changed' : undefined}>
               <th scope="row">{field.label}{changed.has(field.name) && <span className="badge badge-blue ai-badge">neu</span>}</th>
               <td>{shownValue(field, item.value)}</td>
-              <td className="ai-evidence">{item.evidence ? `„${item.evidence}“` : '—'}</td>
+              <td className="ai-evidence">{item.evidence ? `„${item.evidence}“` : 'Keine Fundstelle angegeben'}
+                {item.citation?.verified ? <small> · Geprüfte Zeile {item.citation.line} im extrahierten Text{item.citation.multiple_occurrences && ' (mehrfach im Text)'}</small>
+                  : <small> · Am Original prüfen{item.evidence_status === 'not_found' ? ': Zitat im gelesenen Text nicht gefunden' : ''}</small>}</td>
               <td>{item.confidence ? <span className={`ai-confidence is-${item.confidence}`}>{CONFIDENCE_LABELS[item.confidence]}</span> : '—'}</td>
             </tr>;
           })}</tbody>

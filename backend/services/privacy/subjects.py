@@ -60,12 +60,20 @@ def inventory(unit, kind, identifier):
 
 def anonymize(unit, kind, identifier, patch):
     """The legacy action clears party fields and revokes related portal access in one unit."""
-    data = extension(unit, kind, identifier)
-    if any(item["held"] for item in data["privacy_controls"]):
-        raise HTTPException(409, "Verknüpfte Daten unterliegen einer Aufbewahrungssperre. Die Anonymisierung muss zunächst mit der Sperrentscheidung abgeglichen werden.")
+    from ...routers.admin import _CONTACT_PERSONAL_FIELDS, _TENANT_PERSONAL_FIELDS
+    from .storage import lock_sources
+    lock_sources(unit)
     source = Rows.of(unit)
     table = "tenants" if kind == "tenant" else "contacts"
     source.lock(table, identifier)
+    party = source.require(table, identifier, "Partei nicht gefunden.")
+    # Recompute under the write fence, including fields filled after the route's
+    # preliminary read. Keep the legacy response's list of actually cleared fields.
+    fields = _TENANT_PERSONAL_FIELDS if kind == "tenant" else _CONTACT_PERSONAL_FIELDS
+    patch.update({name: None for name in fields if getattr(party, name) is not None})
+    data = extension(unit, kind, identifier)
+    if any(item["held"] for item in data["privacy_controls"]):
+        raise HTTPException(409, "Verknüpfte Daten unterliegen einer Aufbewahrungssperre. Die Anonymisierung muss zunächst mit der Sperrentscheidung abgeglichen werden.")
     source.update(table, identifier, **patch)
     identities = set()
     field = "tenant_id" if kind == "tenant" else "contact_id"

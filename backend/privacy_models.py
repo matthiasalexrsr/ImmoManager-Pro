@@ -45,10 +45,10 @@ class JournalControl(BaseModel):
     id: str = Field(pattern=r"^[a-f0-9]{64}$")
     kind: ResourceKind
     record_id: str = Field(min_length=1, max_length=100)
-    held: bool
-    restricted: bool
+    held: bool = Field(strict=True)
+    restricted: bool = Field(strict=True)
     erased_at: datetime | None
-    erasure_due: bool
+    erasure_due: bool = Field(strict=True)
     revision: int = Field(ge=1)
     reason: str = Field(min_length=10, max_length=2000)
     actor_id: str = Field(min_length=1, max_length=50)

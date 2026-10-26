@@ -26,9 +26,18 @@ class SourceReference(StrictModel):
     id: Identifier
 
 
+class TextLocation(StrictModel):
+    text_sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    start_char: int = Field(ge=0, le=30_000_000)
+    end_char: int = Field(ge=1, le=30_000_000)
+    quote: str = Field(min_length=3, max_length=500)
+
+
 class Evidence(SourceReference):
     revision: Text
     sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    version_id: Identifier | None = None
+    location: TextLocation | None = None
 
 
 class TaskValues(StrictModel):
@@ -125,6 +134,7 @@ def validate_proposal(store, proposal: Proposal | dict, actor_id: str, *, contex
     if permitted is not None and not domain_references.issubset(permitted):
         raise HTTPException(422, "Der Vorschlag enthält Quellen außerhalb des gewählten Kontexts.")
     evidence = []
+    source_warnings = []
     for ref in parsed.evidence:
         if ref.kind == "attachment":
             from .assistant_handoff import attachment_evidence
@@ -134,7 +144,17 @@ def validate_proposal(store, proposal: Proposal | dict, actor_id: str, *, contex
         if source["revision"] != ref.revision or source["sha256"] != ref.sha256:
             raise HTTPException(409, {"code": "assistant_evidence_changed",
                                       "message": "Eine Vorschlagsquelle wurde geändert. Bitte neu prüfen."})
-        evidence.append({key: source[key] for key in ("kind", "id", "revision", "sha256", "title", "href")})
+        from .source_citations import verify_proposal
+        citation = verify_proposal(store, actor_id, ref, source)
+        found = {key: source[key] for key in ("kind", "id", "revision", "sha256", "title", "href")}
+        if ref.kind in ("document", "attachment"):
+            found.update(citation=citation, version_id=source.get("version_id"), version_number=source.get("version_number"),
+                file_sha256=source.get("file_sha256", source["sha256"]))
+            if citation is None:
+                source_warnings.append(f"{source['title']}: keine überprüfbare Textfundstelle angegeben. Die Angabe muss am Original geprüft werden.")
+            if ref.kind == "document" and not source.get("version_id"):
+                source_warnings.append(f"{source['title']}: noch keine archivierte Originalversion; nur die Dateiprüfsumme ist belegt.")
+        evidence.append(found)
     values = parsed.values.model_dump(mode="json", exclude_none=True)
     missing = [kind for field, kind in (("property_id", "property"), ("unit_id", "unit"))
                if values.get(field) and (kind, values[field]) not in references]
@@ -156,7 +176,7 @@ def validate_proposal(store, proposal: Proposal | dict, actor_id: str, *, contex
     workspace_contexts.check_context(actor_id, context, edit=True)
     workspace_contexts.validate_values(store, context, values, actor_id)
     normalized = parsed.model_dump(mode="json")
-    warnings = ["Vorschlag prüfen: Quellenbindung belegt die Herkunft, nicht die fachliche Richtigkeit des Modelltextes."]
+    warnings = ["Vorschlag prüfen: Quellenbindung belegt die Herkunft, nicht die fachliche Richtigkeit des Modelltextes.", *source_warnings]
     if parsed.kind == "invoice":
         warnings.append("Beträge, Steuersatz und Leistungszeitraum anhand des Originals bestätigen; keine Buchung oder Rechnungsfreigabe erfolgt.")
     review: dict[str, Any] = {"proposal": normalized, "normalized": normalized, "context": context,

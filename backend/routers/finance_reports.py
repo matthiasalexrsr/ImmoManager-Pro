@@ -24,7 +24,9 @@ router = APIRouter(tags=["Finanzberichte v2"])
 
 def output(data, format):
     from ..services.portfolio_scope import current_scope, refresh_scope
+    from ..services.report_provenance import recheck_originals
     captured = current_scope()
+    recheck_originals(store, data)
     if format == "json":
         refresh_scope(captured)
         return data
@@ -35,6 +37,8 @@ def output(data, format):
         writer.writerow(["Definitionshash", data["definition_hash"]])
         writer.writerow(["Währung", data["currency"]])
         writer.writerow(["Ergebnishash", data["result_hash"]])
+        writer.writerow(["Datenabruf UTC", data.get("generated_at", "")])
+        writer.writerow(["Quellenstand", json.dumps(data.get("provenance", {}), ensure_ascii=False, sort_keys=True)])
         for key in ("opening_balance", "closing_balance"):
             if key in data:
                 writer.writerow([key, Decimal(data[key])])
@@ -50,9 +54,12 @@ def output(data, format):
             if entries:
                 columns = list(dict.fromkeys(k for row in entries for k in row))
                 writer.writerow(columns)
-                writer.writerows([spreadsheet_cell(Decimal(row[k]) if k in numeric_columns and k in row else row.get(k, ""))
+                writer.writerows([spreadsheet_cell(Decimal(row[k]) if k in row and
+                                  ((section in ("monthly", "baseline_monthly") and k in numeric_columns) or k == "amount") else
+                                  json.dumps(row[k], ensure_ascii=False, sort_keys=True) if isinstance(row.get(k), (dict, list)) else row.get(k, ""))
                                   for k in columns] for row in entries)
         refresh_scope(captured)
+        recheck_originals(store, data)
         return Response(stream.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="finanzbericht-v2.csv"'})
     from ..services.report_render import render_report_pdf
@@ -63,9 +70,14 @@ def output(data, format):
         return [{"Vorgang": source.get("label") or source.get("basis") or source["identity"],
                  "Datum / Monat": source.get("day", source.get("month", "–")),
                  "Betrag": Decimal(source["amount"]), "Grundlage": source.get("basis", ""),
-                 "Bezug": source.get("url", "")} for source in rows]
+                 "Bezug": source.get("url", ""),
+                 "Originalnachweis": source.get("provenance", {}).get("original", {}).get("message", ""),
+                 "Originalversion": source.get("provenance", {}).get("original", {}).get("version_id", ""),
+                 "Original SHA-256": source.get("provenance", {}).get("original", {}).get("sha256", "")} for source in rows]
 
     printable = {"filters": data["filters"], "Stichtag": data["definition"]["as_of"],
+                 "Datenabruf UTC": data.get("generated_at", ""),
+                 "Quellenstand": data.get("provenance", {}),
                  "Währung": data["currency"], "monthly": monthly(data["monthly"])}
     if "totals" in data:
         printable["totals"] = {key: Decimal(value) for key, value in data["totals"].items()}
@@ -95,6 +107,7 @@ def output(data, format):
             selection[key] = getattr(get_record(data["filters"][key]), attribute)
     content = render_report_pdf(data["basis"], printable, selection=selection, currency=data["currency"])
     refresh_scope(captured)
+    recheck_originals(store, data)
     return Response(content, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="finanzbericht-v2.pdf"'})
 
