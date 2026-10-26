@@ -45,6 +45,11 @@ async function context(portal = false) {
   result.on('page', p => {
     p.setDefaultTimeout(25000);
     p.on('pageerror', error => report.page_errors.push({ current, error: String(error) }));
+    p.on('console', message => {
+      if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) {
+        report.page_errors.push({ current, error: `UI console: ${message.text()}` });
+      }
+    });
     p.on('response', r => { if (r.status() >= 500 && new URL(r.url()).origin === base.origin) report.server_errors.push({ current, path: new URL(r.url()).pathname, status: r.status() }); });
   });
   return result;

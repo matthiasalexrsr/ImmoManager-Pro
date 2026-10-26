@@ -54,7 +54,7 @@ try {
   }, { token, owner: profile.id });
   page = await context.newPage();
   page.on('pageerror', error => report.page_errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) report.page_errors.push(`UI console: ${message.text()}`); });
   await page.goto(`${base.origin}/documents?focus_id=${encodeURIComponent(document.id)}`);
   // the title leads to the document page; the row's eye button opens the quick view checked here
   await page.getByRole('row').filter({ hasText: title }).getByRole('button', { name: 'Dokument ansehen', exact: true }).click();

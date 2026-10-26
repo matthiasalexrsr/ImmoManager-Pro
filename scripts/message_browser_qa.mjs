@@ -68,7 +68,7 @@ try {
   }, profile.id);
   page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on('pageerror', error => result.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) result.errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) result.errors.push(`UI console: ${message.text()}`); });
 
   await step('Real login, bounded 100-row rendering and complete server count beyond 10,000', async () => {
     await login(page); await openThreads(); await choose(a); await ready(a);

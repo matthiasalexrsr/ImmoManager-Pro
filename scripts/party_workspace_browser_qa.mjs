@@ -100,7 +100,7 @@ function observe(page) {
   page.setDefaultTimeout(10000);
   page.setDefaultNavigationTimeout(15000);
   page.on('pageerror', error => results.consoleErrors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) results.consoleErrors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) results.consoleErrors.push(`UI console: ${message.text()}`); });
   page.on('response', async response => {
     const url = new URL(response.url());
     if (url.pathname.startsWith('/api/') && response.status() >= 400) results.apiFailures.push({ path: url.pathname, status: response.status() });

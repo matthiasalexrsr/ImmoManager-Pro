@@ -59,7 +59,7 @@ try {
   page = await context.newPage();
   page.setDefaultTimeout(20000);
   page.on('pageerror', error => report.errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) report.errors.push(`UI console: ${message.text()}`); });
   let connectionId, runId;
   await step('Actual login and provider selection without external action', async () => {
     await login(page);

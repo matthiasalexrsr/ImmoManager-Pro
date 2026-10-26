@@ -63,7 +63,7 @@ try {
   page = await context.newPage();
   page.setDefaultTimeout(30000);
   page.on('pageerror', error => report.page_errors.push(String(error)));
-  page.on('console', message => { if (message.type() === 'error' && /Content.Security.Policy/i.test(message.text())) report.page_errors.push(`CSP: ${message.text()}`); });
+  page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) report.page_errors.push(`UI console: ${message.text()}`); });
   await page.goto(base.origin + '/login');
   await page.locator('input[autocomplete="username"]').fill('owner');
   await page.locator('input[type="password"]').fill(process.env.QA_PASSWORD);
