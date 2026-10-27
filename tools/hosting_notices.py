@@ -7,13 +7,15 @@ from pathlib import Path
 
 
 def generate(output: Path):
-    result = subprocess.run(['dpkg-query', '-W', '-f=${Package}\t${Version}\t${source:Package}\t${source:Version}\n'],
+    result = subprocess.run(['dpkg-query', '-W', '-f=${Package}\t${Version}\t${source:Package}\t${source:Version}\t${db:Status-Status}\n'],
                             check=True, capture_output=True, text=True)
     folder = output / 'system'
     folder.mkdir(exist_ok=True)
     rows = []
     for line in result.stdout.splitlines():
-        package, version, source, source_version = line.split('\t')
+        package, version, source, source_version, status = line.split('\t')
+        if status != 'installed':  # removed packages keep only config files (e.g. dirmngr after purging gnupg)
+            continue
         copyright = Path('/usr/share/doc') / package / 'copyright'
         if not copyright.is_file():
             raise RuntimeError('Missing Debian copyright notice: ' + package)

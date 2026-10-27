@@ -128,3 +128,25 @@ def test_modified_wizard_library_blocks_distribution(tmp_path):
     (tmp_path / relative / 'pdfmake.min.js').write_bytes(b'altered browser library')
     with pytest.raises(RuntimeError, match='Wizard asset checksum mismatch'):
         profile.verify_wizard_assets(tmp_path)
+
+
+def test_hosting_notices_skip_removed_packages_and_require_installed_ones(tmp_path, monkeypatch):
+    import subprocess
+
+    from tools import hosting_notices
+
+    docs = tmp_path / 'doc'
+    (docs / 'curl').mkdir(parents=True)
+    (docs / 'curl' / 'copyright').write_text('curl licence', encoding='utf-8')
+    listing = ('curl\t7.88\tcurl\t7.88\tinstalled\n'
+               'dirmngr\t2.2.40\tgnupg2\t2.2.40\tconfig-files\n')  # left behind by purging gnupg in the image
+    monkeypatch.setattr(hosting_notices.subprocess, 'run',
+                        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout=listing))
+    real_path = hosting_notices.Path
+    monkeypatch.setattr(hosting_notices, 'Path',
+                        lambda value: docs if value == '/usr/share/doc' else real_path(value))
+    rows = hosting_notices.generate(tmp_path)
+    assert [row['name'] for row in rows] == ['curl']
+    listing = 'curl\t7.88\tcurl\t7.88\tinstalled\nlibfoo\t1\tfoo\t1\tinstalled\n'
+    with pytest.raises(RuntimeError, match='Missing Debian copyright notice: libfoo'):
+        hosting_notices.generate(tmp_path)
