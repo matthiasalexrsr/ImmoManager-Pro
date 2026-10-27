@@ -1,0 +1,16 @@
+﻿.communication-center { min-width: 0; }
+.communication-controls { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+.communication-center label { display: flex; flex-direction: column; gap: .3rem; margin: .65rem 0; }
+.communication-center input, .communication-center select, .communication-center textarea { width: 100%; min-width: 0; max-width: 100%; padding: .5rem; border: 1px solid var(--color-border, #bbb); border-radius: 4px; background: var(--color-bg, white); color: inherit; }
+.communication-layout { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 1.5rem; }
+.communication-list { list-style: none; padding: 0; }
+.communication-list button { display: flex; flex-direction: column; gap: .3rem; width: 100%; text-align: left; padding: .75rem; overflow-wrap: anywhere; }
+.communication-list button[aria-pressed=true] { outline: 2px solid var(--color-primary, #2463ae); }
+.communication-center button { margin: .25rem; max-width: 100%; white-space: normal; }
+.communication-center fieldset, .communication-center article { min-width: 0; overflow-wrap: anywhere; }
+.communication-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.communication-context-links { display: flex; gap: .5rem 1rem; flex-wrap: wrap; margin: .5rem 0; overflow-wrap: anywhere; }
+.communication-center .communication-confirm { display: flex; flex-direction: row; align-items: start; }
+.communication-confirm input { width: auto; margin-top: .3rem; }
+.communication-center [role=alert] { padding: .75rem; border: 1px solid #a22; color: var(--color-error, #a22); }
+@media (max-width: 700px) { .communication-layout { grid-template-columns: minmax(0, 1fr); } .communication-controls > * { width: 100%; } }

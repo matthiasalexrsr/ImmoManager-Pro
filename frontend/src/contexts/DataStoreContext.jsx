@@ -8,8 +8,9 @@
  *  - Event-based refresh so all mounted components update together
  *  - Configurable TTL to avoid stale data
  */
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { api } from '../api';
+import { useAuth } from './AuthContext';
 
 const DataStoreContext = createContext(null);
 
@@ -24,104 +25,109 @@ export function useDataStore() {
  * Hook to consume a specific entity list from the global store.
  * Automatically fetches on mount if not cached, and re-renders on invalidation.
  */
-export function useEntities(entityKey, endpoint) {
+export function useEntities(entityKey, endpoint, enabled = true) {
   const store = useDataStore();
   const [, setTick] = useState(0);
 
   // Subscribe to invalidation events for this entity
   useEffect(() => {
-    if (!store) return;
+    if (!store || !enabled) return;
     const unsub = store.subscribe(entityKey, () => setTick(t => t + 1));
     // Trigger initial fetch if not cached
     store.ensureLoaded(entityKey, endpoint);
     return unsub;
-  }, [store, entityKey, endpoint]);
+  }, [store, entityKey, endpoint, enabled]);
 
   if (!store) return { items: [], loading: false, error: null, reload: () => {} };
 
   const entry = store.getCache(entityKey);
   return {
     items: entry?.data || [],
-    loading: entry?.loading || false,
+    loading: enabled && (!entry || Boolean(entry.loading)),
     error: entry?.error || null,
     reload: () => store.invalidate(entityKey, endpoint),
   };
 }
 
 export function DataStoreProvider({ children }) {
+  const user = useAuth()?.user;
+  const scopeKey = JSON.stringify([user?.id || null, user?.role || null, user?.portfolio_access || null, [...(user?.portfolio_ids || [])].sort()]);
+  return <ScopedDataStore scopeKey={scopeKey}>{children}</ScopedDataStore>;
+}
+
+function ScopedDataStore({ children, scopeKey }) {
   // Cache: { [entityKey]: { data, loading, error, fetchedAt, endpoint } }
-  const cacheRef = useRef({});
-  // Subscribers: { [entityKey]: Set<callback> }
-  const subsRef = useRef({});
-  // Pending fetches to avoid duplicate requests
-  const pendingRef = useRef({});
+  // Each identity owns a separate cache object. Late reads retain their old
+  // object and can never populate the newly authorized viewer’s cache.
+  const cacheScope = useMemo(() => ({ identity: scopeKey, cache: {}, subscribers: {}, pending: {} }), [scopeKey]);
   // Force re-render trigger
   const [, setVersion] = useState(0);
 
   const notify = useCallback((entityKey) => {
-    const subs = subsRef.current[entityKey];
+    const subs = cacheScope.subscribers[entityKey];
     if (subs) subs.forEach(cb => cb());
     setVersion(v => v + 1);
-  }, []);
+  }, [cacheScope]);
 
   const subscribe = useCallback((entityKey, callback) => {
-    if (!subsRef.current[entityKey]) subsRef.current[entityKey] = new Set();
-    subsRef.current[entityKey].add(callback);
-    return () => subsRef.current[entityKey]?.delete(callback);
-  }, []);
+    if (!cacheScope.subscribers[entityKey]) cacheScope.subscribers[entityKey] = new Set();
+    cacheScope.subscribers[entityKey].add(callback);
+    return () => cacheScope.subscribers[entityKey]?.delete(callback);
+  }, [cacheScope]);
 
   const getCache = useCallback((entityKey) => {
-    return cacheRef.current[entityKey] || null;
-  }, []);
+    return cacheScope.cache[entityKey] || null;
+  }, [cacheScope]);
 
   const fetchEntity = useCallback(async (entityKey, endpoint) => {
     // Skip if already fetching
-    if (pendingRef.current[entityKey]) return;
-    pendingRef.current[entityKey] = true;
+    if (cacheScope.pending[entityKey]) return;
+    cacheScope.pending[entityKey] = true;
 
-    cacheRef.current[entityKey] = {
-      ...cacheRef.current[entityKey],
+    cacheScope.cache[entityKey] = {
+      ...cacheScope.cache[entityKey],
       loading: true, error: null, endpoint,
     };
     notify(entityKey);
 
     try {
-      const data = await api.get(endpoint);
-      cacheRef.current[entityKey] = {
-        data: Array.isArray(data) ? data : [],
+      const data = await api.list(endpoint);
+      if (!Array.isArray(data)) throw new Error('Die Datenliste konnte nicht gelesen werden. Bitte erneut laden.');
+      cacheScope.cache[entityKey] = {
+        data,
         loading: false,
         error: null,
         fetchedAt: Date.now(),
         endpoint,
       };
     } catch (err) {
-      cacheRef.current[entityKey] = {
-        ...cacheRef.current[entityKey],
+      cacheScope.cache[entityKey] = {
+        ...cacheScope.cache[entityKey],
         loading: false,
         error: err.message,
         fetchedAt: Date.now(),
         endpoint,
       };
     } finally {
-      delete pendingRef.current[entityKey];
+      delete cacheScope.pending[entityKey];
       notify(entityKey);
     }
-  }, [notify]);
+  }, [notify, cacheScope]);
 
   const ensureLoaded = useCallback((entityKey, endpoint) => {
-    const entry = cacheRef.current[entityKey];
+    const entry = cacheScope.cache[entityKey];
     if (!entry || !entry.fetchedAt || (Date.now() - entry.fetchedAt > CACHE_TTL)) {
       fetchEntity(entityKey, endpoint);
     }
-  }, [fetchEntity]);
+  }, [fetchEntity, cacheScope]);
 
   const invalidate = useCallback((entityKey, endpoint) => {
-    const entry = cacheRef.current[entityKey];
+    const entry = cacheScope.cache[entityKey];
     const ep = endpoint || entry?.endpoint;
     if (ep) {
       fetchEntity(entityKey, ep);
     }
-  }, [fetchEntity]);
+  }, [fetchEntity, cacheScope]);
 
   /**
    * Invalidate caches that have active subscribers (mounted components).
@@ -130,8 +136,8 @@ export function DataStoreProvider({ children }) {
    * Remaining stale caches will be refreshed via TTL on next access.
    */
   const invalidateAll = useCallback(() => {
-    const entries = cacheRef.current;
-    const subs = subsRef.current;
+    const entries = cacheScope.cache;
+    const subs = cacheScope.subscribers;
     for (const key of Object.keys(entries)) {
       const entry = entries[key];
       if (entry?.endpoint && subs[key]?.size > 0) {
@@ -141,20 +147,20 @@ export function DataStoreProvider({ children }) {
         entry.fetchedAt = 0;
       }
     }
-  }, [fetchEntity]);
+  }, [fetchEntity, cacheScope]);
 
   /**
    * Invalidate related entities after a mutation.
    * E.g., after creating a unit, invalidate both 'units' and 'properties'.
    */
   const invalidateRelated = useCallback((primaryKey, ...relatedKeys) => {
-    const entry = cacheRef.current[primaryKey];
+    const entry = cacheScope.cache[primaryKey];
     if (entry?.endpoint) fetchEntity(primaryKey, entry.endpoint);
     for (const key of relatedKeys) {
-      const rel = cacheRef.current[key];
+      const rel = cacheScope.cache[key];
       if (rel?.endpoint) fetchEntity(key, rel.endpoint);
     }
-  }, [fetchEntity]);
+  }, [fetchEntity, cacheScope]);
 
   /**
    * Perform a mutation (POST/PUT/PATCH/DELETE) and automatically
@@ -175,11 +181,14 @@ export function DataStoreProvider({ children }) {
     return result;
   }, [invalidate]);
 
+  // Stable value: useEntities subscribes in an effect that depends on it.
+  const value = useMemo(() => ({
+    subscribe, getCache, ensureLoaded, invalidate,
+    invalidateAll, invalidateRelated, mutate, fetchEntity,
+  }), [subscribe, getCache, ensureLoaded, invalidate, invalidateAll, invalidateRelated, mutate, fetchEntity]);
+
   return (
-    <DataStoreContext.Provider value={{
-      subscribe, getCache, ensureLoaded, invalidate,
-      invalidateAll, invalidateRelated, mutate, fetchEntity,
-    }}>
+    <DataStoreContext.Provider value={value}>
       {children}
     </DataStoreContext.Provider>
   );

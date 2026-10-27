@@ -44,6 +44,9 @@ def get_viewing(appointment_id: str) -> ViewingAppointment:
 @router.put("/{appointment_id}", response_model=ViewingAppointment)
 def update_viewing(appointment_id: str, payload: ViewingAppointmentCreate) -> ViewingAppointment:
     try:
+        # the rating noted on the re-letting project stays when the calendar form saves
+        current = store.get_viewing_appointment(appointment_id).model_dump(include=set(ViewingAppointmentCreate.model_fields))
+        payload = ViewingAppointmentCreate.model_validate({**current, **payload.model_dump(exclude_unset=True)})
         return store.update_viewing_appointment(appointment_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

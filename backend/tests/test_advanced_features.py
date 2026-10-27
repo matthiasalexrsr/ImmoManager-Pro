@@ -3,7 +3,7 @@
 from datetime import date
 
 import pytest
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 from backend.dependencies import store
 from backend.models import (
@@ -76,7 +76,7 @@ def _setup_data():
 class TestCSVExport:
     def test_summary_csv(self, _setup_data):
         result = get_summary(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "zusammenfassung.csv" in result.headers["content-disposition"]
 
     def test_summary_json(self, _setup_data):
@@ -91,20 +91,20 @@ class TestCSVExport:
             amount=800.0, category_id=category.id
         ))
         result = get_finance_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_occupancy_csv(self, _setup_data):
         result = get_occupancy_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "belegungsquote.csv" in result.headers["content-disposition"]
 
     def test_receivables_aging_csv(self, _setup_data):
         result = get_receivables_aging(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_cashflow_csv(self, _setup_data):
         result = get_cashflow_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
         assert "cashflow.csv" in result.headers["content-disposition"]
 
     def test_maintenance_costs_csv(self, _setup_data):
@@ -113,11 +113,11 @@ class TestCSVExport:
             property_id=prop.id, title="Fix", category="Elektrik", estimated_cost=500.0
         ))
         result = get_maintenance_costs_report(format="csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_csv_response_empty(self):
         result = _csv_response([], "test.csv")
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
 
 # === DATEV Export Tests ===
@@ -135,8 +135,9 @@ class TestDATEVExport:
             amount=-150.0, payment_text="Reparatur"
         ))
         result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
-        assert "EXTF_Buchungsstapel.csv" in result.headers["content-disposition"]
+        assert isinstance(result, Response)
+        assert "Buchungen_neutral.csv" in result.headers["content-disposition"]
+        assert "EXTF" not in result.headers["content-disposition"]
 
     def test_datev_export_date_filter(self, _setup_data):
         pf, prop, unit, tenant, contract, account, category = _setup_data
@@ -150,37 +151,75 @@ class TestDATEVExport:
             start_date=date(2024, 6, 1),
             end_date=date(2024, 6, 30),
         )
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
     def test_datev_export_empty(self):
         result = datev_export(start_date=None, end_date=None)
-        assert isinstance(result, StreamingResponse)
+        assert isinstance(result, Response)
 
 
 # === Bank Import Tests ===
 
 class TestBankImport:
-    def test_import_bookings(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
+    @pytest.fixture(autouse=True)
+    def isolated_legacy_adapter(self, monkeypatch):
+        # Exercise the compatibility adapter in an isolated installation. The
+        # native bank package has separate memory/SQL concurrency matrices.
+        from backend import auth
+        from backend.routers import reports
+        from backend.services.bank_imports import BankImports
+        from backend.storage import InMemoryStore
+        self.store = InMemoryStore()
+        monkeypatch.setattr(reports, 'store', self.store)
+        monkeypatch.setattr(auth, '_user_store', auth.InMemoryUserStore())
+        self.actor = auth.register_user('legacy-bank', 'bank@example.test', 'Bank', 'Secret123', 'eigentuemer')
+        portfolio = self.store.create_portfolio(PortfolioCreate(name='Bankbestand'))
+        self.account = self.store.create_account(AccountCreate(portfolio_id=portfolio.id, name='Konto', account_type='bank'))
+        self.bank = BankImports(self.store)
+
+    def confirm(self, preview):
+        from uuid import uuid4
+
+        from backend.services.bank_imports import ConfirmImport
+        return self.bank.confirm(preview['id'], ConfirmImport(idempotency_key=str(uuid4()), confirm=True,
+            base_revision=preview['revision'], preview_sha256=preview['preview_sha256']), self.actor.id)
+
+    def test_import_bookings(self):
         csv_data = "date;amount;text\n2024-01-15;-500.00;Handwerker\n2024-01-20;800.00;Miete"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 2
+        result = import_bookings(account_id=self.account.id, csv_content=csv_data, user=self.actor)
+        assert result["imported"] == 0 and result['requires_confirmation']
         assert result["errors"] == 0
-        assert len(store.list_bookings()) == 2
+        assert self.store.list_bookings() == []
+        self.confirm(result['preview'])
+        assert sorted(row.amount for row in self.store.list_bookings()) == [-500, 800]
+        assert self.bank.original(result['preview']['id'], self.actor.id) == csv_data.encode()
 
-    def test_import_with_errors(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
+    def test_import_with_errors(self):
+        from fastapi import HTTPException
         csv_data = "date;amount;text\ninvalid;abc;Bad row\n2024-01-20;800.00;Good row"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
+        result = import_bookings(account_id=self.account.id, csv_content=csv_data, user=self.actor)
+        assert result["imported"] == 0
         assert result["errors"] == 1
+        with pytest.raises(HTTPException) as refused:
+            self.confirm(result['preview'])
+        assert refused.value.status_code == 409
+        assert self.store.list_bookings() == []
 
-    def test_import_german_decimals(self, _setup_data):
-        pf, prop, unit, tenant, contract, account, category = _setup_data
+    def test_import_german_decimals(self):
+        import base64
+        from uuid import uuid4
+
+        from backend.services.bank_imports import StageImport
         csv_data = "date;amount;text\n2024-03-01;1500,50;Miete"
-        result = import_bookings(account_id=account.id, csv_content=csv_data)
-        assert result["imported"] == 1
-        booking = store.list_bookings()[0]
+        result = import_bookings(account_id=self.account.id, csv_content=csv_data, user=self.actor)
+        assert result['errors'] == 1 and self.store.list_bookings() == []
+        # Locale guessing must never silently change a bank amount. Confirm
+        # the explicit German format and retain the original source bytes.
+        preview = self.bank.stage(StageImport(idempotency_key=str(uuid4()), account_id=self.account.id,
+            filename='Deutsch.csv', source_base64=base64.b64encode(csv_data.encode()).decode(), format='csv',
+            options={'decimal': ','}), self.actor.id)
+        self.confirm(preview)
+        booking = self.store.list_bookings()[0]
         assert booking.amount == 1500.50
 
 

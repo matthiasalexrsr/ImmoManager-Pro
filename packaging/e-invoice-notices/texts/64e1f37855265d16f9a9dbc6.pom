@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    This file is part of veraPDF Validation Library for Jakarta EE, a module of the veraPDF project.
+    Copyright (c) 2015-2026, veraPDF Consortium <info@verapdf.org>
+    All rights reserved.
+
+    veraPDF Validation Library for Jakarta EE is free software: you can redistribute it and/or modify
+    it under the terms of either:
+
+    The GNU General public license GPLv3+.
+    You should have received a copy of the GNU General Public License
+    along with veraPDF Validation Library for Jakarta EE as the LICENSE.GPL file in the root of the source
+    tree.  If not, see http://www.gnu.org/licenses/ or
+    https://www.gnu.org/licenses/gpl-3.0.en.html.
+
+    The Mozilla Public License MPLv2+.
+    You should have received a copy of the Mozilla Public License along with
+    veraPDF Validation Library for Jakarta EE as the LICENSE.MPL file in the root of the source tree.
+    If a copy of the MPL was not distributed with this file, you can obtain one at
+    http://mozilla.org/MPL/2.0/.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.verapdf</groupId>
+    <artifactId>verapdf-parent</artifactId>
+    <version>1.30.1</version>
+  </parent>
+
+  <groupId>org.verapdf</groupId>
+  <artifactId>verapdf-library-jakarta</artifactId>
+  <version>1.30.2</version>
+  <packaging>pom</packaging>
+
+  <name>veraPDF Validation Library for Jakarta EE</name>
+  <description>veraPDF Validation API and core types with Jakarta EE support.</description>
+
+  <repositories>
+    <repository>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+      <id>vera-dev</id>
+      <name>Vera development</name>
+      <url>https://artifactory.openpreservation.org/artifactory/vera-dev</url>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <id>vera-dev</id>
+      <name>Vera development</name>
+      <url>https://artifactory.openpreservation.org/artifactory/vera-dev</url>
+    </pluginRepository>
+  </pluginRepositories>
+
+  <modules>
+    <module>xmp-core</module>
+    <module>core</module>
+  </modules>
+
+  <scm>
+    <url>https://github.com/veraPDF/veraPDF-library/</url>
+    <connection>scm:git:https://github.com/veraPDF/veraPDF-library.git</connection>
+    <developerConnection>scm:git:git@github.com:veraPDF/veraPDF-library.git</developerConnection>
+  </scm>
+
+  <properties>
+    <verapdf.model.version>1.30.2</verapdf.model.version>
+    <sonar.jacoco.itReportPath>${project.basedir}/../target/jacoco-it.exec</sonar.jacoco.itReportPath>
+    <sonar.language>java</sonar.language>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.12.1</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.11</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>versions-maven-plugin</artifactId>
+        <version>2.16.2</version>
+      </plugin>
+
+    </plugins>
+  </build>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>5.10.2</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-api</artifactId>
+        <version>5.10.2</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.13.2</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-engine</artifactId>
+        <version>5.10.2</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit.vintage</groupId>
+        <artifactId>junit-vintage-engine</artifactId>
+        <version>5.10.2</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>nl.jqno.equalsverifier</groupId>
+        <artifactId>equalsverifier</artifactId>
+        <version>3.18.2</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Mozilla Rhino JavaScript engine -->
+      <dependency>
+        <groupId>org.mozilla</groupId>
+        <artifactId>rhino</artifactId>
+        <version>1.7.14.1</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.verapdf</groupId>
+        <artifactId>pdf-model</artifactId>
+        <version>${verapdf.model.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>commons-io</groupId>
+        <artifactId>commons-io</artifactId>
+        <version>2.14.0</version>
+        <scope>test</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>jakarta.xml.bind</groupId>
+        <artifactId>jakarta.xml.bind-api</artifactId>
+        <version>4.0.0</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.glassfish.jaxb</groupId>
+        <artifactId>jaxb-runtime</artifactId>
+        <version>4.0.2</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.glassfish.jaxb</groupId>
+        <artifactId>jaxb-core</artifactId>
+        <version>4.0.2</version>
+      </dependency>
+
+      <dependency>
+        <groupId>net.sf.saxon</groupId>
+        <artifactId>Saxon-HE</artifactId>
+        <version>12.8</version>
+      </dependency>
+
+    </dependencies>
+  </dependencyManagement>
+
+  <reporting>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-project-info-reports-plugin</artifactId>
+        <configuration>
+          <dependencyDetailsEnabled>false</dependencyDetailsEnabled>
+          <dependencyLocationsEnabled>false</dependencyLocationsEnabled>
+        </configuration>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>index</report>
+              <report>dependencies</report>
+              <report>project-team</report>
+              <report>mailing-list</report>
+              <report>cim</report>
+              <report>issue-tracking</report>
+              <report>license</report>
+              <report>scm</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <failOnError>false</failOnError>
+          <dependencySourceExcludes>
+            <!-- exclude ONLY commons-cli artifacts -->
+            <dependencySourceExclude>junit:*</dependencySourceExclude>
+            <dependencySourceExclude>org.apache:*</dependencySourceExclude>
+            <dependencySourceExclude>org.junit:*</dependencySourceExclude>
+            <dependencySourceExclude>org.hamcrest.*</dependencySourceExclude>
+            <dependencySourceExclude>org.log4j.*</dependencySourceExclude>
+          </dependencySourceExcludes>
+          <includeDependencySources>true</includeDependencySources>
+          <show>public</show>
+        </configuration>
+      </plugin>
+    </plugins>
+  </reporting>
+
+</project>

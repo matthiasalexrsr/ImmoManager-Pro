@@ -1,0 +1,165 @@
+Source files: jakarta/xml/bind/Binder.java, jakarta/xml/bind/SchemaOutputResolver.java, jakarta/xml/bind/annotation/DomHandler.java, jakarta/xml/bind/annotation/W3CDomHandler.java, jakarta/xml/bind/annotation/XmlAccessType.java, jakarta/xml/bind/annotation/XmlAccessorOrder.java, jakarta/xml/bind/annotation/XmlAccessorType.java, jakarta/xml/bind/annotation/XmlAnyAttribute.java, jakarta/xml/bind/annotation/XmlAnyElement.java, jakarta/xml/bind/annotation/XmlAttachmentRef.java, jakarta/xml/bind/annotation/XmlElementWrapper.java, jakarta/xml/bind/annotation/XmlInlineBinaryData.java, jakarta/xml/bind/annotation/XmlList.java, jakarta/xml/bind/annotation/XmlMixed.java, jakarta/xml/bind/annotation/XmlSchemaType.java, jakarta/xml/bind/annotation/XmlSchemaTypes.java, jakarta/xml/bind/attachment/AttachmentMarshaller.java, jakarta/xml/bind/attachment/AttachmentUnmarshaller.java
+/*
+ * Copyright (c) 2005, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/ContextFinder.java
+/*
+ * Copyright (c) 2003, 2025 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/DataBindingException.java, jakarta/xml/bind/GetPropertyAction.java
+/*
+ * Copyright (c) 2006, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/DatatypeConverter.java, jakarta/xml/bind/DatatypeConverterInterface.java, jakarta/xml/bind/Element.java, jakarta/xml/bind/JAXBContext.java, jakarta/xml/bind/Marshaller.java, jakarta/xml/bind/Unmarshaller.java, jakarta/xml/bind/UnmarshallerHandler.java, jakarta/xml/bind/ValidationEventHandler.java, jakarta/xml/bind/ValidationEventLocator.java, jakarta/xml/bind/helpers/AbstractMarshallerImpl.java, jakarta/xml/bind/helpers/AbstractUnmarshallerImpl.java, jakarta/xml/bind/helpers/DefaultValidationEventHandler.java, jakarta/xml/bind/helpers/ValidationEventImpl.java, jakarta/xml/bind/helpers/ValidationEventLocatorImpl.java, jakarta/xml/bind/util/JAXBResult.java, jakarta/xml/bind/util/JAXBSource.java, jakarta/xml/bind/util/ValidationEventCollector.java
+/*
+ * Copyright (c) 2003, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/DatatypeConverterImpl.java
+/*
+ * Copyright (c) 2007, 2024 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/JAXB.java, jakarta/xml/bind/annotation/XmlSeeAlso.java
+/*
+ * Copyright (c) 2006, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/JAXBContextFactory.java, jakarta/xml/bind/ServiceLoaderUtil.java
+/*
+ * Copyright (c) 2015, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/JAXBElement.java, jakarta/xml/bind/JAXBIntrospector.java, jakarta/xml/bind/PropertyException.java, jakarta/xml/bind/annotation/XmlAttribute.java, jakarta/xml/bind/annotation/XmlElement.java, jakarta/xml/bind/annotation/XmlElementDecl.java, jakarta/xml/bind/annotation/XmlElementRef.java, jakarta/xml/bind/annotation/XmlElementRefs.java, jakarta/xml/bind/annotation/XmlElements.java, jakarta/xml/bind/annotation/XmlEnum.java, jakarta/xml/bind/annotation/XmlEnumValue.java, jakarta/xml/bind/annotation/XmlID.java, jakarta/xml/bind/annotation/XmlIDREF.java, jakarta/xml/bind/annotation/XmlNs.java, jakarta/xml/bind/annotation/XmlNsForm.java, jakarta/xml/bind/annotation/XmlRootElement.java, jakarta/xml/bind/annotation/XmlSchema.java, jakarta/xml/bind/annotation/XmlTransient.java, jakarta/xml/bind/annotation/XmlType.java, jakarta/xml/bind/annotation/XmlValue.java, jakarta/xml/bind/annotation/adapters/CollapsedStringAdapter.java, jakarta/xml/bind/annotation/adapters/NormalizedStringAdapter.java, jakarta/xml/bind/annotation/adapters/XmlAdapter.java, jakarta/xml/bind/annotation/adapters/XmlJavaTypeAdapter.java, jakarta/xml/bind/annotation/adapters/XmlJavaTypeAdapters.java, jakarta/xml/bind/annotation/adapters/package-info.java, jakarta/xml/bind/annotation/package-info.java
+/*
+ * Copyright (c) 2004, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/JAXBException.java, jakarta/xml/bind/MarshalException.java, jakarta/xml/bind/Messages.java, jakarta/xml/bind/NotIdentifiableEvent.java, jakarta/xml/bind/TypeConstraintException.java, jakarta/xml/bind/UnmarshalException.java, jakarta/xml/bind/ValidationEvent.java, jakarta/xml/bind/ValidationException.java, jakarta/xml/bind/helpers/Messages.java, jakarta/xml/bind/helpers/NotIdentifiableEventImpl.java, jakarta/xml/bind/helpers/ParseConversionEventImpl.java, jakarta/xml/bind/helpers/PrintConversionEventImpl.java, jakarta/xml/bind/helpers/package-info.java, jakarta/xml/bind/package-info.java, jakarta/xml/bind/util/Messages.java, jakarta/xml/bind/util/package-info.java
+/*
+ * Copyright (c) 2003, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/JAXBPermission.java, jakarta/xml/bind/WhiteSpaceProcessor.java
+/*
+ * Copyright (c) 2007, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/ModuleUtil.java
+/*
+ * Copyright (c) 2017, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/ParseConversionEvent.java, jakarta/xml/bind/PrintConversionEvent.java, jakarta/xml/bind/annotation/XmlRegistry.java
+/*
+ * Copyright (c) 2004, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/annotation/XmlAccessOrder.java, jakarta/xml/bind/annotation/XmlMimeType.java, module-info.java
+/*
+ * Copyright (c) 2005, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/annotation/adapters/HexBinaryAdapter.java
+/*
+ * Copyright (c) 2004, 2025 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/xml/bind/attachment/package-info.java
+/*
+ * Copyright (c) 2005, 2023 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */

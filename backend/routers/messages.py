@@ -1,7 +1,8 @@
 """Internal messaging router: threads and messages."""
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth import require_auth
 from ..dependencies import store
 from ..models import (
     Message,
@@ -9,8 +10,10 @@ from ..models import (
     MessageThread,
     MessageThreadCreate,
     MessageThreadPatch,
+    UserRead,
 )
 from ..services.ai.message_ai import summarize_thread
+from ..services.message_threads import MessageSubmission, message_page, send_message
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -53,17 +56,46 @@ def patch_thread(thread_id: str, payload: MessageThreadPatch) -> MessageThread:
         return store._patch_entity("message_thread", thread_id, payload)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_thread(thread_id: str) -> None:
     try:
+        from ..services.communication import ensure_thread_can_delete
+        store.get_message_thread(thread_id)
+        ensure_thread_can_delete(store, thread_id)
         store.delete_message_thread(thread_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # --- Messages within a thread ---
+
+@router.get('/threads/{thread_id}/messages/{message_id}', response_model=Message)
+def notification_message(thread_id: str, message_id: str, user: UserRead = Depends(require_auth)):
+    from ..services.document_versions import work
+    from ..services.portfolio_scope import scope_context, scope_from_user
+    with work(store, user.id) as unit, scope_context(scope_from_user(unit.user)):
+        try:
+            unit.store.get_message_thread(thread_id)
+            message = unit.store.get_message(message_id)
+            if message.thread_id != thread_id:
+                raise HTTPException(404, 'Nachricht gehört nicht zu dieser Konversation.')
+            return message
+        except NotFoundError:
+            raise HTTPException(404, 'Nachricht nicht zugänglich.') from None
+
+@router.get("/threads/{thread_id}/page")
+def get_message_page(
+    thread_id: str,
+    cursor: str | None = Query(None, max_length=4096),
+    limit: int = Query(100, ge=1, le=250),
+    user: UserRead = Depends(require_auth),
+) -> dict:
+    return message_page(store, thread_id, user.id, cursor=cursor, limit=limit)
+
 
 @router.get("/threads/{thread_id}/messages", response_model=list[Message])
 def list_thread_messages(
@@ -82,14 +114,18 @@ def list_thread_messages(
 
 
 @router.post("/threads/{thread_id}/messages", response_model=Message, status_code=status.HTTP_201_CREATED)
-def create_message(thread_id: str, payload: MessageCreate) -> Message:
+def create_message(thread_id: str, payload: MessageSubmission, user: UserRead = Depends(require_auth)) -> Message:
     # Ensure thread exists
     try:
         store.get_message_thread(thread_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if payload.thread_id != thread_id:
+        raise HTTPException(status_code=422, detail="Nachricht und ausgewählte Konversation stimmen nicht überein.")
     try:
-        return store.create_message(payload)
+        if getattr(payload, "idempotency_key", None) is not None:
+            return send_message(store, thread_id, payload, user.id)
+        return store.create_message(MessageCreate.model_validate(payload.model_dump()))
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

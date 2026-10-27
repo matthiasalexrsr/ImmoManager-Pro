@@ -1,0 +1,64 @@
+.work-center { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1.25rem; }
+.work-center > * { min-width: 0; }
+.work-center :is(h1, h2, h3, p, a, strong, summary) { overflow-wrap: anywhere; }
+.work-shelf-list li > a { min-width: 0; overflow-wrap: anywhere; }
+.work-center-header, .work-item-heading, .work-item-actions, .entity-actions, .work-shelf-heading { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.work-center-header, .work-shelf-heading { justify-content: space-between; }
+/* Filters, quick filters and saved views in one panel above the list. */
+.work-center-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: var(--space-4); }
+.work-center-toolbar > * { min-width: 0; }
+.work-center-toolbar .btn { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.work-center-toolbar .named-views { margin: 0; padding-top: var(--space-3); border-top: 1px solid var(--color-border-light); }
+.work-center-filters { display: flex; align-items: end; gap: var(--space-3); flex-wrap: wrap; }
+.work-center-filters label { display: grid; gap: var(--space-1); flex: 1 1 12rem; min-width: 0; max-width: 18rem; }
+.work-center-filters label.work-center-date { flex: 0 1 11rem; }
+.work-center-filters :is(input, select) { width: 100%; min-width: 0; max-width: 100%; }
+.work-item-list, .work-shelf-list { padding: 0; margin: 0; list-style: none; display: grid; gap: var(--space-3); }
+.work-item, .work-shelf, .work-document-queue { border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--space-4) var(--space-5); background: var(--color-surface); }
+.work-item-heading { justify-content: space-between; }
+.work-item-heading h3 { margin: 0; font-size: var(--text-md); }
+.work-item p { margin: var(--space-1) 0 0; }
+.work-item-context, .work-timeline-meta { color: var(--color-text-muted, var(--text-secondary)); font-size: var(--text-sm); }
+.work-item-actions { margin-top: var(--space-3); gap: var(--space-2); }
+.work-shelves { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 1rem; }
+.work-shelf-list li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.work-timeline ol { list-style: none; padding: 0 0 0 1rem; border-left: 2px solid var(--color-border); }
+.work-timeline li { padding: .25rem 0 1rem 1rem; }
+.work-timeline-meta { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: .35rem; }
+.work-preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Quick edit in a table cell: value and pencil on one line; the pencil shows on the
+   row's hover or keyboard focus (always on touch screens), so rows keep one height. */
+.work-inline { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.work-inline > .btn-ghost { width: 26px; min-height: 26px; padding: 0; opacity: 0; transition: opacity var(--transition); }
+@media (pointer: coarse), (max-width: 640px) { .work-inline > .btn-ghost { width: 36px; min-height: 36px; } }
+tr:hover .work-inline > .btn-ghost,
+.work-inline:focus-within > .btn-ghost { opacity: 1; }
+@media (hover: none) { .work-inline > .btn-ghost { opacity: 1; } }
+.work-inline form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.work-inline input, .work-inline select { max-width: 12rem; min-height: var(--control-height-sm); padding: 4px 8px; }
+.work-inline-error { display: block; width: 100%; color: var(--color-danger, var(--danger)); }
+.work-undo { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; border: 1px solid var(--color-border); padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--color-surface); }
+.work-source-links { display: flex; gap: .6rem 1rem; flex-wrap: wrap; margin: .5rem 0; }
+.work-queue-table { width: 100%; border-collapse: collapse; }
+.work-queue-table td, .work-queue-table th { padding: .65rem; vertical-align: top; text-align: left; border-bottom: 1px solid var(--color-border); }
+.work-queue-table .work-preserve-lines { max-width: 38rem; }
+.work-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem; margin: .5rem 0 1rem; }
+.work-summary-metric { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4) var(--space-5); color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+/* the counts of a row stand on one line, also under a title of two lines */
+.work-summary-metric > strong { margin-top: auto; }
+.work-summary-metric > span { font-size: var(--text-base); font-weight: 550; color: var(--color-text-secondary); }
+.work-summary-metric strong { font-size: var(--text-3xl); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.work-summary-metric small { color: var(--color-text-muted); font-size: var(--text-2xs); }
+.work-summary-metric:hover { background: var(--color-primary-50); text-decoration: none; }
+.work-center :is(button, a, input, select):focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.dossier-kpi-button { font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.dossier-kpi-button:hover { border-color: var(--color-primary); }
+.dossier-kpi-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.modal-body .work-carry-option { display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem; font-weight: 400; }
+.modal-body .work-carry-option input[type="checkbox"] { flex: 0 0 auto; width: 1rem; height: 1rem; margin: .15rem 0 0; padding: 0; }
+
+.work-summary-metric span, .work-summary-metric small { overflow-wrap: normal; word-break: normal; hyphens: auto; }
+.work-center h1 { overflow-wrap: anywhere; hyphens: auto; font-size: clamp(1.3rem, 1rem + 1vw, 2rem); }
+.work-guidance { padding: .65rem .8rem; border-left: 3px solid var(--color-border); overflow-wrap: anywhere; }
+.work-guidance p { margin: .3rem 0; }
+.work-flow-steps { display: flex; flex-wrap: wrap; gap: .4rem 2rem; padding-left: 1.3rem; }

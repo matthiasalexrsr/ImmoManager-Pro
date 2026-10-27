@@ -1,0 +1,293 @@
+"""Versioned customer archive with explicit members, relationships and checksums.
+
+No account, session, provider connection or personal employee setting is selected.
+Opaque protected operating data remains the responsibility of full backup/restore.
+"""
+import base64
+import hashlib
+import io
+import json
+import re
+import zipfile
+import zlib
+from datetime import date, datetime
+from decimal import Decimal
+from urllib.parse import unquote
+
+from fastapi import HTTPException
+from sqlalchemy import JSON, select
+
+from ...db.data_transfer_models import ExternalReferenceORM, ImportBatchORM, ImportedEvidenceORM
+from ...db.e_invoice_models import EInvoiceIntakeORM, EInvoiceValidationORM
+from ...db.payment_security_models import (
+    PaymentAuthorizationORM,
+    PaymentRecipientORM,
+    PaymentSecurityEventORM,
+    PaymentTotpUseORM,
+)
+from .. import data_snapshot as snapshots
+from .. import document_original_snapshot as originals
+from ..external_portal import portability as portal
+from ..file_storage import get_file_storage, validate_key
+from ..integrations import connection_storage as db
+from ..privacy import portability as privacy
+from ..upload_policy import DOCUMENT_EXTENSIONS, content_matches, file_extension
+from .common import digest, encoded
+from .imports import _controls
+
+FORMAT = "immomanager-customer-portability"
+VERSION = 1
+MAX_EXPANDED = 128 * 1024 * 1024
+MAX_MEMBERS = 100_000
+# Every column of these models is business evidence. In particular TOTP *uses*
+# contain a counter and timestamp, never a secret, recovery code or OTP value.
+EVIDENCE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM,
+                   PaymentAuthorizationORM, PaymentSecurityEventORM, PaymentTotpUseORM, ExternalReferenceORM, ImportBatchORM, *portal.MODELS, *privacy.MODELS)
+ACTIVE_MODELS = (EInvoiceIntakeORM, EInvoiceValidationORM, PaymentRecipientORM, *portal.MODELS, *privacy.ACTIVE_MODELS)
+# The v1 evidence schema has object-valued JSON except for these lists. Check
+# the containers before domain validators or restored services access .get().
+JSON_LIST_FIELDS = {("e_invoice_intakes", "blockers"), ("e_invoice_validations", "messages"),
+                    ("privacy_controls", "file_keys_sha256")}
+
+
+def _object(value, label):
+    if not isinstance(value, dict):
+        raise ValueError(label + ": JSON-Objekt erwartet.")
+    return value
+
+
+def _object_list(value, label):
+    if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+        raise ValueError(label + ": Liste von JSON-Objekten erwartet.")
+    return value
+
+
+def _string_list(value, label, *, hashes=False):
+    if not isinstance(value, list) or any(not isinstance(item, str) or (hashes and not re.fullmatch(r"[a-f0-9]{64}", item)) for item in value):
+        raise ValueError(label + ": Textliste mit gültigen Einträgen erwartet.")
+
+
+def _evidence_json(model, payload):
+    for column in model.__table__.columns:
+        if not isinstance(column.type, JSON):
+            continue
+        value, field = payload.get(column.name), (model.__tablename__, column.name)
+        if value is None and column.nullable:
+            continue
+        container = list if field in JSON_LIST_FIELDS else dict
+        if not isinstance(value, container):
+            raise ValueError("JSON-Struktur passt nicht zum Fachnachweis: " + ".".join(field))
+        if field == ("e_invoice_validations", "messages"):
+            for message in _object_list(value, "Prüfmeldungen"):
+                if not {"severity", "text"} <= message.keys() or any(not isinstance(item, str) for item in message.values()):
+                    raise ValueError("Prüfmeldungen benötigen textuelle Schweregrade und Beschreibungen.")
+        elif field in JSON_LIST_FIELDS:
+            _string_list(value, ".".join(field), hashes=column.name == "file_keys_sha256")
+        elif field == ("e_invoice_intakes", "reading"):
+            for name, item in _object(value, "Lesefassung").items():
+                if name in {"lines", "taxes", "bank_accounts"}:
+                    for row in _object_list(item, "Lesefassung " + name):
+                        if any(part is not None and not isinstance(part, str) for part in row.values()):
+                            raise ValueError("Ungültiger Feldtyp in der Rechnungslesefassung.")
+                elif name in {"supplier_tax_ids", "blockers"}:
+                    _string_list(item, "Lesefassung " + name)
+                elif item is not None and not isinstance(item, str):
+                    raise ValueError("Ungültiger Feldtyp in der Rechnungslesefassung.")
+
+
+def _rows(unit, model):
+    if unit.db is not None:
+        return list(unit.db.scalars(select(model).order_by(model.id)))
+    return sorted(db.memory(unit, model).values(), key=lambda row: row.id)
+
+
+def _scalar(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
+def _uploads(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _uploads(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _uploads(item)
+    elif isinstance(value, str) and value.startswith("/uploads/"):
+        yield unquote(value[len("/uploads/"):])
+
+
+def _asset_key(key):
+    validate_key(key)
+    if key.startswith(("assistant/", "assistant-private/")) or file_extension(key) not in DOCUMENT_EXTENSIONS:
+        raise ValueError("Nicht übertragbarer Dateipfad im Geschäftsdatenbestand.")
+    return key
+
+
+def external_links(snapshot):
+    """Explicit links are metadata, not offline originals; never fetch them."""
+    result = []
+    for table, records in snapshot.items():
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            for field in ("file_url", "photo_url", "image_url", "attachment_url"):
+                value = record.get(field)
+                if value and not value.startswith("/uploads/"):
+                    result.append({"entity": table, "id": record.get("id"), "field": field, "url": value})
+    return result
+
+
+def build(unit):
+    parts: dict[str, bytes] = {}
+    size = 0
+    def put(name, content):
+        nonlocal size
+        if name in parts:
+            if parts[name] != content:
+                raise ValueError("Widersprüchliche Exportdatei.")
+            return name
+        size += len(content)
+        if size > MAX_EXPANDED or len(parts) >= MAX_MEMBERS:
+            raise HTTPException(413, "Der Kundenexport überschreitet 128 MiB. Die vollständige Sicherung bleibt verfügbar.")
+        parts[name] = content
+        return name
+    def blob(content):
+        sha = hashlib.sha256(content).hexdigest()
+        return {"blob": put("blobs/" + sha, content), "sha256": sha, "size_bytes": len(content)}
+
+    backend = snapshots._backend(unit.store)
+    snapshot = {"format": snapshots.SNAPSHOT_FORMAT, "format_version": snapshots.SNAPSHOT_FORMAT_VERSION}
+    plan = [(spec, backend.records(spec)) for spec in snapshots.entity_specs()]
+    for spec, rows in plan:
+        snapshot[spec.key] = [row.model_dump(mode="json") for row in rows]
+    archived, archived_keys = [], set()
+    for manifest in originals.export(unit.store):
+        content = b"".join(base64.b64decode(block, validate=True) for block in manifest.pop("blocks"))
+        if hashlib.sha256(content).hexdigest() != manifest["sha256"]:
+            raise ValueError("Beschädigtes Dokumentoriginal im Quellbestand.")
+        archived.append({**manifest, "source": blob(content)})
+        archived_keys.update(_uploads(manifest.get("metadata_snapshot", {})))
+    evidence = []
+    for model in EVIDENCE_MODELS:
+        for row in _rows(unit, model):
+            payload = {column.name: blob(value) if isinstance(value := getattr(row, column.name), bytes) else _scalar(value)
+                       for column in model.__table__.columns}
+            payload = portal.sanitized(model, payload)
+            evidence.append({"source_type": model.__tablename__, "record_id": row.id, "payload": payload, "sha256": digest(payload)})
+    # Imported historical decisions remain historical on every later export.
+    for row in _rows(unit, ImportedEvidenceORM):
+        if digest(row.payload) != row.sha256:
+            raise ValueError("Beschädigter historischer Übernahmenachweis.")
+        evidence.append({"source_type": row.source_type, "record_id": row.record_id, "payload": row.payload, "sha256": row.sha256, "historical": True})
+    assets = []
+    storage = get_file_storage()
+    for key in sorted(set(_uploads(snapshot)) - archived_keys):
+        _asset_key(key)
+        attachment = storage.get(key)
+        if attachment is None:
+            raise ValueError("Eine zugeordnete Quelldatei fehlt. Der Export wäre unvollständig.")
+        assets.append({"storage_key": key, "source": blob(attachment)})
+    schema = {spec.key: {"fields": list(spec.model.model_fields), "references": spec.references} for spec in snapshots.entity_specs()}
+    put("business.json", encoded(snapshot))
+    put("originals.json", encoded(archived))
+    put("evidence.json", encoded(evidence))
+    put("attachments.json", encoded(assets))
+    put("schema.json", encoded(schema))
+    put("README.md", ("# Kundenexport\n\nGeschäftsdaten: business.json; Beziehungen und Felder: schema.json.\n"
+        "Originalversionen: originals.json; Anhänge: attachments.json; zusätzliche Fachnachweise: evidence.json.\n"
+        "Binärdateien liegen unter blobs/ mit SHA-256 im Namen. manifest.json prüft jeden Bestandteil.\n"
+        "Zugangskonten, Sitzungen, Schlüssel, Anbieterzugänge und private Mitarbeitereinstellungen sind ausgeschlossen.\n"
+        "Diese Datei ist keine Betriebswiederherstellung. Beim Import bleiben alte Bankfreigaben historische Nachweise;\n"
+        "jede Zahlung braucht eine neue Entscheidung. Noch nicht übernommene E-Rechnungen werden erneut lokal geprüft.\n"
+        "Einladungen und Portalsitzungen werden nicht aktiviert. Das Vollbackup bewahrt zusätzlich Betriebsdaten.\n").encode())
+    manifest = {"format": FORMAT, "version": VERSION, "created_at": db.now().isoformat(), "controls": _controls(plan),
+        "originals": [{"id": row["id"], "sha256": row["sha256"]} for row in archived],
+        "files": {name: {"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)} for name, content in parts.items()},
+        "external_links_without_original": external_links(snapshot),
+        "excluded": ["internal_users", "sessions", "tokens", "keyrings", "provider_connections", "private_employee_settings", "active_payment_authorizations", "portal_sessions"]}
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in parts.items():
+            archive.writestr(name, content)
+        archive.writestr("manifest.json", encoded(manifest))
+    content = output.getvalue()
+    if len(content) > 64 * 1024 * 1024:
+        raise HTTPException(413, "Das Exportpaket überschreitet die Grenze von 64 MiB je Übernahmedatei.")
+    return content, manifest
+
+
+def read(content):
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            entries = archive.infolist()
+            if len(entries) > MAX_MEMBERS or sum(entry.file_size for entry in entries) > MAX_EXPANDED or len({entry.filename for entry in entries}) != len(entries):
+                raise ValueError("Archiv zu groß oder doppelte Mitglieder.")
+            for entry in entries:
+                if entry.flag_bits & 1 or entry.is_dir() or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+                    raise ValueError("Verschlüsselte oder unbekannte Archivbestandteile.")
+                if entry.filename not in {"manifest.json", "business.json", "originals.json", "evidence.json", "attachments.json", "schema.json", "README.md"} and not re.fullmatch(r"blobs/[a-f0-9]{64}", entry.filename):
+                    raise ValueError("Unerwarteter Archivpfad.")
+            parts = {entry.filename: archive.read(entry) for entry in entries}
+        manifest = _object(json.loads(parts.pop("manifest.json")), "manifest.json")
+        files = _object(manifest["files"], "manifest.files")
+        _object(manifest["controls"], "manifest.controls")
+        _object_list(manifest["originals"], "manifest.originals")
+        if (manifest.get("format") != FORMAT or type(manifest.get("version")) is not int
+                or manifest["version"] != VERSION or set(files) != set(parts)):
+            raise ValueError("Unbekanntes oder unvollständiges Kundenexportformat.")
+        for name, raw in parts.items():
+            expected = _object(files[name], "manifest.files." + name)
+            if expected != {"sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}:
+                raise ValueError("Prüfsumme oder Größe eines Archivbestandteils stimmt nicht.")
+        def extract(source):
+            _object(source, "Binärreferenz")
+            raw = parts[source["blob"]]
+            if source != {"blob": "blobs/" + hashlib.sha256(raw).hexdigest(), "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}:
+                raise ValueError("Ungültige Binärreferenz.")
+            return raw
+        snapshot = _object(json.loads(parts["business.json"]), "business.json")
+        _object(json.loads(parts["schema.json"]), "schema.json")
+        versions = _object_list(json.loads(parts["originals.json"]), "originals.json")
+        for row in versions:
+            _object(row["metadata_snapshot"], "Originalmetadaten")
+        snapshot[originals.SNAPSHOT_KEY] = [{**{key: value for key, value in row.items() if key != "source"},
+            "blocks": [base64.b64encode(raw[index:index + originals.CHUNK_BYTES]).decode() for index in range(0, len(raw), originals.CHUNK_BYTES)]}
+            for row in versions for raw in [extract(row["source"])]]
+        evidence = _object_list(json.loads(parts["evidence.json"]), "evidence.json")
+        models = {model.__tablename__: model for model in EVIDENCE_MODELS}
+        for record in evidence:
+            _object(record["payload"], "Fachnachweis")
+            if (not isinstance(record.get("source_type"), str) or record["source_type"] not in models
+                    or not isinstance(record.get("record_id"), str) or not record["record_id"]
+                    or not isinstance(record.get("sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", record["sha256"])
+                    or ("historical" in record and type(record["historical"]) is not bool)
+                    or digest(record["payload"]) != record["sha256"]):
+                raise ValueError("Unbekannter oder beschädigter Fachnachweis.")
+            model = models[record["source_type"]]
+            expected = set(model.__table__.columns.keys())
+            if model.__tablename__ == 'privacy_controls' and 'file_keys_sha256' not in record['payload']:
+                expected.remove('file_keys_sha256')  # previously emitted v1 customer archives
+            if set(record["payload"]) != expected or record["record_id"] != record["payload"]["id"]:
+                raise ValueError("Fachnachweis passt nicht zu seinem Datensatzschema.")
+            _evidence_json(model, record["payload"])
+        assets = _object_list(json.loads(parts["attachments.json"]), "attachments.json")
+        seen = set()
+        wanted = set(_uploads(snapshot)) - set(key for row in versions for key in _uploads(row.get("metadata_snapshot", {})))
+        for asset in assets:
+            key = _asset_key(asset["storage_key"])
+            raw = extract(asset["source"])
+            if key in seen or key not in wanted or not content_matches(file_extension(key), raw):
+                raise ValueError("Anhang ist doppelt, falsch zugeordnet oder besitzt einen falschen Dateityp.")
+            seen.add(key)
+        if seen != wanted:
+            raise ValueError("Die Anlagenliste ist unvollständig.")
+        encoded(snapshot)  # reject NaN/Infinity and excessive recursion
+        return snapshot, evidence, [(asset["storage_key"], extract(asset["source"])) for asset in assets], extract, manifest
+    except (KeyError, TypeError, ValueError, RecursionError, zipfile.BadZipFile, zlib.error, NotImplementedError, RuntimeError, UnicodeError) as error:
+        raise ValueError("Kundenexport nicht sicher lesbar: " + str(error)[:250]) from None

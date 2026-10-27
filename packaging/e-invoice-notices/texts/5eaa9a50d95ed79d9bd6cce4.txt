@@ -1,0 +1,146 @@
+Source files: module-info.java
+/*
+ * Copyright (c) 2020, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/Locatable.java, org/glassfish/jaxb/core/Utils.java, org/glassfish/jaxb/core/WhiteSpaceProcessor.java, org/glassfish/jaxb/core/annotation/OverrideAnnotationOf.java, org/glassfish/jaxb/core/annotation/XmlIsSet.java, org/glassfish/jaxb/core/annotation/XmlLocation.java, org/glassfish/jaxb/core/api/ErrorListener.java, org/glassfish/jaxb/core/marshaller/CharacterEscapeHandler.java, org/glassfish/jaxb/core/marshaller/DumbEscapeHandler.java, org/glassfish/jaxb/core/marshaller/MinimumEscapeHandler.java, org/glassfish/jaxb/core/marshaller/SAX2DOMEx.java, org/glassfish/jaxb/core/unmarshaller/InfosetScanner.java, org/glassfish/jaxb/core/util/Which.java, org/glassfish/jaxb/core/v2/Messages.java, org/glassfish/jaxb/core/v2/TODO.java, org/glassfish/jaxb/core/v2/model/annotation/AnnotationReader.java, org/glassfish/jaxb/core/v2/model/annotation/AnnotationSource.java, org/glassfish/jaxb/core/v2/model/annotation/Locatable.java, org/glassfish/jaxb/core/v2/model/core/Adapter.java, org/glassfish/jaxb/core/v2/model/core/ArrayInfo.java, org/glassfish/jaxb/core/v2/model/core/AttributePropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/ClassInfo.java, org/glassfish/jaxb/core/v2/model/core/Element.java, org/glassfish/jaxb/core/v2/model/core/ElementPropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/EnumConstant.java, org/glassfish/jaxb/core/v2/model/core/ID.java, org/glassfish/jaxb/core/v2/model/core/LeafInfo.java, org/glassfish/jaxb/core/v2/model/core/MapPropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/MaybeElement.java, org/glassfish/jaxb/core/v2/model/core/NonElementRef.java, org/glassfish/jaxb/core/v2/model/core/PropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/PropertyKind.java, org/glassfish/jaxb/core/v2/model/core/Ref.java, org/glassfish/jaxb/core/v2/model/core/TypeInfo.java, org/glassfish/jaxb/core/v2/model/core/TypeRef.java, org/glassfish/jaxb/core/v2/model/core/ValuePropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/WildcardMode.java, org/glassfish/jaxb/core/v2/model/core/WildcardTypeInfo.java, org/glassfish/jaxb/core/v2/model/core/package-info.java, org/glassfish/jaxb/core/v2/model/nav/GenericArrayTypeImpl.java, org/glassfish/jaxb/core/v2/model/nav/Navigator.java, org/glassfish/jaxb/core/v2/model/nav/TypeVisitor.java, org/glassfish/jaxb/core/v2/model/nav/WildcardTypeImpl.java, org/glassfish/jaxb/core/v2/runtime/Location.java, org/glassfish/jaxb/core/v2/runtime/SwaRefAdapterMarker.java, org/glassfish/jaxb/core/v2/schemagen/episode/Bindings.java, org/glassfish/jaxb/core/v2/schemagen/episode/Klass.java, org/glassfish/jaxb/core/v2/schemagen/episode/SchemaBindings.java, org/glassfish/jaxb/core/v2/schemagen/episode/package-info.java, org/glassfish/jaxb/core/v2/util/FlattenIterator.java
+/*
+ * Copyright (c) 1997, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/StackHelper.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ * Copyright (c) 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/api/impl/NameConverter.java
+/*
+ * Copyright (c) 1997, 2023 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/api/impl/NameUtil.java, org/glassfish/jaxb/core/marshaller/Messages.java, org/glassfish/jaxb/core/util/SecureLoader.java, org/glassfish/jaxb/core/v2/WellKnownNamespace.java, org/glassfish/jaxb/core/v2/model/core/BuiltinLeafInfo.java, org/glassfish/jaxb/core/v2/model/core/ElementInfo.java, org/glassfish/jaxb/core/v2/model/core/EnumLeafInfo.java, org/glassfish/jaxb/core/v2/model/core/ErrorHandler.java, org/glassfish/jaxb/core/v2/model/core/NonElement.java, org/glassfish/jaxb/core/v2/model/core/ReferencePropertyInfo.java, org/glassfish/jaxb/core/v2/model/core/RegistryInfo.java, org/glassfish/jaxb/core/v2/model/core/TypeInfoSet.java, org/glassfish/jaxb/core/v2/model/nav/ParameterizedTypeImpl.java, org/glassfish/jaxb/core/v2/model/nav/ReflectionNavigator.java, org/glassfish/jaxb/core/v2/model/nav/SecureLoader.java, org/glassfish/jaxb/core/v2/runtime/IllegalAnnotationException.java, org/glassfish/jaxb/core/v2/runtime/RuntimeUtil.java, org/glassfish/jaxb/core/v2/runtime/unmarshaller/LocatorEx.java, org/glassfish/jaxb/core/v2/util/EditDistance.java
+/*
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/marshaller/DataWriter.java
+/*
+ * Copyright (c) 2018, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/marshaller/NoEscapeHandler.java, org/glassfish/jaxb/core/v2/model/impl/ModelBuilderI.java, org/glassfish/jaxb/core/v2/model/nav/package-info.java
+/*
+ * Copyright (c) 2017, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/marshaller/XMLWriter.java
+/*
+ * Copyright (c) 2021, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/unmarshaller/DOMScanner.java
+/*
+ * Copyright (c) 2026 Contributors to the Eclipse Foundation. All rights reserved.
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/v2/ClassFactory.java
+/*
+ * Copyright (c) 1997, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025-2026 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/v2/model/util/ArrayInfoUtil.java
+/*
+ * Copyright (c) 2017, 2022 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/v2/schemagen/episode/Package.java
+/*
+ * Copyright (c) 2011, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: org/glassfish/jaxb/core/v2/util/XmlFactory.java
+/*
+ * Copyright (c) 2013, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025 Contributors to the Eclipse Foundation. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */

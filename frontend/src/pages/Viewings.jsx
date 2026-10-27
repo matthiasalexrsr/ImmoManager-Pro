@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,6 +7,8 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { bulkDelete } from '../utils/bulkActions';
+import { formatDateTime } from '../utils/format';
 
 const STATUS_COLORS = {
   scheduled: 'var(--primary)',
@@ -15,8 +18,8 @@ const STATUS_COLORS = {
 };
 
 const TABLE_COLUMNS = [
-  { key: 'lead_name', label: 'Interessent', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'lead_name', label: 'Interessent', filterType: 'text', link: 'lead' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'scheduled_at', label: 'Termin', type: 'date', filterType: 'dateRange' },
   { key: 'agent', label: 'Betreuer', filterType: 'text' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
@@ -72,14 +75,14 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
     <div className="panel" style={{ padding: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <button className="btn btn-sm btn-secondary" onClick={prevMonth}>&lsaquo;</button>
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>{monthNames[month]} {year}</h3>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-md)' }}>{monthNames[month]} {year}</h3>
         <button className="btn btn-sm btn-secondary" onClick={nextMonth}>&rsaquo;</button>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr>
             {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(d => (
-              <th key={d} style={{ padding: '4px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{d}</th>
+              <th key={d} style={{ padding: '4px', textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>{d}</th>
             ))}
           </tr>
         </thead>
@@ -106,7 +109,7 @@ function MiniCalendar({ viewings, currentMonth, onMonthChange, onSelectDate, sel
                       height: '36px',
                     }}
                   >
-                    <div style={{ fontSize: '0.85rem', fontWeight: isToday(day) ? 700 : 'normal' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: isToday(day) ? 700 : 'normal' }}>
                       {day || ''}
                     </div>
                     {dayViewings.length > 0 && (
@@ -137,8 +140,10 @@ export default function Viewings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: leads } = useEntities('leads', '/leads');
-  const { items: units } = useEntities('units', '/units');
+  const [params] = useSearchParams();
+  const leadState = useEntities('leads', '/leads');
+  const unitState = useEntities('units', '/units');
+  const leads = leadState.items, units = unitState.items;
   const [viewings, setViewings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -146,21 +151,28 @@ export default function Viewings() {
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'table'
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const lookupErrors = [leadState.error, unitState.error].filter(Boolean);
+  const choicesReady = !leadState.loading && !unitState.loading && !lookupErrors.length;
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
-      .then(v => setViewings(v || []))
-      .finally(() => setLoading(false));
-  };
-
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    let cancelled = false;
-    api.get('/viewings').catch(err => { console.warn('[Viewings]', err.message); return []; })
-      .then(data => { if (!cancelled) setViewings(data || []); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/viewings', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Besichtigungen konnten nicht vollständig gelesen werden.');
+      setViewings(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Besichtigungen konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
+  const focusedId = params.get('focus_id');
+  useEffect(() => {
+    if (focusedId && viewings.some(row => String(row.id) === focusedId)) setViewMode('table');
+  }, [focusedId, viewings]);
 
   const leadMap = Object.fromEntries(leads.map(l => [l.id, l]));
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
@@ -170,6 +182,7 @@ export default function Viewings() {
     unit_label: unitMap[v.unit_id]?.label || '—',
     scheduled_at: v.scheduled_at?.slice(0, 16)?.replace('T', ' ') || '—',
     _raw_scheduled_at: v.scheduled_at,
+    scheduled_label: formatDateTime(v.scheduled_at),
   }));
 
   // Filter viewings for selected date
@@ -214,6 +227,7 @@ export default function Viewings() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Interessenten- und Einheitenauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/viewings', data);
     } else {
@@ -224,7 +238,7 @@ export default function Viewings() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.lead_name}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/viewings/${row.id}`);
@@ -235,12 +249,19 @@ export default function Viewings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the list; a reload keeps the table (its search, selection, results)
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   const statusLabels = { scheduled: 'Geplant', completed: 'Durchgeführt', cancelled: 'Abgesagt', no_show: 'Nicht erschienen' };
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Besichtigungen konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {lookupErrors.length > 0 && <p className="alert-error" role="alert">Die Interessenten- oder Einheitenauswahl ist nicht verfügbar. {lookupErrors.join(' · ')}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { leadState.reload(); unitState.reload(); }}>Auswahl erneut laden</button></p>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -249,9 +270,9 @@ export default function Viewings() {
       )}
 
       {/* View mode toggle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Besichtigungen</h2>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Besichtigungen</h1>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             className={`btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setViewMode('calendar')}
@@ -264,14 +285,14 @@ export default function Viewings() {
           >
             Tabelle
           </button>
-          <button className="btn btn-primary" onClick={() => setModal('create')}>
+          <button className="btn btn-primary" disabled={!choicesReady} onClick={() => setModal('create')}>
             + Besichtigung
           </button>
         </div>
       </div>
 
       {viewMode === 'calendar' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
+        <div className="viewings-layout">
           {/* Calendar sidebar */}
           <div>
             <MiniCalendar
@@ -284,11 +305,11 @@ export default function Viewings() {
 
             {/* Legend */}
             <div className="panel" style={{ padding: '0.75rem', marginTop: '1rem' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Legende</div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: '0.5rem' }}>Legende</div>
               {Object.entries(STATUS_COLORS).map(([status, color]) => (
                 <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
-                  <span style={{ fontSize: '0.8rem' }}>{statusLabels[status] || status}</span>
+                  <span style={{ fontSize: 'var(--text-xs)' }}>{statusLabels[status] || status}</span>
                 </div>
               ))}
             </div>
@@ -314,16 +335,16 @@ export default function Viewings() {
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
                           cursor: 'pointer',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={() => { if (choicesReady) setModal(v); }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              {v.unit_label} &bull; {v.scheduled_at}
+                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                              {v.unit_label} &bull; {v.scheduled_label}
                             </div>
-                            {v.agent && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Betreuer: {v.agent}</div>}
-                            {v.notes && <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{v.notes}</div>}
+                            {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Betreuer: {v.agent}</div>}
+                            {v.notes && <div style={{ fontSize: 'var(--text-xs)', marginTop: '0.25rem' }}>{v.notes}</div>}
                           </div>
                           <StatusBadge status={v.status} />
                         </div>
@@ -348,15 +369,15 @@ export default function Viewings() {
                           borderLeft: `4px solid ${STATUS_COLORS[v.status] || 'var(--primary)'}`,
                           cursor: 'pointer',
                         }}
-                        onClick={() => setModal(v)}
+                        onClick={() => { if (choicesReady) setModal(v); }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>{v.lead_name}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                              {v.unit_label} &bull; {v.scheduled_at}
+                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                              {v.unit_label} &bull; {v.scheduled_label}
                             </div>
-                            {v.agent && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Betreuer: {v.agent}</div>}
+                            {v.agent && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Betreuer: {v.agent}</div>}
                           </div>
                           <StatusBadge status={v.status} />
                         </div>
@@ -373,8 +394,11 @@ export default function Viewings() {
           title=""
           columns={TABLE_COLUMNS}
           data={enriched}
-          onAdd={() => setModal('create')}
-          onEdit={row => setModal(row)}
+        rowName={row => row.lead_name || row.id}
+        bulkActions={[bulkDelete({ one: 'Besichtigung', many: 'Besichtigungen', remove: row => api.del(`/viewings/${row.id}`),
+          finished: () => { refreshData(); store?.invalidateRelated('viewings', 'leads', 'units'); } })]}
+          onAdd={choicesReady ? () => setModal('create') : undefined}
+          onEdit={choicesReady ? row => setModal(row) : undefined}
           onDelete={handleDelete}
         />
       )}

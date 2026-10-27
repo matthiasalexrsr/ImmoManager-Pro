@@ -12,7 +12,7 @@ def get_task_status(task_id: str) -> dict:
     """Get the current status of a background task."""
     result = get_queue().get_status(task_id)
     if not result:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Vorgang nicht gefunden")
     response = {
         "task_id": result.task_id,
         "status": result.status,

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+<BkToCstmrStmt><GrpHdr><MsgId>SYNTHETIC-ONLY</MsgId></GrpHdr><Stmt><Id>STMT-1</Id>
+<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id><Ccy>EUR</Ccy></Acct>
+<Bal><Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">10.00</Amt><CdtDbtInd>CRDT</CdtDbtInd></Bal>
+<Bal><Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">109.99</Amt><CdtDbtInd>CRDT</CdtDbtInd></Bal>
+<Ntry><Amt Ccy="EUR">103.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-10-01</Dt></BookgDt>
+<NtryDtls><TxDtls><Refs><AcctSvcrRef>BANK-100</AcctSvcrRef><EndToEndId>RENT-A</EndToEndId></Refs><AmtDtls><TxAmt><Amt Ccy="EUR">100.01</Amt></TxAmt></AmtDtls><RmtInf><Ustrd>Miete A</Ustrd></RmtInf><UnknownBankField>BEWAHREN</UnknownBankField></TxDtls>
+<TxDtls><Refs><AcctSvcrRef>BANK-101</AcctSvcrRef></Refs><AmtDtls><TxAmt><Amt Ccy="EUR">2.99</Amt></TxAmt></AmtDtls><RmtInf><Ustrd>Miete B</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+<Ntry><Amt Ccy="EUR">3.01</Amt><CdtDbtInd>DBIT</CdtDbtInd><RvslInd>true</RvslInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-10-02</Dt></BookgDt><AcctSvcrRef>BANK-102</AcctSvcrRef><Chrgs><TtlChrgsAndTaxAmt Ccy="EUR">0.01</TtlChrgsAndTaxAmt></Chrgs><AddtlNtryInf>Rückläufer samt Gebühr</AddtlNtryInf></Ntry>
+</Stmt></BkToCstmrStmt></Document>

@@ -246,6 +246,37 @@ class TestBookings:
         store.delete_booking(b.id)
         assert len(store.list_bookings()) == 0
 
+    def test_pages_return_every_booking_once_in_insertion_order(self, store, account):
+        # The UI loads long lists page by page; pages must neither overlap nor skip rows,
+        # even when the requested sort column has ties.
+        created = [
+            store.create_booking(BookingCreate(
+                account_id=account.id, booking_date=date(2024, 1, 1 + i % 2), amount=float(i + 1),
+            )).id
+            for i in range(7)
+        ]
+        pages = [
+            store._list_paginated("booking", skip=skip, limit=3, order_by="booking_date")
+            for skip in (0, 3, 6)
+        ]
+        paged = [b.id for page in pages for b in page]
+
+        assert paged == created[0::2] + created[1::2]
+        assert [b.id for b in store._list_paginated("booking", skip=0, limit=10)] == created
+
+    def test_pages_have_a_unique_order_on_other_databases(self):
+        from backend.db.orm_models import BookingORM
+        from backend.models import Booking
+        from backend.repositories.base import BaseRepository
+
+        class _PostgresSession:
+            def get_bind(self):
+                return type("Bind", (), {"dialect": type("Dialect", (), {"name": "postgresql"})})()
+
+        repo = BaseRepository(_PostgresSession(), BookingORM, Booking, "")  # type: ignore[arg-type]
+
+        assert [key.key for key in repo._unique_order()] == ["created_at", "id"]
+
 
 # === Receivable Tests ===
 

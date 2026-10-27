@@ -10,8 +10,11 @@ Eingabeformat:
 from __future__ import annotations
 
 import io
+import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -66,6 +69,21 @@ def _fmt_date_de(s: str | None) -> str:
         return s
 
 
+def _amount(value: Any) -> Decimal:
+    raw = str(value).replace("€", "").replace(" ", "").strip()
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"[+-]?\d{1,3}(?:\.\d{3})+", raw):
+        raw = raw.replace(".", "")
+    try:
+        result = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError("Ungültiger Geldbetrag") from exc
+    if not result.is_finite():
+        raise ValueError("Ungültiger Geldbetrag")
+    return result
+
+
 def _fmt_eur(x: Any) -> str:
     if x is None:
         return ""
@@ -75,9 +93,7 @@ def _fmt_eur(x: Any) -> str:
     # akzeptiere bereits formatiertes de-DE (1.234,56) oder raw "1234.56"
     # Versuche float
     try:
-        s2 = s.replace("€", "").replace(" ", "")
-        s2 = s2.replace(".", "").replace(",", ".")
-        val = float(s2)
+        val = _amount(x)
         # de-DE
         euros = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         return euros + " €"
@@ -123,6 +139,23 @@ def _party_block(title: str, persons: List[Dict[str, Any]]) -> str:
 
 def build_contract_pdf(data: Dict[str, Any]) -> bytes:
     """Erzeugt ein PDF als Bytes."""
+
+    if "_preview_blocks" in data:
+        from .preview_pdf import build_preview_pdf
+        return build_preview_pdf(data["_preview_blocks"])
+
+    # Legacy integrations pass structured data. Never interpret their strings as
+    # ReportLab markup (in particular image tags and local/remote file paths).
+    def escape_data(value):
+        if isinstance(value, str):
+            return escape(value)
+        if isinstance(value, list):
+            return [escape_data(item) for item in value]
+        if isinstance(value, dict):
+            return {key: escape_data(item) for key, item in value.items()}
+        return value
+
+    data = escape_data(data)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -328,10 +361,8 @@ def build_contract_pdf(data: Dict[str, Any]) -> bytes:
 
     try:
         def _to_float(v):
-            s = str(v).replace("€", "").replace(" ", "")
-            s = s.replace(".", "").replace(",", ".")
-            return float(s)
-        total = 0.0
+            return _amount(v)
+        total = Decimal(0)
         for v in (grund, betrieb, heizung):
             if v:
                 total += _to_float(v)

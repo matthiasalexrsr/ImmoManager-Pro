@@ -8,16 +8,21 @@ Supports two user storage backends:
 import hashlib
 import hmac
 import logging
+import re
 import secrets
+import threading
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Callable, Iterator, Optional
 from uuid import uuid4
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from sqlalchemy.exc import SQLAlchemyError
+from jwt import PyJWTError as JWTError
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .config import settings
 from .models import TokenPayload, UserRead
@@ -104,28 +109,71 @@ _register_limiter = RateLimiter(
     max_attempts=MAX_REGISTER_ATTEMPTS,
     window_minutes=REGISTER_WINDOW_MINUTES,
 )
+# Failed sign-ins per client address across all user names (password spraying); the per-user lockout above
+# stays the main defence, this one is per server process.
+MAX_FAILED_LOGINS_PER_ADDRESS = 50
+_address_login_limiter = RateLimiter(max_attempts=MAX_FAILED_LOGINS_PER_ADDRESS, window_minutes=LOCKOUT_DURATION_MINUTES)
+
+
+def login_address_blocked(client_ip: str | None) -> bool:
+    return bool(client_ip) and _address_login_limiter.is_limited(hashlib.sha256(str(client_ip).encode()).hexdigest())
+
+
+def record_failed_login_address(client_ip: str | None) -> None:
+    if client_ip:
+        _address_login_limiter.record(hashlib.sha256(str(client_ip).encode()).hexdigest())
 
 # HTTP Bearer scheme
 security = HTTPBearer(auto_error=False)
 
 # Token blacklist for logout/revocation
+_revocation_lock = threading.RLock()
 _token_blacklist: set[str] = set()
 _blacklist_expiry: dict[str, datetime] = {}  # token -> expiry time for cleanup
 _MAX_BLACKLIST_SIZE = 10_000
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 
 # DB-backed session factory for auth security state (set by enable_sql_auth_state)
-_auth_session_factory = None
+_auth_session_factory: Callable[[], Any] | None = None
 
 # Number of PBKDF2 iterations (OWASP recommended minimum for SHA-256)
 _PBKDF2_ITERATIONS = 600_000
 
 
-def validate_password_strength(password: str) -> list[str]:
+MAX_PASSWORD_LENGTH = 128
+# Passwords that meet the character rules but head every list of leaked passwords (NIST SP 800-63B: refuse
+# known-compromised and expected values). Compared without case, spaces and trailing punctuation.
+COMMON_PASSWORDS = frozenset("""
+password1 password12 password123 password1234 passwort1 passwort12 passwort123 passwort1234 passw0rd p4ssw0rd
+pass1234 pass12345 welcome1 welcome12 welcome123 willkommen1 willkommen123 letmein1 changeme1 changeme123
+qwerty12 qwerty123 qwerty1234 qwertz12 qwertz123 qwertz1234 asdfgh12 yxcvbn12 abcd1234 abc12345 abcdef12
+admin123 admin1234 administrator1 root1234 test1234 test12345 testtest1 master123 monkey123 dragon123
+football1 iloveyou1 sunshine1 princess1 baseball1 superman1 starwars1 trustno11 hallo123 hallo1234
+deutschland1 berlin123 hamburg123 muenchen1 schalke04 bayern123 dortmund09 immobilie1 vermieter1 mieter123
+hausverwaltung1 verwaltung1 immomanager1 immomanager123 firma123 office123 start123 start1234 geheim123
+""".split())
+_SEASON_YEAR = re.compile(r"^(sommer|winter|herbst|fr(ü|ue)hling|summer|spring|autumn|fall|januar|februar|"
+                          r"m(ä|ae)rz|april|mai|juni|juli|august|september|oktober|november|dezember|"
+                          r"january|february|march|june|july|october|december)\d{2,4}$")
+
+
+def validate_password_strength(password: str, *, username: str | None = None, email: str | None = None) -> list[str]:
     """T21: Validate password meets policy requirements. Returns list of violations."""
     errors = []
     if len(password) < MIN_PASSWORD_LENGTH:
         errors.append(f"Mindestens {MIN_PASSWORD_LENGTH} Zeichen erforderlich")
+    if len(password) > MAX_PASSWORD_LENGTH:
+        errors.append(f"Höchstens {MAX_PASSWORD_LENGTH} Zeichen")
+    plain = re.sub(r"[\s!?.\-_*#]+$", "", password.strip().lower())
+    if plain in COMMON_PASSWORDS or _SEASON_YEAR.match(plain):
+        errors.append("Dieses Passwort ist allgemein bekannt oder leicht zu erraten; bitte ein anderes wählen")
+    if len(set(password.lower())) <= 3:
+        errors.append("Bitte mehr verschiedene Zeichen verwenden")
+    lowered = password.lower()
+    for name in (username, (email or "").split("@", 1)[0]):
+        if name and len(name) >= 4 and name.lower() in lowered:
+            errors.append("Das Passwort darf den Benutzernamen oder die E-Mail-Adresse nicht enthalten")
+            break
     if REQUIRE_UPPERCASE and not any(c.isupper() for c in password):
         errors.append("Mindestens ein Großbuchstabe erforderlich")
     if REQUIRE_LOWERCASE and not any(c.islower() for c in password):
@@ -149,10 +197,17 @@ def check_login_rate_limit(username: str) -> bool:
     return len(recent) >= MAX_LOGIN_ATTEMPTS
 
 
+def _new_auth_session() -> Any:
+    """Open a session for DB-backed auth state; only valid once enabled."""
+    if _auth_session_factory is None:
+        raise RuntimeError("SQL auth state is not enabled")
+    return _auth_session_factory()
+
+
 def _check_login_rate_limit_db(username: str) -> bool:
     """DB-backed rate limit check."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         count = session.query(LoginAttemptORM).filter(
@@ -199,7 +254,7 @@ def _evict_oldest_login_attempts() -> None:
 def _record_login_attempt_db(username: str, *, success: bool) -> None:
     """Persist a login attempt to the database."""
     from .db.orm_models import LoginAttemptORM
-    session = _auth_session_factory()
+    session = _new_auth_session()
     try:
         session.add(LoginAttemptORM(username=username, success=success))
         session.commit()
@@ -215,7 +270,7 @@ def clear_login_attempts(username: str) -> None:
     _login_attempts.pop(username, None)
     if _auth_session_factory is not None:
         from .db.orm_models import LoginAttemptORM
-        session = _auth_session_factory()
+        session = _new_auth_session()
         try:
             session.query(LoginAttemptORM).filter(
                 LoginAttemptORM.username == username,
@@ -237,6 +292,54 @@ def check_register_rate_limit(client_ip: str) -> bool:
 def record_registration_attempt(client_ip: str) -> None:
     """Record a registration attempt from the given IP."""
     _register_limiter.record(client_ip)
+
+
+_registration_quota_lock = threading.Lock()
+
+
+def reserve_registration_attempt(client_ip: str) -> bool:
+    """Consume a public registration attempt across workers, refusing DB failures."""
+    if _auth_session_factory is None:
+        with _registration_quota_lock:
+            if check_register_rate_limit(client_ip):
+                return True
+            record_registration_attempt(client_ip)
+            return False
+    from sqlalchemy import select, text
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    from .db.access_models import RegistrationQuotaORM
+
+    session = _new_auth_session()
+    key = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+    try:
+        dialect = session.get_bind().dialect.name
+        statement: Any
+        if dialect == "sqlite":
+            session.execute(text("BEGIN IMMEDIATE"))
+            statement = sqlite_insert(RegistrationQuotaORM).values(key_hash=key, attempts=[])
+        elif dialect == "postgresql":
+            statement = pg_insert(RegistrationQuotaORM).values(key_hash=key, attempts=[])
+        else:
+            raise RuntimeError("Unsupported quota database")
+        session.execute(statement.on_conflict_do_nothing(index_elements=["key_hash"]))
+        row = session.execute(select(RegistrationQuotaORM).where(
+            RegistrationQuotaORM.key_hash == key).with_for_update()).scalar_one()
+        now = datetime.now(timezone.utc).timestamp()
+        recent = [value for value in row.attempts if value > now - REGISTER_WINDOW_MINUTES * 60]
+        blocked = len(recent) >= MAX_REGISTER_ATTEMPTS
+        if not blocked:
+            recent.append(now)
+        row.attempts = recent
+        session.commit()
+        return blocked
+    except (SQLAlchemyError, RuntimeError):
+        session.rollback()
+        logger.warning("Registration quota unavailable; registration refused")
+        return True
+    finally:
+        session.close()
 
 
 # ---------------------------------------------------------------------------
@@ -300,19 +403,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, session_id: str | None = None) -> str:
     """Create a JWT access token with a unique jti."""
     expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    from .services.daily_sessions import issue
+    session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
-    payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti}
+    payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti, "sid": session_id}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, session_id: str | None = None) -> str:
     """Create a JWT refresh token with a unique jti for rotation tracking."""
     expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    from .services.daily_sessions import issue
+    session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
-    payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti}
+    payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti, "sid": session_id}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -321,69 +428,113 @@ def _token_jti(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()[:32]
 
 
-def revoke_token(token: str) -> None:
-    """Add a token to the blacklist (for logout)."""
-    _cleanup_blacklist()
+def _revoked_error() -> HTTPException:
+    return HTTPException(status.HTTP_401_UNAUTHORIZED, "Token wurde widerrufen",
+                         headers={"WWW-Authenticate": "Bearer"})
+
+
+@contextmanager
+def _revocation_session() -> Iterator[Any]:
+    """Failures are neither a negative revocation check nor confirmed logout.
+
+    SQL exceptions may embed bind parameters and connection credentials. Log only
+    the event, including failures while opening, rolling back or closing a session.
+    """
+    session = None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        session = _new_auth_session()
+        yield session
+    except SQLAlchemyError:
+        if session is not None:
+            try:
+                session.rollback()
+            except SQLAlchemyError:
+                pass
+        logger.warning("Authentication revocation storage unavailable")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Der Sitzungsstatus konnte nicht sicher gespeichert oder geprüft werden. Bitte erneut versuchen.",
+            headers={"Retry-After": "30", "Cache-Control": "no-store"},
+        ) from None
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except SQLAlchemyError:
+                # Closing a session cannot undo an already confirmed commit/read.
+                logger.warning("Authentication revocation session cleanup failed")
+
+
+def revoke_token(token: str, *, require_unrevoked: bool = False) -> None:
+    """Confirm durable revocation before caching it or allowing token rotation.
+
+    Logout is idempotent. Refresh uses the unique database token key as a
+    single-use claim, including across workers. Invalid/expired logout inputs
+    remain harmless; they cannot authorize a request in the first place.
+    """
+    with _revocation_lock:
+        _cleanup_blacklist()
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        except JWTError:
+            if require_unrevoked:
+                raise _revoked_error() from None
+            return
+        if require_unrevoked and token in _token_blacklist:
+            raise _revoked_error()
+        if _auth_session_factory is not None:
+            inserted = _revoke_token_db(token, exp)
+            if require_unrevoked and not inserted:
+                raise _revoked_error()
         _token_blacklist.add(token)
         _blacklist_expiry[token] = exp
-        # Also persist to DB for cross-restart durability
-        if _auth_session_factory is not None:
-            _revoke_token_db(token, exp)
-    except JWTError:
-        pass
 
 
-def _revoke_token_db(token: str, expires_at: datetime) -> None:
-    """Persist token revocation to the database."""
+def _revoke_token_db(token: str, expires_at: datetime) -> bool:
+    """Return whether this operation inserted the durable single-use claim."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
-    try:
+    with _revocation_session() as session:
         jti = _token_jti(token)
-        exists = session.query(RevokedTokenORM).filter(
-            RevokedTokenORM.token_jti == jti
-        ).first()
-        if not exists:
-            session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
+        if session.query(RevokedTokenORM).filter(RevokedTokenORM.token_jti == jti).first():
+            return False
+        session.add(RevokedTokenORM(token_jti=jti, expires_at=expires_at))
+        try:
             session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        logger.warning("Failed to persist token revocation to DB", exc_info=True)
-    finally:
-        session.close()
+        except IntegrityError:
+            # A concurrent worker may already have committed the same token.
+            # Recheck the exact key; unrelated constraints must remain failures.
+            session.rollback()
+            if not session.query(RevokedTokenORM).filter(RevokedTokenORM.token_jti == jti).first():
+                raise
+            return False
+        return True
 
 
 def is_token_revoked(token: str) -> bool:
-    """Check if a token has been revoked."""
+    """A positive cache may deny access; only a successful DB read can allow it."""
     if token in _token_blacklist:
         return True
-    # Check DB if available
     if _auth_session_factory is not None:
         return _is_token_revoked_db(token)
     return False
 
 
 def _is_token_revoked_db(token: str) -> bool:
-    """Check DB for revoked token."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
-    try:
-        jti = _token_jti(token)
+    with _revocation_session() as session:
         found = session.query(RevokedTokenORM).filter(
-            RevokedTokenORM.token_jti == jti
+            RevokedTokenORM.token_jti == _token_jti(token)
         ).first()
-        if found:
-            # Cache in memory so subsequent checks are fast
+        if found is None:
+            return False
+        expiry = found.expires_at
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        with _revocation_lock:
             _token_blacklist.add(token)
-            return True
-        return False
-    except SQLAlchemyError:
-        logger.warning("DB token revocation check failed", exc_info=True)
-        return False
-    finally:
-        session.close()
+            _blacklist_expiry[token] = expiry
+        return True
 
 
 def _cleanup_blacklist() -> None:
@@ -406,19 +557,13 @@ def _cleanup_blacklist() -> None:
 
 
 def _cleanup_blacklist_db() -> None:
-    """Remove expired revoked tokens from the database."""
+    """Remove expired claims without hiding failures or logging SQL parameters."""
     from .db.orm_models import RevokedTokenORM
-    session = _auth_session_factory()
-    try:
+    with _revocation_session() as session:
         session.query(RevokedTokenORM).filter(
             RevokedTokenORM.expires_at < datetime.now(timezone.utc)
         ).delete()
         session.commit()
-    except SQLAlchemyError:
-        session.rollback()
-        logger.debug("Failed to clean expired revoked tokens from DB", exc_info=True)
-    finally:
-        session.close()
 
 
 def decode_token(token: str) -> TokenPayload:
@@ -431,8 +576,11 @@ def decode_token(token: str) -> TokenPayload:
         )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return TokenPayload(**payload)
-    except JWTError as exc:
+        from .services.daily_sessions import check
+        parsed = TokenPayload.model_validate(payload)
+        check(parsed.sid, parsed.sub)
+        return parsed
+    except (JWTError, ValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültiger Token",
@@ -443,6 +591,18 @@ def decode_token(token: str) -> TokenPayload:
 # ---------------------------------------------------------------------------
 # User Store abstraction
 # ---------------------------------------------------------------------------
+
+
+ACCESS_FIELDS = ("portfolio_access", "portfolio_ids", "portfolio_access_origin")
+
+
+def normalize_access(role: str, mode: str | None, ids) -> dict:
+    """Portfolio access as stored: owners always see everything; "all" carries no list."""
+    if role == "eigentuemer" or mode == "all":
+        return {"portfolio_access": "all", "portfolio_ids": []}
+    if mode != "selected":
+        raise ValueError(f"unknown portfolio access {mode!r}")
+    return {"portfolio_access": "selected", "portfolio_ids": sorted(set(ids or ()))}
 
 
 class UserStore(ABC):
@@ -465,6 +625,10 @@ class UserStore(ABC):
         ...
 
     @abstractmethod
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        ...
+
+    @abstractmethod
     def delete(self, user_id: str) -> Optional[dict]:
         ...
 
@@ -478,11 +642,16 @@ class UserStore(ABC):
 
 
 class InMemoryUserStore(UserStore):
-    """In-memory user storage for tests and development."""
+    """In-memory user storage for tests and development.
+
+    Changes take `lock`; locked_account() holds it so that an account cannot be
+    deactivated or lose its role while a guarded change is still being written.
+    """
 
     def __init__(self):
         self._by_id: dict[str, dict] = {}
         self._by_username: dict[str, dict] = {}
+        self.lock = threading.RLock()
 
     def get_by_id(self, user_id: str) -> Optional[dict]:
         return self._by_id.get(user_id)
@@ -491,31 +660,44 @@ class InMemoryUserStore(UserStore):
         return self._by_username.get(username)
 
     def create(self, user_data: dict) -> None:
-        self._by_id[user_data["id"]] = user_data
-        self._by_username[user_data["username"]] = user_data
+        with self.lock:
+            self._by_id[user_data["id"]] = user_data
+            self._by_username[user_data["username"]] = user_data
 
     def update(self, user_id: str, updates: dict) -> Optional[dict]:
-        user = self._by_id.get(user_id)
-        if user is None:
-            return None
-        for key, value in updates.items():
-            if value is not None and key not in ("id", "hashed_password", "created_at"):
-                user[key] = value
-        user["updated_at"] = datetime.now(timezone.utc)
-        return user
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            for key, value in updates.items():
+                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                    user[key] = list(value) if key == "portfolio_ids" else value
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        with self.lock:
+            user = self._by_id.get(user_id)
+            if user is None:
+                return None
+            user["hashed_password"] = hashed_password
+            user["updated_at"] = datetime.now(timezone.utc)
+            return user
 
     def delete(self, user_id: str) -> Optional[dict]:
-        user = self._by_id.pop(user_id, None)
-        if user:
-            self._by_username.pop(user["username"], None)
-        return user
+        with self.lock:
+            user = self._by_id.pop(user_id, None)
+            if user:
+                self._by_username.pop(user["username"], None)
+            return user
 
     def list_all(self) -> list[dict]:
         return list(self._by_id.values())
 
     def clear(self) -> None:
-        self._by_id.clear()
-        self._by_username.clear()
+        with self.lock:
+            self._by_id.clear()
+            self._by_username.clear()
 
 
 class SQLUserStore(UserStore):
@@ -541,7 +723,63 @@ class SQLUserStore(UserStore):
 
         session.close()
 
-    def _to_dict(self, orm_obj) -> dict:
+    def _to_dict(self, orm_obj, session=None, access=None) -> dict:
+        data = self._account(orm_obj)
+        if access is None:
+            access = self._access(session or self._session_of(orm_obj), [orm_obj.id])
+        data.update(self._access_of(orm_obj, access))
+        return data
+
+    @staticmethod
+    def _session_of(orm_obj):
+        from sqlalchemy.orm import object_session
+
+        return object_session(orm_obj)
+
+    @staticmethod
+    def _access(session, user_ids) -> dict:
+        """{user_id: (mode, origin, [portfolio ids])} for the given accounts, in two queries."""
+        from sqlalchemy import select
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        rows: dict[str, tuple[str, str, list[str]]] = {row.user_id: (row.mode, row.origin, []) for row in
+                session.scalars(select(UserAccessORM).where(UserAccessORM.user_id.in_(user_ids)))}
+        for user_id, portfolio_id in session.execute(
+                select(UserPortfolioORM.user_id, UserPortfolioORM.portfolio_id)
+                .where(UserPortfolioORM.user_id.in_(user_ids))):
+            if user_id in rows:
+                rows[user_id][2].append(portfolio_id)
+        return rows
+
+    @staticmethod
+    def _access_of(orm_obj, access: dict) -> dict:
+        row = access.get(orm_obj.id)
+        if orm_obj.role == "eigentuemer":
+            return {"portfolio_access": "all", "portfolio_ids": [],
+                    "portfolio_access_origin": row[1] if row else "owner"}
+        if row is None:          # fail closed: no row is no assignment yet
+            return {"portfolio_access": "selected", "portfolio_ids": [], "portfolio_access_origin": "unassigned"}
+        mode, origin, ids = row
+        return {"portfolio_access": mode, "portfolio_ids": sorted(ids) if mode == "selected" else [],
+                "portfolio_access_origin": origin}
+
+    @staticmethod
+    def _write_access(session, user_id: str, values: dict) -> None:
+        from sqlalchemy import delete
+
+        from .db.access_models import UserAccessORM, UserPortfolioORM
+        row = session.get(UserAccessORM, user_id)
+        if row is None:
+            row = UserAccessORM(user_id=user_id)
+            session.add(row)
+        row.mode = values["portfolio_access"]
+        row.origin = values.get("portfolio_access_origin") or "owner_assignment"
+        row.updated_at = datetime.now(timezone.utc)
+        session.execute(delete(UserPortfolioORM).where(UserPortfolioORM.user_id == user_id))
+        session.add_all(UserPortfolioORM(user_id=user_id, portfolio_id=pid) for pid in values["portfolio_ids"])
+
+    @staticmethod
+    def _account(orm_obj) -> dict:
         return {
             "id": orm_obj.id,
             "username": orm_obj.username,
@@ -578,8 +816,11 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            obj = UserORM(**user_data)
+            obj = UserORM(**{k: v for k, v in user_data.items() if k not in ACCESS_FIELDS})
             session.add(obj)
+            session.flush()
+            if "portfolio_access" in user_data:
+                self._write_access(session, obj.id, user_data)
             session.commit()
         except Exception:
             session.rollback()
@@ -595,8 +836,28 @@ class SQLUserStore(UserStore):
             if obj is None:
                 return None
             for key, value in updates.items():
-                if value is not None and key not in ("id", "hashed_password", "created_at"):
+                if value is not None and key not in ("id", "hashed_password", "created_at", *ACCESS_FIELDS):
                     setattr(obj, key, value)
+            if "portfolio_access" in updates:
+                self._write_access(session, user_id, updates)
+            obj.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            session.refresh(obj)
+            return self._to_dict(obj)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            self._finalize_session(session)
+
+    def set_password_hash(self, user_id: str, hashed_password: str) -> Optional[dict]:
+        from .db.orm_models import UserORM
+        session = self._session_factory()
+        try:
+            obj = session.get(UserORM, user_id)
+            if obj is None:
+                return None
+            obj.hashed_password = hashed_password
             obj.updated_at = datetime.now(timezone.utc)
             session.commit()
             session.refresh(obj)
@@ -628,7 +889,9 @@ class SQLUserStore(UserStore):
         from .db.orm_models import UserORM
         session = self._session_factory()
         try:
-            return [self._to_dict(obj) for obj in session.query(UserORM).all()]
+            users = session.query(UserORM).all()
+            access = self._access(session, [obj.id for obj in users])
+            return [self._to_dict(obj, access=access) for obj in users]
         finally:
             self._finalize_session(session)
 
@@ -669,12 +932,17 @@ def _to_user_read(user_data: dict) -> UserRead:
 # ---------------------------------------------------------------------------
 
 
-def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly") -> UserRead:
-    """Register a new user with password policy enforcement (T21)."""
+def register_user(username: str, email: str, full_name: str, password: str, role: str = "readonly", *,
+                  portfolio_access: str = "all", portfolio_ids=None) -> UserRead:
+    """Register a new user with password policy enforcement (T21).
+
+    Called from code (setup, test data) the account sees everything; the account
+    administration passes the owner's explicit portfolio assignment.
+    """
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
     # T21: Validate password strength
-    pw_errors = validate_password_strength(password)
+    pw_errors = validate_password_strength(password, username=username, email=email)
     if pw_errors:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -694,6 +962,8 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         "totp_enabled": False,
         "created_at": now,
         "updated_at": now,
+        **normalize_access(role, portfolio_access, portfolio_ids),
+        "portfolio_access_origin": "owner_assignment",
     }
     _user_store.create(user_data)
     return _to_user_read(user_data)
@@ -707,7 +977,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Zu viele Anmeldeversuche. Bitte warten Sie {LOCKOUT_DURATION_MINUTES} Minuten.",
         )
-    user = _user_store.get_by_username(username)
+    user = _find_login(username)
     if user is None:
         record_failed_login(username)
         return None
@@ -722,9 +992,56 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     return user
 
 
+def _find_login(name: str) -> Optional[dict]:
+    """The user signing in: by username, or by e-mail address (any case)."""
+    user = _user_store.get_by_username(name)
+    if user is None and "@" in name:
+        wanted = name.strip().lower()
+        matches = [u for u in _user_store.list_all() if (u.get("email") or "").strip().lower() == wanted]
+        user = matches[0] if len(matches) == 1 else None      # an address used twice signs in no one
+    return user
+
+
+def get_user_by_username(username: str) -> Optional[dict]:
+    return _user_store.get_by_username(username)
+
+
 def get_user_by_id(user_id: str) -> Optional[dict]:
     """Get a user by ID."""
     return _user_store.get_by_id(user_id)
+
+
+@contextmanager
+def locked_account(user_id: str, db=None) -> Iterator[Optional[dict]]:
+    """The account as it stands, kept so until the caller's change is written.
+
+    With SQL accounts the row is read with a share lock in the caller's session
+    `db` (on the same database): deactivating the account or changing its role
+    waits until that transaction ends. SQLite has no row locks, so the caller
+    must already hold the write lock (BEGIN IMMEDIATE). In-memory accounts are
+    held with the store's lock for the duration of the block.
+    """
+    store = _user_store
+    if isinstance(store, SQLUserStore):
+        if db is None:
+            raise RuntimeError("SQL accounts need the caller's database session")
+        from sqlalchemy import select
+
+        from .db.orm_models import UserORM
+        row = db.scalar(select(UserORM).where(UserORM.id == user_id).with_for_update(read=True))
+        yield store._to_dict(row, db) if row is not None else None
+        return
+    lock = getattr(store, "lock", None)
+    if lock is None:
+        raise RuntimeError(f"{type(store).__name__} cannot hold an account")
+    with lock:
+        user = store.get_by_id(user_id)
+        yield dict(user) if user is not None else None
+
+
+def has_users() -> bool:
+    """True once at least one account exists."""
+    return bool(_user_store.list_all())
 
 
 def list_users() -> list[UserRead]:
@@ -740,6 +1057,62 @@ def update_user(user_id: str, updates: dict) -> UserRead:
     return _to_user_read(user)
 
 
+def update_totp(user_id: str, *, expected_secret: str | None, expected_enabled: bool,
+                secret: str | None, enabled: bool) -> None:
+    """Change exactly the factor that was checked, atomically across workers.
+
+    Disabled accounts cannot change a factor. A competing setup/verification
+    must retry against the current state; it may never replace an active key.
+    Unlike a profile patch, disabling explicitly clears the secret to NULL.
+    """
+    store = _user_store
+    if isinstance(store, SQLUserStore):
+        from sqlalchemy import update
+
+        from .db.orm_models import UserORM
+        session = store._session_factory()
+        try:
+            result = session.execute(update(UserORM).where(
+                UserORM.id == user_id, UserORM.is_active.is_(True),
+                UserORM.totp_secret == expected_secret, UserORM.totp_enabled.is_(expected_enabled),
+            ).values(totp_secret=secret, totp_enabled=enabled, updated_at=datetime.now(timezone.utc)))
+            if result.rowcount != 1:
+                raise HTTPException(409, "Der Zwei-Faktor-Status hat sich geändert. Bitte erneut öffnen.")
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            store._finalize_session(session)
+    elif isinstance(store, InMemoryUserStore):
+        with store.lock:
+            account = store.get_by_id(user_id)
+            if (not account or not account.get("is_active") or account.get("totp_secret") != expected_secret
+                    or bool(account.get("totp_enabled")) != expected_enabled):
+                raise HTTPException(409, "Der Zwei-Faktor-Status hat sich geändert. Bitte erneut öffnen.")
+            account.update(totp_secret=secret, totp_enabled=enabled, updated_at=datetime.now(timezone.utc))
+    else:
+        raise RuntimeError("The account store cannot atomically change a second factor")
+
+
+def set_user_password(user_id: str, password: str, *, keep_session: str | None = None) -> UserRead:
+    """Set a new password for an existing account (admin reset); the account's other sessions end."""
+    account = _user_store.get_by_id(user_id) if hasattr(_user_store, "get_by_id") else None
+    pw_errors = validate_password_strength(password, username=(account or {}).get("username"), email=(account or {}).get("email"))
+    if pw_errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Passwort zu schwach: {'; '.join(pw_errors)}",
+        )
+    user = _user_store.set_password_hash(user_id, hash_password(password))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
+    clear_login_attempts(user["username"])
+    from .services.daily_sessions import revoke_all
+    revoke_all(user_id, keep=keep_session)       # OWASP: a new password ends the sessions signed in with the old one
+    return _to_user_read(user)
+
+
 def delete_user(user_id: str) -> None:
     """Delete a user."""
     user = _user_store.delete(user_id)
@@ -750,12 +1123,16 @@ def delete_user(user_id: str) -> None:
 def clear_users() -> None:
     """Clear all users (for testing)."""
     _user_store.clear()
+    from .services.daily_sessions import _sessions
+    _sessions.clear()
     _login_attempts.clear()
     _token_blacklist.clear()
     _blacklist_expiry.clear()
+    _register_limiter._attempts.clear()
+    _address_login_limiter._attempts.clear()
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[UserRead]:
     """FastAPI dependency: extract and validate the current user from JWT.
@@ -763,6 +1140,10 @@ async def get_current_user(
     Returns None if no token is provided (allows unauthenticated access
     to endpoints that don't require auth). Endpoints requiring auth
     should use `require_auth` instead.
+
+    Synchronous on purpose: it reads users and revoked tokens from the
+    database, and FastAPI runs sync dependencies in the threadpool. On the
+    event loop a wait for a free connection would stop the whole server.
     """
     if credentials is None:
         return None
@@ -786,7 +1167,7 @@ async def get_current_user(
     return UserRead(**{k: v for k, v in user.items() if k != "hashed_password"})
 
 
-async def require_auth(
+def require_auth(
     user: Optional[UserRead] = Depends(get_current_user),
 ) -> UserRead:
     """FastAPI dependency: require authenticated user."""
@@ -801,7 +1182,7 @@ async def require_auth(
 
 def require_role(*roles: str):
     """FastAPI dependency factory: require user to have one of the given roles."""
-    async def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
+    def check_role(user: UserRead = Depends(require_auth)) -> UserRead:
         if user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -1,0 +1,149 @@
+import { api } from '../../api';
+import { formatDate, formatMoney } from '../../utils/format';
+import { COST_CATEGORIES } from '../../utils/costCategories';
+
+const key = () => crypto.randomUUID();
+
+export const aiReadingApi = {
+  options: (surface, options) => api.get(`/ai/readings/options${surface ? `?surface=${encodeURIComponent(surface)}` : ''}`, options),
+  start: body => api.post('/ai/readings', { ...body, idempotency_key: body.idempotency_key || key() }),
+  get: id => api.get(`/ai/readings/${encodeURIComponent(id)}`),
+  say: (reading, text, idempotency_key = key()) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/messages`,
+    { text, expected_revision: reading.revision, idempotency_key }),
+  decide: (reading, action, record) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/decision`,
+    { action, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key: key() }),
+  finish: (reading, outcome, record) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/finish`,
+    { outcome, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key: key() }),
+  upload: async (file, folder = 'documents') => {
+    const form = new FormData();
+    form.append('file', file);
+    const uploaded = await api.upload(`/files/upload?folder=${encodeURIComponent(folder)}`, form);
+    if (!uploaded?.file_url) throw new Error('Der Server hat keine Datei zurückgegeben.');
+    return uploaded.file_url;
+  },
+};
+
+export const CONFIDENCE_LABELS = { high: 'sicher', medium: 'wahrscheinlich', low: 'unsicher' };
+export const READER_HINTS = {
+  local: 'Lokale Regeln: das Dokument bleibt auf diesem Rechner. Für Scans, Fotos und das Gespräch Claude oder ChatGPT verbinden.',
+  claude: 'Das Dokument wird zum Lesen an Claude (Ihr verbundenes Konto) gesendet.',
+  codex: 'Das Dokument wird zum Lesen an ChatGPT (Ihr verbundenes Konto) gesendet.',
+};
+
+/** The reader to preselect: the person's default if it can read here, else the first connected AI, else the rules. */
+export function preferredReader(options, needsAi = false) {
+  const readers = options?.readers || [];
+  const ready = readers.filter(item => item.ai && item.available).map(item => item.id);
+  const preferred = options?.default_reader;
+  if (preferred === 'local' && !needsAi) return 'local';
+  if (['claude', 'codex'].includes(preferred) && ready.includes(preferred)) return preferred;
+  if (ready.length && options?.ai_enabled !== false) return ready[0];
+  return needsAi ? '' : 'local';
+}
+
+/** The value of a field as a form takes it: units and tenants become their id, everything else stays text. */
+export function formValue(item) {
+  const value = item?.value;
+  if (value && typeof value === 'object' && 'id' in value) return value.id;
+  return value ?? '';
+}
+
+/**
+ * Values of a reading for a form, and the marks the form shows: `mapping` names for each form field the
+ * reading field it comes from (or a function of all values). Only fields with a value are returned.
+ */
+export function readingToForm(reading, mapping) {
+  const values = reading?.values || {};
+  const initial = {};
+  const marks = {};
+  for (const [formKey, source] of Object.entries(mapping)) {
+    const item = typeof source === 'function' ? source(values) : values[source];
+    if (item == null || item.value == null || item.value === '') continue;
+    initial[formKey] = formValue(item);
+    marks[formKey] = { value: String(formValue(item)), evidence: item.evidence || null, confidence: item.confidence || null,
+      ...(item.citation !== undefined ? { citation: item.citation } : {}),
+      ...(item.evidence_status !== undefined ? { evidence_status: item.evidence_status } : {}),
+      source: item.source || reading.reader };
+  }
+  return { initial, marks };
+}
+
+/** Several read fields in one form field (e.g. sender and summary in a description), each with its prefix. */
+export function combined(values, parts) {
+  const found = parts.map(([name, prefix]) => [values[name], prefix]).filter(([item]) => item?.value != null && item.value !== '');
+  if (!found.length) return null;
+  const text = item => (typeof item.value === 'object' ? item.value.label : String(item.value));
+  return { value: found.map(([item, prefix]) => (prefix ? `${prefix}: ${text(item)}` : text(item))).join('\n'),
+    evidence: found.map(([item]) => item.evidence).filter(Boolean).join(' … ') || null,
+    confidence: found.some(([item]) => item.confidence === 'low') ? 'low' : found[0][0].confidence || null, source: found[0][0].source };
+}
+
+/**
+ * A form's start values from what it already knows (`base`) and a reading: read values win, except for the
+ * `keep` fields the page itself set (the property or tenant the person is working in). Marks only for read values.
+ * `name` is the file as the person chose it (the stored copy has a generated name).
+ */
+export function formFromReading(base, reading, mapping, keep = [], name = null) {
+  const { initial, marks } = readingToForm(reading, mapping);
+  const values = { ...base };
+  const shown = {};
+  for (const [field, value] of Object.entries(initial)) {
+    if (keep.includes(field) && base?.[field] != null && base[field] !== '') continue;
+    values[field] = value;
+    shown[field] = marks[field];
+  }
+  return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
+    document: name || reading.document?.title || reading.file?.name || null } : null };
+}
+
+/** Read values for the empty fields of a record that already exists (the "add the read values" choice). */
+export function fillEmpty(record, reading, mapping, name = null) {
+  const { initial, marks } = readingToForm(reading, mapping);
+  const values = { ...record };
+  const shown = {};
+  for (const [field, value] of Object.entries(initial)) {
+    if (record?.[field] != null && record[field] !== '') continue;
+    values[field] = value;
+    shown[field] = marks[field];
+  }
+  return { initial: values, aiMarks: Object.keys(shown).length ? { fields: shown, mode: reading.confirm_mode, label: reading.reader_label,
+    document: name || reading.document?.title || reading.file?.name || null } : null };
+}
+
+/** Reading fields for the document form. */
+export const DOCUMENT_FORM = {
+  title: 'title', document_type: 'document_type', document_date: 'document_date', valid_until: 'valid_until',
+  unit_id: 'unit', tenant_id: 'tenant', description: values => combined(values, [['sender', 'Absender'], ['description', '']]),
+};
+
+/** Reading fields for the invoice receipt form. */
+export const INVOICE_FORM = { ...Object.fromEntries(['supplier', 'invoice_number', 'invoice_date', 'due_date',
+  'performance_start', 'performance_end', 'iban', 'net_amount', 'vat_rate', 'gross_amount',
+  'skonto_percent', 'skonto_days', 'payment_days', 'cost_category'].map(name => [name, name])), kind: 'document_kind' };
+
+/** Reading fields for a cost item of a utility statement. */
+export const COST_FORM = {
+  description: values => values.description || combined(values, [['supplier', '']]), amount: 'amount', is_recoverable: 'recoverable',
+};
+
+/** Reading fields for a meter reading read from a photo (the meter found by its device number). */
+export const METER_PHOTO_FORM = {
+  meter_id: 'meter', reading_date: 'reading_date', value: 'value',
+  notes: values => (values.meter ? null : combined(values, [['serial', 'Gerätenummer laut Foto']])),
+};
+
+export const CHOICE_LABELS = {
+  ...Object.fromEntries(COST_CATEGORIES),
+  invoice: 'Rechnung', credit_note: 'Gutschrift', true: 'Ja', false: 'Nein', cold_water: 'Kaltwasser', gas: 'Gas',
+};
+
+export function shownValue(field, value) {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'object') return value.label || '—';
+  if (field?.kind === 'money') return formatMoney(Number(value));
+  if (field?.kind === 'date') return formatDate(value);
+  if (field?.kind === 'percent') return `${String(value).replace('.', ',')}\u00a0%`;
+  if (field?.kind === 'number') return String(value).replace('.', ',');
+  if (field?.kind === 'choice') return CHOICE_LABELS[value] || value;
+  return String(value);
+}

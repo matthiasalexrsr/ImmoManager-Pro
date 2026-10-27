@@ -1,0 +1,249 @@
+Source files: org/codehaus/commons/compiler/AbstractCompiler.java, org/codehaus/commons/compiler/ICompiler.java, org/codehaus/commons/compiler/IMultiCookable.java, org/codehaus/commons/compiler/io/InputStreams.java, org/codehaus/commons/compiler/io/package-info.java, org/codehaus/commons/compiler/java8/java/util/function/Consumers.java, org/codehaus/commons/compiler/java8/java/util/function/package-info.java, org/codehaus/commons/compiler/java8/java/util/package-info.java, org/codehaus/commons/compiler/java8/java/util/stream/package-info.java, org/codehaus/commons/compiler/lang/ClassLoaders.java, org/codehaus/commons/compiler/lang/package-info.java, org/codehaus/commons/compiler/MultiCookable.java, org/codehaus/commons/compiler/samples/CompilerDemo.java, org/codehaus/commons/compiler/util/iterator/Iterables.java, org/codehaus/commons/compiler/util/iterator/package-info.java, org/codehaus/commons/compiler/util/Numbers.java, org/codehaus/commons/compiler/util/Predicate.java, org/codehaus/commons/compiler/util/reflect/ApiLog.java, org/codehaus/commons/compiler/util/reflect/Classes.java, org/codehaus/commons/compiler/util/reflect/Methods.java, org/codehaus/commons/compiler/util/reflect/NoException.java, org/codehaus/commons/compiler/util/reflect/package-info.java, org/codehaus/commons/compiler/util/reflect/Proxies.java, org/codehaus/commons/compiler/util/resource/ListableResourceFinder.java, org/codehaus/commons/compiler/util/resource/LocatableResource.java, org/codehaus/commons/compiler/util/resource/package-info.java, org/codehaus/commons/compiler/util/resource/ResourceFinders.java, org/codehaus/commons/compiler/util/StringUtil.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2019 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/AbstractCompilerFactory.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2010 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/AbstractJavaSourceClassLoader.java, org/codehaus/commons/compiler/CompileException.java, org/codehaus/commons/compiler/CompilerFactoryFactory.java, org/codehaus/commons/compiler/Cookable.java, org/codehaus/commons/compiler/ErrorHandler.java, org/codehaus/commons/compiler/IClassBodyEvaluator.java, org/codehaus/commons/compiler/ICompilerFactory.java, org/codehaus/commons/compiler/ICookable.java, org/codehaus/commons/compiler/IExpressionEvaluator.java, org/codehaus/commons/compiler/InternalCompilerException.java, org/codehaus/commons/compiler/IScriptEvaluator.java, org/codehaus/commons/compiler/ISimpleCompiler.java, org/codehaus/commons/compiler/LocatedException.java, org/codehaus/commons/compiler/Location.java, org/codehaus/commons/compiler/package-info.java, org/codehaus/commons/compiler/samples/ClassBodyDemo.java, org/codehaus/commons/compiler/samples/DemoBase.java, org/codehaus/commons/compiler/samples/ExpressionDemo.java, org/codehaus/commons/compiler/samples/ScriptDemo.java, org/codehaus/commons/compiler/samples/ShippingCost.java, org/codehaus/commons/compiler/util/Benchmark.java, org/codehaus/commons/compiler/util/iterator/DirectoryIterator.java, org/codehaus/commons/compiler/util/iterator/EnumerationIterator.java, org/codehaus/commons/compiler/util/iterator/FilterListIterator.java, org/codehaus/commons/compiler/util/iterator/IteratorCollection.java, org/codehaus/commons/compiler/util/iterator/MultiDimensionalIterator.java, org/codehaus/commons/compiler/util/iterator/MultiIterator.java, org/codehaus/commons/compiler/util/iterator/ProducerIterator.java, org/codehaus/commons/compiler/util/iterator/ReverseListIterator.java, org/codehaus/commons/compiler/util/iterator/TransformingIterator.java, org/codehaus/commons/compiler/util/iterator/TraversingIterator.java, org/codehaus/commons/compiler/util/iterator/UniterableElementException.java, org/codehaus/commons/compiler/util/Producer.java, org/codehaus/commons/compiler/util/reflect/ByteArrayClassLoader.java, org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.java, org/codehaus/commons/compiler/util/resource/DirectoryResourceFinder.java, org/codehaus/commons/compiler/util/resource/FileResource.java, org/codehaus/commons/compiler/util/resource/FileResourceCreator.java, org/codehaus/commons/compiler/util/resource/FileResourceFinder.java, org/codehaus/commons/compiler/util/resource/JarDirectoriesResourceFinder.java, org/codehaus/commons/compiler/util/resource/LazyMultiResourceFinder.java, org/codehaus/commons/compiler/util/resource/MapResourceCreator.java, org/codehaus/commons/compiler/util/resource/MapResourceFinder.java, org/codehaus/commons/compiler/util/resource/MultiResourceFinder.java, org/codehaus/commons/compiler/util/resource/PathResourceFinder.java, org/codehaus/commons/compiler/util/resource/Resource.java, org/codehaus/commons/compiler/util/resource/ResourceCreator.java, org/codehaus/commons/compiler/util/resource/ResourceFinder.java, org/codehaus/commons/compiler/util/resource/ZipFileResourceFinder.java, org/codehaus/commons/compiler/util/ResourceFinderClassLoader.java, org/codehaus/commons/compiler/util/StringPattern.java, org/codehaus/commons/compiler/WarningHandler.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2001-2010 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/io/Readers.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2018, 2019 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/java8/java/util/function/Consumer.java, org/codehaus/commons/compiler/java8/java/util/Optional.java, org/codehaus/commons/compiler/java8/java/util/stream/Stream.java, org/codehaus/commons/compiler/java9/java/lang/module/ModuleFinder.java, org/codehaus/commons/compiler/java9/java/lang/module/ModuleReader.java, org/codehaus/commons/compiler/java9/java/lang/module/ModuleReference.java, org/codehaus/commons/compiler/util/Disassembler.java, org/codehaus/commons/compiler/util/package-info.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2018 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/java9/java/lang/module/package-info.java, org/codehaus/commons/compiler/samples/package-info.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2013 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/Sandbox.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2001-2017 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/util/LineAndColumnTracker.java, org/codehaus/commons/compiler/util/resource/StringResource.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2001-2018 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/compiler/util/SystemProperties.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2020 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+Source files: org/codehaus/commons/nullanalysis/NotNull.java, org/codehaus/commons/nullanalysis/NotNullByDefault.java, org/codehaus/commons/nullanalysis/Nullable.java, org/codehaus/commons/nullanalysis/package-info.java
+/*
+ * Janino - An embedded Java[TM] compiler
+ *
+ * Copyright (c) 2016 Arno Unkrig. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+ * following conditions are met:
+ *
+ *    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+ *       following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+ *       following disclaimer in the documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+ *       products derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */

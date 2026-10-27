@@ -1,0 +1,1009 @@
+Contained resource files: resources/cii/16b/xsd/CrossIndustryInvoice_100pD16B.xsd, resources/cii/16b/xsd/CrossIndustryInvoice_QualifiedDataType_100pD16B.xsd, resources/cii/16b/xsd/CrossIndustryInvoice_ReusableAggregateBusinessInformationEntity_100pD16B.xsd, resources/cii/16b/xsd/CrossIndustryInvoice_UnqualifiedDataType_100pD16B.xsd
+<!--
+Schema agency:  UNCEFACT
+Schema version:  100.D16B (Decoupled Code List Schema Modules)
+Schema date:      10 October 2016
+
+Copyright (C) UN/CEFACT (2016). All Rights Reserved.
+
+This document and translations of it may be copied and furnished to others, and derivative works that comment on or otherwise explain it or assist in its implementation may be prepared, copied, published and distributed, in whole or in part, without restriction of any kind, provided that the above copyright notice and this paragraph are included on all such copies and derivative works. However, this document itself may not be modified in any way, such as by removing the copyright notice or references to UN/CEFACT, except as needed for the purpose of developing UN/CEFACT specifications, in which case the procedures for copyrights defined in the UN/CEFACT Intellectual Property Rights document must be followed, or as required to translate it into languages other than English.
+
+The limited permissions granted above are perpetual and will not be revoked by UN/CEFACT or its successors or assigns.
+
+This document and the information contained herein is provided on an "AS IS" basis and UN/CEFACT DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTY THAT THE USE OF THE INFORMATION HEREIN WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/CCTS_CCT_SchemaModule-2.1.xsd
+<!--
+   Module of Core Component Type
+   Agency: UN/CEFACT
+   VersionID: 1.1
+   Last change: 14 January 2005
+   
+   
+   
+   Copyright (C) UN/CEFACT (2006). All Rights Reserved.
+   This document and translations of it may be copied and furnished to others,
+   and derivative works that comment on or otherwise explain it or assist
+   in its implementation may be prepared, copied, published and distributed,
+   in whole or in part, without restriction of any kind, provided that the
+   above copyright notice and this paragraph are included on all such copies
+   and derivative works. However, this document itself may not be modified in
+   any way, such as by removing the copyright notice or references to
+   UN/CEFACT, except as needed for the purpose of developing UN/CEFACT
+   specifications, in which case the procedures for copyrights defined in the
+   UN/CEFACT Intellectual Property Rights document must be followed, or as
+   
+   
+   required to translate it into languages other than English.
+   The limited permissions granted above are perpetual and will not be revoked
+   
+   
+   
+   by UN/CEFACT or its successors or assigns.
+   This document and the information contained herein is provided on an "AS IS"
+   basis and UN/CEFACT DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING
+   BUT NOT LIMITED TO ANY WARRANTY THAT THE USE OF THE INFORMATION HEREIN WILL
+   NOT INFRINGE ANY RIGHTS OR ANY IMPLIED WARRANTIES OF MERCHANTABILITY OR
+   FITNESS FOR A PARTICULAR PURPOSE.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonAggregateComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/common/UBL-CommonAggregateComponents-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonAggregateComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CommonBasicComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CommonExtensionComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CommonSignatureComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CoreComponentParameters-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-ExtensionContentDataType-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-QualifiedDataTypes-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-SignatureAggregateComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-SignatureBasicComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-UnqualifiedDataTypes-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ApplicationResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-AttachedDocument-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-AwardedNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-BillOfLading-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CallForTenders-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Catalogue-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueDeletion-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueItemSpecificationUpdate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CataloguePricingUpdate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CertificateOfOrigin-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ContractAwardNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ContractNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DebitNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DespatchAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ExceptionCriteria-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ExceptionNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Forecast-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ForecastRevision-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ForwardingInstructions-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-FreightInvoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-FulfilmentCancellation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-GoodsItemItinerary-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-GuaranteeCertificate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-InstructionForReturns-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-InventoryReport-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ItemInformationRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Order-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderCancellation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderChange-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderResponseSimple-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-PackingList-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-PriorInformationNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ProductActivity-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Quotation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ReceiptAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Reminder-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RemittanceAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RequestForQuotation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RetailEvent-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledCreditNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledInvoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Statement-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-StockAvailabilityReport-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Tender-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TenderReceipt-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TendererQualification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TendererQualificationResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TradeItemLocationProfile-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlan-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlanRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescription-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescriptionRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-UnawardedNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-UtilityStatement-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Waybill-2.1.xsd
+<!-- ===== Copyright Notice ===== -->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonAggregateComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CommonBasicComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CommonSignatureComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-SignatureAggregateComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-SignatureBasicComponents-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ApplicationResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-AttachedDocument-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-AwardedNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-BillOfLading-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CallForTenders-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Catalogue-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueDeletion-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueItemSpecificationUpdate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CataloguePricingUpdate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CatalogueRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CertificateOfOrigin-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ContractAwardNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ContractNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DebitNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DespatchAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ExceptionCriteria-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ExceptionNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Forecast-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ForecastRevision-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ForwardingInstructions-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-FreightInvoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-FulfilmentCancellation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-GoodsItemItinerary-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-GuaranteeCertificate-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-InstructionForReturns-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-InventoryReport-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ItemInformationRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Order-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderCancellation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderChange-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-OrderResponseSimple-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-PackingList-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-PriorInformationNotice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ProductActivity-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Quotation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-ReceiptAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Reminder-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RemittanceAdvice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RequestForQuotation-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-RetailEvent-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledCreditNote-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledInvoice-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Statement-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-StockAvailabilityReport-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Tender-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TenderReceipt-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TendererQualification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TendererQualificationResponse-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TradeItemLocationProfile-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlan-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlanRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescription-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescriptionRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatus-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatusRequest-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-UnawardedNotification-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-UtilityStatement-2.1.xsd, resources/ubl/2.1/xsd/maindoc/UBL-Waybill-2.1.xsd
+<!--
+  OASIS takes no position regarding the validity or scope of any 
+  intellectual property or other rights that might be claimed to pertain 
+  to the implementation or use of the technology described in this 
+  document or the extent to which any license under such rights 
+  might or might not be available; neither does it represent that it has 
+  made any effort to identify any such rights. Information on OASIS's 
+  procedures with respect to rights in OASIS specifications can be 
+  found at the OASIS website. Copies of claims of rights made 
+  available for publication and any assurances of licenses to be made 
+  available, or the result of an attempt made to obtain a general 
+  license or permission for the use of such proprietary rights by 
+  implementors or users of this specification, can be obtained from 
+  the OASIS Executive Director.
+
+  OASIS invites any interested party to bring to its attention any 
+  copyrights, patents or patent applications, or other proprietary 
+  rights which may cover technology that may be required to 
+  implement this specification. Please address the information to the 
+  OASIS Executive Director.
+  
+  This document and translations of it may be copied and furnished to 
+  others, and derivative works that comment on or otherwise explain 
+  it or assist in its implementation may be prepared, copied, 
+  published and distributed, in whole or in part, without restriction of 
+  any kind, provided that the above copyright notice and this 
+  paragraph are included on all such copies and derivative works. 
+  However, this document itself may not be modified in any way, 
+  such as by removing the copyright notice or references to OASIS, 
+  except as needed for the purpose of developing OASIS 
+  specifications, in which case the procedures for copyrights defined 
+  in the OASIS Intellectual Property Rights document must be 
+  followed, or as required to translate it into languages other than 
+  English. 
+
+  The limited permissions granted above are perpetual and will not be 
+  revoked by OASIS or its successors or assigns. 
+
+  This document and the information contained herein is provided on 
+  an "AS IS" basis and OASIS DISCLAIMS ALL WARRANTIES, 
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY 
+  WARRANTY THAT THE USE OF THE INFORMATION HEREIN 
+  WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED 
+  WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A 
+  PARTICULAR PURPOSE.    
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonBasicComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/common/UBL-CommonBasicComponents-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonExtensionComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-CommonExtensionComponents-2.1.xsd
+  Generated on:      2013-04-20 18:40(UTC)
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonExtensionComponents-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-CoreComponentParameters-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-ExtensionContentDataType-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-QualifiedDataTypes-2.1.xsd, resources/ubl/2.1/xsd/common/UBL-UnqualifiedDataTypes-2.1.xsd
+<!--
+  OASIS takes no position regarding the validity or scope of any 
+  intellectual property or other rights that might be claimed to pertain 
+  to the implementation or use of the technology described in this 
+  document or the extent to which any license under such rights 
+  might or might not be available; neither does it represent that it has 
+  made any effort to identify any such rights. Information on OASIS's 
+  procedures with respect to rights in OASIS specifications can be 
+  found at the OASIS website. Copies of claims of rights made 
+  available for publication and any assurances of licenses to be made 
+  available, or the result of an attempt made to obtain a general 
+  license or permission for the use of such proprietary rights by 
+  implementors or users of this specification, can be obtained from 
+  the OASIS Executive Director.
+
+  OASIS invites any interested party to bring to its attention any 
+  copyrights, patents or patent applications, or other proprietary 
+  rights which may cover technology that may be required to 
+  implement this specification. Please address the information to the 
+  OASIS Executive Director.
+  
+  This document and translations of it may be copied and furnished to 
+  others, and derivative works that comment on or otherwise explain 
+  it or assist in its implementation may be prepared, copied, 
+  published and distributed, in whole or in part, without restriction of 
+  any kind, provided that the above copyright notice and this 
+  paragraph are included on all such copies and derivative works. 
+  However, this document itself may not be modified in any way, 
+  such as by removing the copyright notice or references to OASIS, 
+  except as needed for the purpose of developing OASIS 
+  specifications, in which case the procedures for copyrights defined 
+  in the OASIS Intellectual Property Rights document must be 
+  followed, or as required to translate it into languages other than 
+  English. 
+
+  The limited permissions granted above are perpetual and will not be 
+  revoked by OASIS or its successors or assigns. 
+
+  This document and the information contained herein is provided on 
+  an "AS IS" basis and OASIS DISCLAIMS ALL WARRANTIES, 
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY 
+  WARRANTY THAT THE USE OF THE INFORMATION HEREIN 
+  WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED 
+  WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A 
+  PARTICULAR PURPOSE.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CommonSignatureComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/common/UBL-CommonSignatureComponents-2.1.xsd
+  Generated on:      2013-10-31 17:18z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-CoreComponentParameters-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-CoreComponentParameters-2.1.xsd
+  Generated on:      2013-04-20 18:40(UTC)
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-ExtensionContentDataType-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-ExtensionContentDataType-2.1.xsd
+  Generated on:      2013-04-20 18:40(UTC)
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-QualifiedDataTypes-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-QualifiedDataTypes-2.1.xsd
+  Generated on:      2013-04-20 18:40(UTC)
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-SignatureAggregateComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/common/UBL-SignatureAggregateComponents-2.1.xsd
+  Generated on:      2013-10-31 17:18z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-SignatureBasicComponents-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/common/UBL-SignatureBasicComponents-2.1.xsd
+  Generated on:      2013-10-31 17:18z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-UnqualifiedDataTypes-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-UnqualifiedDataTypes-2.1.xsd
+  Generated on:      2013-04-20 18:40(UTC)
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+
+  This schema fragment implements UBL unqualified datatypes using core
+  component types with all supplementary components as described in
+  CCTS 2.01 http://www.unece.org/cefact/ebxml/CCTS_V2-01_Final.pdf tables
+  8-1, 8-2 and 8-3.
+
+  Per table 8-3, the graphic, picture, sound and video types are based on
+  "Binary Object. Type" as they are secondary representation terms.
+
+  Per table 8-3, the value, rate and percentage types are based on
+  "Numeric. Type" as they are secondary representation terms.
+
+  Per table 8-3, the name type is based on "Text. Type" as it is a 
+  secondary representation term.
+
+  Per XSD lexical constraints, the following unqualified data types 
+  corresponding to core component types and secondary representation terms 
+  are based on XSD types (accordingly, the supplementary component "format" 
+  is not made available for these types):
+
+        Date Time. Type  on  xsd:dateTime
+        Date. Type       on  xsd:date
+        Time. Type       on  xsd:time
+        Indicator. Type  on  xsd:boolean
+
+  Per UBL 2.0 the following supplementary components are restricted to be
+  required rather than optional:
+
+   Amount. Currency. Identifier  as  (AmountType)/@currencyID
+   Binary Object. Mime. Code     as  (BinaryObjectType)/@mimeCode
+   Graphic. Mime. Code           as  (GraphicType)/@mimeCode
+   Picture. Mime. Code           as  (PictureType)/@mimeCode
+   Sound. Mime. Code             as  (SoundType)/@mimeCode
+   Video. Mime. Code             as  (VideoType)/@mimeCode
+   Measure. Unit. Code           as  (MeasureType)/@unitCode
+
+  All other unqualified data types inherit the core component types complete
+  with their supplementary components.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-XAdESv132-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-XAdESv132-2.1.xsd
+  Generated on:      2011-02-21 17:20(UTC)
+
+  This is a copy of http://uri.etsi.org/01903/v1.3.2/XAdES.xsd modified 
+  only to change the importing URI for the XML DSig schema.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-XAdESv141-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-XAdESv141-2.1.xsd
+  Generated on:      2011-02-21 17:20(UTC)
+
+  This is a copy of http://uri.etsi.org/01903/v1.4.1/XAdESv141.xsd modified
+  only to change the importing URI for the XAdES v1.3.2 schema.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-xmldsig-core-schema-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            UBL-xmldsig-core-schema-2.1.xsd
+  Generated on:      2010-08-13 19:10(UTC)
+
+  This is a copy of http://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd
+  modified only to remove these PUBLIC and SYSTEM identifiers from the DOCTYPE:
+
+        PUBLIC "-//W3C//DTD XMLSchema 200102//EN" 
+               "http://www.w3.org/2001/XMLSchema.dtd"
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/common/UBL-xmldsig-core-schema-2.1.xsd
+<!-- Schema for XML Signatures
+    http://www.w3.org/2000/09/xmldsig#
+    $Revision: 1.1 $ on $Date: 2002/02/08 20:32:26 $ by $Author: reagle $
+
+    Copyright 2001 The Internet Society and W3C (Massachusetts Institute
+    of Technology, Institut National de Recherche en Informatique et en
+    Automatique, Keio University). All Rights Reserved.
+    http://www.w3.org/Consortium/Legal/
+
+    This document is governed by the W3C Software License [1] as described
+    in the FAQ [2].
+
+    [1] http://www.w3.org/Consortium/Legal/copyright-software-19980720
+    [2] http://www.w3.org/Consortium/Legal/IPR-FAQ-20000620.html#DTD
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ApplicationResponse-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ApplicationResponse-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-AttachedDocument-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-AttachedDocument-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-AwardedNotification-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-AwardedNotification-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-BillOfLading-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-BillOfLading-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CallForTenders-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CallForTenders-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Catalogue-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Catalogue-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CatalogueDeletion-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CatalogueDeletion-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CatalogueItemSpecificationUpdate-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CatalogueItemSpecificationUpdate-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CataloguePricingUpdate-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CataloguePricingUpdate-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CatalogueRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CatalogueRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CertificateOfOrigin-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CertificateOfOrigin-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ContractAwardNotice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ContractAwardNotice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ContractNotice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ContractNotice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-CreditNote-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-DebitNote-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-DebitNote-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-DespatchAdvice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-DespatchAdvice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatus-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-DocumentStatus-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-DocumentStatusRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-DocumentStatusRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ExceptionCriteria-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ExceptionCriteria-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ExceptionNotification-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ExceptionNotification-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Forecast-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Forecast-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ForecastRevision-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ForecastRevision-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ForwardingInstructions-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ForwardingInstructions-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-FreightInvoice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-FreightInvoice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-FulfilmentCancellation-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-FulfilmentCancellation-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-GoodsItemItinerary-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-GoodsItemItinerary-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-GuaranteeCertificate-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-GuaranteeCertificate-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-InstructionForReturns-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-InstructionForReturns-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-InventoryReport-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-InventoryReport-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Invoice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Invoice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ItemInformationRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ItemInformationRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Order-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Order-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-OrderCancellation-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-OrderCancellation-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-OrderChange-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-OrderChange-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-OrderResponse-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-OrderResponse-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-OrderResponseSimple-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-OrderResponseSimple-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-PackingList-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-PackingList-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-PriorInformationNotice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-PriorInformationNotice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ProductActivity-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ProductActivity-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Quotation-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Quotation-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-ReceiptAdvice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-ReceiptAdvice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Reminder-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Reminder-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-RemittanceAdvice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-RemittanceAdvice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-RequestForQuotation-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-RequestForQuotation-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-RetailEvent-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-RetailEvent-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledCreditNote-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-SelfBilledCreditNote-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-SelfBilledInvoice-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-SelfBilledInvoice-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Statement-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Statement-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-StockAvailabilityReport-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-StockAvailabilityReport-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Tender-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Tender-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TenderReceipt-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TenderReceipt-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TendererQualification-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TendererQualification-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TendererQualificationResponse-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TendererQualificationResponse-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TradeItemLocationProfile-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TradeItemLocationProfile-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlan-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportExecutionPlan-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportExecutionPlanRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportExecutionPlanRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatus-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportProgressStatus-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportProgressStatusRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportProgressStatusRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescription-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportServiceDescription-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportServiceDescriptionRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportServiceDescriptionRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatus-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportationStatus-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-TransportationStatusRequest-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-TransportationStatusRequest-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-UnawardedNotification-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-UnawardedNotification-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-UtilityStatement-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-UtilityStatement-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/ubl/2.1/xsd/maindoc/UBL-Waybill-2.1.xsd
+<!--
+  Library:           OASIS Universal Business Language (UBL) 2.1 OS
+                     http://docs.oasis-open.org/ubl/os-UBL-2.1/
+  Release Date:      04 November 2013
+  Module:            xsdrt/maindoc/UBL-Waybill-2.1.xsd
+  Generated on:      2013-10-31 17:17z
+  Copyright (c) OASIS Open 2013. All Rights Reserved.
+-->
+
+Contained resource files: resources/xsd/scenarios.xsd
+<!--
+  ~ Copyright 2017-2026  Koordinierungsstelle für IT-Standards (KoSIT)
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->

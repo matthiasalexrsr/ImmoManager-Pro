@@ -2,6 +2,31 @@ import { describe, expect, it } from 'vitest';
 import { buildDashboardWorkflow } from '../utils/dashboardWorkflow.js';
 
 describe('DashboardWorkflow', () => {
+  it('links each operational count to its exact source predicate', () => {
+    const { attentionItems, workflows, processSteps } = buildDashboardWorkflow({ stats: {
+      properties: 1, units: 2, unitsOccupied: 1, tenants: 1, contractsActive: 1, rentCharges: 1,
+      overdueReceivables: 1, dunningReceivables: 2, openReceivables: 3, paidReceivables: 4,
+      billingPreflightBlockers: 1, maintenanceEscalationCandidates: 1, missingContractDocuments: 1,
+      openMaintenance: 1, overdueMaintenance: 2, openTasks: 1, unreadNotifications: 1,
+    }, expiring: { contracts: [{ contractId: 'c1' }] } });
+    expect(Object.fromEntries(attentionItems.map(item => [item.id, item.to]))).toEqual({
+      'overdue-receivables': '/receivables?status=overdue', 'dunning-receivables': '/receivables?status=dunning',
+      'open-receivables': '/receivables?status=unpaid', 'billing-preflight-blockers': '/statements?filter=preflight_blockers',
+      'maintenance-escalations': '/maintenance?filter=escalation', 'expiring-contracts': '/contracts?filter=expiring90',
+      'missing-contract-documents': '/contracts?filter=missing_documents', 'open-maintenance': '/maintenance?status=open',
+      'open-tasks': '/tasks?status=open', 'unread-notifications': '/messages?status=unread',
+    });
+    const operations = workflows.find(item => item.id === 'operations');
+    expect(operations.steps.find(item => item.labelKey.endsWith('maintenanceClear')).to).toBe('/maintenance?filter=overdue');
+    expect(operations.metricTo).toBe('/tasks?status=open');
+    expect(workflows.find(item => item.id === 'rental').metricTo).toBe('/units?status=vacant');
+    expect(processSteps.find(item => item.id === 'payment').to).toBe('/receivables?status=paid');
+  });
+
+  it('does not replace an authoritative unread count of zero with a partial activity-list length', () => {
+    const { attentionItems } = buildDashboardWorkflow({ stats: { unreadNotifications: 0 }, notifications: [{ id: 'n1' }] });
+    expect(attentionItems.find(item => item.id === 'unread-notifications')).toBeUndefined();
+  });
   it('guides the core process to the next missing setup step', () => {
     const { processSteps, nextStep } = buildDashboardWorkflow({
       stats: {
@@ -48,6 +73,7 @@ describe('DashboardWorkflow', () => {
         accounts: 1,
         rentCharges: 2,
         openReceivables: 3,
+        overdueReceivables: 1,
       },
       aging: {
         openTotal: 3,
@@ -63,7 +89,7 @@ describe('DashboardWorkflow', () => {
 
     const finance = workflows.find(item => item.id === 'finance');
     expect(finance.status).toBe('attention');
-    expect(finance.actionTo).toBe('/receivables');
+    expect(finance.actionTo).toBe('/receivables?status=overdue');
     expect(attentionItems.map(item => item.id)).toContain('overdue-receivables');
     expect(attentionItems.map(item => item.id)).toContain('open-receivables');
   });
@@ -99,6 +125,17 @@ describe('DashboardWorkflow', () => {
     expect(workflows.find(item => item.id === 'operations').status).toBe('attention');
     expect(nextStep.id).toBe('process-payment');
     expect(nextStep.tone).toBe('attention');
+  });
+
+  it('counts overdue receivables instead of adding their euros', () => {
+    // Regression: the card showed the count plus the overdue amount from the aging report.
+    const { attentionItems } = buildDashboardWorkflow({
+      stats: { openReceivables: 14, overdueReceivables: 12 },
+      aging: { openTotal: 18250, buckets: { current: 1200, days1to30: 3100, days31to60: 0, days61to90: 0, days90plus: 13950 } },
+    });
+
+    expect(attentionItems.find(item => item.id === 'overdue-receivables').value).toBe(12);
+    expect(attentionItems.find(item => item.id === 'open-receivables').value).toBe(14);
   });
 
   it('returns an empty attention queue when no operational blockers exist', () => {

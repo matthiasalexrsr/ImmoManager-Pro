@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.mustangproject</groupId>
+    <artifactId>core</artifactId>
+    <version>2.26.0</version>
+    <packaging>pom</packaging>
+    <name>Mustang</name>
+
+    <modules>
+        <module>library</module>
+        <module>validator</module>
+        <module>Mustang-CLI</module>
+    </modules>
+
+    <description>Mustangproject is a java library and commandline tool to read, validate, write and convert EN16931 e-invoices, e.g. Factur-X and XRechnung (read and writing CII and reading also UBL).
+    </description>
+    <url>http://www.mustangproject.org/</url>
+    <scm>
+        <connection>scm:git:git://github.com/dexecutor/dependent-tasks-executor.git</connection>
+        <developerConnection>scm:git:git@github.com:dexecutor/dexecutor.git</developerConnection>
+        <url>https://github.com/dexecutor/dependent-tasks-executor</url>
+        <tag>core-2.26.0</tag>
+    </scm>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <github.global.server>github</github.global.server>
+        <additionalparam>-Xdoclint:none</additionalparam>
+        <!-- Skip error check for javadoc -->
+        <maven.compiler.release>11</maven.compiler.release>
+        <maven.deploy.skip>true</maven.deploy.skip><!-- prevent this to be deployed to maven central as "core",
+        we only want submodules, see also https://stackoverflow.com/questions/7446599/how-to-deploy-only-the-sub-modules-using-maven-deploy-->
+
+        <!--
+            Dependency versions. Please keep alphabetical.
+
+            you can automatically sort it by running
+            mvn com.github.ekryd.sortpom:sortpom-maven-plugin:2.8.0:sort  -Dsort.sortProperties=true -Dsort.nrOfIndentSpace=4 -Dsort.keepBlankLines=true -Dsort.sortDependencies=scope,groupId,artifactId
+
+            Each version property should be of the form "version.<groupId>".
+            For example: <version.org.mustangproject>
+
+            In cases where multiple artifacts use the same groupId but have different
+            versions, add the artifactId to the property name.
+            For example: <version.org.mustangproject.library>
+
+            First the versions for plugins, then those for libraries.
+         -->
+        <version.org.apache.maven.plugins.maven-compiler-plugin>3.13.0</version.org.apache.maven.plugins.maven-compiler-plugin>
+        <version.org.apache.maven.plugins.maven-deploy-plugin>3.0.0-M1</version.org.apache.maven.plugins.maven-deploy-plugin>
+        <version.org.apache.maven.plugins.maven-gpg-plugin>1.6</version.org.apache.maven.plugins.maven-gpg-plugin>
+        <version.org.apache.maven.plugins.maven-jar-plugin>3.4.2</version.org.apache.maven.plugins.maven-jar-plugin>
+        <version.org.apache.maven.plugins.maven-javadoc-plugin>3.0.1</version.org.apache.maven.plugins.maven-javadoc-plugin>
+        <version.org.apache.maven.plugins.maven-release-plugin>2.5.3</version.org.apache.maven.plugins.maven-release-plugin>
+        <version.org.apache.maven.plugins.maven-resources-plugin>3.1.0</version.org.apache.maven.plugins.maven-resources-plugin>
+        <version.org.apache.maven.plugins.maven-shade-plugin>3.5.3</version.org.apache.maven.plugins.maven-shade-plugin>
+        <version.org.apache.maven.plugins.maven-source-plugin>3.3.1</version.org.apache.maven.plugins.maven-source-plugin>
+        <version.org.apache.maven.plugins.maven-surefire-plugin>3.5.3</version.org.apache.maven.plugins.maven-surefire-plugin>
+        <version.org.apache.maven.plugins.maven-toolchains-plugin>3.1.0</version.org.apache.maven.plugins.maven-toolchains-plugin>
+        <version.org.apache.maven.plugins.maben-checkstyle-plugin>3.6.0</version.org.apache.maven.plugins.maben-checkstyle-plugin>
+        <version.org.apache.maven.scm>1.9.5</version.org.apache.maven.scm>
+        <version.org.codehaus.mojo>1.0.0</version.org.codehaus.mojo>
+        <version.com.helger.maven>8.0.0</version.com.helger.maven>
+        <version.org.sonatype.plugins>1.7.0</version.org.sonatype.plugins>
+
+        <version.ch.qos.logback>1.5.38</version.ch.qos.logback><!-- from 1.5.18 -->
+        <version.com.fasterxml.jackson.core>2.22.2</version.com.fasterxml.jackson.core>
+        <version.com.helger.en16931-cii2ubl>2.3.1</version.com.helger.en16931-cii2ubl>
+        <version.com.helger.schematron>8.0.6</version.com.helger.schematron>
+        <version.commons-cli>1.11.0</version.commons-cli><!-- from 1.10.0 -->
+        <version.commons-io>2.22.0</version.commons-io><!-- from 2.20.0 -->
+        <version.jakarta.xml.bind>4.0.5</version.jakarta.xml.bind><!-- from 4.0.2 -->
+        <version.net.sf.saxon>12.10</version.net.sf.saxon><!-- from 12.8 -->
+        <version.org.apache.pdfbox>3.0.8</version.org.apache.pdfbox><!-- from 3.0.7 -->
+        <version.org.apache.xmlgraphics>2.11</version.org.apache.xmlgraphics>
+        <version.org.codehaus.janino>3.1.12</version.org.codehaus.janino>
+        <version.org.dom4j>2.2.0</version.org.dom4j><!-- from 2.1.5 -->
+        <version.org.glassfish.jaxb>4.0.9</version.org.glassfish.jaxb><!-- from 4.0.5 -->
+        <version.org.junit>5.14.4</version.org.junit><!-- from 5.13.4 -->
+        <version.org.skyscreamer>2.0-rc1</version.org.skyscreamer>
+        <version.org.slf4j>2.0.18</version.org.slf4j><!-- from 2.0.17 -->
+        <version.org.verapdf>1.30.2</version.org.verapdf>
+        <version.org.xmlunit>2.13.0</version.org.xmlunit>
+        <version.com.puppycrawl.tools.checkstyle>10.26.1</version.com.puppycrawl.tools.checkstyle>
+    </properties>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin><!-- mvn help:effective-pom will otherwise tell it just defaults
+                        to 2.3.2 - which does not release in the maven repo, and neither shows any
+                        error message :-( -->
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-release-plugin</artifactId>
+                    <version>${version.org.apache.maven.plugins.maven-release-plugin}</version>
+                    <configuration>
+                        <localCheckout>true</localCheckout>
+                        <pushChanges>false</pushChanges>
+                        <mavenExecutorId>forked-path</mavenExecutorId>
+                        <arguments>-Dgpg.passphrase=${gpg.passphrase}</arguments>
+                    </configuration>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.apache.maven.scm</groupId>
+                            <artifactId>maven-scm-provider-gitexe</artifactId>
+                            <version>${version.org.apache.maven.scm}</version>
+                        </dependency>
+                    </dependencies>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${version.org.apache.maven.plugins.maven-javadoc-plugin}</version>
+                <configuration>
+                    <excludePackageNames>org.mustangproject.ZUGFeRD.model.*</excludePackageNames>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>${version.org.apache.maven.plugins.maven-deploy-plugin}</version>
+                <configuration>
+                    <altDeploymentRepository>internal.repo::default::file://${project.build.directory}/mvn-repo</altDeploymentRepository>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>${version.org.sonatype.plugins}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>ossrh</serverId>
+                    <nexusUrl>https://ossrh-staging-api.central.sonatype.com/</nexusUrl>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${version.org.apache.maven.plugins.maven-surefire-plugin}</version>
+                <configuration>
+                    <runOrder>alphabetical</runOrder>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>${version.org.apache.maven.plugins.maven-source-plugin}</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadoc</id>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${version.org.apache.maven.plugins.maben-checkstyle-plugin}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>${version.com.puppycrawl.tools.checkstyle}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>verify-style</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <configLocation>checkstyle.xml</configLocation>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
+        <repository>
+            <id>ossrh</id>
+            <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
+    <mailingLists>
+        <mailingList>
+            <name>User List</name>
+            <archive>https://groups.google.com/forum/?hl=de#!forum/mustangproject</archive>
+        </mailingList>
+    </mailingLists>
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+            <comments>A business-friendly OSS license</comments>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>Jochen Stärk</name>
+            <email>jstaerk@usegroup.de</email>
+            <roles>
+                <role>architect</role>
+                <role>developer</role>
+            </roles>
+        </developer>
+        <developer>
+            <name>Alexander Schmidt</name>
+            <email>schmidt.alexander@mail.de</email>
+            <roles>
+                <role>developer</role>
+            </roles>
+        </developer>
+    </developers>
+    <profiles>
+
+
+        <!-- GPG Signature on release -->
+
+        <profile>
+            <id>release-sign-artifacts</id>
+            <activation>
+                <property>
+                    <name>performRelease</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${version.org.apache.maven.plugins.maven-gpg-plugin}</version>
+                        <configuration>
+                            <keyname>C513CD930D3D3D210485C5671192EE264DB74319</keyname>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-toolchains-plugin</artifactId>
+                        <version>${version.org.apache.maven.plugins.maven-toolchains-plugin}</version>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>toolchain</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <toolchains>
+                                <jdk>
+                                    <version>11</version>
+                                    <vendor>adopt</vendor>
+                                </jdk>
+                            </toolchains>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

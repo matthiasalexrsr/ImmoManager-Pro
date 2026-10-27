@@ -1,0 +1,33 @@
+{
+  "observed_on": "2026-10-19",
+  "method": "Authenticated browser review of the visible application; no hidden APIs, submitted financial records, uploaded files or paid actions.",
+  "scope": "Empty account with an active 14-day Basic trial. Views and unsaved forms were examined. A completed third-party settlement, populated reports, document editing and banking reconciliation could not be tested without a property and source data.",
+  "views": [
+    {"url": "https://app.vermieter1.de/app/dashboard", "observed": "Shared property/year context, rent expected/received, cashflow, urgent tasks, billing preparation with individually actionable cost-category suggestions, meter compliance and upcoming deadlines.", "decision": "Keep direct source links and local reports. Use named, optional cost-entry suggestions in billing. Do not present all suggested cost categories as legally mandatory or treat empty reports as proof of correctness."},
+    {"url": "https://app.vermieter1.de/app/abrechnungen", "observed": "Property, year and status filters, overview totals and a single entry to creation.", "decision": "Added explicit property/year/status filters and direct statement-letter access to ImmoManager's existing overview."},
+    {"url": "https://app.vermieter1.de/app/abrechnungen/wizard?year=2026", "observed": "Four visible stages: period, costs, allocation, completion. Annual period with an optional custom start/end. Further stages require a property.", "decision": "Keep ImmoManager's existing guarded calculation and correction workflow; make cost editing, validation and result documents directly reachable instead of introducing a second calculator."},
+    {"url": "https://app.vermieter1.de/app/expenses?year=2026", "observed": "Recoverable and owner costs are explained separately; DATEV export and batch receipt reading are advertised. New expense requires a property.", "decision": "Retain recoverability and origin references while editing. No claim of a verified DATEV transfer is made. Existing independent tax/export work remains separate."},
+    {"url": "https://app.vermieter1.de/app/tasks/create", "observed": "Title, notes, priority, due/reminder date; optional property/unit/tenant association and recurrence. Recurrence choices include daily, weekly, monthly, quarterly, half-yearly and yearly with interval/end date.", "decision": "Implemented those readable rhythms plus a custom editor against our real scheduler semantics. Existing rules and unfinished user drafts are preserved."},
+    {"url": "https://app.vermieter1.de/app/documents", "observed": "Folders, categories, tags, text/content search and drag/drop upload. Visible upload form names PDF, JPG, PNG and DOCX with a 10-MB limit.", "decision": "Keep our document originals, versions, annotation/editor and party context. Do not introduce the competitor's fixed upload-size policy. Additional folder/tag ideas need a real workflow gap before adding overlapping controls."},
+    {"url": "https://app.vermieter1.de/app/dokumente/generator", "observed": "Separate template hub for rental agreements, house rules, cleaning schedules, waste calendars and privacy information. Unsaved house-rule form has selectable standard sections, custom sections and preview/save/generate actions.", "decision": "The professional letter editor reuses this useful form/preview distinction. A comprehensive house-rules/rotation-plan editor is a separate product extension, not claimed completed by this change. Preserve Claude's ongoing reletting work."},
+    {"url": "https://app.vermieter1.de/app/jahresuebersicht", "observed": "Year/property selection, a dated preliminary-result indication, cashflow and settlement balance separated; income, expenses, financing, settlements and surplus tabs. Print outputs are differentiated by cost report, income/expenses and rent payments.", "decision": "Retain explicit report bases and drilldowns in our existing local financial reports. Empty external results do not validate our calculations. Topic-specific report printing remains a candidate where no equivalent exists."},
+    {"url": "https://app.vermieter1.de/app/postausgang", "observed": "Preparation, PDF review and delivery are presented as separate steps, with a distinct outgoing-mail overview.", "decision": "New billing letters become verified archived documents and use existing communication paths. Recording a delivery asks for the actual channel and does not itself send anything."}
+  ],
+  "implemented_in_this_change": [
+    "Concise branding and new vector building mark in navigation, login and favicon",
+    "Task recurrence presets and safe custom configuration",
+    "Aligned responsive PDF toolbar",
+    "Property/year/status billing filters, source-cost templates and full edit/delete flow",
+    "Calculation breakdown and direct personalized letter/PDF access",
+    "Stateless hash-bound preview and immutable correspondence originals",
+    "Equal-total line changes invalidate the calculation review",
+    "Preserved Claude meter history and tenant detail improvements, with integration and navigation fixes"
+  ],
+  "not_claimed_verified": [
+    "A fully populated Vermieter1 settlement and its generated final PDF",
+    "Paid letter delivery, bank-account connection or AI-credit consumption",
+    "WISO target import or TEHA write acceptance",
+    "Claude's unfinished reletting module"
+  ],
+  "subscription": {"user_requested_cancel_after_review": true, "review_complete": true, "confirmation_evidence": "Recorded separately from source changes after the cancellation UI confirms the outcome."}
+}

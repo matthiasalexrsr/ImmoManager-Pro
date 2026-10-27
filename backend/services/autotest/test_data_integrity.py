@@ -6,12 +6,13 @@ preserve field values.
 """
 
 import time
+from typing import Any
 
 from .runner import TestContext, TestResult, test_module
 
 # Entity CRUD test definitions: (name, create_path, create_payload, list_path)
 # These are ordered by dependency: parents first, children after.
-_CRUD_TESTS = [
+_CRUD_TESTS: list[dict[str, Any]] = [
     {
         "name": "portfolio",
         "path": "portfolios",
@@ -71,7 +72,7 @@ _CRUD_TESTS = [
 def test_data_integrity(ctx: TestContext) -> list[TestResult]:
     results = []
     headers = {"Authorization": f"Bearer {ctx.token}"} if ctx.token else {}
-    created_ids = {}  # name -> id
+    created_ids: dict[str, str] = {}  # name -> id
 
     def _replace_refs(data: dict) -> dict:
         """Replace __XXX_ID__ placeholders with actual IDs."""
@@ -246,7 +247,7 @@ def test_data_integrity(ctx: TestContext) -> list[TestResult]:
 
     # Cleanup remaining test entities (reverse order)
     for name in reversed(list(created_ids.keys())):
-        entity_def = next((d for d in _CRUD_TESTS if d["name"] == name), None)
+        entity_def = next((d for d in _CRUD_TESTS if d["name"] == name), {})
         if entity_def:
             ctx.client.delete(
                 f"{ctx.base_url}/{entity_def['path']}/{created_ids[name]}",

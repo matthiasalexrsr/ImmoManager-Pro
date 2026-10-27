@@ -1,0 +1,39 @@
+Source files: org/apache/batik/Version.java, org/apache/batik/util/io/ISO_8859_1Decoder.java, org/apache/batik/util/io/UTF16Decoder.java, org/apache/batik/util/Base64DecodeStream.java, org/apache/batik/util/SMILConstants.java, org/apache/batik/util/HaltingThread.java, org/apache/batik/util/CSSConstants.java, org/apache/batik/util/resources/Messages.java, org/apache/batik/util/ParsedURL.java, org/apache/batik/util/SVG12Constants.java, org/apache/batik/util/io/GenericDecoder.java, org/apache/batik/util/CleanerThread.java, org/apache/batik/util/SVGFeatureStrings.java, org/apache/batik/util/DoublyLinkedList.java, org/apache/batik/util/io/StringNormalizingReader.java, org/apache/batik/util/io/StringDecoder.java, org/apache/batik/util/io/CharDecoder.java, org/apache/batik/util/DOMConstants.java, org/apache/batik/util/DoublyIndexedSet.java, org/apache/batik/util/ClassFileUtilities.java, org/apache/batik/util/XBLConstants.java, org/apache/batik/util/XMLResourceDescriptor.java, org/apache/batik/util/ParsedURLProtocolHandler.java, org/apache/batik/util/Service.java, org/apache/batik/util/SVGConstants.java, org/apache/batik/util/ParsedURLDefaultProtocolHandler.java, org/apache/batik/util/io/Messages.java, org/apache/batik/util/SoftReferenceCache.java, org/apache/batik/util/DoublyIndexedTable.java, org/apache/batik/util/EventDispatcher.java, org/apache/batik/util/ParsedURLJarProtocolHandler.java, org/apache/batik/util/Base64EncoderStream.java, org/apache/batik/util/MimeTypeConstants.java, org/apache/batik/util/SVG12CSSConstants.java, org/apache/batik/util/io/NormalizingReader.java, org/apache/batik/util/Messages.java, org/apache/batik/util/AbstractParsedURLProtocolHandler.java, org/apache/batik/util/SVGTypes.java, org/apache/batik/util/io/StreamNormalizingReader.java, org/apache/batik/util/EncodingUtilities.java, org/apache/batik/util/Platform.java, org/apache/batik/util/resources/ResourceFormatException.java, org/apache/batik/util/ApplicationSecurityEnforcer.java, org/apache/batik/util/PreferenceManager.java, org/apache/batik/util/io/ASCIIDecoder.java, org/apache/batik/util/io/UTF8Decoder.java, org/apache/batik/util/io/AbstractCharDecoder.java, org/apache/batik/util/ParsedURLData.java, org/apache/batik/util/ParsedURLDataProtocolHandler.java, org/apache/batik/util/SoftDoublyIndexedTable.java, org/apache/batik/util/resources/ResourceManager.java, org/apache/batik/util/BatikSecurityManager.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */
+
+Source files: org/apache/batik/util/RunnableQueue.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */

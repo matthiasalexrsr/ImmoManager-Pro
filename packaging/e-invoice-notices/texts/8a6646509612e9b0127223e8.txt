@@ -1,0 +1,19 @@
+Source files: org/apache/batik/ext/awt/image/codec/util/SeekableStream.java, org/apache/batik/ext/awt/image/codec/util/SingleTileRenderedImage.java, org/apache/batik/ext/awt/image/codec/util/MemoryCacheSeekableStream.java, org/apache/batik/ext/awt/image/codec/util/FileCacheSeekableStream.java, org/apache/batik/ext/awt/image/codec/imageio/AbstractImageIORegistryEntry.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOJPEGImageWriter.java, org/apache/batik/ext/awt/image/codec/png/PNGSuggestedPaletteEntry.java, org/apache/batik/ext/awt/image/codec/png/PNGImageEncoder.java, org/apache/batik/ext/awt/image/codec/png/PNGTranscoderInternalCodecWriteAdapter.java, org/apache/batik/ext/awt/image/codec/util/ImageEncoder.java, org/apache/batik/ext/awt/image/codec/util/SeekableOutputStream.java, org/apache/batik/ext/awt/image/codec/util/ImageDecoderImpl.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOImageWriter.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOTIFFImageWriter.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOPNGImageWriter.java, org/apache/batik/ext/awt/image/codec/imageio/PNGTranscoderImageIOWriteAdapter.java, org/apache/batik/ext/awt/image/codec/png/PNGEncodeParam.java, org/apache/batik/ext/awt/image/codec/png/PNGDecodeParam.java, org/apache/batik/ext/awt/image/codec/util/ImageEncodeParam.java, org/apache/batik/ext/awt/image/codec/util/ImageEncoderImpl.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOTIFFRegistryEntry.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOPNGRegistryEntry.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIOJPEGRegistryEntry.java, org/apache/batik/ext/awt/image/codec/imageio/ImageIODebugUtil.java, org/apache/batik/ext/awt/image/codec/imageio/TIFFTranscoderImageIOWriteAdapter.java, org/apache/batik/ext/awt/image/codec/png/PNGRegistryEntry.java, org/apache/batik/ext/awt/image/codec/png/PNGImageWriter.java, org/apache/batik/ext/awt/image/codec/png/PNGImageDecoder.java, org/apache/batik/ext/awt/image/codec/util/ImageDecoder.java, org/apache/batik/ext/awt/image/codec/util/ImageDecodeParam.java, org/apache/batik/ext/awt/image/codec/util/PropertyUtil.java, org/apache/batik/ext/awt/image/codec/util/ForwardSeekableStream.java, org/apache/batik/ext/awt/image/codec/util/SimpleRenderedImage.java, org/apache/batik/ext/awt/image/codec/png/PNGRed.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */

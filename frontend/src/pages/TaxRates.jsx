@@ -7,7 +7,7 @@ export default function TaxRates() {
   const COLUMNS = [
     { key: 'name', label: t('pages.taxRates.columns.name') || 'Bezeichnung', filterType: 'text' },
     { key: 'rate', label: t('pages.taxRates.columns.rate') || 'Satz (%)', type: 'number', align: 'right',
-      render: v => v != null ? `${Number(v).toFixed(1)} %` : '—' },
+      render: v => v != null ? `${Number(v).toFixed(1).replace('.', ',')}\u00a0%` : '—' },
     { key: 'description', label: t('pages.taxRates.columns.description') || 'Beschreibung' },
     { key: 'is_default', label: t('pages.taxRates.columns.isDefault') || 'Standard',
       render: v => v ? (t('pages.taxRates.columns.yes') || 'Ja') : (t('pages.taxRates.columns.no') || 'Nein') },
@@ -19,7 +19,7 @@ export default function TaxRates() {
     { key: 'name', label: t('pages.taxRates.form.name') || 'Bezeichnung', required: true, placeholder: t('pages.taxRates.form.namePlaceholder') || 'z.B. Regelsteuersatz' },
     { key: 'rate', label: t('pages.taxRates.form.rate') || 'Steuersatz (%)', type: 'number', required: true, placeholder: t('pages.taxRates.form.ratePlaceholder') || 'z.B. 19.0' },
     { key: 'description', label: t('pages.taxRates.form.description') || 'Beschreibung' },
-    { key: 'is_default', label: t('pages.taxRates.form.isDefault') || 'Standard', type: 'select', options: [
+    { key: 'is_default', label: t('pages.taxRates.form.isDefault') || 'Standard', type: 'select', default: 'false', options: [
       { value: 'true', label: t('pages.taxRates.form.yes') || 'Ja' },
       { value: 'false', label: t('pages.taxRates.form.no') || 'Nein' },
     ]},

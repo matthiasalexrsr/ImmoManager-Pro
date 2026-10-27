@@ -34,7 +34,7 @@ _last_report_md = None
 
 def _check_autotest_allowed():
     """Block autotest in production unless diagnostics are explicitly enabled."""
-    if settings.is_production and not settings.diagnostics_allow_in_production:
+    if not settings.developer_tools_enabled:
         raise HTTPException(
             status_code=403,
             detail="Autotest ist in der Produktionsumgebung deaktiviert.",

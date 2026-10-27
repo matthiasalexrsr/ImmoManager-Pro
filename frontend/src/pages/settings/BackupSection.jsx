@@ -3,8 +3,6 @@ import { useTranslation } from '../../i18n';
 import { useToast } from '../../components/Toast';
 import { api } from '../../api';
 
-const BASE = (import.meta.env.VITE_API_URL || '/api/v1');
-
 export default function BackupSection() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -37,11 +35,9 @@ export default function BackupSection() {
   const handleExport = async () => {
     setExportLoading(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/data/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const blob = await res.blob();
+      const current = api.captureSession();
+      const blob = await api.getBlob('/data/export');
+      current();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -61,18 +57,14 @@ export default function BackupSection() {
     setImportLoading(true);
     setImportResult(null);
     try {
+      const current = api.captureSession();
       const formData = new FormData();
       formData.append('file', file);
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${BASE}/data/import`, {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await api.upload('/data/import', formData);
+      current();
       setImportResult(data);
     } catch (err) {
-      setImportResult({ errors: { general: [err.message] } });
+      setImportResult({ error: err.message });
     } finally {
       setImportLoading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -96,7 +88,7 @@ export default function BackupSection() {
           <div className="settings-row">
             <label>{tr('settings.dataBackup.dbDetails', 'DB-Details')}</label>
             <div className="settings-control">
-              <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <span className="text-muted" style={{ fontSize: 'var(--text-xs)' }}>
                 {dbInfo.error || JSON.stringify(dbInfo, null, 2).slice(0, 200)}
               </span>
             </div>
@@ -108,7 +100,7 @@ export default function BackupSection() {
             <button className="btn btn-sm btn-primary" onClick={handleBackup}>
               {tr('settings.dataBackup.createBackup', 'Backup erstellen')}
             </button>
-            {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: '0.8rem' }}>{backupStatus}</span>}
+            {backupStatus && <span className="text-muted" style={{ marginLeft: '0.5rem', fontSize: 'var(--text-xs)' }}>{backupStatus}</span>}
           </div>
         </div>
         <div className="settings-row">
@@ -132,8 +124,13 @@ export default function BackupSection() {
               accept=".json"
               onChange={handleImport}
               disabled={importLoading}
-              style={{ fontSize: '0.85rem' }}
+              className="sr-only"
+              id="settings-import-file"
             />
+            <button type="button" className="btn btn-sm btn-secondary" disabled={importLoading}
+                    onClick={() => fileRef.current?.click()}>
+              {t('pages.settings.chooseImportFile')}
+            </button>
           </div>
         </div>
         {importResult && (
@@ -143,10 +140,14 @@ export default function BackupSection() {
               {importResult.imported && Object.entries(importResult.imported).map(([k, v]) => (
                 <span key={k} className="text-muted">{k}: {v} {t('pages.settings.imported')}</span>
               ))}
-              {importResult.errors && Object.keys(importResult.errors).length > 0 && (
-                <span style={{ color: 'var(--danger)' }}>
-                  {t('pages.settings.errorsIn')} {Object.keys(importResult.errors).join(', ')}
-                </span>
+              {importResult.skipped_existing && Object.entries(importResult.skipped_existing).map(([k, v]) => (
+                <span key={`skipped-${k}`} className="text-muted">{k}: {v} {t('pages.settings.skippedExisting')}</span>
+              ))}
+              {importResult.imported && Object.keys(importResult.imported).length === 0 && (
+                <span className="text-muted">{t('pages.settings.nothingNew')}</span>
+              )}
+              {importResult.error && (
+                <span role="alert" style={{ color: 'var(--danger)' }}>{importResult.error}</span>
               )}
             </div>
           </div>

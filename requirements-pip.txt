@@ -1,0 +1,6 @@
+# The installer itself, so CI, release builds and the Docker image resolve with the same pip.
+# Install it first:   python -m pip install -r requirements-pip.txt
+pip==26.2.1
+# Python 3.11 interpreters and images ship an older setuptools that pip-audit reports;
+# pin the patched one (same as requirements-build.txt).
+setuptools==84.1.0

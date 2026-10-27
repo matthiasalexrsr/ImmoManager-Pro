@@ -1,0 +1,74 @@
+ImmoManager Pro für Windows
+===========================
+
+Die Hausverwaltung speichert Daten lokal in Ihrem Datenordner. Wenn Sie externe Dienste
+verbinden oder Aufträge dafür einrichten, werden die dafür ausgewählten Daten an diese
+Dienste übertragen: zum Beispiel Dokumente und Kontext an Claude oder ChatGPT,
+Nachrichten an einen Mailserver und Sicherungen an ein eingerichtetes externes Ziel.
+Prüfen Sie vor dem Verbinden die Einstellungen und die Bedingungen des Anbieters.
+
+
+Installieren und starten
+------------------------
+1. Den ZIP-Ordner vollständig entpacken (z. B. nach "Dokumente\ImmoManager Pro").
+   Nicht aus dem ZIP heraus starten.
+2. Im entpackten Ordner "ImmoManager-Pro" doppelt auf "ImmoManager-Pro.exe" klicken.
+3. Prüfen Sie vor dem Start in Eigenschaften → Digitale Signaturen den Herausgeber und
+   die gültige Signatur. Bei unbekannter Herkunft oder ungültiger Signatur das Paket beim
+   Anbieter prüfen lassen. Interne Testpakete können unsigniert sein.
+4. Der Browser öffnet sich mit http://127.0.0.1:8000 (sonst diese Adresse selbst öffnen).
+5. Beim ersten Start legen Sie das Eigentümer-Konto an. Danach führt "Erste Schritte" auf der
+   Startseite durch die Einrichtung: Portfolio, Immobilie, Einheiten, Bankkonto, Mietverträge.
+   Laufende Mietverträge mit "Mietkonto hier geführt ab" und dem Saldo zu diesem Tag erfassen,
+   damit keine alten Monate als offen gelten.
+
+Das schwarze Fenster ist das Programm: solange Sie arbeiten, bitte offen lassen.
+Zum Beenden das Fenster schließen oder Strg+C drücken.
+
+
+Wo liegen die Daten?
+--------------------
+  %LOCALAPPDATA%\ImmoManagerPro
+  (in die Adresszeile des Explorers eingeben)
+
+Dort liegen Datenbank, Anhänge, Sicherungen ("backups") und der Schlüssel ("secrets").
+Der Programmordner selbst enthält keine Daten und kann jederzeit ersetzt werden.
+
+
+Sicherung
+---------
+Das Programm legt jeden Tag um 01:30 Uhr ein geprüftes Vollbackup an (Datenbank, Anhänge,
+Einstellungen und Schlüssel) und prüft einmal im Monat, ob es sich wiederherstellen lässt.
+Übersicht und "Vollbackup jetzt": Einstellungen → System → Betrieb.
+Dringend empfohlen: eine zweite Kopie auf einem anderen Laufwerk. Dazu unter Einstellungen →
+System → Betrieb bei "Zweites Ziel" auf "Einrichten" klicken und einen Ordner auf einer
+USB-Festplatte oder einem Netzlaufwerk eintragen (z. B. E:\ImmoManager-Sicherung oder
+\\NAS\Sicherung). Jedes Vollbackup wird dann dorthin kopiert und die Kopie geprüft. Ist das
+Laufwerk einmal nicht angeschlossen, meldet die Übersicht das; die Sicherung im Datenordner
+entsteht trotzdem.
+
+
+Auf eine neue Version aktualisieren
+-----------------------------------
+Ob es eine neue Version gibt, zeigt Einstellungen → System → Updates → "Jetzt prüfen".
+1. Die neue Version herunterladen und in einen NEUEN Ordner entpacken.
+2. Die alte Version beenden (schwarzes Fenster schließen).
+3. "ImmoManager-Pro.exe" der neuen Version starten.
+   Beim ersten Start legt sie zuerst ein geprüftes Vollbackup an und aktualisiert dann die
+   Datenbank. Im schwarzen Fenster steht, wo das Backup liegt.
+4. Läuft alles, kann der alte Programmordner gelöscht werden (die Daten liegen nicht dort).
+
+Falls nach dem Update etwas nicht stimmt: Die Datenbank ist dann schon auf dem neuen Stand,
+die alte Version startet damit nicht mehr. Den Stand davor enthält das Vollbackup vom Update
+(%LOCALAPPDATA%\ImmoManagerPro\backups\full\…-pre-upgrade-….zip). So lässt er sich in einen
+neuen Ordner zurückholen und mit der alten Version öffnen (Eingabeaufforderung im Ordner der
+jeweiligen Version):
+  ImmoManager-Pro.exe ops restore "<Pfad zum Backup>.zip" --target "C:\ImmoManagerPro-vorher"
+  ImmoManager-Pro.exe --data-dir "C:\ImmoManagerPro-vorher"
+Der bisherige Datenordner bleibt dabei unverändert.
+
+
+Mehrere Benutzer
+----------------
+Weitere Konten legt der Eigentümer unter Einstellungen → Benutzer an (Rollen: Verwaltung,
+Buchhaltung, Technik, Nur Lesen) und weist ihnen Portfolios zu.

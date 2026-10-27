@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, FastAPI, Request
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -41,9 +42,9 @@ def mount_fastapi(
     @router.get("", response_class=HTMLResponse)
     async def wizard(request: Request):
         return templates.TemplateResponse(
+            request,
             template_name,
             {
-                "request": request,
                 "static_prefix": static_path.rstrip("/") + "/mietvertrag_wizard",
                 "api_base": base + "/api",
             },
@@ -52,7 +53,10 @@ def mount_fastapi(
     @router.post("/api/pdf")
     async def pdf_endpoint(payload: Dict[str, Any] = Body(...)):
         """Erzeugt serverseitig ein PDF aus den vom Browser gesendeten Wizard-Daten."""
-        pdf_bytes = build_contract_pdf(payload)
+        try:
+            pdf_bytes = await run_in_threadpool(build_contract_pdf, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

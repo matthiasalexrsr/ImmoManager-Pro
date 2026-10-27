@@ -1,0 +1,16 @@
+{
+  "components": {
+    "PyMuPDF": {
+      "reference": "",
+      "distribution": false
+    },
+    "superdoc": {
+      "reference": "",
+      "distribution": false
+    },
+    "@superdoc/docx-engine": {
+      "reference": "",
+      "distribution": false
+    }
+  }
+}

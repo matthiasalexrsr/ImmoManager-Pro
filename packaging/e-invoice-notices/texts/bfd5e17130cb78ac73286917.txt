@@ -1,0 +1,65 @@
+Source files: jakarta/activation/ActivationDataFlavor.java, jakarta/activation/CommandInfo.java, jakarta/activation/CommandMap.java, jakarta/activation/CommandObject.java, jakarta/activation/DataContentHandler.java, jakarta/activation/DataContentHandlerFactory.java, jakarta/activation/DataHandler.java, jakarta/activation/DataSource.java, jakarta/activation/FileDataSource.java, jakarta/activation/FileTypeMap.java, jakarta/activation/MimeType.java, jakarta/activation/MimeTypeParameterList.java, jakarta/activation/MimeTypeParseException.java, jakarta/activation/SecuritySupport.java, jakarta/activation/URLDataSource.java, jakarta/activation/UnsupportedDataTypeException.java, module-info.java
+/*
+ * Copyright (c) 1997, 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/activation/FactoryFinder.java, jakarta/activation/ServiceLoaderUtil.java
+/*
+ * Copyright (c) 2021, 2024 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/activation/LogSupport.java, jakarta/activation/package-info.java, jakarta/activation/spi/MailcapRegistryProvider.java, jakarta/activation/spi/MimeTypeRegistryProvider.java, jakarta/activation/spi/package-info.java
+/*
+ * Copyright (c) 2021 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/activation/MailcapCommandMap.java, jakarta/activation/MimetypesFileTypeMap.java
+/*
+ * Copyright (c) 1997, 2025 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/activation/MailcapRegistry.java, jakarta/activation/MimeTypeRegistry.java
+/*
+ * Copyright (c) 2021, 2025 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+Source files: jakarta/activation/MimeTypeEntry.java
+/*
+ * Copyright (c) 1997, 2023 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Distribution License v. 1.0, which is available at
+ * http://www.eclipse.org/org/documents/edl-v10.php.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */

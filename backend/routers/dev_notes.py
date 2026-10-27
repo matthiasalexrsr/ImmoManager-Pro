@@ -13,12 +13,30 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+
+from ..config import settings
+from ..paths import get_logs_dir
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/dev-notes", tags=["Developer Mode"])
+
+
+def _check_dev_notes_allowed() -> None:
+    """Block developer notes in production unless diagnostics are explicitly enabled."""
+    if not settings.developer_tools_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Entwicklermodus ist in der Produktionsumgebung deaktiviert.",
+        )
+
+
+router = APIRouter(
+    prefix="/dev-notes",
+    tags=["Developer Mode"],
+    dependencies=[Depends(_check_dev_notes_allowed)],
+)
 
 # ---------------------------------------------------------------------------
 # Models
@@ -59,8 +77,15 @@ _notes: dict[str, DevNote] = {}
 # Log file writer
 # ---------------------------------------------------------------------------
 
-_LOG_DIR = Path(__file__).resolve().parent.parent.parent  # project root
-_LOG_FILE = _LOG_DIR / "dev_notes.log"
+def _log_dir() -> Path:
+    """Runtime logs directory (writable, outside the install dir)."""
+    path = get_logs_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _log_file() -> Path:
+    return _log_dir() / "dev_notes.log"
 
 
 def _write_log_file() -> None:
@@ -88,13 +113,14 @@ def _write_log_file() -> None:
                 lines.append(f"   > {desc_line}")
         lines.append("")
 
-    _LOG_FILE.write_text("\n".join(lines), encoding="utf-8")
-    logger.info("Dev notes log written to %s (%d unresolved notes)", _LOG_FILE, len(unresolved))
+    log_file = _log_file()
+    log_file.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Dev notes log written to %s (%d unresolved notes)", log_file, len(unresolved))
 
 
 def _write_json_export() -> str:
     """Write a JSON export of all notes and return the path."""
-    export_path = _LOG_DIR / "dev_notes.json"
+    export_path = _log_dir() / "dev_notes.json"
     all_notes = [n.model_dump() if hasattr(n, "model_dump") else n.dict() for n in _notes.values()]
     export_path.write_text(json.dumps(all_notes, indent=2, ensure_ascii=False), encoding="utf-8")
     return str(export_path)
@@ -147,22 +173,23 @@ def export_dev_notes():
 def get_log_content():
     """Return the current log file content (for preview)."""
     _write_log_file()
-    if _LOG_FILE.exists():
-        return {"content": _LOG_FILE.read_text(encoding="utf-8")}
+    log_file = _log_file()
+    if log_file.exists():
+        return {"content": log_file.read_text(encoding="utf-8")}
     return {"content": ""}
 
 
 @router.get("/{note_id}", response_model=DevNote)
 def get_dev_note(note_id: str) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     return _notes[note_id]
 
 
 @router.patch("/{note_id}", response_model=DevNote)
 def update_dev_note(note_id: str, payload: DevNoteUpdate) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     note = _notes[note_id]
     updates = payload.model_dump(exclude_unset=True)
     updated = note.model_copy(update=updates)
@@ -174,7 +201,7 @@ def update_dev_note(note_id: str, payload: DevNoteUpdate) -> DevNote:
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_dev_note(note_id: str) -> None:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     del _notes[note_id]
     _write_log_file()
 
@@ -182,7 +209,7 @@ def delete_dev_note(note_id: str) -> None:
 @router.post("/{note_id}/resolve", response_model=DevNote)
 def resolve_dev_note(note_id: str) -> DevNote:
     if note_id not in _notes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev note not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entwicklernotiz nicht gefunden")
     note = _notes[note_id]
     updated = note.model_copy(update={"resolved": True})
     _notes[note_id] = updated

@@ -45,7 +45,9 @@ echo "[OK] Virtuelle Umgebung aktiviert"
 echo ""
 echo "Installiere Abhängigkeiten..."
 pip install --upgrade pip setuptools wheel -q
-pip install -e ".[dev]" -q
+# exact versions of the whole dependency tree (constraints.txt), then the project itself
+pip install -r backend/requirements-dev.txt -c constraints.txt -q
+pip install -e . --no-deps -q
 echo "[OK] Abhängigkeiten installiert"
 
 # Check if frontend needs building
@@ -54,7 +56,7 @@ if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
         echo ""
         echo "Installiere Frontend-Abhängigkeiten..."
         cd frontend
-        npm install
+        npm ci
         echo "Baue Frontend..."
         npm run build
         cd ..

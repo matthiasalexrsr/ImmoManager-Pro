@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..db.orm_models import (
     CalendarEventORM,
     ContactORM,
+    ContractORM,
     MessageORM,
     MessageThreadORM,
     NotificationORM,
@@ -19,6 +20,7 @@ from ..models import (
     CalendarEventCreate,
     Contact,
     ContactCreate,
+    Contract,
     Message,
     MessageCreate,
     MessageThread,
@@ -60,12 +62,28 @@ class CommunicationRepository:
     def list_tasks(self) -> list[Task]:
         return self._tasks.list_all()
 
-    def create_task(self, data: TaskCreate) -> Task:
+    def validate_task(self, data: TaskCreate, task_id: str | None = None) -> None:
+        from ..services.task_recurrence import parse_rrule
+        from ..services.task_validation import validate_task_parent
+
+        validate_task_parent(data, self.get_task, task_id)
+
         pr = self._portfolio_repo
         if data.property_id and pr and not pr._properties.exists(data.property_id):
             raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and pr and not pr._units.exists(data.unit_id):
-            raise ValidationError("Einheit existiert nicht")
+        if data.unit_id and pr:
+            if not pr._units.exists(data.unit_id):
+                raise ValidationError("Einheit existiert nicht")
+            if data.property_id and pr._units.get(data.unit_id).property_id != data.property_id:
+                raise ValidationError("Einheit gehört nicht zur gewählten Immobilie")
+        if data.recurrence_rule:
+            try:
+                parse_rrule(data.recurrence_rule)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+
+    def create_task(self, data: TaskCreate) -> Task:
+        self.validate_task(data)
         result = self._tasks.create(data)
         self._commit()
         return result
@@ -74,16 +92,16 @@ class CommunicationRepository:
         return self._tasks.get(task_id)
 
     def update_task(self, task_id: str, data: TaskCreate) -> Task:
-        pr = self._portfolio_repo
-        if data.property_id and pr and not pr._properties.exists(data.property_id):
-            raise ValidationError("Immobilie existiert nicht")
-        if data.unit_id and pr and not pr._units.exists(data.unit_id):
-            raise ValidationError("Einheit existiert nicht")
+        self._tasks.get(task_id)
+        self.validate_task(data, task_id)
         result = self._tasks.update(task_id, data)
         self._commit()
         return result
 
     def delete_task(self, task_id: str) -> None:
+        self._tasks.get(task_id)
+        if self._tasks.list_paginated(limit=1, filters={"parent_task_id": task_id}):
+            raise ValidationError("Die Aufgabe hat Folgeaufgaben und bleibt als deren Bezug erhalten. Eine Aufgabenserie lässt sich stattdessen beenden.")
         self._tasks.delete(task_id)
         self._commit()
 
@@ -198,6 +216,7 @@ class CommunicationRepository:
         return self._message_threads.list_all()
 
     def create_message_thread(self, data: MessageThreadCreate) -> MessageThread:
+        self.validate_message_thread(data)
         result = self._message_threads.create(data)
         self._commit()
         return result
@@ -206,9 +225,22 @@ class CommunicationRepository:
         return self._message_threads.get(thread_id)
 
     def update_message_thread(self, thread_id: str, data: MessageThreadCreate) -> MessageThread:
+        self.validate_message_thread(data, self.get_message_thread(thread_id))
         result = self._message_threads.update(thread_id, data)
         self._commit()
         return result
+
+    def validate_message_thread(self, data, previous=None):
+        from ..services.message_thread_validation import validate_message_thread
+
+        def resolve(kind, identifier):
+            if kind == 'contact':
+                return self.get_contact(identifier)
+            if kind == 'contract':
+                return BaseRepository(self.db, ContractORM, Contract, 'Mietvertrag nicht gefunden').get(identifier)
+            return getattr(self._portfolio_repo, 'get_' + kind)(identifier)
+
+        validate_message_thread(data, resolve, previous)
 
     def delete_message_thread(self, thread_id: str) -> None:
         self._message_threads.delete(thread_id)

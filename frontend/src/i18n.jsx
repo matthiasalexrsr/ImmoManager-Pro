@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { setFormatLocale } from './utils/format';
 
 const I18nContext = createContext(null);
 
@@ -8,29 +9,41 @@ const translationCache = {};
 
 const BUILTIN_TRANSLATIONS = {
   'de-DE': {
+    comp: { dataTable: {
+      openRow: 'Eintrag öffnen',
+      activeFilters: 'Aktive Tabellenfilter', removeSearch: 'Suche entfernen',
+      removeFilter: 'Filter entfernen', filterBy: 'filtern',
+      rangeStart: 'ab', rangeEnd: 'bis',
+      keepColumn: 'Mindestens eine Spalte muss sichtbar bleiben',
+    } },
     navigation: {
       main: {
         contractWizard: 'Mietvertrag-Wizard',
+        billingAssistant: 'Nebenkosten-Assistent',
         notificationTemplates: 'Benachrichtigungsvorlagen',
+        letterTemplates: 'Briefvorlagen',
+        notifications: 'Benachrichtigungen',
+        reports: 'Auswertungen',
+        assistant: 'KI-Assistent',
       },
     },
     contractWizard: {
-      description: 'Erstellen Sie Schritt fuer Schritt einen rechtssicheren Mietvertrag.',
+      description: 'Erstellen Sie Schritt für Schritt einen rechtssicheren Mietvertrag.',
     },
     pages: {
       dashboard: {
         process: {
           title: 'Kernprozess',
-          subtitle: 'Objekt -> Einheit -> Mieter -> Vertrag -> Sollstellung -> Zahlung -> Mahnung',
-          nextLabel: 'Naechster Schritt',
-          nextAttention: 'Dringendster Blocker',
+          subtitle: 'Objekt → Einheit → Mieter → Vertrag → Sollstellung → Zahlung → Mahnung',
+          nextLabel: 'Nächster Schritt',
+          nextAttention: 'Dringendster offener Punkt',
           complete: 'Alles bereit',
           steps: {
             property: 'Objekt',
             unit: 'Einheit',
             tenant: 'Mieter',
             contract: 'Vertrag',
-            charge: 'Sollstellung',
+            charge: 'Soll\u00ADstellung',
             payment: 'Zahlung',
             dunning: 'Mahnung',
           },
@@ -42,17 +55,17 @@ const BUILTIN_TRANSLATIONS = {
             createCharge: 'Sollstellung erzeugen',
             matchPayment: 'Zahlung zuordnen',
             createDunning: 'Mahnung vorbereiten',
-            reviewDunning: 'Mahnstatus pruefen',
+            reviewDunning: 'Mahnstatus prüfen',
           },
         },
         workflow: {
           title: 'Arbeitszentrale',
-          subtitle: 'Gefuehrte Prozesssicht ueber Bestand, Vermietung, Finanzen, Abrechnung und Betrieb.',
+          subtitle: 'Geführte Prozesssicht über Bestand, Vermietung, Finanzen, Abrechnung und Betrieb.',
           configure: 'Arbeitsweise anpassen',
           progress: 'Fortschritt',
           status: {
             complete: 'Bereit',
-            attention: 'Pruefen',
+            attention: 'Prüfen',
             blocked: 'Starten',
             ready: 'Aktiv',
           },
@@ -62,35 +75,35 @@ const BUILTIN_TRANSLATIONS = {
           },
           rental: {
             title: 'Vermietung sichern',
-            description: 'Mieter, Vertraege und freie Einheiten im Blick behalten.',
+            description: 'Mieter, Verträge und freie Einheiten im Blick behalten.',
           },
           finance: {
             title: 'Zahlungen steuern',
             description: 'Sollstellungen, offene Forderungen und Rechnungen aktiv nachhalten.',
           },
           billing: {
-            title: 'Abrechnung abschliessen',
-            description: 'Verteilerschluessel, Rechnungen und Abrechnungsperioden revisionsfaehig fuehren.',
+            title: 'Abrechnung abschließen',
+            description: 'Verteilerschlüssel, Rechnungen und Abrechnungsperioden revisionsfähig führen.',
           },
           operations: {
             title: 'Betrieb erledigen',
-            description: 'Dokumente, Aufgaben und Instandhaltung ohne stille Rueckstaende bearbeiten.',
+            description: 'Dokumente, Aufgaben und Instandhaltung ohne stille Rückstände bearbeiten.',
           },
           actions: {
             createPortfolio: 'Portfolio anlegen',
             createProperty: 'Immobilie anlegen',
-            manageUnits: 'Einheiten pruefen',
+            manageUnits: 'Einheiten prüfen',
             createTenant: 'Mieter anlegen',
             createContract: 'Vertrag erstellen',
-            reviewContracts: 'Vertraege pruefen',
-            reviewReceivables: 'Forderungen pruefen',
-            createCharges: 'Sollstellungen oeffnen',
-            createAllocationKeys: 'Schluessel pflegen',
-            reviewPreflight: 'Preflight pruefen',
-            openStatements: 'Abrechnung oeffnen',
-            reviewMaintenance: 'Wartung pruefen',
-            reviewTasks: 'Aufgaben oeffnen',
-            reviewDocuments: 'Dokumente pruefen',
+            reviewContracts: 'Verträge prüfen',
+            reviewReceivables: 'Forderungen prüfen',
+            createCharges: 'Sollstellungen öffnen',
+            createAllocationKeys: 'Schlüssel pflegen',
+            reviewPreflight: 'Abrechnung prüfen',
+            openStatements: 'Abrechnung öffnen',
+            reviewMaintenance: 'Wartung prüfen',
+            reviewTasks: 'Aufgaben öffnen',
+            reviewDocuments: 'Dokumente prüfen',
           },
           metrics: {
             units: '{{count}} Einheiten',
@@ -104,11 +117,11 @@ const BUILTIN_TRANSLATIONS = {
             properties: 'Immobilien',
             units: 'Einheiten',
             tenants: 'Mieter',
-            activeContracts: 'Aktive Vertraege',
+            activeContracts: 'Aktive Verträge',
             accounts: 'Konten',
             rentCharges: 'Sollstellungen',
             receivablesClear: 'Forderungen geklaert',
-            allocationKeys: 'Verteilerschluessel',
+            allocationKeys: 'Verteilerschlüssel',
             invoices: 'Rechnungen',
             statements: 'Abrechnungen',
             documents: 'Dokumente',
@@ -118,15 +131,15 @@ const BUILTIN_TRANSLATIONS = {
         },
         attention: {
           title: 'Heute wichtig',
-          subtitle: 'Die naechsten operativen Blocker in Reihenfolge der Dringlichkeit.',
-          emptyTitle: 'Alles im gruenen Bereich',
-          emptyText: 'Keine akuten Rueckstaende aus den aktuellen Dashboard-Daten.',
-          overdueReceivables: 'Ueberfaellige Forderungen',
+          subtitle: 'Was als Nächstes Aufmerksamkeit braucht, nach Dringlichkeit geordnet.',
+          emptyTitle: 'Alles im grünen Bereich',
+          emptyText: 'Derzeit keine akuten Rückstände.',
+          overdueReceivables: 'Überfällige Forderungen',
           dunningReceivables: 'Offene Mahnungen',
           openReceivables: 'Offene Forderungen',
-          billingPreflightBlockers: 'Abrechnungen mit Preflight-Fehlern',
+          billingPreflightBlockers: 'Abrechnungen mit Prüfbedarf',
           maintenanceEscalations: 'Instandhaltung mit Eskalation',
-          expiringContracts: 'Auslaufende Vertraege',
+          expiringContracts: 'Auslaufende Verträge',
           missingContractDocuments: 'Fehlende Vertragsdokumente',
           openMaintenance: 'Offene Instandhaltung',
           openTasks: 'Offene Aufgaben',
@@ -136,10 +149,22 @@ const BUILTIN_TRANSLATIONS = {
     },
   },
   'en-US': {
+    comp: { dataTable: {
+      openRow: 'Open entry',
+      activeFilters: 'Active table filters', removeSearch: 'Remove search',
+      removeFilter: 'Remove filter', filterBy: 'filter',
+      rangeStart: 'from', rangeEnd: 'to',
+      keepColumn: 'At least one column must remain visible',
+    } },
     navigation: {
       main: {
         contractWizard: 'Lease Wizard',
+        billingAssistant: 'Service charge assistant',
         notificationTemplates: 'Notification Templates',
+        letterTemplates: 'Letter templates',
+        notifications: 'Notifications',
+        reports: 'Reports',
+        assistant: 'AI assistant',
       },
     },
     contractWizard: {
@@ -149,7 +174,7 @@ const BUILTIN_TRANSLATIONS = {
       dashboard: {
         process: {
           title: 'Core process',
-          subtitle: 'Property -> Unit -> Tenant -> Contract -> Charge -> Payment -> Dunning',
+          subtitle: 'Property → Unit → Tenant → Contract → Charge → Payment → Dunning',
           nextLabel: 'Next step',
           nextAttention: 'Most urgent blocker',
           complete: 'Everything ready',
@@ -214,7 +239,7 @@ const BUILTIN_TRANSLATIONS = {
             reviewReceivables: 'Review receivables',
             createCharges: 'Open rent charges',
             createAllocationKeys: 'Maintain keys',
-            reviewPreflight: 'Review preflight',
+            reviewPreflight: 'Check statement',
             openStatements: 'Open statements',
             reviewMaintenance: 'Review maintenance',
             reviewTasks: 'Open tasks',
@@ -252,7 +277,7 @@ const BUILTIN_TRANSLATIONS = {
           overdueReceivables: 'Overdue receivables',
           dunningReceivables: 'Open dunning',
           openReceivables: 'Open receivables',
-          billingPreflightBlockers: 'Statements with preflight errors',
+          billingPreflightBlockers: 'Statements requiring review',
           maintenanceEscalations: 'Maintenance escalations',
           expiringContracts: 'Expiring contracts',
           missingContractDocuments: 'Missing contract documents',
@@ -264,10 +289,22 @@ const BUILTIN_TRANSLATIONS = {
     },
   },
   'es-ES': {
+    comp: { dataTable: {
+      openRow: 'Abrir entrada',
+      activeFilters: 'Filtros activos de la tabla', removeSearch: 'Quitar búsqueda',
+      removeFilter: 'Quitar filtro', filterBy: 'filtrar',
+      rangeStart: 'desde', rangeEnd: 'hasta',
+      keepColumn: 'Debe quedar visible al menos una columna',
+    } },
     navigation: {
       main: {
         contractWizard: 'Asistente de contrato',
+        billingAssistant: 'Asistente de gastos comunes',
         notificationTemplates: 'Plantillas de notificacion',
+        letterTemplates: 'Plantillas de cartas',
+        notifications: 'Notificaciones',
+        reports: 'Informes',
+        assistant: 'Asistente de IA',
       },
     },
     contractWizard: {
@@ -277,7 +314,7 @@ const BUILTIN_TRANSLATIONS = {
       dashboard: {
         process: {
           title: 'Proceso principal',
-          subtitle: 'Inmueble -> Unidad -> Inquilino -> Contrato -> Cargo -> Pago -> Reclamacion',
+          subtitle: 'Inmueble → Unidad → Inquilino → Contrato → Cargo → Pago → Reclamación',
           nextLabel: 'Siguiente paso',
           nextAttention: 'Bloqueo mas urgente',
           complete: 'Todo listo',
@@ -288,7 +325,7 @@ const BUILTIN_TRANSLATIONS = {
             contract: 'Contrato',
             charge: 'Cargo',
             payment: 'Pago',
-            dunning: 'Reclamacion',
+            dunning: 'Reclamación',
           },
           actions: {
             createProperty: 'Crear inmueble',
@@ -342,7 +379,7 @@ const BUILTIN_TRANSLATIONS = {
             reviewReceivables: 'Revisar cobros',
             createCharges: 'Abrir cargos',
             createAllocationKeys: 'Mantener claves',
-            reviewPreflight: 'Revisar preflight',
+            reviewPreflight: 'Comprobar liquidación',
             openStatements: 'Abrir liquidaciones',
             reviewMaintenance: 'Revisar mantenimiento',
             reviewTasks: 'Abrir tareas',
@@ -380,7 +417,7 @@ const BUILTIN_TRANSLATIONS = {
           overdueReceivables: 'Cobros vencidos',
           dunningReceivables: 'Reclamaciones abiertas',
           openReceivables: 'Cobros pendientes',
-          billingPreflightBlockers: 'Liquidaciones con errores preflight',
+          billingPreflightBlockers: 'Liquidaciones pendientes de revisión',
           maintenanceEscalations: 'Mantenimiento escalado',
           expiringContracts: 'Contratos por vencer',
           missingContractDocuments: 'Documentos de contrato faltantes',
@@ -405,6 +442,9 @@ export function useTranslation() {
 
 export function I18nProvider({ children }) {
   const [locale, setLocaleState] = useState(() => localStorage.getItem('locale') || 'de-DE');
+  setFormatLocale(locale);
+  // Browser hyphenation and date inputs follow the page language.
+  useEffect(() => { document.documentElement.lang = locale.slice(0, 2); }, [locale]);
   const [translations, setTranslations] = useState({});
   const [fallback, setFallback] = useState({});
 
@@ -436,6 +476,7 @@ export function I18nProvider({ children }) {
   const setLocale = useCallback((loc) => {
     localStorage.setItem('locale', loc);
     setLocaleState(loc);
+    window.dispatchEvent(new CustomEvent('preference-locale', { detail: loc }));
   }, []);
 
   const t = useCallback((key, params) => {

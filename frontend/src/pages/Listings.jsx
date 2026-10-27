@@ -1,4 +1,9 @@
-import { useState, useEffect } from 'react';
+import MarketingPanel from '../features/channels/MarketingPanel';
+import ChannelPanel from '../features/channels/ChannelPanel';
+import NotificationArrival from '../components/NotificationArrival';
+import { resolveFileUrl } from '../features/partyWorkspace/files';
+import { prepareUploadAccess } from '../utils/uploadAccess';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -6,6 +11,7 @@ import DataTable from '../components/DataTable';
 import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
+import { formatMoney } from '../utils/format';
 
 const PORTAL_TEMPLATES = {
   immoscout24: {
@@ -13,13 +19,13 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       `🏠 ${listing.title}`,
       '',
-      unit?.area_sqm ? `Wohnfläche: ${unit.area_sqm} m²` : '',
+      unit?.area_sqm ? `Wohnfläche: ${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
       unit?.floor ? `Etage: ${unit.floor}` : '',
-      listing.target_rent ? `Kaltmiete: ${Number(listing.target_rent).toFixed(2)} €` : '',
-      listing.service_charge ? `Nebenkosten: ${Number(listing.service_charge).toFixed(2)} €` : '',
+      listing.target_rent ? `Kaltmiete: ${formatMoney(listing.target_rent)}` : '',
+      listing.service_charge ? `Nebenkosten: ${formatMoney(listing.service_charge)}` : '',
       listing.target_rent && listing.service_charge
-        ? `Warmmiete: ${(Number(listing.target_rent) + Number(listing.service_charge)).toFixed(2)} €`
+        ? `Warmmiete: ${formatMoney(Number(listing.target_rent) + Number(listing.service_charge))}`
         : '',
       '',
       listing.available_from ? `Verfügbar ab: ${listing.available_from}` : '',
@@ -37,10 +43,10 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       listing.title,
       '---',
-      unit?.area_sqm ? `Fläche: ${unit.area_sqm} m²` : '',
+      unit?.area_sqm ? `Fläche: ${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `Zimmer: ${unit.rooms}` : '',
-      listing.target_rent ? `Miete: ${Number(listing.target_rent).toFixed(2)} € (kalt)` : '',
-      listing.service_charge ? `NK: ${Number(listing.service_charge).toFixed(2)} €` : '',
+      listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} (kalt)` : '',
+      listing.service_charge ? `NK: ${formatMoney(listing.service_charge)}` : '',
       listing.available_from ? `Ab: ${listing.available_from}` : '',
       '---',
       listing.description || '',
@@ -51,8 +57,8 @@ const PORTAL_TEMPLATES = {
     format: (listing, unit) => [
       listing.title,
       '',
-      listing.target_rent ? `Miete: ${Number(listing.target_rent).toFixed(2)} € kalt` : '',
-      unit?.area_sqm ? `${unit.area_sqm} m²` : '',
+      listing.target_rent ? `Miete: ${formatMoney(listing.target_rent)} kalt` : '',
+      unit?.area_sqm ? `${String(unit.area_sqm).replace('.', ',')}\u00a0m²` : '',
       unit?.rooms ? `${unit.rooms} Zimmer` : '',
       listing.available_from ? `Frei ab ${listing.available_from}` : '',
       '',
@@ -65,11 +71,11 @@ const PORTAL_TEMPLATES = {
 
 const COLUMNS = [
   { key: 'title', label: 'Titel', filterType: 'text' },
-  { key: 'unit_label', label: 'Einheit', filterType: 'text' },
+  { key: 'unit_label', label: 'Einheit', filterType: 'text', link: 'unit' },
   { key: 'portal', label: 'Portal', filterType: 'select',
     render: v => PORTAL_TEMPLATES[v]?.label || v || '—' },
   { key: 'target_rent', label: 'Zielmiete (€)', type: 'number', align: 'right',
-    render: v => v != null ? `${Number(v).toFixed(2)} €` : '—' },
+    render: v => formatMoney(v) },
   { key: 'available_from', label: 'Verfügbar ab', type: 'date' },
   { key: 'status', label: 'Status', type: 'status', filterType: 'select',
     render: v => <StatusBadge status={v} /> },
@@ -79,7 +85,8 @@ export default function Listings() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
-  const { items: units } = useEntities('units', '/units');
+  const unitState = useEntities('units', '/units');
+  const units = unitState.items;
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -87,22 +94,34 @@ export default function Listings() {
   const [previewListing, setPreviewListing] = useState(null);
   const [previewPortal, setPreviewPortal] = useState('immoscout24');
   const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const choicesReady = !unitState.loading && !unitState.error;
 
-  const refreshData = () => {
-    setLoading(true);
-    api.get('/listings').catch(() => [])
-      .then(l => setListings(l || []))
-      .finally(() => setLoading(false));
-  };
-
+  const photoId = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('source_id') : null;
+  const [noticePhoto, setNoticePhoto] = useState(null);
   useEffect(() => {
-    let cancelled = false;
-    api.get('/listings').catch(err => { console.warn('[Listings] listings:', err.message); return []; })
-      .then(data => { if (!cancelled) setListings(data || []); })
-      .catch(e => { if (!cancelled) console.warn('[Listings] load failed:', e.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    if (!photoId) return;
+    let live = true; const same = api.captureSession(); setNoticePhoto(null);
+    api.get(`/listings/photos/${encodeURIComponent(photoId)}`).then(async photo => {
+      same(); await prepareUploadAccess(resolveFileUrl(photo.file_url)); if (live) setNoticePhoto(photo);
+    }).catch(failure => { if (live) setDeleteError(failure.message); });
+    return () => { live = false; };
+  }, [photoId]);
+
+  const refreshData = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    const request = new AbortController();
+    setLoading(true);
+    api.list('/listings', { signal: request.signal }).then(data => {
+      if (request.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Inserate konnten nicht vollständig gelesen werden.');
+      setListings(data); setLoaded(true); setLoadError(null);
+    }).catch(error => { if (!request.signal.aborted) setLoadError(error.message || 'Inserate konnten nicht geladen werden.'); })
+      .finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => request.abort();
+  }, [revision]);
 
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const enriched = listings.map(l => ({
@@ -137,6 +156,7 @@ export default function Listings() {
   ];
 
   const handleSave = async (data) => {
+    if (!choicesReady) throw new Error('Bitte zuerst die Einheitenauswahl erneut laden.');
     if (modal === 'create') {
       await api.post('/listings', data);
     } else {
@@ -147,7 +167,7 @@ export default function Listings() {
   };
 
   const handleDelete = async (row) => {
-    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`)) return;
+    if (!await confirm(`"${row.title}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     setDeleteError(null);
     try {
       await api.del(`/listings/${row.id}`);
@@ -183,10 +203,21 @@ export default function Listings() {
     }
   };
 
-  if (loading) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  // only the first load replaces the page; a reload keeps the table and an open form
+  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+    <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
+      {loadError && <p className="alert-error" role="alert">Inserate konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
+      {unitState.error && <p className="alert-error" role="alert">Die Einheitenauswahl ist nicht verfügbar. {unitState.error}{' '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={unitState.reload}>Auswahl erneut laden</button></p>}
+      {noticePhoto && listings.some(row => row.id === noticePhoto.listing_id) && <section aria-label="Inseratfoto aus dem Hinweis">
+        <h2>{noticePhoto.title || 'Inseratfoto'}</h2><img style={{ maxWidth: '100%' }} src={resolveFileUrl(noticePhoto.file_url)} alt={noticePhoto.title || 'Inseratfoto'} onLoad={() => setNoticePhoto(photo => ({ ...photo, imageReady: true }))} />
+        <NotificationArrival record={noticePhoto} ready={noticePhoto.imageReady === true} />
+      </section>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}
@@ -198,8 +229,8 @@ export default function Listings() {
         title="Inserate"
         columns={COLUMNS}
         data={enriched}
-        onAdd={() => setModal('create')}
-        onEdit={row => setModal(row)}
+        onAdd={choicesReady ? () => setModal('create') : undefined}
+        onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}
         onRowClick={row => setPreviewListing(row)}
       />
@@ -212,6 +243,8 @@ export default function Listings() {
             <button className="btn btn-sm btn-secondary" onClick={() => setPreviewListing(null)}>Schließen</button>
           </div>
           <div className="panel-body">
+            <MarketingPanel key={`marketing-${previewListing.id}`} listingId={previewListing.id} />
+            <ChannelPanel key={previewListing.id} sourceId={previewListing.id} mode="listing" />
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
               {Object.entries(PORTAL_TEMPLATES).map(([key, tmpl]) => (
                 <button
@@ -226,7 +259,7 @@ export default function Listings() {
               padding: '1rem',
               borderRadius: '6px',
               whiteSpace: 'pre-wrap',
-              fontSize: '0.9rem',
+              fontSize: 'var(--text-base)',
               lineHeight: 1.6,
               maxHeight: '400px',
               overflow: 'auto',

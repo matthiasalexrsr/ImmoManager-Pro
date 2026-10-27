@@ -1,0 +1,29 @@
+Source files: org/xmlunit/xpath/XPathEngine.java, org/xmlunit/xpath/package-info.java, org/xmlunit/xpath/JAXPXPathEngine.java, org/xmlunit/input/WhitespaceStrippedSource.java, org/xmlunit/input/ElementContentWhitespaceStrippedSource.java, org/xmlunit/input/CommentLessSource.java, org/xmlunit/input/package-info.java, org/xmlunit/input/WhitespaceNormalizedSource.java, org/xmlunit/input/NormalizedSource.java, org/xmlunit/package-info.java, org/xmlunit/XMLUnitException.java, org/xmlunit/validation/Validator.java, org/xmlunit/validation/JAXPValidator.java, org/xmlunit/validation/package-info.java, org/xmlunit/validation/ValidationHandler.java, org/xmlunit/validation/Languages.java, org/xmlunit/validation/ParsingValidator.java, org/xmlunit/validation/ValidationProblem.java, org/xmlunit/validation/ValidationResult.java, org/xmlunit/diff/Comparison.java, org/xmlunit/diff/Diff.java, org/xmlunit/diff/DefaultConditionalSelectorBuilder.java, org/xmlunit/diff/RecursiveXPathBuilder.java, org/xmlunit/diff/AbstractDifferenceEngine.java, org/xmlunit/diff/ComparisonControllers.java, org/xmlunit/diff/ElementSelector.java, org/xmlunit/diff/ComparisonListener.java, org/xmlunit/diff/DifferenceEngine.java, org/xmlunit/diff/package-info.java, org/xmlunit/diff/ComparisonController.java, org/xmlunit/diff/ComparisonResult.java, org/xmlunit/diff/ComparisonListenerSupport.java, org/xmlunit/diff/ComparisonType.java, org/xmlunit/diff/DefaultNodeMatcher.java, org/xmlunit/diff/MultiLevelByNameAndTextSelector.java, org/xmlunit/diff/DefaultComparisonFormatter.java, org/xmlunit/diff/NodeMatcher.java, org/xmlunit/diff/DifferenceEvaluators.java, org/xmlunit/diff/ChildNodeXPathContextProvider.java, org/xmlunit/diff/DifferenceEvaluator.java, org/xmlunit/diff/Difference.java, org/xmlunit/diff/ElementSelectors.java, org/xmlunit/diff/DOMDifferenceEngine.java, org/xmlunit/diff/XPathContext.java, org/xmlunit/diff/ByNameAndTextRecSelector.java, org/xmlunit/diff/NodeFilters.java, org/xmlunit/util/IterableNodeList.java, org/xmlunit/util/IsNullPredicate.java, org/xmlunit/util/DocumentBuilderFactoryConfigurer.java, org/xmlunit/util/Predicate.java, org/xmlunit/util/Nodes.java, org/xmlunit/util/package-info.java, org/xmlunit/util/Mapper.java, org/xmlunit/util/TransformerFactoryConfigurer.java, org/xmlunit/util/Convert.java, org/xmlunit/util/XPathFactoryConfigurer.java, org/xmlunit/util/Linqy.java, org/xmlunit/ConfigurationException.java, org/xmlunit/transform/package-info.java, org/xmlunit/transform/Transformation.java, org/xmlunit/builder/Transform.java, org/xmlunit/builder/package-info.java, org/xmlunit/builder/javax_jaxb/package-info.java, org/xmlunit/builder/AbstractTransformationBuilder.java, org/xmlunit/builder/Input.java, org/xmlunit/builder/TransformationBuilderBase.java
+/*
+  This file is licensed to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
+
+Source files: org/xmlunit/diff/ComparisonFormatter.java, org/xmlunit/builder/JaxbBuilderFactory.java, org/xmlunit/builder/JaxbBuilder.java, org/xmlunit/builder/javax_jaxb/JavaxJaxbBuilder.java, org/xmlunit/builder/javax_jaxb/DefaultJaxbBuilderFactory.java, org/xmlunit/builder/JaxbBuilderFactoryLocator.java, org/xmlunit/builder/DifferenceEngineConfigurer.java, org/xmlunit/builder/DiffBuilder.java
+/*
+  This file is licensed to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+ */

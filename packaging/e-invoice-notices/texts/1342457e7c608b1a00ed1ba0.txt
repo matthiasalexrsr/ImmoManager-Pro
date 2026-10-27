@@ -1,0 +1,19 @@
+Source files: org/apache/batik/extension/ExtensionElement.java, org/apache/batik/extension/svg/FlowExtTextLayoutFactory.java, org/apache/batik/extension/svg/FlowRegionElement.java, org/apache/batik/extension/svg/HistogramRed.java, org/apache/batik/extension/svg/BatikRegularPolygonElementBridge.java, org/apache/batik/extension/svg/FlowExtTextNode.java, org/apache/batik/extension/svg/FlowLineElement.java, org/apache/batik/extension/svg/BatikHistogramNormalizationElementBridge.java, org/apache/batik/extension/StylableExtensionElement.java, org/apache/batik/extension/svg/BatikStarElement.java, org/apache/batik/extension/svg/RegionInfo.java, org/apache/batik/extension/svg/BatikStarElementBridge.java, org/apache/batik/extension/svg/FlowParaElement.java, org/apache/batik/extension/svg/FlowDivElement.java, org/apache/batik/extension/svg/BatikBridgeExtension.java, org/apache/batik/extension/PrefixableStylableExtensionElement.java, org/apache/batik/extension/svg/GlyphIterator.java, org/apache/batik/extension/svg/BatikHistogramNormalizationFilter8Bit.java, org/apache/batik/extension/svg/LineInfo.java, org/apache/batik/extension/svg/BatikDomExtension.java, org/apache/batik/extension/svg/BatikHistogramNormalizationFilter.java, org/apache/batik/extension/svg/FlowRegionBreakElement.java, org/apache/batik/extension/svg/BatikRegularPolygonElement.java, org/apache/batik/extension/svg/MarginInfo.java, org/apache/batik/extension/GraphicsExtensionElement.java, org/apache/batik/extension/svg/FlowSpanElement.java, org/apache/batik/extension/svg/ColorSwitchBridge.java, org/apache/batik/extension/svg/ColorSwitchElement.java, org/apache/batik/extension/svg/BatikExtConstants.java, org/apache/batik/extension/svg/BatikFlowTextElementBridge.java, org/apache/batik/extension/svg/FlowExtGlyphLayout.java, org/apache/batik/extension/svg/BatikHistogramNormalizationElement.java, org/apache/batik/extension/svg/FlowExtTextPainter.java, org/apache/batik/extension/svg/FlowTextElement.java
+/*
+
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+ */

@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import pdfjsAssets from './scripts/pdfjsAssets.mjs'
+import productAssets from './scripts/productAssets.mjs'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), pdfjsAssets(), productAssets()],
   server: {
     port: 3000,
     proxy: {
@@ -30,6 +32,8 @@ export default defineConfig({
     },
   },
   test: {
+    maxWorkers: 4,
+    testTimeout: 15000,
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',

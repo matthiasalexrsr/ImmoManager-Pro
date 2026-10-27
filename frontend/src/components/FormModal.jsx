@@ -1,46 +1,304 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { Link, useInRouterContext, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { CloseIcon } from './Icons';
+import { codeLabel } from '../utils/codeLabels';
+import { onlyChoices, prerequisiteFor } from '../utils/prerequisites';
+import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import { formContext } from '../utils/workspaceClient';
+import useFormDraft from '../hooks/useFormDraft';
+import useWorkspaceLocation from '../hooks/useWorkspaceLocation';
+import { fieldValidationErrors, labelledMessage } from '../utils/formValidationFeedback';
+import './workspace.css';
+import DuplicateHints from './DuplicateHints';
+import DraftDefaults from './DraftDefaults';
+import UnsavedNavigationGuard, { NavigationScopeNotice } from './UnsavedNavigationGuard';
+import { navigationDiscardLabel } from './navigationProtectionContext';
+import { aiGroupClass, pendingMessage, useAiMarks } from '../features/aiReading/aiMarks';
+import { AiFieldNote, AiFormSummary, AiMarkChip } from '../features/aiReading/AiFieldMarks';
 
-export default function FormModal({ title, fields, initial, onSave, onClose }) {
-  const { t } = useTranslation();
-  const [values, setValues] = useState({});
+const isBooleanSelect = f => f.type === 'select' && f.options?.length === 2
+  && f.options.every(o => o.value === 'true' || o.value === 'false');
+
+// Selects hold strings: true/false and numbers come back as 'true'/'false'/'12'.
+const toFieldValue = (f, v) => (f.type === 'select' && (typeof v === 'boolean' || typeof v === 'number') ? String(v) : v);
+
+// Today as the date input writes it (local calendar day, not UTC: 00:30 on the 1st is still the 1st).
+const localToday = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+// Long forms get two columns; free text and explicitly wide fields span both.
+const WIDE_FORM_FIELDS = 8;
+const spansRow = f => f.full || f.type === 'textarea';
+// In two columns, full-width fields (notes, descriptions) go last so the pairs above stay aligned.
+const ordered = list => [...list.filter(f => !spansRow(f)), ...list.filter(spansRow)];
+
+// repeatKeep: for a new record, offer "Speichern & weiteren" and keep these fields for the next
+// entry (a series of bookings on one account, readings of one day); every other field starts over.
+// aiMarks: values read from a document ({ fields: {key: {value, evidence, confidence}}, mode, document, label }).
+// In mode 'confirm' each of them is confirmed (or changed) before saving; in mode 'mark' they, the values the
+// person changed and the ones added are only marked. The marks belong to this form and are not saved.
+export default function FormModal({ title, fields, initial, onSave, onClose, repeatKeep, draftContext, draftAnchor, autosave = true,
+  onSaveNext, saveNextLabel = 'Speichern & nächster Beleg', onDraftRebase, derive, aiMarks }) {
+  const { t, locale } = useTranslation();
+  const location = useWorkspaceLocation();
+  const context = draftContext || formContext(location.pathname);
+  const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
+  // Inline prefill objects are recreated by several callers; that is not a new form.
+  const initialKey = initial?.id != null ? `record:${initial.id}` : `prefill:${JSON.stringify(initial ?? null)}`;
+  const [values, setValues] = useState(() => Object.fromEntries(fields.map(f =>
+    [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
+  const [startValues] = useState(() => Object.fromEntries(fields.map(f => [f.key, toFieldValue(f, initial?.[f.key] ?? f.default ?? '')])));
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [saveFailure, setSaveFailure] = useState(false);
+  const [confirmDraftDiscard, setConfirmDraftDiscard] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Typed input is never thrown away silently: closing an edited form asks first.
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const repeatable = Array.isArray(repeatKeep) && initial?.id == null;
+  const [savedCount, setSavedCount] = useState(0);
+  const draft = useFormDraft({ fields, initial, enabled: autosave, context, anchor: draftAnchor });
+  const sessionKey = `${draft.sessionKey}:${initialKey}`;
+  // Loading an extra field changes the draft schema, not the record being edited.
+  const owner = useAuth()?.user?.id;
+  const formIdentity = `${owner || ''}:${context}:${initialKey}:${draftAnchor?.kind || ''}:${draftAnchor?.id || ''}`;
+  const [recoverySource, setRecoverySource] = useState(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const draftWaiting = draft.enabled && (draft.status === 'loading' || Boolean(draft.recovery));
+  const fieldDisabled = saving || draftWaiting || draftBusy || (draft.enabled && !draft.ready);
   const modalRef = useRef(null);
+  // The control that opened the form ("Neu", "Bearbeiten") gets the keyboard back when it closes
+  // (WCAG 2.4.3); read during the first render, before the form takes the focus.
+  const [opener] = useState(() => (typeof document === 'undefined' ? null : document.activeElement));
+  useEffect(() => {
+    const box = modalRef.current;
+    return () => {
+      const current = document.activeElement;
+      const lost = !current || current === document.body || !current.isConnected || box?.contains(current);
+      if (lost && opener instanceof HTMLElement && opener !== document.body && opener.isConnected) opener.focus();
+    };
+  }, [opener]);
+  const touchedRef = useRef(new Set());     // fields the user set by hand (derived values leave them alone)
+  const formRef = useRef(null);
+  const errorRef = useRef(null);
+  const restoreFocusRef = useRef(false);
+  const draftDiscardRef = useRef(null);
+  const againRef = useRef(null);
+  const pressStartedOnOverlay = useRef(false);
+  const sessionRef = useRef({ key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at });
+  const activeSession = useRef(null);
+  const savingRef = useRef(false);
+  const leaveRef = useRef(null);
+  const leaveFocusRef = useRef(null);
+  const discardCancelRef = useRef(null);
+  const restoreLeaveFocusRef = useRef(false);
+  const unloadRef = useRef(null);
+  const allowRouteLeaveRef = useRef(false);
+  const routeResetRef = useRef(null);
+  const discardClearingRef = useRef(false);
+  const draftBusyRef = useRef(false);
+  useLayoutEffect(() => { draftBusyRef.current = draftBusy; }, [draftBusy]);
+  const pendingNavigation = useCallback(() => savingRef.current || draftBusyRef.current, []);
+  const [routeBusy, setRouteBusy] = useState(false);
+  const [routeScopes, setRouteScopes] = useState([]);
+  const routeBlocked = useCallback(request => {
+    if (request.cancelled || request.pending) {
+      routeResetRef.current = null;
+      leaveRef.current = null;
+      setConfirmDiscard(false);
+      setRouteScopes([]);
+      if (request.pending) setRouteBusy(true);
+      return;
+    }
+    routeResetRef.current = request.reset;
+    setRouteScopes(request.scopeLabels || []);
+    leaveRef.current = request.proceed;
+    leaveFocusRef.current = modalRef.current?.contains(document.activeElement) ? document.activeElement : null;
+    setConfirmDiscard(true);
+  }, []);
+  useEffect(() => { if (!saving) setRouteBusy(false); }, [saving]);
+  useLayoutEffect(() => {
+    activeSession.current = sessionKey;
+    return () => { activeSession.current = null; };
+  }, [sessionKey]);
+  const isCurrentSession = () => activeSession.current === sessionKey;
 
   useEffect(() => {
-    const init = {};
-    fields.forEach(f => {
-      init[f.key] = initial?.[f.key] ?? f.default ?? '';
+    const changedRecord = sessionRef.current.formIdentity !== formIdentity;
+    sessionRef.current.key = sessionKey;
+    if (changedRecord) {
+      sessionRef.current = { key: sessionKey, formIdentity, id: initial?.id, updatedAt: initial?.updated_at };
+      setError(null);
+      setFieldErrors({});
+      setSaveFailure(false);
+      setConfirmDraftDiscard(false);
+      touchedRef.current = new Set();
+      restoreFocusRef.current = false;
+      setDirty(false);
+      setConfirmDiscard(false);
+      leaveRef.current = null;
+      leaveFocusRef.current = null;
+      restoreLeaveFocusRef.current = false;
+      savingRef.current = false; setSaving(false); setDraftBusy(false); setRecoverySource(null);
+    }
+    setValues(current => {
+      const addedFields = fields.filter(f => !Object.prototype.hasOwnProperty.call(current, f.key));
+      if (!changedRecord && addedFields.length === 0) return current;
+      const next = changedRecord ? {} : { ...current };
+      (changedRecord ? fields : addedFields).forEach(f => {
+        next[f.key] = toFieldValue(f, initial?.[f.key] ?? f.default ?? '');
+      });
+      return next;
     });
-    setValues(init);
-  }, [initial, fields]);
+  }, [sessionKey, formIdentity, initial, fields]);
 
-  // Escape key to close
+  useEffect(() => {
+    if (dirty && draft.ready && !draft.recovery) draft.stage(values);
+    // A changed schema gets its own private writer after preparation. Keep the
+    // current edits; ordinary typing is already staged synchronously by update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.sessionKey, draft.ready]);
+
+  // A required choice with one possibility is made already (the only portfolio, property or
+  // account); it does not count as an edit, so closing still needs no confirmation.
+  useEffect(() => {
+    const picks = onlyChoices(fields, values);
+    if (Object.keys(picks).length) setValues(current => ({ ...current, ...picks }));
+  }, [fields, values]);
+
+  // after "Speichern & weiteren": continue in the first required field that starts over
+  // (the amount of the next booking), else in the first field that starts over
+  useEffect(() => {
+    if (!savedCount) return;
+    const keep = new Set(repeatKeep);
+    const cleared = fields.filter(f => f.type !== 'hidden' && !keep.has(f.key));
+    const next = cleared.find(f => f.required) || cleared[0];
+    const element = next && modalRef.current?.querySelector(`#form-field-${next.key}`);
+    (element || modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea)'))?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedCount]);
+
+  // A failed save must be announced and reachable by keyboard, including for long forms.
+  useEffect(() => { if (saveFailure && error) errorRef.current?.focus(); }, [saveFailure, error]);
+
+  // Resuming a stored draft returns the keyboard to the restored inputs, not the action button.
+  useEffect(() => {
+    if (!restoreFocusRef.current || fieldDisabled || draft.recovery || confirmDraftDiscard) return;
+    restoreFocusRef.current = false;
+    modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus();
+  }, [fieldDisabled, draft.recovery, confirmDraftDiscard]);
+
+  const update = (key, value, extra) => {
+    setFieldErrors(current => {
+      if (!current[key] && !Object.keys(extra || {}).some(other => current[other])) return current;
+      const nextErrors = { ...current };
+      delete nextErrors[key];
+      Object.keys(extra || {}).forEach(other => { delete nextErrors[other]; });
+      return nextErrors;
+    });
+    setDirty(true);
+    setConfirmDiscard(false);
+    touchedRef.current.add(key);
+    let next = { ...values, [key]: value, ...extra };
+    // values that follow from others (e.g. gross from net and VAT) until the user sets them by hand
+    if (derive) next = { ...next, ...derive(next, key, touchedRef.current) };
+    draft.stage(next);
+    setValues(next);
+  };
+
+  const requestLeave = useCallback(action => {
+    if (savingRef.current) return;
+    if (dirty) {
+      setRouteScopes([]);
+      leaveRef.current = () => { allowRouteLeaveRef.current = true; action(); };
+      leaveFocusRef.current = modalRef.current?.contains(document.activeElement) ? document.activeElement : null;
+      setConfirmDiscard(true);
+    } else { allowRouteLeaveRef.current = true; action(); }
+  }, [dirty]);
+
+  const cancelDiscard = useCallback(() => {
+    if (discardClearingRef.current) return;
+    routeResetRef.current?.();
+    routeResetRef.current = null;
+    leaveRef.current = null;
+    restoreLeaveFocusRef.current = true;
+    setConfirmDiscard(false);
+  }, []);
+
+  const cancelRecoveredDiscard = useCallback(() => {
+    setConfirmDraftDiscard(false);
+    draftDiscardRef.current?.focus();
+  }, []);
+
+  // The discard question replaces footer controls: restore focus after React puts them back.
+  useLayoutEffect(() => {
+    if (confirmDiscard) { discardCancelRef.current?.focus(); return; }
+    if (!restoreLeaveFocusRef.current) return;
+    restoreLeaveFocusRef.current = false;
+    const target = leaveFocusRef.current;
+    leaveFocusRef.current = null;
+    if (target?.isConnected && !target.disabled) target.focus();
+    else modalRef.current?.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)')?.focus();
+  }, [confirmDiscard]);
+
+  const requestClose = useCallback(() => {
+    requestLeave(onClose);
+  }, [requestLeave, onClose]);
+
+  // Reloading or closing the browser also protects an unsaved draft.
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
+    unloadRef.current = beforeUnload;
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => { window.removeEventListener('beforeunload', beforeUnload); if (unloadRef.current === beforeUnload) unloadRef.current = null; };
+  }, [dirty, saving]);
+
+  // Escape closes (or asks first); a second Escape on the question returns to editing.
+  // Ctrl/Cmd+Enter saves from any field, including multi-line notes.
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        e.preventDefault();
+        if (confirmDraftDiscard) {
+          if (!draftBusy) cancelRecoveredDiscard();
+        } else if (confirmDiscard) cancelDiscard();
+        else requestClose();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && modalRef.current?.contains(document.activeElement)) {
+        e.preventDefault();
+        if (savingRef.current || confirmDiscard || confirmDraftDiscard || draftBusy) return;
+        // Ctrl+Shift+Enter: save and start the next entry
+        if (e.shiftKey && repeatable) againRef.current?.click();
+        else formRef.current?.requestSubmit();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [requestClose, confirmDiscard, confirmDraftDiscard, draftBusy, cancelDiscard, cancelRecoveredDiscard, repeatable]);
 
   // Focus trap
   useEffect(() => {
     const modal = modalRef.current;
     if (!modal) return;
-    const focusable = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    const query = () => modal.querySelectorAll(
+      'button:not(:disabled), [href], input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not(:disabled)'
     );
-    if (focusable.length > 0) focusable[0].focus();
+    const focusable = query();
+    // Start in the first field to fill in, not on the close button in the header.
+    const firstField = modal.querySelector('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)');
+    if (focusable.length > 0 && !modal.contains(document.activeElement)) (firstField || focusable[0]).focus();
 
     const trapFocus = (e) => {
-      if (e.key !== 'Tab' || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      // the footer swaps its buttons for the discard question, so look the controls up each time
+      const current = query();
+      if (e.key !== 'Tab' || current.length === 0) return;
+      const first = current[0];
+      const last = current[current.length - 1];
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last.focus();
@@ -51,12 +309,45 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
     };
     modal.addEventListener('keydown', trapFocus);
     return () => modal.removeEventListener('keydown', trapFocus);
-  }, [fields]);
+  }, [fields, confirmDiscard]);
 
-  const handleSubmit = async (e) => {
+  const aiForm = useAiMarks(aiMarks, values, startValues);
+  const visibleFields = fields.filter(f => f.type !== 'hidden');
+  const aiPending = aiForm.pending(visibleFields.map(f => f.key));
+  const aiFilled = aiForm.filled(visibleFields.map(f => f.key));
+  const confirmAi = keys => {
+    aiForm.confirm(keys);
+    setFieldErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
+  };
+
+  const handleSubmit = async (e, again = false, next = false) => {
     e.preventDefault();
+    if (savingRef.current || confirmDiscard || confirmDraftDiscard || draftWaiting || draft.status === 'changed' || draftBusy) return;
+    if (aiPending.length) {
+      // values read from a document are the person's decision: each one is looked at before it is saved
+      setFieldErrors(Object.fromEntries(aiPending.map(key => [key, ['Von der KI eingetragen – bitte bestätigen oder ändern.']])));
+      setError(pendingMessage(aiPending.map(key => fields.find(f => f.key === key).label)));
+      setSaveFailure(false);
+      modalRef.current?.querySelector(`#form-field-${CSS.escape(aiPending[0])}`)?.focus();
+      return;
+    }
+    // the browser's own checks (required fields) apply to "Speichern & weiteren" as well
+    if ((again || next) && !formRef.current?.reportValidity()) return;
+    const validationErrors = Object.fromEntries(fields.flatMap(field => {
+      const message = field.validate?.(values[field.key], values);
+      return message ? [[field.key, [message]]] : [];
+    }));
+    if (Object.keys(validationErrors).length) {
+      setFieldErrors(validationErrors);
+      setError(Object.entries(validationErrors).map(([key, messages]) => `${fields.find(field => field.key === key).label}: ${messages.join(' · ')}`).join(' · '));
+      setSaveFailure(true);
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     setError(null);
+    setFieldErrors({});
+    setSaveFailure(false);
     try {
       const cleaned = {};
       fields.forEach(f => {
@@ -69,75 +360,240 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
           }
         } else if (v === '') {
           v = f.required ? v : null;
+        } else if (isBooleanSelect(f)) {
+          v = v === 'true';
         }
         cleaned[f.key] = v;
       });
-      await onSave(cleaned);
+      // the state the record was opened in: the server refuses to save over someone else's newer change
+      if (sessionRef.current.id && sessionRef.current.updatedAt) cleaned.updated_at = sessionRef.current.updatedAt;
+      await (next ? onSaveNext(cleaned) : onSave(cleaned));
+      if (!isCurrentSession()) return;
+      // The domain save succeeded. Cleanup failure must never re-submit it.
+      await draft.clear({ completed: true }).catch(() => {});
+      if (!isCurrentSession()) return;
+      // The write succeeded: disarm the browser's dirty-form guard BEFORE
+      // notifying the caller. React's effect cleanup after setDirty(false)
+      // might otherwise lag behind onClose and prompt again on navigation.
+      if (unloadRef.current) {
+        window.removeEventListener('beforeunload', unloadRef.current);
+        unloadRef.current = null;
+      }
+      setDirty(false);
+      if (next) return;
+      if (again) {
+        const keep = new Set(repeatKeep);
+        touchedRef.current = new Set();
+        setValues(current => Object.fromEntries(fields.map(f => [f.key,
+          keep.has(f.key) ? current[f.key] : toFieldValue(f, f.default ?? '')])));
+        setSavedCount(count => count + 1);
+        return;
+      }
+      allowRouteLeaveRef.current = true;
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (isCurrentSession()) {
+        setError(labelledMessage(err?.message, fields) || tr('ui.form.saveFailed', 'Speichern fehlgeschlagen.'));
+        setFieldErrors(fieldValidationErrors(err, fields));
+        setSaveFailure(true);
+      }
     } finally {
-      setSaving(false);
+      if (isCurrentSession()) { savingRef.current = false; setSaving(false); }
     }
   };
 
+  const wide = fields.filter(f => f.type !== 'hidden').length >= WIDE_FORM_FIELDS;
+  const arrange = wide ? ordered : list => list;
+
   return (
-    <div className="modal-overlay" onClick={onClose} role="presentation">
+    // Only a click that starts and ends on the backdrop closes: selecting text in a field
+    // and releasing the mouse outside the dialog must not end the form.
+    <div className="modal-overlay" role="presentation"
+      onMouseDown={e => { pressStartedOnOverlay.current = e.target === e.currentTarget; }}
+      onClick={e => { if (pressStartedOnOverlay.current && e.target === e.currentTarget) requestClose(); pressStartedOnOverlay.current = false; }}>
+      <UnsavedNavigationGuard when={dirty || saving || draftBusy} pending={pendingNavigation}
+        holdRef={discardClearingRef} bypassRef={allowRouteLeaveRef} onBlocked={routeBlocked} label={title} />
       <div
-        className="modal"
+        className={`modal${wide ? ' modal-wide' : ''}`}
         ref={modalRef}
-        onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="modal-header">
           <h3>{title}</h3>
-          <button onClick={onClose} className="btn-close" aria-label={t('ui.buttons.close')}>
+          <button type="button" onClick={requestClose} className="btn-close" aria-label={t('ui.buttons.close')}>
             <CloseIcon size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit}>
           <div className="modal-body">
-            {error && <div className="alert-error" role="alert">{error}</div>}
+            {routeBusy && <p role="alert">Ein Speichervorgang läuft noch. Bitte warten Sie auf das Ergebnis, bevor Sie das Formular verlassen.</p>}
+            {error && <div className="alert-error form-error-feedback" role="alert" tabIndex={-1} ref={errorRef}>
+              <p>{error}</p>
+              {saveFailure && <>
+                <p>{tr('ui.form.saveFailedKeepInput', 'Ihre Eingaben bleiben erhalten. Prüfen Sie den Fehler und versuchen Sie es erneut.')}</p>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => {
+                  const inputs = [...(modalRef.current?.querySelectorAll('.modal-body :is(input:not([type="hidden"]), select, textarea):not(:disabled)') || [])];
+                  (inputs.find(input => fields.some(f => fieldErrors[f.key] && input.id === `form-field-${f.key}`)) || inputs[0])?.focus();
+                }}>
+                  {tr('ui.form.reviewInputs', 'Eingaben prüfen')}
+                </button>
+              </>}
+            </div>}
+            <AiFormSummary aiMarks={aiMarks} filled={aiFilled} pending={aiPending} onConfirmAll={() => confirmAi(aiPending)} disabled={fieldDisabled} />
+            {initial?.id == null && ['contracts', 'bookings'].includes(context) && <DraftDefaults
+              context={context} propertyId={values.property_id} disabled={fieldDisabled}
+              onApply={defaults => { const next = { ...values }; for (const [key, value] of Object.entries(defaults)) if (fields.some(field => field.key === key) && !next[key]) next[key] = value; setValues(next); setDirty(true); draft.stage(next); }} />}
+            <DuplicateHints values={values} initial={initial} context={draftContext} />
+            {draft.enabled && <div className="draft-status" role="status">
+              {draft.status === 'loading' ? 'Gespeicherte Entwürfe werden geprüft …'
+                : draft.status === 'saving' || draft.status === 'pending' ? 'Entwurf wird gesichert …'
+                  : draft.status === 'saved' ? 'Entwurf automatisch gesichert'
+                    : draft.status === 'ready' ? 'Eingaben werden automatisch als Entwurf gesichert.' : ''}
+            </div>}
+            {draft.error && <div className="alert-error" role="alert">{draft.error}<button type="button" className="btn btn-sm btn-secondary" onClick={draft.retry}>Sicherung erneut versuchen</button></div>}
+            {(draft.recovery || draft.status === 'changed') && <section className="draft-recovery" aria-label="Entwurf wiederaufnehmen">
+              <strong>{draft.recovery ? 'Ungespeicherter Entwurf vorhanden' : 'Der Datensatz wurde zwischenzeitlich geändert.'}</strong>
+              <p>{draft.recovery?.source_state?.status === 'deleted' ? 'Die ursprüngliche Akte wurde gelöscht. Der Entwurf bleibt zur Einsicht erhalten.' : 'Prüfen Sie die Eingaben vor der Übernahme. Die Übernahme speichert ausschließlich den Entwurf.'}</p>
+              {draft.recovery?.source_state?.status === 'deleted' && <details open><summary>Entwurfsinhalt prüfen und kopieren</summary><dl>{fields.filter(f => f.type !== 'hidden').map(f => <div key={f.key}><dt>{f.label}</dt><dd>{String(draft.recovery.values?.[f.key] ?? '—')}</dd></div>)}</dl></details>}
+              {draft.recovery?.server_values && <details><summary>Abweichenden Serverentwurf anzeigen</summary><dl>{fields.filter(f => f.type !== 'hidden').map(f => <div key={f.key}><dt>{f.label}</dt><dd>{String(draft.recovery.server_values[f.key] ?? '—')}</dd></div>)}</dl></details>}
+              {recoverySource?.contextOnly && <p>Die zugehörige Akte „{recoverySource.title}“ wurde aktualisiert. Prüfen Sie die Notiz und ihre Zuordnung, bevor Sie den Entwurf auf diesen Stand übernehmen.</p>}
+              {recoverySource && !recoverySource.contextOnly && <div className="table-scroll"><table className="data-table"><thead><tr><th>Feld</th><th>Aktueller Datensatz</th><th>Entwurf</th></tr></thead><tbody>{fields.filter(f => f.type !== 'hidden' && String(recoverySource.values[f.key] ?? '') !== String((draft.recovery?.values || values)[f.key] ?? '')).map(f => <tr key={f.key}><th>{f.label}</th><td>{String(recoverySource.values[f.key] ?? '—')}</td><td>{String((draft.recovery?.values || values)[f.key] ?? '—')}</td></tr>)}</tbody></table></div>}
+              <div className="workspace-actions">
+                {draft.recovery?.source_state?.status !== 'deleted' && <button type="button" className="btn btn-secondary" disabled={draftBusy} onClick={async () => {
+                  setDraftBusy(true); setError(null);
+                  try {
+                    const source = draft.recovery?.source;
+                    const changed = draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed';
+                    if (changed && !recoverySource) {
+                      const reference = source || draft.recovery?.anchor || draftAnchor;
+                      if (!reference?.kind || !reference?.id) throw new Error('Die geänderte Quellakte ist nicht mehr eindeutig. Bitte das Formular erneut öffnen; der Entwurf bleibt erhalten.');
+                      const fresh = await api.get(`/workspace/source/${encodeURIComponent(reference.kind)}/${encodeURIComponent(reference.id)}`);
+                      if (!isCurrentSession()) return;
+                      setRecoverySource({ ...fresh, values: fresh.values || {}, contextOnly: !source });
+                      return;
+                    }
+                    const restored = Object.fromEntries(fields.map(f => [f.key, toFieldValue(f, (draft.recovery?.values || values)[f.key] ?? f.default ?? '')]));
+                    await draft.resume(restored, recoverySource?.revision, recoverySource?.dependency_etags);
+                    if (!isCurrentSession()) return;
+                    if (recoverySource) {
+                      if (!recoverySource.contextOnly) sessionRef.current.updatedAt = recoverySource.revision;
+                      onDraftRebase?.(recoverySource);
+                    }
+                    setValues(restored); setDirty(true); setRecoverySource(null); setConfirmDraftDiscard(false); restoreFocusRef.current = true; draft.stage(restored);
+                  } catch (failure) { if (isCurrentSession()) { setError(failure.message); if (failure.statusCode === 409) setRecoverySource(null); } }
+                  finally { if (isCurrentSession()) setDraftBusy(false); }
+                }}>{recoverySource ? 'Verglichenen Entwurf übernehmen' : draft.status === 'changed' || draft.recovery?.source_state?.status === 'changed' ? 'Aktuellen Stand vergleichen' : 'Entwurf wiederaufnehmen'}</button>}
+                <button ref={draftDiscardRef} type="button" className="btn btn-ghost" disabled={draftBusy}
+                  aria-expanded={confirmDraftDiscard} aria-controls={confirmDraftDiscard ? 'form-draft-discard-confirm' : undefined}
+                  onClick={() => setConfirmDraftDiscard(true)}>{tr('ui.form.discardDraft', 'Entwurf verwerfen')}</button>
+              </div>
+              {confirmDraftDiscard && <div id="form-draft-discard-confirm" className="draft-discard-confirm" role="group" aria-label={tr('ui.form.confirmRecoveredDiscard', 'Entwurf verwerfen bestätigen')}>
+                <p role="alert">{tr('ui.form.recoveredDiscardWarning', 'Wiedergefundenen Entwurf endgültig verwerfen? Die ungespeicherten Eingaben gehen verloren.')}</p>
+                <div className="workspace-actions">
+                  <button type="button" className="btn btn-secondary" autoFocus disabled={draftBusy}
+                    onClick={cancelRecoveredDiscard}>{tr('ui.form.keepRecoveredDraft', 'Entwurf behalten')}</button>
+                  <button type="button" className="btn btn-danger" disabled={draftBusy} onClick={async () => {
+                    setDraftBusy(true); setError(null);
+                    try { await draft.clear(); if (isCurrentSession()) { restoreFocusRef.current = true; setRecoverySource(null); setConfirmDraftDiscard(false); } }
+                    catch (failure) { if (isCurrentSession()) { setError(failure.message); setConfirmDraftDiscard(false); } }
+                    finally { if (isCurrentSession()) setDraftBusy(false); }
+                  }}>{tr('ui.form.discardRecoveredDraft', 'Endgültig verwerfen')}</button>
+                </div>
+              </div>}
+            </section>}
+            {savedCount > 0 && !error && (
+              <div className="form-saved-next" role="status">
+                {tr('ui.form.savedNext', '{{count}} gespeichert – nächster Eintrag').replace('{{count}}', savedCount)}
+              </div>
+            )}
             {(() => {
               const renderField = (f) => {
                 if (f.type === 'hidden') {
                   return <input type="hidden" key={f.key} name={f.key} value={values[f.key] || ''} />;
                 }
                 const inputId = `form-field-${f.key}`;
+                const fieldErrorId = fieldErrors[f.key] ? `form-error-${f.key}` : undefined;
+                const hintId = f.hint ? `form-hint-${f.key}` : undefined;
+                const descriptionIds = [fieldErrorId, hintId].filter(Boolean).join(' ') || undefined;
+                const options = typeof f.options === 'function' ? f.options(values) : f.options;
+                const FieldComponent = f.component;
+                const ai = aiForm.state(f.key);
+                const aiMark = aiForm.mark(f.key);
                 return (
-                  <div key={f.key} className="form-group">
-                    <label htmlFor={inputId}>{f.label}{f.required && ' *'}</label>
-                    {f.type === 'select' ? (
+                  <div key={f.key} className={`form-group${spansRow(f) ? ' form-group-full' : ''}${aiGroupClass(ai)}`}>
+                    <label htmlFor={inputId}>{f.label}{f.required && ' *'}
+                      <AiMarkChip state={ai} mark={aiMark} /></label>
+                    {FieldComponent ? <FieldComponent id={inputId} value={values[f.key] ?? ''}
+                      onChange={value => update(f.key, value)} disabled={fieldDisabled}
+                      aria-invalid={fieldErrorId ? true : undefined} aria-describedby={descriptionIds} /> : f.type === 'select' ? (
                       <select
                         id={inputId}
-                        value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={descriptionIds}
+                        value={values[f.key] ?? ''}
+                        onChange={e => update(f.key, e.target.value,
+                          Object.fromEntries((f.clearOnChange || []).map(key => [key, ''])))}
                         required={f.required}
+                        disabled={fieldDisabled}
                       >
-                        <option value="">{t('ui.form.pleaseSelect')}</option>
-                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {/* a list with its own empty choice ("— Keine —", "Automatisch …") needs no second one */}
+                        {!options?.some(o => o.value === '') && <option value="">{t('ui.form.pleaseSelect')}</option>}
+                        {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {/* A stored value the list does not offer (imported, older data) stays selectable instead of being lost. */}
+                        {values[f.key] !== '' && values[f.key] != null && !options?.some(o => String(o.value) === String(values[f.key])) && (
+                          <option value={values[f.key]}>{codeLabel(String(values[f.key]))}</option>
+                        )}
                       </select>
                     ) : f.type === 'textarea' ? (
                       <textarea
                         id={inputId}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={descriptionIds}
                         value={values[f.key] || ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => update(f.key, e.target.value)}
                         required={f.required}
+                        disabled={fieldDisabled}
                         rows={3}
                       />
+                    ) : f.type === 'date' ? (
+                      // dates: one click for today, the most common entry (booking, reading, appointment)
+                      <span className="date-input-row">
+                        <input
+                          id={inputId}
+                          aria-invalid={fieldErrorId ? true : undefined}
+                          aria-describedby={descriptionIds}
+                          type="date"
+                          value={values[f.key] ?? ''}
+                          onChange={e => update(f.key, e.target.value)}
+                          required={f.required}
+                          disabled={fieldDisabled}
+                        />
+                        {!f.noToday && <button type="button" className="btn btn-sm btn-ghost date-today"
+                          aria-label={tr('ui.form.todayFill', 'Heute eintragen')} aria-controls={inputId} disabled={fieldDisabled}
+                          onClick={() => update(f.key, localToday())}>{tr('ui.form.today', 'Heute')}</button>}
+                      </span>
                     ) : (
                       <input
                         id={inputId}
+                        aria-invalid={fieldErrorId ? true : undefined}
+                        aria-describedby={descriptionIds}
                         type={f.type || 'text'}
                         value={values[f.key] ?? ''}
-                        onChange={e => setValues({ ...values, [f.key]: e.target.value })}
+                        onChange={e => update(f.key, e.target.value)}
                         required={f.required}
-                        step={f.type === 'number' ? '0.01' : undefined}
+                        disabled={fieldDisabled}
+                        step={f.type === 'number' ? (f.step ?? '0.01') : f.step}
+                        min={f.min}
+                        max={f.max}
                         placeholder={f.placeholder}
                       />
                     )}
+                    <AiFieldNote label={f.label} state={ai} mark={aiMark} onConfirm={() => confirmAi([f.key])} disabled={fieldDisabled} />
+                    {fieldErrorId && <small id={fieldErrorId} className="form-field-error">{fieldErrors[f.key].join(' · ')}</small>}
+                    {f.hint && <small id={hintId} className="form-hint">{f.hint}</small>}
+                    <MissingChoice hint={prerequisiteFor(f, options)} requestLeave={requestLeave} />
                   </div>
                 );
               };
@@ -158,22 +614,89 @@ export default function FormModal({ title, fields, initial, onSave, onClose }) {
                 section.label ? (
                   <fieldset key={i} className="form-section">
                     <legend className="form-section-label">{section.label}</legend>
-                    {section.fields.map(renderField)}
+                    <div className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                   </fieldset>
                 ) : (
-                  <div key={i}>{section.fields.map(renderField)}</div>
+                  <div key={i} className={wide ? 'form-grid' : undefined}>{arrange(section.fields).map(renderField)}</div>
                 )
               ));
             })()}
           </div>
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
-            </button>
-          </div>
+          {confirmDiscard ? (
+            <div className="modal-footer modal-discard" role="alertdialog" aria-modal="false" aria-labelledby="form-discard-question">
+              <span id="form-discard-question" className="modal-discard-question">{tr('ui.form.discardQuestion', 'Ungespeicherte Änderungen verwerfen?')}</span>
+              <NavigationScopeNotice labels={routeScopes} locale={locale} />
+              <button ref={discardCancelRef} type="button" disabled={draftBusy || saving} onClick={cancelDiscard} className="btn btn-secondary">{tr('ui.form.keepEditing', 'Weiter bearbeiten')}</button>
+              <button type="button" disabled={draftBusy || saving} onClick={async () => {
+                if (savingRef.current) return;
+                const approvedLeave = leaveRef.current || onClose;
+                const finishLeave = () => {
+                  if (approvedLeave() !== false) { setDirty(false); setConfirmDiscard(false); }
+                };
+                // A plain prerequisite link may leave the browser page immediately.
+                // The explicit discard has already answered its unload question.
+                if (unloadRef.current) window.removeEventListener('beforeunload', unloadRef.current);
+                if (!draft.enabled) { finishLeave(); return; }
+                discardClearingRef.current = true;
+                draftBusyRef.current = true;
+                setDraftBusy(true);
+                try {
+                  await draft.clear();
+                  if (isCurrentSession()) {
+                    discardClearingRef.current = false; draftBusyRef.current = false;
+                    setDraftBusy(false); finishLeave();
+                  }
+                } catch (failure) { if (isCurrentSession()) {
+                  setError(failure.message); routeResetRef.current?.(); setConfirmDiscard(false);
+                } }
+                finally {
+                  discardClearingRef.current = false; draftBusyRef.current = false;
+                  if (isCurrentSession()) setDraftBusy(false);
+                }
+              }} className="btn btn-danger">{navigationDiscardLabel(routeScopes, locale, tr('ui.form.discard', 'Verwerfen'))}</button>
+            </div>
+          ) : (
+            <div className="modal-footer">
+              <span className="modal-shortcut-hint" aria-hidden="true">{dirty ? tr('ui.form.saveShortcut', 'Strg+Enter speichert') : ''}</span>
+              <button type="button" onClick={requestClose} className="btn btn-secondary">{t('ui.buttons.cancel')}</button>
+              {repeatable && (
+                <button ref={againRef} type="button" className="btn btn-secondary" disabled={fieldDisabled || draft.status === 'changed'}
+                  title={tr('ui.form.saveAndNewShortcut', 'Strg+Umschalt+Enter')}
+                  onClick={event => handleSubmit(event, true)}>{tr('ui.form.saveAndNew', 'Speichern & weiteren')}</button>
+              )}
+              {onSaveNext && <button type="button" className="btn btn-secondary" disabled={fieldDisabled || draft.status === 'changed'}
+                onClick={event => handleSubmit(event, false, true)}>{saveNextLabel}</button>}
+              <button type="submit" className="btn btn-primary" disabled={fieldDisabled || draft.status === 'changed'}>
+                {saving ? `${t('ui.buttons.save')}...` : t('ui.buttons.save')}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
   );
+}
+
+// Nothing to choose from yet: say what is missing and link to where it is created.
+function MissingChoice({ hint, requestLeave }) {
+  const inRouter = useInRouterContext();
+  if (!hint) return null;
+  return (
+    <small className="form-hint form-hint-missing" role="note">
+      {hint.text}{' '}
+      {inRouter ? <PrerequisiteLink hint={hint} requestLeave={requestLeave} /> : <a href={hint.to}
+        onClick={event => { if (isCurrentNavigation(event)) { event.preventDefault(); requestLeave(() => window.location.assign(hint.to)); } }}>{hint.label}</a>}
+    </small>
+  );
+}
+
+const isCurrentNavigation = event => event.button === 0 && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+
+function PrerequisiteLink({ hint, requestLeave }) {
+  const navigate = useNavigate();
+  return <Link to={hint.to} onClick={event => {
+    if (!isCurrentNavigation(event)) return;
+    event.preventDefault();
+    requestLeave(() => navigate(hint.to));
+  }}>{hint.label}</Link>;
 }

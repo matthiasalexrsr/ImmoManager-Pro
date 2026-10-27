@@ -1,0 +1,250 @@
+name: Release (Windows)
+
+# A version tag (v2.0.0, v2.1.0-rc1 …) builds the Windows package of the app, tries it like a user
+# would (first start, sign-in page, explicit upgrade check, verified backup, restore probe, and the
+# update from the previous release's package), and publishes it as a GitHub release. The app's
+# update check (Einstellungen → System → Updates) reads these releases.
+# The tag must match the version in pyproject.toml. Without a tag nothing is published: a manual
+# run, or a push that changes the packaging, builds and tries the package and keeps it as a workflow
+# artifact only. (A manual run needs this file on the repository's default branch.)
+# Only a commit the full CI (ci.yml: frontend, backend, PostgreSQL, document tools, E2E) passed is packaged.
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - '**'
+    # paths apply to branch pushes only; a tag always builds
+    paths:
+      - '.github/workflows/release.yml'
+      - 'immomanager.spec'
+      - 'packaging/**'
+      - 'requirements-build.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: write
+
+jobs:
+  ci-gate:
+    name: CI auf diesem Commit erfolgreich
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for a successful CI run of this commit
+        run: |
+          # a run still in progress is waited for; a failed or cancelled one alone stops the release
+          for attempt in $(seq 1 110); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<< "$runs" > /dev/null; then
+              echo "CI ist auf $GITHUB_SHA erfolgreich."; exit 0
+            fi
+            if ! jq -e 'any(.[]; .status != "completed")' <<< "$runs" > /dev/null; then
+              echo "::error::Kein erfolgreicher CI-Lauf auf $GITHUB_SHA: $runs"; exit 1
+            fi
+            echo "CI läuft noch auf $GITHUB_SHA (Abfrage $attempt) …"; sleep 60
+          done
+          echo "::error::CI auf $GITHUB_SHA ist nicht rechtzeitig fertig geworden."; exit 1
+
+  windows:
+    name: Windows-Paket bauen, prüfen und veröffentlichen
+    needs: ci-gate
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from pyproject.toml and tag
+        id: version
+        shell: pwsh
+        run: |
+          $line = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1
+          $version = $line.Matches[0].Groups[1].Value
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { '' }
+          if ($tag -and $tag.TrimStart('v','V') -ne $version) {
+            throw "Tag $tag passt nicht zur Version $version in pyproject.toml"
+          }
+          $pre = if ($version -match '[a-zA-Z-]') { 'true' } else { 'false' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "prerelease=$pre" >> $env:GITHUB_OUTPUT
+          "name=ImmoManager-Pro-$version-Windows" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install backend and PyInstaller
+        run: |
+          python -m pip install -r requirements-pip.txt
+          pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+
+      - name: Build ImmoManager-Pro.exe
+        run: python -m PyInstaller immomanager.spec --noconfirm
+
+      - name: Sign and verify customer executable
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $required = '${{ steps.version.outputs.tag }}' -ne ''
+          ./scripts/sign_release.ps1 -Executable 'dist/ImmoManager-Pro/ImmoManager-Pro.exe' -Required:$required
+
+      - name: Assemble package
+        id: package
+        shell: pwsh
+        run: |
+          $name = '${{ steps.version.outputs.name }}'
+          $root = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Copy-Item -Recurse dist/ImmoManager-Pro (Join-Path $root 'ImmoManager-Pro')
+          Copy-Item 'packaging/release/LIES MICH.txt' $root
+          Copy-Item 'packaging/release/LIES MICH.txt' (Join-Path $root 'ImmoManager-Pro')
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          7z a -tzip -mx=9 $zip "$root/*" | Out-Null
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          Write-Host ("Paket: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
+
+      - name: SBOM and checksums
+        id: sbom
+        # required for a release; a branch build only reports a failure here
+        continue-on-error: ${{ steps.version.outputs.tag == '' }}
+        shell: pwsh
+        run: |
+          # what the package is made of (CycloneDX) and the SHA-256 of every published file
+          $out = Join-Path $env:RUNNER_TEMP 'release-meta'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $python = (Get-Command python).Source
+          python -m venv (Join-Path $env:RUNNER_TEMP 'sbom-venv')
+          $tool = Join-Path $env:RUNNER_TEMP 'sbom-venv/Scripts'
+          & "$tool/python.exe" -m pip install --quiet cyclonedx-bom==7.1.0
+          & "$tool/cyclonedx-py.exe" environment --of JSON -o (Join-Path $out 'sbom-python.cdx.json') $python
+          if ($LASTEXITCODE -ne 0) { throw 'SBOM der Python-Pakete fehlgeschlagen' }
+          Push-Location frontend
+          npm sbom --sbom-format cyclonedx --omit dev | Out-File -Encoding utf8NoBOM (Join-Path $out 'sbom-frontend.cdx.json')
+          if ($LASTEXITCODE -ne 0) { throw 'SBOM der Oberflaeche fehlgeschlagen' }
+          Pop-Location
+          $files = @('${{ steps.package.outputs.zip }}') + (Get-ChildItem $out -Filter '*.cdx.json').FullName
+          $sums = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower(), (Split-Path $file -Leaf) }
+          $sums | Out-File -Encoding ascii (Join-Path $out 'SHA256SUMS.txt')
+          Get-Content (Join-Path $out 'SHA256SUMS.txt')
+          "dir=$out" >> $env:GITHUB_OUTPUT
+
+      - name: Attest published archive and checksum manifest
+        if: steps.version.outputs.tag != ''
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.sbom.outputs.dir }}/SHA256SUMS.txt
+
+      - name: Try the package and the update from the previous release
+        shell: pwsh
+        run: |
+          $env:BACKUP_PASSPHRASE = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
+          function Start-App($exe, $data, $port) {
+            $log = Join-Path $env:RUNNER_TEMP "app-$port.log"
+            $proc = Start-Process -FilePath $exe -ArgumentList '--no-browser', '--port', "$port", '--data-dir', $data `
+              -WindowStyle Hidden -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
+            for ($i = 0; $i -lt 120; $i++) {
+              Start-Sleep -Seconds 5
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5
+                if ($health.status -eq 'ok') { return @{ proc = $proc; health = $health; log = $log } }
+              } catch { }
+              if ($proc.HasExited) { break }
+            }
+            Get-Content $log -Tail 40; Get-Content "$log.err" -Tail 40
+            throw "Das Programm ist nicht gestartet ($exe)."
+          }
+          $try = Join-Path $env:RUNNER_TEMP 'probestart'
+          7z x '${{ steps.package.outputs.zip }}' "-o$try" | Out-Null
+          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro.exe'
+
+          # 1. a new installation: empty data folder, first start, sign-in page, version
+          $fresh = Join-Path $env:RUNNER_TEMP 'daten-neu'
+          $app = Start-App $exe $fresh 8765
+          $page = Invoke-WebRequest -Uri 'http://127.0.0.1:8765/' -UseBasicParsing
+          Stop-Process -Id $app.proc.Id -Force
+          if ($app.health.version -ne '${{ steps.version.outputs.version }}') { throw "Version $($app.health.version) statt ${{ steps.version.outputs.version }}" }
+          if ($app.health.testversion) { throw 'Das Paket startet als Testversion.' }
+          if ($page.Content -notmatch 'id="root"') { throw 'Oberflaeche fehlt' }
+          & $exe upgrade --check --data-dir $fresh
+          if ($LASTEXITCODE -ne 0) { throw "upgrade --check meldet Code $LASTEXITCODE" }
+          & $exe ops backup --data-dir $fresh
+          if ($LASTEXITCODE -ne 0) { throw 'Vollbackup aus dem Paket fehlgeschlagen' }
+          & $exe ops probe --data-dir $fresh
+          if ($LASTEXITCODE -ne 0) { throw 'Wiederherstellungsprobe aus dem Paket fehlgeschlagen' }
+
+          # 2. the update a user makes: the previous release's data folder started with this package
+          $previous = gh release list --repo $env:GITHUB_REPOSITORY --limit 20 --json tagName,isDraft `
+            --jq '[.[] | select(.isDraft | not) | .tagName] | map(select(. != "${{ steps.version.outputs.tag }}")) | .[0] // empty'
+          if (-not $previous) { Write-Host 'Kein frueheres Release: Update-Probe entfaellt.'; exit 0 }
+          $old = Join-Path $env:RUNNER_TEMP 'vorgaenger'
+          gh release download $previous --repo $env:GITHUB_REPOSITORY --pattern '*-Windows.zip' --dir $old
+          if ($LASTEXITCODE -ne 0) { Write-Host "Release $previous hat kein Windows-Paket: Update-Probe entfaellt."; exit 0 }
+          7z x (Get-ChildItem $old -Filter '*.zip')[0].FullName "-o$old" | Out-Null
+          $oldExe = (Get-ChildItem $old -Recurse -Filter 'ImmoManager-Pro.exe')[0].FullName
+          $kept = Join-Path $env:RUNNER_TEMP 'daten-update'
+          $before = Start-App $oldExe $kept 8766
+          Stop-Process -Id $before.proc.Id -Force
+          Start-Sleep -Seconds 3
+          $after = Start-App $exe $kept 8767
+          Stop-Process -Id $after.proc.Id -Force
+          Get-Content $after.log -Tail 20
+          if ($after.health.version -ne '${{ steps.version.outputs.version }}') { throw 'Nach dem Update laeuft nicht die neue Version.' }
+          $backups = @(Get-ChildItem (Join-Path $kept 'backups/full') -Filter '*pre-upgrade*' -ErrorAction SilentlyContinue)
+          Write-Host "Vollbackups vor dem Upgrade: $($backups.Count)"
+          Write-Host "Update $previous ($($before.health.version)) -> $($after.health.version) mit denselben Daten: ok"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.sbom.outputs.dir }}
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish the release
+        if: steps.version.outputs.tag != ''
+        shell: pwsh
+        run: |
+          $meta = @((Get-ChildItem '${{ steps.sbom.outputs.dir }}' -File).FullName)
+          if ($meta.Count -lt 3) { throw 'SBOM oder Pruefsummen fehlen.' }
+          $releaseArgs = @('${{ steps.version.outputs.tag }}', '${{ steps.package.outputs.zip }}') + $meta + @(
+                    '--repo', $env:GITHUB_REPOSITORY, '--title', 'ImmoManager Pro ${{ steps.version.outputs.version }}',
+                    '--notes-file', 'docs/RELEASE_NOTES.md')
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $releaseArgs += '--prerelease' }
+          gh release create @releaseArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Release konnte nicht angelegt werden.' }

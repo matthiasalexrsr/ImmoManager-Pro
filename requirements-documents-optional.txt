@@ -1,0 +1,5 @@
+# Optional local native PDF component, pinned for the executed document gates.
+# PyMuPDF: AGPL-3.0 or commercial license from Artifex.
+# Installation for isolated local QA does not grant an application distribution license.
+-c constraints.txt
+PyMuPDF==1.28.2

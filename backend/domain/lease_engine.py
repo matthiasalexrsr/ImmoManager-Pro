@@ -1,14 +1,60 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional, Protocol
+
+from .calendar_days import rent_due_date
 
 CENTS = Decimal("0.01")
 
 if TYPE_CHECKING:
     from .dunning_engine import DunningCampaign, DunningPolicy
+
+
+# Contracts that hold a unit: a terminated contract does so until its end date,
+# drafts and expired contracts do not.
+OCCUPYING_CONTRACT_STATUSES = frozenset({"active", "terminated"})
+
+
+class Tenancy(Protocol):
+    unit_id: str
+    status: str
+    start_date: date
+    end_date: Optional[date]
+
+
+class StoredTenancy(Tenancy, Protocol):
+    id: str
+    contract_number: str
+
+
+def find_unit_overlap(
+    candidate: Tenancy, contracts: Iterable[StoredTenancy], exclude_id: Optional[str] = None
+) -> Optional[StoredTenancy]:
+    """Return a contract that occupies the candidate's unit during its term, if any."""
+    if candidate.status not in OCCUPYING_CONTRACT_STATUSES:
+        return None
+    start, end = candidate.start_date, candidate.end_date or date.max
+    for other in contracts:
+        if (
+            other.id == exclude_id
+            or other.unit_id != candidate.unit_id
+            or other.status not in OCCUPYING_CONTRACT_STATUSES
+        ):
+            continue
+        if other.start_date <= end and start <= (other.end_date or date.max):
+            return other
+    return None
+
+
+def unit_overlap_message(contract: StoredTenancy) -> str:
+    until = f"bis {contract.end_date:%d.%m.%Y}" if contract.end_date else "unbefristet"
+    return (
+        f"Die Einheit ist in diesem Zeitraum bereits vermietet "
+        f"(Vertrag {contract.contract_number}, ab {contract.start_date:%d.%m.%Y}, {until})"
+    )
 
 
 def _money(value: Decimal | float | int | str) -> Decimal:
@@ -53,6 +99,42 @@ class ChargeConfig:
 
 
 @dataclass(frozen=True)
+class RentStep:
+    """The rent of a contract from ``valid_from`` on, until the next step starts."""
+
+    valid_from: date
+    charge: ChargeConfig
+
+
+def charge_on(steps: Iterable[RentStep], day: date) -> Optional[ChargeConfig]:
+    """The charge valid on ``day``: the latest step that has started by then."""
+    started = [step for step in steps if step.valid_from <= day]
+    return max(started, key=lambda step: step.valid_from).charge if started else None
+
+
+def _rent_segments(steps: list[RentStep], first: date, last: date) -> Iterator[tuple[date, date, ChargeConfig]]:
+    """The days ``first``..``last`` split where a rent step starts, each with the rent valid then."""
+    starts = sorted({first} | {step.valid_from for step in steps if first < step.valid_from <= last})
+    for index, start in enumerate(starts):
+        end = starts[index + 1] - timedelta(days=1) if index + 1 < len(starts) else last
+        charge = charge_on(steps, start)
+        if charge is not None:
+            yield start, end, charge
+
+
+def _check_due_day(due_day: int | None) -> None:
+    if due_day is not None and (due_day < 1 or due_day > 28):
+        raise ValueError("due_day must be between 1 and 28")
+
+
+def _due_date(first: date, due_day: int | None, federal_state: str | None = None) -> date:
+    """When the rent of the month starting (or moved into) on ``first`` is due."""
+    if due_day is None:
+        return rent_due_date(first, federal_state)
+    return max(first, first.replace(day=due_day))
+
+
+@dataclass(frozen=True)
 class ReceivableLine:
     period_start: date
     period_end: date
@@ -61,6 +143,9 @@ class ReceivableLine:
     service_charge_advance: Decimal
     heating_advance: Decimal
     total_amount: Decimal
+    # set for a claim that is no monthly rent (the balance carried over from a previous system)
+    label: Optional[str] = None
+    claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +175,8 @@ class ReceivableSettlementLine:
     paid_amount: Decimal
     outstanding_amount: Decimal
     status: str
+    label: Optional[str] = None
+    claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +204,7 @@ class ReceivablePaymentAllocation:
     receivable_period_start: date
     payment_booking_date: date
     allocated_amount: Decimal
+    receivable_claim_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -146,12 +234,30 @@ class LeaseEngine:
         *,
         contract_start: date,
         contract_end: date | None,
-        charge: ChargeConfig,
+        charge: ChargeConfig | None = None,
         until_including: date,
-        due_day: int = 3,
+        due_day: int | None = None,
+        rent_steps: Iterable[RentStep] | None = None,
+        federal_state: str | None = None,
     ) -> List[ReceivableLine]:
-        if due_day < 1 or due_day > 28:
-            raise ValueError("due_day must be between 1 and 28")
+        """Monthly receivables of a contract.
+
+        With ``charge`` every month owes the same full amount. With ``rent_steps``
+        (the contract's rent history) each day of a month owes the rent valid
+        on it, by its share of the month: the months of moving in and out and
+        a rent change during a month are charged by their days.
+
+        Without ``due_day`` a month's rent is due by its third working day
+        (§ 556b Abs. 1 BGB), the first one counted from moving in; the holidays of
+        the property's ``federal_state`` do not count either. ``due_day`` fixes a
+        calendar day instead, never before moving in.
+        """
+        if rent_steps is not None:
+            return LeaseEngine._receivables_from_history(
+                contract_start, contract_end, list(rent_steps), until_including, due_day, federal_state)
+        if charge is None:
+            raise ValueError("charge or rent_steps is required")
+        _check_due_day(due_day)
         if until_including < contract_start:
             return []
         if contract_end is not None and contract_end < contract_start:
@@ -167,7 +273,7 @@ class LeaseEngine:
 
         while current <= last_month:
             period_end = _next_month(current)
-            due_date = current.replace(day=due_day)
+            due_date = _due_date(current, due_day, federal_state)
             lines.append(
                 ReceivableLine(
                     period_start=current,
@@ -181,6 +287,48 @@ class LeaseEngine:
             )
             current = _next_month(current)
 
+        return lines
+
+    @staticmethod
+    def _receivables_from_history(
+        contract_start: date,
+        contract_end: date | None,
+        steps: list[RentStep],
+        until_including: date,
+        due_day: int | None,
+        federal_state: str | None = None,
+    ) -> List[ReceivableLine]:
+        _check_due_day(due_day)
+        if contract_end is not None and contract_end < contract_start:
+            raise ValueError("contract_end must be >= contract_start")
+        last_day = min(until_including, contract_end) if contract_end else until_including
+        lines: List[ReceivableLine] = []
+        month = _month_start(contract_start)
+        while month <= last_day:
+            following = _next_month(month)
+            first = max(month, contract_start)
+            last = min(following - timedelta(days=1), contract_end or following)
+            days_in_month = Decimal((following - month).days)
+            cold = service = heating = Decimal("0")
+            charged = False
+            for start, end, charge in _rent_segments(steps, first, last):
+                share = Decimal((end - start).days + 1) / days_in_month
+                cold += charge.cold_rent * share
+                service += charge.service_charge_advance * share
+                heating += charge.heating_advance * share
+                charged = True
+            if charged:
+                cold, service, heating = _money(cold), _money(service), _money(heating)
+                lines.append(ReceivableLine(
+                    period_start=month,
+                    period_end=following,
+                    due_date=_due_date(first, due_day, federal_state),
+                    cold_rent=cold,
+                    service_charge_advance=service,
+                    heating_advance=heating,
+                    total_amount=_money(cold + service + heating),
+                ))
+            month = following
         return lines
 
     @staticmethod
@@ -210,9 +358,10 @@ class LeaseEngine:
         receivable_rows: list[dict[str, object]] = [
             {
                 "period_start": row.period_start,
+                "claim_key": row.claim_key,
                 "remaining": _money(row.total_amount),
             }
-            for row in sorted(receivables, key=lambda item: item.due_date)
+            for row in sorted(receivables, key=lambda item: (item.due_date, item.claim_key or item.period_start.isoformat()))
         ]
         payment_rows: list[dict[str, object]] = [
             {
@@ -234,6 +383,7 @@ class LeaseEngine:
                 allocations.append(
                     ReceivablePaymentAllocation(
                         receivable_period_start=target["period_start"],  # type: ignore[arg-type]
+                        receivable_claim_key=target["claim_key"],  # type: ignore[arg-type]
                         payment_booking_date=payment["booking_date"],  # type: ignore[arg-type]
                         allocated_amount=_money(amount),
                     )
@@ -257,18 +407,17 @@ class LeaseEngine:
         *,
         today: date,
     ) -> list[ReceivableSettlementLine]:
-        sorted_receivables = sorted(receivables, key=lambda item: item.due_date)
+        sorted_receivables = sorted(receivables, key=lambda item: (item.due_date, item.claim_key or item.period_start.isoformat()))
         allocation_result = LeaseEngine.allocate_payments_fifo(sorted_receivables, payments)
 
-        paid_by_period: dict[date, Decimal] = {}
+        paid_by_period: dict[tuple[date, str | None], Decimal] = {}
         for item in allocation_result.allocations:
-            paid_by_period[item.receivable_period_start] = _money(
-                paid_by_period.get(item.receivable_period_start, Decimal("0.00")) + item.allocated_amount
-            )
+            key = (item.receivable_period_start, item.receivable_claim_key)
+            paid_by_period[key] = _money(paid_by_period.get(key, Decimal("0.00")) + item.allocated_amount)
 
         lines: list[ReceivableSettlementLine] = []
         for receivable in sorted_receivables:
-            paid = paid_by_period.get(receivable.period_start, Decimal("0.00"))
+            paid = paid_by_period.get((receivable.period_start, receivable.claim_key), Decimal("0.00"))
             outstanding = _money(receivable.total_amount - paid)
             if outstanding <= Decimal("0.00"):
                 status = "paid"
@@ -286,6 +435,8 @@ class LeaseEngine:
                     paid_amount=_money(paid),
                     outstanding_amount=outstanding,
                     status=status,
+                    label=receivable.label,
+                    claim_key=receivable.claim_key,
                 )
             )
 
@@ -354,20 +505,26 @@ class LeaseEngine:
         *,
         contract_start: date,
         contract_end: date | None,
-        charge: ChargeConfig,
+        charge: ChargeConfig | None = None,
         payments: Iterable[PaymentLine],
         today: date,
         until_including: date | None = None,
-        due_day: int = 3,
+        due_day: int | None = None,
+        rent_steps: Iterable[RentStep] | None = None,
+        receivables: list[ReceivableLine] | None = None,
     ) -> SettlementDashboard:
+        """Settlement of a contract; ``receivables`` are the account's claims when the caller built
+        them already (an account taken over from a previous system starts later)."""
         horizon = until_including or today
-        receivables = LeaseEngine.build_monthly_receivables(
-            contract_start=contract_start,
-            contract_end=contract_end,
-            charge=charge,
-            until_including=horizon,
-            due_day=due_day,
-        )
+        if receivables is None:
+            receivables = LeaseEngine.build_monthly_receivables(
+                contract_start=contract_start,
+                contract_end=contract_end,
+                charge=charge,
+                until_including=horizon,
+                due_day=due_day,
+                rent_steps=rent_steps,
+            )
         payment_list = list(payments)
 
         allocations = LeaseEngine.allocate_payments_fifo(receivables, payment_list)
@@ -399,13 +556,15 @@ class LeaseEngine:
         *,
         contract_start: date,
         contract_end: date | None,
-        charge: ChargeConfig,
+        charge: ChargeConfig | None = None,
         payments: Iterable[PaymentLine],
         today: date,
         policy: "DunningPolicy | None" = None,
         until_including: date | None = None,
-        due_day: int = 3,
+        due_day: int | None = None,
         current_level_by_period: dict[date, int] | None = None,
+        rent_steps: Iterable[RentStep] | None = None,
+        receivables: list[ReceivableLine] | None = None,
     ) -> "DunningCampaign":
         from .dunning_engine import DunningEngine, ReceivableState
 
@@ -417,12 +576,14 @@ class LeaseEngine:
             today=today,
             until_including=until_including,
             due_day=due_day,
+            rent_steps=rent_steps,
+            receivables=receivables,
         )
 
         levels = current_level_by_period or {}
-        receivables = [
+        states = [
             ReceivableState(
-                receivable_id=line.period_start.isoformat(),
+                receivable_id=line.claim_key or line.period_start.isoformat(),
                 due_date=line.due_date,
                 amount_due=line.total_amount,
                 amount_paid=line.paid_amount,
@@ -432,4 +593,4 @@ class LeaseEngine:
             if line.outstanding_amount > Decimal("0.00")
         ]
 
-        return DunningEngine.build_campaign(receivables, today=today, policy=policy)
+        return DunningEngine.build_campaign(states, today=today, policy=policy)

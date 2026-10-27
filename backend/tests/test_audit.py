@@ -2,7 +2,8 @@
 
 import pytest
 
-from backend.audit import clear_audit_logs, list_audit_logs, log_action
+from backend.audit import InMemoryAuditStore, clear_audit_logs, list_audit_logs, log_action
+from backend.models import AuditLogEntry
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +14,19 @@ def _clean_audit():
 
 
 class TestAuditLog:
+    def test_memory_read_does_not_expose_or_follow_the_mutable_journal(self):
+        journal = InMemoryAuditStore()
+        first = AuditLogEntry(id="first", action="create", entity_type="property", entity_id="p-1")
+        second = first.model_copy(update={"id": "second"})
+        journal.add(first)
+        snapshot = journal.list_all()
+        journal.add(second)
+        assert [entry.id for entry in snapshot] == ["first"]
+        snapshot.clear()
+        assert [entry.id for entry in journal.list_all()] == ["first", "second"]
+        journal.clear()
+        assert journal.list_all() == []
+
     def test_log_action(self):
         entry = log_action(
             action="create",

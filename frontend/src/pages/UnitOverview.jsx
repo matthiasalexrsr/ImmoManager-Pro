@@ -1,57 +1,127 @@
+import NotificationArrival from '../components/NotificationArrival';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from '../i18n';
 import { api } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import PhotoDropZone from '../components/PhotoDropZone';
+import { formatArea, formatDate, formatMoney } from '../utils/format';
+import { codeLabel } from '../utils/codeLabels';
+import { currentContractsOn, localDay, occupancyOn } from '../utils/occupancy';
+import { PartyLink } from '../features/partyWorkspace/PartyWorkspace';
+import { useCanWrite } from '../contexts/AuthContext';
+import NewForMenu from '../components/NewForMenu';
+import { newEntryLink } from '../utils/newEntry';
+import EntityActions from '../features/workCenter/EntityActions';
+import EntityTimeline from '../features/workCenter/EntityTimeline';
+import RelatedPageLinks from '../components/RelatedPageLinks';
+import { entityHref } from '../utils/entityLinks';
+import usePhotoNotification from '../hooks/usePhotoNotification';
+import { ownersLabel, useCurrentOwners } from '../features/ownership/currentOwners';
+import './propertyDossier.css';
+
+// What can be started from a unit, each opened prefilled with the unit and its property.
+const NEW_FOR_UNIT = [
+  ['/contracts', 'Mietvertrag'], ['/maintenance', 'Wartungsfall'], ['/bookings', 'Buchung'], ['/tasks', 'Aufgabe'],
+];
 
 export default function UnitOverview() {
-  const { t } = useTranslation();
   const { id } = useParams();
+  return <UnitDossier key={id} id={id} />;
+}
+
+function UnitDossier({ id }) {
+  const { t } = useTranslation();
   const [unit, setUnit] = useState(null);
   const [property, setProperty] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [tenant, setTenant] = useState(null);
   const [insurances, setInsurances] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [revision, setRevision] = useState(0);
+  const [activityRevision, setActivityRevision] = useState(0);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
+  const photoNotice = usePhotoNotification('unit', id);
+  useEffect(() => { if (photoNotice.open) setPhotosOpen(true); }, [photoNotice.open]);
+  const canContract = useCanWrite('/contracts');
+  const currentOwners = useCurrentOwners();
 
   useEffect(() => {
-    api.get(`/units/${id}`).then(u => {
-      setUnit(u);
-      return Promise.all([
-        u.property_id ? api.get(`/properties/${u.property_id}`).catch(() => null) : null,
-        api.get(`/contracts`).catch(err => { console.warn('[UnitOverview] contracts:', err.message); return []; }),
-        api.get(`/insurances?unit_id=${id}`).catch(err => { console.warn('[UnitOverview] insurances:', err.message); return []; }),
+    let cancelled = false;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    setLoading(true);
+    setError(null);
+    setTenant(null);
+    (async () => {
+      const u = await api.get(`/units/${encodeURIComponent(id)}`, options);
+      const [p, c, ins, docs] = await Promise.all([
+        u.property_id ? api.get(`/properties/${encodeURIComponent(u.property_id)}`, options) : null,
+        api.list(`/contracts?unit_id=${encodeURIComponent(id)}`, options),
+        api.list(`/insurances?unit_id=${encodeURIComponent(id)}`, options),
+        api.list(`/documents?unit_id=${encodeURIComponent(id)}&sort_by=document_date&sort_order=desc`, options),
       ]);
-    }).then(([p, c, ins]) => {
-      setProperty(p);
-      const unitContracts = (Array.isArray(c) ? c : []).filter(ct => ct.unit_id === id);
-      setContracts(unitContracts);
-      const active = unitContracts.find(ct => ct.status === 'active');
-      if (active?.tenant_id) {
-        api.get(`/tenants/${active.tenant_id}`).then(setTenant).catch(() => null);
-      }
-      setInsurances(Array.isArray(ins) ? ins : []);
-    }).catch(() => null).finally(() => setLoading(false));
-  }, [id]);
+      const unitContracts = c.filter(ct => ct.unit_id === id);
+      const active = currentContractsOn(unitContracts)[0];
+      const person = active?.tenant_id ? await api.get(`/tenants/${encodeURIComponent(active.tenant_id)}`, options) : null;
+      if (cancelled) return;
+      setUnit(u); setProperty(p); setContracts(unitContracts); setTenant(person); setInsurances(ins); setDocuments(docs);
+    })().catch(err => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [id, revision]);
 
   if (loading) return <div className="page-loading">{t('pages.loading') || 'Laden...'}</div>;
+  if (error) return <div className="page"><div role="alert" className="alert alert-error">{error}</div><button className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}>Erneut laden</button></div>;
   if (!unit) return <div className="page"><p>{t('pages.unitOverview.notFound') || 'Einheit nicht gefunden'}</p></div>;
 
-  const activeContract = contracts.find(c => c.status === 'active');
+  const activeContract = currentContractsOn(contracts)[0];
+  const prefill = { property_id: unit.property_id, unit_id: unit.id };
+  const newContract = newEntryLink('/contracts', prefill);
 
   return (
-    <div className="page">
+    <div className="page unit-dossier">
       <div className="overview-header">
         <div>
-          <h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
-          {property && <p className="text-muted">{property.name} — {property.address_line}</p>}
-          <StatusBadge status={unit.status} />
+          <NotificationArrival record={unit} ready={!loading && !error} /><h1 className="page-title">{unit.label || `${t('pages.unitOverview.unitLabel') || 'Einheit'} ${unit.unit_number}`}</h1>
+          {property && <p className="text-muted"><Link to={`/properties/${encodeURIComponent(unit.property_id)}`}>{property.name}</Link> — {property.address_line}</p>}
+          <StatusBadge status={occupancyOn(unit, contracts, localDay()).status} />
         </div>
-        <Link to="/units" className="btn btn-secondary">{t('pages.unitOverview.back') || 'Zurück'}</Link>
+        <div className="dossier-navigation">
+          {property && <Link to={`/properties/${encodeURIComponent(unit.property_id)}`} className="btn btn-secondary">← Zur Immobilie</Link>}
+          <Link to="/units" className="btn btn-secondary">Alle Einheiten</Link>
+          <Link to={`/reports?kind=cash-v2${unit.property_id ? `&property_id=${encodeURIComponent(unit.property_id)}` : ''}&unit_id=${encodeURIComponent(unit.id)}`} className="btn btn-secondary">Auswertungen dieser Einheit</Link>
+          <NewForMenu label="Neu für diese Einheit" items={NEW_FOR_UNIT} prefill={prefill} />
+          <EntityActions entityType="unit" entityId={unit.id} entityRevision={unit.updated_at} title={unit.label}
+            onChanged={() => setActivityRevision(value => value + 1)} />
+        </div>
       </div>
 
-      <PhotoDropZone entityType="unit" entityId={id} />
+      <RelatedPageLinks items={[
+        { to: `/contracts?unit_id=${encodeURIComponent(unit.id)}`, label: 'Verträge dieser Einheit' },
+        { to: `/documents?unit_id=${encodeURIComponent(unit.id)}`, label: 'Dokumente dieser Einheit' },
+        ...(unit.property_id ? [
+          { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=contracts`, label: 'Verträge des Objekts' },
+          { to: `/properties/${encodeURIComponent(unit.property_id)}?tab=finance`, label: 'Finanzen des Objekts' },
+        ] : []),
+        ...(activeContract?.id ? [{ to: entityHref('contract', activeContract.id), label: 'Mietvertrag öffnen' }] : []),
+        ...(activeContract?.tenant_id ? [{ to: entityHref('tenantAccount', activeContract.tenant_id), label: 'Mieterkonto öffnen' }] : []),
+        // a unit without a running tenancy is re-let as a project (offer, applicants, takeover)
+        ...(!activeContract ? [{ to: '/reletting', label: 'Neuvermietung' }] : []),
+      ]} />
+
+      {photoNotice.error && <div role="alert" className="alert alert-error">{photoNotice.error} Der Hinweis bleibt ungelesen. <button type="button" onClick={photoNotice.retry}>Hinweisquelle erneut laden</button></div>}
+      <details className="panel dossier-media" open={photosOpen} onToggle={event => setPhotosOpen(event.currentTarget.open)}>
+        <summary className="panel-header">Fotos der Einheit</summary>
+        {photosOpen && <div className="panel-body"><PhotoDropZone entityType="unit" entityId={id} /></div>}
+      </details>
+      <details className="panel" open={timelineOpen} onToggle={event => setTimelineOpen(event.currentTarget.open)}>
+        <summary className="panel-header">Aktivitäten</summary>
+        {timelineOpen && <div className="panel-body"><EntityTimeline entityType="unit" entityId={unit.id} revision={activityRevision} /></div>}
+      </details>
 
       <div className="overview-grid">
         <div className="panel">
@@ -59,16 +129,19 @@ export default function UnitOverview() {
           <div className="panel-body">
             <dl className="overview-dl">
               <dt>{t('pages.unitOverview.unitNumber') || 'Einheitsnr.'}</dt><dd>{unit.unit_number || '—'}</dd>
-              <dt>{t('pages.unitOverview.type') || 'Typ'}</dt><dd>{unit.unit_type || '—'}</dd>
+              <dt>{t('pages.unitOverview.type') || 'Typ'}</dt><dd>{codeLabel(unit.unit_type) || '—'}</dd>
               <dt>{t('pages.unitOverview.floor') || 'Etage'}</dt><dd>{unit.floor ?? '—'}</dd>
-              <dt>{t('pages.unitOverview.area') || 'Fläche'}</dt><dd>{unit.area_sqm ? `${unit.area_sqm} m²` : '—'}</dd>
+              <dt>{t('pages.unitOverview.area') || 'Fläche'}</dt><dd>{formatArea(unit.area_sqm)}</dd>
               <dt>{t('pages.unitOverview.rooms') || 'Zimmer'}</dt><dd>{unit.rooms ?? '—'}</dd>
               <dt>{t('pages.unitOverview.personCount') || 'Personenzahl'}</dt><dd>{unit.person_count ?? '—'}</dd>
               <dt>{t('pages.unitOverview.features') || 'Ausstattung'}</dt><dd>{unit.features || '—'}</dd>
-              <dt>{t('pages.unitOverview.baseRent') || 'Kaltmiete'}</dt><dd>{unit.base_rent ? `${Number(unit.base_rent).toFixed(2)} €` : '—'}</dd>
-              <dt>{t('pages.unitOverview.serviceCharge') || 'Nebenkosten'}</dt><dd>{unit.service_charge ? `${Number(unit.service_charge).toFixed(2)} €` : '—'}</dd>
-              <dt>{t('pages.unitOverview.heatingAdvance') || 'Heizkosten'}</dt><dd>{unit.heating_advance ? `${Number(unit.heating_advance).toFixed(2)} €` : '—'}</dd>
+              <dt>Eigentümer</dt><dd>{currentOwners.units[unit.id]
+                ? <Link to={`/properties/${encodeURIComponent(unit.property_id)}?tab=owners`}>{ownersLabel(currentOwners.units[unit.id])}</Link> : '—'}</dd>
+              <dt>Plan-Kaltmiete</dt><dd>{unit.cold_rent != null ? `${formatMoney(unit.cold_rent)}` : '—'}</dd>
+              <dt>Plan-Nebenkosten</dt><dd>{unit.service_charge_advance != null ? `${formatMoney(unit.service_charge_advance)}` : '—'}</dd>
+              <dt>Plan-Heizkosten</dt><dd>{formatMoney(unit.heating_advance)}</dd>
             </dl>
+            <p className="text-muted dossier-rent-note">Planmieten aus den Stammdaten der Einheit. Die vereinbarte Miete steht im Mietvertrag.</p>
           </div>
         </div>
 
@@ -77,14 +150,20 @@ export default function UnitOverview() {
           <div className="panel-body">
             {activeContract ? (
               <dl className="overview-dl">
-                <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt><dd>{activeContract.contract_number}</dd>
-                <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd>{tenant?.full_name || '—'}</dd>
-                <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{activeContract.start_date || '—'}</dd>
-                <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date || t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
-                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{activeContract.deposit_amount ? `${Number(activeContract.deposit_amount).toFixed(2)} €` : '—'}</dd>
+                <dt>{t('pages.unitOverview.contract') || 'Vertrag'}</dt>
+                <dd>{activeContract.id && activeContract.contract_number
+                  ? <Link to={entityHref('contract', activeContract.id)}>{activeContract.contract_number}</Link>
+                  : activeContract.contract_number || '—'}</dd>
+                <dt>{t('pages.unitOverview.tenant') || 'Mieter'}</dt><dd><PartyLink tenantId={tenant?.id}>{tenant?.full_name || '—'}</PartyLink></dd>
+                <dt>{t('pages.unitOverview.start') || 'Beginn'}</dt><dd>{formatDate(activeContract.start_date)}</dd>
+                <dt>{t('pages.unitOverview.end') || 'Ende'}</dt><dd>{activeContract.end_date ? formatDate(activeContract.end_date) : t('pages.unitOverview.indefinite') || 'Unbefristet'}</dd>
+                <dt>{t('pages.unitOverview.deposit') || 'Kaution'}</dt><dd>{formatMoney(activeContract.deposit_amount)}</dd>
               </dl>
             ) : (
-              <p className="empty-text">{t('pages.unitOverview.notRented') || 'Nicht vermietet'}</p>
+              <div className="empty-text">
+                <p>{t('pages.unitOverview.notRented') || 'Nicht vermietet'}</p>
+                {canContract && <Link className="btn btn-primary btn-sm" to={newContract.to} state={newContract.state}>Mietvertrag anlegen</Link>}
+              </div>
             )}
           </div>
         </div>
@@ -98,7 +177,10 @@ export default function UnitOverview() {
               <ul className="overview-list">
                 {contracts.map(c => (
                   <li key={c.id}>
-                    <span>{c.contract_number} ({c.start_date} — {c.end_date || '∞'})</span>
+                    <span>{c.id && c.contract_number
+                      ? <Link to={entityHref('contract', c.id)}>{c.contract_number}</Link>
+                      : c.contract_number || '—'} ({formatDate(c.start_date)} – {c.end_date ? formatDate(c.end_date) : 'unbefristet'})
+                      {c.tenant_id && <> · <PartyLink tenantId={c.tenant_id}>Parteiakte</PartyLink></>}</span>
                     <StatusBadge status={c.status} />
                   </li>
                 ))}
@@ -124,6 +206,17 @@ export default function UnitOverview() {
             )}
           </div>
         </div>
+        <section className="panel" aria-label="Dokumente der Einheit">
+          <div className="panel-header">Dokumente ({documents.length})</div>
+          <div className="panel-body">
+            {documents.length === 0 ? <p className="empty-text">Keine Dokumente zugeordnet.</p> : <ul className="overview-list">
+              {documents.slice(0, 5).map(document => <li key={document.id}><Link to={entityHref('document', document.id)}>{document.title}</Link>
+                <span className="text-muted">{formatDate(document.document_date)}</span></li>)}
+            </ul>}
+            {documents.length > 5 && <p className="text-muted">Die fünf neuesten Dokumente. Die vollständige Akte öffnet sich über „Dokumente verwalten“.</p>}
+            <Link className="btn btn-secondary btn-sm" to={`/documents?unit_id=${encodeURIComponent(unit.id)}`}>Dokumente verwalten</Link>
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -1,0 +1,86 @@
+/* Mahnwesen: overview, run preview, case file, outbox, replies; usable from 320 px on. */
+
+.dunning-intro { max-width: 70ch; }
+
+.dn-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dn-figure {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.dn-figure strong { display: block; font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
+
+.dn-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.dn-form label { display: grid; gap: 0.2rem; flex: 1 1 10rem; min-width: 0; font-size: var(--text-sm); }
+/* A single filter (status) stays field-sized instead of spanning the page. */
+.dn-form > label:only-child { flex: 0 1 16rem; }
+
+.dn-form input,
+.dn-form select,
+.dn-form textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 400;
+  box-sizing: border-box;
+}
+
+.dn-form .dn-check { flex-direction: row; display: flex; align-items: flex-start; gap: 0.4rem; flex-basis: 100%; }
+.dn-form .dn-check input { width: auto; margin-top: 0.2rem; }
+
+.dn-table-wrap { overflow-x: auto; max-width: 100%; }
+
+.dn-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.dn-table th, .dn-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.dn-table td.num, .dn-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.dn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.dn-card {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.dn-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 0.75rem; align-items: baseline; }
+
+.dn-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+
+.dn-section { margin-bottom: 1rem; }
+.dn-section > h2, .dn-section > h3 { font-size: var(--text-md); margin: 0 0 0.5rem; }
+
+.dn-muted { color: var(--color-text-secondary, #666); font-size: var(--text-sm); }
+
+.dn-timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--color-border); }
+.dn-timeline li { margin: 0 0 0.6rem 0.75rem; overflow-wrap: anywhere; }
+.dn-timeline pre { white-space: pre-wrap; font: inherit; margin: 0.25rem 0 0; }
+
+.dn-pdf { margin-top: 0.75rem; }
+
+@media (max-width: 480px) {
+  .dn-form label { flex-basis: 100%; }
+}

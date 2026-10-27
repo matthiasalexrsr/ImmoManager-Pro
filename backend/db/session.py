@@ -9,7 +9,6 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
-from .orm_models import Base
 
 DATABASE_URL = settings.database_url
 
@@ -38,8 +37,16 @@ SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
 def create_tables() -> None:
-    """Create all tables (dev/test convenience). Use Alembic for production."""
-    Base.metadata.create_all(bind=engine)
+    """Normal start: initialise an empty database, refuse one that is not at the Alembic head.
+
+    The schema of an existing database changes only through the explicit upgrade
+    (python -m backend.upgrade), which takes a full backup first (SchemaUpgradeRequired).
+    Existing accounts of an older database keep their installation-wide access through
+    migration a7c2e9f4b1d3, also when an unversioned desktop database is adopted.
+    """
+    from .schema_state import ensure_current
+
+    ensure_current(engine)
 
 
 def get_db() -> Generator[Session, None, None]:

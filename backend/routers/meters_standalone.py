@@ -10,6 +10,8 @@ from ..models import (
     StandaloneMeterReading,
     StandaloneMeterReadingCreate,
 )
+from ..services.deletion_guard import ensure_deletable
+from ..services.meter_history import history
 from ..storage import NotFoundError, ValidationError
 from ._helpers import apply_sort
 
@@ -71,7 +73,18 @@ def patch_meter(meter_id: str, payload: MeterPatch) -> Meter:
 @router.delete("/{meter_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_meter(meter_id: str) -> None:
     try:
+        store.get_meter(meter_id)
+        ensure_deletable(store, "meter", meter_id)
         store.delete_meter(meter_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{meter_id}/history")
+def meter_history(meter_id: str) -> dict:
+    """Readings with the consumption between them, per calendar year, and the contracts supplying the meter."""
+    try:
+        return history(store, meter_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -98,6 +111,8 @@ def create_reading(meter_id: str, payload: StandaloneMeterReadingCreate) -> Stan
         store.get_meter(meter_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    if payload.meter_id != meter_id:
+        payload = payload.model_copy(update={"meter_id": meter_id})     # the address names the meter
     try:
         return store.create_standalone_meter_reading(payload)
     except ValidationError as exc:
@@ -116,6 +131,8 @@ def list_all_readings(
 @router.delete("/readings/{reading_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_reading(reading_id: str) -> None:
     try:
+        store.get_standalone_meter_reading(reading_id)
+        ensure_deletable(store, "standalone_reading", reading_id)
         store.delete_standalone_meter_reading(reading_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
