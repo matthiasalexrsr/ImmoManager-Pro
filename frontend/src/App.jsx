@@ -1,6 +1,8 @@
-import { useState, useEffect, lazy, Suspense, Fragment } from 'react';
+import { useState, useEffect, Suspense, Fragment } from 'react';
 import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
+// pages load on demand; after an update an outdated page loads the current version
+import { lazyWithRecovery as lazy } from './buildRecovery';
 import Layout from './components/Layout';
 import './components/notificationInbox.css';
 import DevModeOverlay from './components/DevModeOverlay';

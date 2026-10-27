@@ -76,6 +76,6 @@ Codex' eigene Nachweise am selben Code: Speicher- und SQLite-Backend vollständi
 ## Offen
 
 - **Freigaben außerhalb des Codes:** Herausgeberzertifikat für die Signatur; echte Zugänge für Bank, Nachrichtenversand und KI; Einrichtung und Abnahme des Linux-/Proxy-Hostings; Nutzungsrechte für die optionalen Dokumentwerkzeuge (PyMuPDF, SuperDoc, DOCX Engine).
-- **Sporadischer Ladefehler:** In zwei frühen Browserläufen von Codex scheiterte einmal das Nachladen eines Programmmoduls. Spätere Läufe und Codex' Diagnose vom 27.10. (Transportvergleich, 40 Antwort-Hashes) zeigten ihn nicht mehr; die Ursache ist nicht geklärt.
+- **Sporadischer Ladefehler:** In zwei frühen Browserläufen von Codex scheiterte einmal das Nachladen eines Programmmoduls. Spätere Läufe und Codex' Diagnose vom 27.10. (Transportvergleich, 40 Antwort-Hashes) zeigten ihn nicht mehr. In Runde 23 zeigte die Suite „application“ unter Last denselben Fehler bei einem Seitenwechsel: Der Wechsel bricht das Nachladen ab, und die Fehleranzeige meldete das. Seitdem gilt ein beim Verlassen der Seite abgebrochenes Nachladen nicht mehr als Fehler (`frontend/src/buildRecovery.js`). Ob das Codex' Fall vollständig erklärt, ist nicht bewiesen.
 - **Bestandsdaten:** Früher mit falschem Belegtyp oder ohne Fälligkeit gespeicherte Belege erkennt das Programm nicht von selbst; sie sind anhand der Originale zu prüfen. Gespeicherte Lesevorgänge ohne neuen Berechtigungsnachweis müssen neu eingelesen werden.
 - **Hauptinstallation:** läuft weiter auf `0c6d633`; die Runden 18–22 sind dort nicht eingespielt.

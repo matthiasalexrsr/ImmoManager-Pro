@@ -32,12 +32,12 @@ HISTORY = [_reading(date(2025, 12, 31), 120, "a"), _reading(date(2026, 6, 30), 2
 ])
 def test_order_against_the_neighbours(day, value, expected):
     problem = order_problem(HISTORY, "m", day, value)
-    assert (problem is None) if expected is None else (expected in problem)
+    assert (problem is None) if expected is None else (expected in (problem or ""))
 
 
 def test_a_corrected_reading_is_not_compared_with_itself():
     assert order_problem(HISTORY, "m", date(2026, 6, 30), 180, ignore=("b",)) is None
-    assert "kleiner" in order_problem(HISTORY, "m", date(2026, 6, 30), 100, ignore=("b",))
+    assert "kleiner" in (order_problem(HISTORY, "m", date(2026, 6, 30), 100, ignore=("b",)) or "")
 
 
 @pytest.fixture

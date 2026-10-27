@@ -1,10 +1,8 @@
-import { StrictMode, lazy, Suspense } from 'react'
+import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
-import { installBuildRecovery } from './buildRecovery.js'
-
-installBuildRecovery()
+import { lazyWithRecovery as lazy } from './buildRecovery.js'
 
 const InternalApp = lazy(() => import('./InternalApp.jsx'))
 const PortalApp = lazy(() => import('./features/externalPortal/PortalApp.jsx'))

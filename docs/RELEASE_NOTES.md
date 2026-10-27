@@ -141,7 +141,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Zugangsdaten von Schnittstellen werden verschlüsselt gespeichert.
 - **Datenbank-Updates** nur ausdrücklich und immer mit Vollbackup davor.
 - **Update-Prüfung** unter Einstellungen → System → Updates, nur auf Klick. Eine Vorabversion (Beta, RC) gilt als älter als ihr endgültiges Release: Eine Beta-Installation bekommt das Release angeboten.
-- **Nach einem Update gleich die neue Version:** Der Browser fragt die Seite bei jedem Aufruf neu an und zeigt deshalb sofort die neue Version, ohne Strg+F5. Ein Fenster, das noch von vor dem Update offen ist, lädt sich einmal selbst neu, sobald es einen Teil der alten Version nicht mehr findet.
+- **Nach einem Update gleich die neue Version:** Der Browser fragt die Seite bei jedem Aufruf neu an und zeigt deshalb sofort die neue Version, ohne Strg+F5. Ein Fenster, das noch von vor dem Update offen ist, lädt sich einmal selbst neu, sobald es einen Teil der alten Version nicht mehr findet und der Server schon die neue ausliefert.
 - **Aktenwerk (Dokumentenverwaltung):** Exportpaket oder direkte Übergabe von Verträgen, Rechnungen und absetzbaren Belegen mit steuerlicher Einordnung.
 
 - **Genauer gerechnet (Prüfung aller Rechenwege, Oktober 2026):**
