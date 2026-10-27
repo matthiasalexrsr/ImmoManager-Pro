@@ -12,6 +12,7 @@ def client(tmp_path):
     dist = tmp_path / "dist"
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    (dist / "assets" / "index-Ab12Cd34.js").write_text("export const build = 1;", encoding="utf-8")
     (dist / "robots.txt").write_text("robots", encoding="utf-8")
     (tmp_path / "secret.env").write_text("JWT_SECRET_KEY=leak", encoding="utf-8")
     app = FastAPI()
@@ -48,6 +49,23 @@ def test_client_routes_fall_back_to_index(client):
     resp = client.get("/properties/123")
     assert resp.status_code == 200
     assert resp.text == "<html>spa</html>"
+
+
+@pytest.mark.parametrize("path", ["/", "/properties/123", "/robots.txt"])
+def test_page_and_unhashed_files_are_revalidated(client, path):
+    """After an update the browser must ask again instead of keeping a page that names old chunks."""
+    first = client.get(path)
+    assert first.status_code == 200 and first.headers["cache-control"] == "no-cache"
+    again = client.get(path, headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304
+
+
+def test_hashed_assets_are_immutable_and_missing_ones_404(client):
+    resp = client.get("/assets/index-Ab12Cd34.js")
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "public, max-age=31536000, immutable"
+    gone = client.get("/assets/index-Old00000.js")
+    assert gone.status_code == 404 and "immutable" not in gone.headers.get("cache-control", "")
 
 
 def test_unknown_api_route_is_404_not_spa(client):

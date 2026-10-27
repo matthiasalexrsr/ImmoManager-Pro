@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse, RedirectResponse
+from starlette.types import Scope
 
 from .config import MIN_JWT_SECRET_LENGTH, settings
 from .exceptions import register_exception_handlers
@@ -399,6 +400,21 @@ def _resolve_frontend_dir() -> Path | None:
 
 _FRONTEND_DIR = _resolve_frontend_dir()
 
+# The page and its other unhashed files are revalidated on every load (an ETag makes that a
+# 304), so after an update no browser keeps a page that names the old version's chunks.
+# Files under /assets carry their content hash in the name and never change.
+SPA_CACHE_CONTROL = "no-cache"
+ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+class _HashedAssets(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            response.headers["Cache-Control"] = ASSET_CACHE_CONTROL
+        return response
+
+
 def _spa_file(frontend_root: Path, full_path: str) -> Path | None:
     """Resolve a request path to a file inside the built frontend, or None.
 
@@ -417,17 +433,20 @@ def _mount_spa(target: FastAPI, frontend_dir: Path) -> None:
     """Serve the built frontend; must be registered after all other routes."""
     frontend_root = frontend_dir.resolve()
     if (frontend_root / "assets").is_dir():
-        target.mount("/assets", StaticFiles(directory=frontend_root / "assets"), name="frontend-assets")
+        target.mount("/assets", _HashedAssets(directory=frontend_root / "assets"), name="frontend-assets")
 
     @target.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
+    async def serve_spa(full_path: str, request: Request):
         # Unknown API routes must stay JSON 404s instead of returning the SPA shell.
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
-        file_path = _spa_file(frontend_root, full_path)
-        if file_path is not None:
-            return FileResponse(file_path)
-        return FileResponse(frontend_root / "index.html")
+        file_path = _spa_file(frontend_root, full_path) or frontend_root / "index.html"
+        # with the stat given here FileResponse sets its ETag at once, so a revalidation can be answered
+        response = FileResponse(file_path, headers={"Cache-Control": SPA_CACHE_CONTROL}, stat_result=file_path.stat())
+        etag = response.headers.get("etag")
+        if etag and etag in [tag.strip() for tag in request.headers.get("if-none-match", "").split(",")]:
+            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": SPA_CACHE_CONTROL})
+        return response
 
 
 if _FRONTEND_DIR is not None:
