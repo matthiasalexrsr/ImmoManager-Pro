@@ -117,6 +117,8 @@ jobs:
           # operations from the bundle: explicit upgrade check, verified full backup, isolated restore probe
           & $exe upgrade --check
           if ($LASTEXITCODE -ne 0) { throw "upgrade --check meldet Code $LASTEXITCODE" }
+          # a one-off passphrase seals the runtime configuration, so the probe can confirm it (as in release.yml)
+          $env:BACKUP_PASSPHRASE = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
           & $exe ops backup
           if ($LASTEXITCODE -ne 0) { throw 'Vollbackup aus dem Paket fehlgeschlagen' }
           & $exe ops probe
