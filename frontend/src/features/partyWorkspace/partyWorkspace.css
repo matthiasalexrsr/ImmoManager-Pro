@@ -109,7 +109,8 @@
 }
 @media (max-width: 380px) {
   .party-panel-header { padding: 1rem .85rem; }
-  .party-tabs { padding: 0 .85rem; gap: 1.15rem; }
+  .party-tabs { padding: 0 .85rem; gap: .75rem; }
+  .party-tabs > button { font-size: var(--text-sm); }  /* three tabs fit 320px with wider Linux fonts too */
   .party-panel-content { padding: 1rem .85rem 1.5rem; }
   .party-avatar { flex-basis: 47px; width: 47px; height: 47px; border-radius: 13px; }
   .party-identity { gap: .7rem; }
