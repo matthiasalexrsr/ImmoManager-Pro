@@ -31,6 +31,8 @@ from .dataset import (
 
 CPI = {2020: 0.005, 2021: 0.031, 2022: 0.069, 2023: 0.059, 2024: 0.022, 2025: 0.021, 2026: 0.02, 2027: 0.02}
 MARKET_GROWTH = 0.03
+# the federal state of each place of the data set: its own holidays count for due dates
+PLACE_STATES = {"leipzig": "SN", "markkleeberg": "SN", "taucha": "SN", "dresden": "SN", "chemnitz": "SN", "halle": "ST"}
 
 
 def month_end(day: date) -> date:
@@ -188,7 +190,7 @@ class Builder:
             prop.id = self.api("owner", "POST", "/properties", {
                 "portfolio_id": self.portfolio_ids[prop.portfolio], "name": prop.name,
                 "property_type": prop.property_type, "address_line": prop.street, "postal_code": prop.postal_code,
-                "city": prop.city, "country": "DE", "year_built": prop.year_built,
+                "city": prop.city, "country": "DE", "federal_state": PLACE_STATES[prop.place], "year_built": prop.year_built,
                 "living_area_sqm": living or None, "usable_area_sqm": usable or None,
                 "purchase_price": price, "purchase_date": date(year, month, day).isoformat(),
                 "market_value": prop.market_value, "valuation_date": date(self.today.year - 1, 12, 31).isoformat()})["id"]
