@@ -52,8 +52,8 @@ COPY --from=package /app/notices/ /app/THIRD_PARTY_NOTICES/
 ENV E_INVOICE_BUNDLE=/app/e-invoice
 ENV THIRD_PARTY_NOTICES_DIR=/app/THIRD_PARTY_NOTICES
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh .
+# Entrypoint and the deployment check it runs first
+COPY docker-entrypoint.sh tools/validate_hosting_config.py ./
 RUN chmod +x docker-entrypoint.sh
 
 # Persistent data: uploads, integration settings, key file, logs and full backups (volume in compose)
@@ -66,4 +66,6 @@ USER 10001:10001
 EXPOSE 8000
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Behind the reverse proxy: client address and scheme come from X-Forwarded-* only when
+# the peer is listed in FORWARDED_ALLOW_IPS (the per-address sign-in brake needs the real client).
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

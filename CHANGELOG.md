@@ -2,6 +2,12 @@
 
 All notable changes to ImmoManager Pro will be documented in this file.
 
+## Unreleased — 2026-10-27 Round 23: Codex's open work taken over
+
+Codex ran out of budget; its unfinished and explicitly open items are carried on here. No migration so far; the version stays `2.0.0-beta.1`.
+
+- **Hosting profile** (Codex's uncommitted work, finished): `docker-compose.yml` runs `ENVIRONMENT=production`, and before migrating or starting the entrypoint checks the deployment with `tools/validate_hosting_config.py` (32-character `JWT_SECRET_KEY` and `BACKUP_PASSPHRASE`, HTTPS-only `CORS_ORIGINS`, an explicit `TRUSTED_PROXY_IPS`, own PostgreSQL credentials, demo data, self-registration, diagnostics, self-update, test version and in-memory fallback off, security headers on, an HTTPS portal address); errors name the setting, never its value. uvicorn runs with `--proxy-headers`, so behind the proxy the per-address sign-in brake and secure cookies see the real client. Prometheus and Grafana listen on 127.0.0.1 only, Grafana needs its own password, the blackbox exporter has no host port. `docker-compose.development.yml` is the local override; `ops/nginx/immomanager.conf.example` a reverse-proxy template. The E2E smoke runs the production profile and checks that the entrypoint accepted it and that no API schema is served.
+
 ## Unreleased — 2026-10-27 Round 22: Codex's audit fixes and integrated workflows merged
 
 Codex audited round 21 (`39f969d`) on the Windows PC, fixed what it found and built the first work packages of the user's three planning reports on the local branch `codex/integrated-workflows`; this round merges it unchanged. German description: [docs/AUDIT_INTEGRATION_20261027.md](docs/AUDIT_INTEGRATION_20261027.md); operation and fallback: [docs/INTEGRATION_RELEASE.md](docs/INTEGRATION_RELEASE.md), [docs/INTEGRATION_MIGRATION.md](docs/INTEGRATION_MIGRATION.md); licences: [docs/COMMERCIAL_RELEASE.md](docs/COMMERCIAL_RELEASE.md); hosting: [docs/HOSTING_ISOLATION.md](docs/HOSTING_ISOLATION.md). Seven additive migrations after `e1a3c5e7f9b2` (`f2a4c6e8b0d3` e-invoice intakes, `a3b5d7f9c1e4` payment security, `b4c6d8e0f2a5` data transfer, `c5d7e9f1a3b6` external portal, `d6e8f0a2b4c7` privacy controls, `e7f9013c5d8a` history actor namespaces, `f8a0124d6e9b` privacy file tombstones), one head. The version stays `2.0.0-beta.1`.
@@ -17,6 +23,7 @@ Codex audited round 21 (`39f969d`) on the Windows PC, fixed what it found and bu
 - **Sources and reports:** AI sources name document version, hashes and location; finance reports name their definition, data state and completeness limits.
 - **Packaging, Docker and CI:** the Windows package bundles validators and Java runtime with their licence texts and source archives ("Lizenzen und Quellarchive", `/api/v1/legal`) and grows to about 400 MB. A release tag needs a publisher signature (`scripts/sign_release.ps1`) and gets an attestation; untagged builds stay unsigned validation artifacts. The Docker image builds the frontend itself and runs as UID 10001; Compose needs `POSTGRES_PASSWORD` and `JWT_SECRET_KEY` and publishes only the app port on 127.0.0.1. New CI job "Windows native path and recovery regressions", browser suite `auth-party`, and a PostgreSQL step for two-factor and cached readings.
 - **Fixed with the merge:** the E2E smoke script gives Compose throwaway database and signing secrets; without them the job stopped before the first container.
+- **Fixed on the first CI runs:** `requirements-pip.txt` pins setuptools 84.1.0 (the Python 3.11 runners and image bring 79.0.1, which the audit of the installed packages refused); the party panel's three tabs fit 320 px with Linux fonts; the test package's backup gets a one-off passphrase so its probe confirms; the hosting notices inventory only installed Debian packages (`dirmngr` and `gpg-agent` stay as config files after the gnupg purge).
 
 ## Unreleased — 2026-10-25 Round 21: reading documents with a conversation, security for a public release
 

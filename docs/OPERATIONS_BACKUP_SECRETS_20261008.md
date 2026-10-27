@@ -167,6 +167,6 @@ Einzelne ältere `.db`-Sicherungen (`backups/backup_*.db`) lassen sich weiter ü
 
 - **Desktop/Windows**: neue Version installieren oder entpacken und wie gewohnt starten. Der Launcher prüft den Stand. Bei Bedarf meldet er „Vollbackup vor dem Upgrade …“, danach „Upgrade abgeschlossen“. Scheitert ein Schritt, startet das Programm nicht; die Daten sind unverändert bzw. das Archiv liegt in `backups\full`. Nur prüfen: `ImmoManager-Pro.exe upgrade --check`.
 - **Server/Quellinstallation**: Dienst stoppen, `git pull`, `pip install -r requirements.txt -c constraints.txt`, `python -m backend.upgrade`, starten (oder `scripts/update.sh`).
-- **Docker**: `docker compose build && docker compose up -d`. Der Entrypoint führt `python -m backend.upgrade` aus (Backup per `pg_dump` in `/app/data/backups/full`). Bei Fehlern startet der Container nicht; Logs: `docker compose logs app`.
+- **Docker**: `docker compose build && docker compose up -d`. Der Entrypoint prüft zuerst die Hostingeinstellungen (`tools/validate_hosting_config.py`, siehe `docs/INTEGRATION_RELEASE.md`) und führt dann `python -m backend.upgrade` aus (Backup per `pg_dump` in `/app/data/backups/full`). Bei Fehlern startet der Container nicht; Logs: `docker compose logs app`.
 - Meldung „Datenbank stammt aus einer neueren Programmversion“: das Programm aktualisieren oder eine Sicherung passender Version einspielen. Es gibt kein automatisches Downgrade.
 - Notfall ohne Sicherung (nur wenn eine geprüfte Sicherung anderswo existiert): `python -m backend.upgrade --no-backup`.

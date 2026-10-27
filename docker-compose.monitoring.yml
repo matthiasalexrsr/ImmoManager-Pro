@@ -15,7 +15,7 @@ services:
     volumes:
       - ./ops/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       app:
         condition: service_started
@@ -25,10 +25,10 @@ services:
     image: grafana/grafana:11.2.2
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set a unique Grafana administrator password}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "3001:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     depends_on:
       prometheus:
         condition: service_started
@@ -40,6 +40,5 @@ services:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
       - ./ops/monitoring/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
-    ports:
-      - "9115:9115"
+    # Prometheus reaches blackbox on the private Compose network; no host port.
     restart: unless-stopped

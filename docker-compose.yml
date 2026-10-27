@@ -6,13 +6,29 @@ services:
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     environment:
+      # Hosting is explicit and fail-closed: the entrypoint checks these settings
+      # (tools/validate_hosting_config.py) before migrating or starting anything.
+      # Local development uses docker-compose.development.yml on top.
+      - ENVIRONMENT=production
       - DATABASE_URL=postgresql://${POSTGRES_USER:-immo}:${POSTGRES_PASSWORD:?Set a unique URL-safe PostgreSQL password}@db:5432/${POSTGRES_DB:-immomanager}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set a unique strong signing secret}
+      # The proxy's address as the container sees it (e.g. the Docker bridge gateway);
+      # only from there are X-Forwarded-For and X-Forwarded-Proto believed.
+      - FORWARDED_ALLOW_IPS=${TRUSTED_PROXY_IPS:-}
+      - ALLOW_INMEMORY_FALLBACK=false
+      - AUTO_SEED_DEMO_DATA=false
+      - DIAGNOSTICS_ALLOW_IN_PRODUCTION=false
+      - UPDATE_ALLOW_IN_PRODUCTION=false
+      - IMMO_TESTVERSION=false
+      - ALLOW_SELF_REGISTRATION=false
+      - SECURITY_HEADERS_ENABLED=true
       - PORTAL_ENABLED=${PORTAL_ENABLED:-false}
       - PORTAL_PUBLIC_URL=${PORTAL_PUBLIC_URL:-}
+      - PORTAL_LOCAL_TEST_MODE=false
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      # The public HTTPS origin(s) of this instance, e.g. https://verwaltung.example.de
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
       # Schema changes: the entrypoint runs `python -m backend.upgrade` (full backup first).
       # Full backups: daily at 01:30 Europe/Berlin into /app/data/backups/full; optional second target
       # (mount it, e.g. a network share) and passphrase for the archived keys.

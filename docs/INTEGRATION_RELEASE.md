@@ -32,6 +32,19 @@ Einladungen und Dokumentveröffentlichungen erfolgen in den Einstellungen unter 
 
 Der Docker-Build erzeugt Frontend, Linux-x64-Laufzeit und den Lizenzbestand im Buildschritt. Die ausgeführte Anwendung enthält keine npm-Installation oder Downloadcaches und läuft als UID/GID 10001. Compose veröffentlicht nur den lokalen Anwendungsport; PostgreSQL erhält keinen Hostport. Passwort und JWT-Schlüssel müssen explizit und pro Instanz verschieden gesetzt werden. Für `POSTGRES_PASSWORD` einen zufälligen URL-tauglichen Wert verwenden, da er in die Verbindungs-URI eingeht.
 
+`docker-compose.yml` ist das Hostingprofil (`ENVIRONMENT=production`). Bevor der Container migriert oder startet, prüft `tools/validate_hosting_config.py` die Einstellungen und nennt bei einem Fehler nur den Namen der Einstellung, nie ihren Wert. Verlangt werden:
+
+| Einstellung | Anforderung |
+|---|---|
+| `JWT_SECRET_KEY`, `BACKUP_PASSPHRASE` | je mindestens 32 zufällige Zeichen; die Passphrase getrennt von den Sicherungen aufbewahren |
+| `CORS_ORIGINS` | die öffentlichen HTTPS-Adressen der Instanz, ohne Pfad und ohne `*` |
+| `TRUSTED_PROXY_IPS` | die Adresse des Reverse Proxy, wie der Container sie sieht (z. B. das Gateway des Docker-Netzes), als IP oder CIDR; nie `*` oder `0.0.0.0/0`. Nur von dort übernimmt uvicorn (`--proxy-headers`) Client-Adresse und Schema; ohne das sähe die Anmeldebremse alle Anfragen von einer Adresse. |
+| `DATABASE_URL` | die eigene PostgreSQL-Datenbank mit eigenem Benutzer und Passwort (Compose setzt sie aus `POSTGRES_*`) |
+| `PORTAL_PUBLIC_URL` | bei eingeschaltetem Portal eine HTTPS-Adresse |
+| Demodaten, Selbstregistrierung, Diagnose, Selbstupdate, Testversion, Speicher-Rückfall, lokaler Portaltest | aus; Sicherheitskopfzeilen an |
+
+Das Monitoring (`docker-compose.monitoring.yml`) verlangt ein eigenes `GRAFANA_ADMIN_PASSWORD` und veröffentlicht Prometheus und Grafana nur auf 127.0.0.1, den Blackbox-Exporter gar nicht. `ops/nginx/immomanager.conf.example` ist eine Vorlage für den Reverse Proxy (HTTPS, Weiterleitung von HTTP, ersetzte Forwarding-Header). Für die Entwicklung auf dem eigenen Rechner: `docker compose -f docker-compose.yml -f docker-compose.development.yml up` (`ENVIRONMENT=development`, lokale Adressen, ohne die Prüfung).
+
 Für bestehende Datenvolumes vor dem Wechsel die Zugriffsrechte auf UID/GID 10001 kontrolliert anpassen. Der Reverse Proxy muss HTTPS terminieren, die tatsächliche Proxyadresse muss ausdrücklich vertraut sein; die Host-/Originprüfung des Portals bleibt aktiv. Ressourcenlimits gelten für die Instanz, zusätzlich begrenzen die Prüfprozesse Zeit, Speicher und Ausgabe. Die tatsächliche Linux-/Proxy-/Hostingabnahme ist separat auf der Zielumgebung durchzuführen; eine unter Windows geprüfte Linux-Paketerstellung belegt keine Linux-Ausführung.
 
 ## Lizenznachweise

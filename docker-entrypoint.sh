@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Validate the declared deployment boundary before migrations or background work.
+# The checker reports setting names only, never credentials.
+python /app/validate_hosting_config.py
+
 # Explicit upgrade before the server starts: a database behind the Alembic head gets a
 # verified full backup (database, uploads, configuration, keys) first, then the migrations.
 # The server itself never changes the schema; it refuses an outdated database.
