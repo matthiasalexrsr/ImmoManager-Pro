@@ -3,14 +3,16 @@
 No lifecycle state is written here. Each linked service remains responsible for
 permissions, revisions, transitions and financial calculations at execution time.
 """
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import select
 
 from ..db.orm_models import Base
+from ..domain.calendar_days import STATES, deadline_end, holiday_name, is_working_day
 from ..domain.clock import local_today
 from ..permissions import may_write
+from ..storage import NotFoundError
 from . import document_versions as archive
 from .maintenance_rows import Rows
 
@@ -202,6 +204,48 @@ def invoice_pending(store, row):
     return True
 
 
+# § 193 BGB: a payment due on a Saturday, Sunday or public holiday is due on the next working day.
+PAYMENT_KINDS = {"invoice", "receivable", "dunning"}
+# It does not lengthen a notice period (BGH): the notice must still arrive by the day itself.
+NOTICE_KINDS = {"service_contract"}
+
+
+def _federal_state(store, property_id):
+    if not property_id:
+        return None
+    try:
+        return getattr(store.get_property(property_id), "federal_state", None)
+    except NotFoundError:
+        return None
+
+
+def calendar_deadline(kind: str, due: date | None, state: str | None) -> dict | None:
+    """The day a deadline really ends at the property and, on a free day, why."""
+    if due is None:
+        return None
+    if is_working_day(due, state):
+        return {"due": due.isoformat(), "effective": due.isoformat(), "note": None}
+    name = holiday_name(due, state)
+    regional = name is not None and holiday_name(due) is None
+    free = (f"{name}, ein Feiertag in {STATES[state]}" if regional and state else
+            f"{name}, ein bundesweiter Feiertag" if name else "ein Samstag" if due.weekday() == 5 else "ein Sonntag")
+    before = due - timedelta(days=1)
+    while not is_working_day(before, state):
+        before -= timedelta(days=1)
+    if kind in PAYMENT_KINDS:
+        effective = deadline_end(due, state)
+        note = (f"Der {due:%d.%m.%Y} ist {free}: Die Frist endet am nächsten Werktag, "
+                f"{effective:%d.%m.%Y} (§ 193 BGB).")
+    elif kind in NOTICE_KINDS:
+        effective = due
+        note = (f"Der {due:%d.%m.%Y} ist {free}. Eine Kündigungsfrist verlängert sich dadurch nicht: "
+                f"spätestens am {before:%d.%m.%Y} zustellen.")
+    else:
+        effective = due
+        note = f"Der {due:%d.%m.%Y} ist {free}; letzter Werktag davor: {before:%d.%m.%Y}."
+    return {"due": due.isoformat(), "effective": effective.isoformat(), "note": note}
+
+
 def enrich(store, kind, row, user, item):
     if kind == "e_invoice":
         waiting = "Lokale Belegprüfung" if row.state == "queued" else None
@@ -222,7 +266,10 @@ def enrich(store, kind, row, user, item):
     else:
         guidance = _base(kind, "open", item["actions"][0], [], assignee=item["assignee"],
             deadline="Fälligkeit des führenden Fachdatensatzes." if item["due_date"] else "Keine Frist eingetragen.")
-    overdue = (local_today() - date.fromisoformat(item["due_date"])).days if item["due_date"] else None
+    due = date.fromisoformat(item["due_date"]) if item["due_date"] else None
+    deadline = calendar_deadline(kind, due, _federal_state(store, item.get("property_id")))
+    guidance["deadline"] = deadline
+    overdue = (local_today() - date.fromisoformat(deadline["effective"])).days if deadline else None
     guidance["escalation"] = {"rule": "source_due_date", "days_overdue": max(0, overdue or 0),
         "status": "overdue" if overdue is not None and overdue > 0 else "scheduled" if overdue is not None else "undated"}
     item["workflow"] = guidance

@@ -7,6 +7,17 @@ from .domain.links import web_link
 from .domain.money import money
 
 
+def _federal_state(v: Optional[str]) -> Optional[str]:
+    """Two-letter code of a German state (BY, NW …), or none; its own public holidays then count."""
+    from .domain.calendar_days import STATES
+    if v is None or not str(v).strip():
+        return None
+    code = str(v).strip().upper()
+    if code not in STATES:
+        raise ValueError("Unbekanntes Bundesland; erwartet wird ein Kürzel wie BY, NW oder SN")
+    return code
+
+
 def _cent_amount(v: Optional[float]) -> Optional[float]:
     """Money arrives as cents: rounded half up (domain.money); a zero amount is refused."""
     if v is None:
@@ -50,6 +61,12 @@ class PropertyCreate(BaseModel):
     postal_code: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
+    federal_state: Optional[str] = None
+
+    @field_validator("federal_state")
+    @classmethod
+    def validate_federal_state(cls, v: Optional[str]) -> Optional[str]:
+        return _federal_state(v)
 
 
 class Property(PropertyCreate):
@@ -565,6 +582,12 @@ class PropertyPatch(BaseModel):
     postal_code: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
+    federal_state: Optional[str] = None
+
+    @field_validator("federal_state")
+    @classmethod
+    def validate_federal_state(cls, v: Optional[str]) -> Optional[str]:
+        return _federal_state(v)
 
 
 class UnitPatch(BaseModel):

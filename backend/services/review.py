@@ -194,6 +194,20 @@ def review_items(store: Any, today: date) -> list[dict]:
                           "Buchungen auf ein Konto umbuchen und die übrigen löschen.",
                 "entity_type": "account", "entity_id": accounts[0].id, "link": "/accounts"})
 
+    # without its federal state a let property's due dates and deadlines know only the nationwide holidays
+    let = {contract.property_id for contract in contracts if contract.status in OCCUPYING_CONTRACT_STATUSES}
+    stateless = sorted((prop for prop in store.list_properties() if prop.id in let and not prop.federal_state),
+                       key=lambda prop: prop.name)
+    if stateless:
+        names = ", ".join(prop.name for prop in stateless[:5]) + (" …" if len(stateless) > 5 else "")
+        items.append({
+            "kind": "federal_state_missing", "severity": "info",
+            "title": f"{len(stateless)} vermietete Immobilie{'' if len(stateless) == 1 else 'n'} ohne Bundesland: {names}",
+            "detail": "Für die Fälligkeit der Miete, Kündigungsfristen und Fristen zählen dort nur die bundesweiten "
+                      "Feiertage. Mit dem Bundesland zählen auch dessen eigene (z. B. Allerheiligen in "
+                      "Nordrhein-Westfalen).",
+            "entity_type": "property", "entity_id": stateless[0].id, "link": f"/properties/{stateless[0].id}"})
+
     # owners: a property with shares whose money partly belongs to nobody recorded (services.ownership)
     from .ownership import Ownership
 

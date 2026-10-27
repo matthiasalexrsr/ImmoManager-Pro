@@ -408,7 +408,8 @@ def source(store, contract_id: str, actor_id: str) -> dict[str, Any]:
             for count in range(1, rules.MAX_INSTALMENTS + 1):
                 schedules[str(count)] = [{"number": i.number, "due_date": i.due_date.isoformat(),
                                           "amount": _num(i.amount)}
-                                         for i in rules.schedule(suggested, contract.start_date, count=count)]
+                                         for i in rules.schedule(suggested, contract.start_date, count=count,
+                                                                 federal_state=getattr(prop, "federal_state", None))]
         return {
             "contract_id": contract.id,
             "source": _source(contract, prop, location, tenant, portfolio),
@@ -438,7 +439,8 @@ def _checked_agreement(unit: archive.Unit, payload: AgreementRequest, contract, 
     try:
         amounts = ([money(value) for value in payload.instalment_amounts]
                    if payload.instalment_amounts is not None else None)
-        schedule = rules.schedule(amount, contract.start_date, amounts, count=payload.instalment_count)
+        schedule = rules.schedule(amount, contract.start_date, amounts, count=payload.instalment_count,
+                                  federal_state=getattr(prop, "federal_state", None))
     except rules.DepositRuleError as error:
         raise HTTPException(400, str(error)) from None
     return amount, schedule

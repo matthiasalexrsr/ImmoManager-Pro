@@ -79,16 +79,16 @@ def _month_after(day: date, months: int) -> date:
     return date(day.year + month // 12, month % 12 + 1, 1)
 
 
-def instalment_due_dates(start: date, count: int) -> list[date]:
+def instalment_due_dates(start: date, count: int, federal_state: str | None = None) -> list[date]:
     """The first at the start of the tenancy, each further one with the rent of the following month.
 
-    Rent is due by the third working day of a month; the rent of the start month counts as
-    paid together with the first instalment (§ 551 II BGB: "zusammen mit den
-    unmittelbar folgenden Mietzahlungen").
+    Rent is due by the third working day of a month (without the holidays of the property's
+    ``federal_state``); the rent of the start month counts as paid together with the first
+    instalment (§ 551 II BGB: "zusammen mit den unmittelbar folgenden Mietzahlungen").
     """
     if not 1 <= count <= MAX_INSTALMENTS:
         raise DepositRuleError(f"Eine Kaution wird in höchstens {MAX_INSTALMENTS} Raten gezahlt.")
-    return [start] + [rent_due_date(_month_after(start, months)) for months in range(1, count)]
+    return [start] + [rent_due_date(_month_after(start, months), federal_state) for months in range(1, count)]
 
 
 def split_amount(total: Decimal, count: int) -> list[Decimal]:
@@ -111,7 +111,7 @@ class Instalment:
 
 
 def schedule(total: Decimal, start: date, amounts: Sequence[Decimal] | None = None,
-             count: int | None = None) -> list[Instalment]:
+             count: int | None = None, federal_state: str | None = None) -> list[Instalment]:
     """The instalments of an agreement: given amounts (in order) or an equal split."""
     if amounts is None:
         values = split_amount(total, count or 1)
@@ -124,7 +124,7 @@ def schedule(total: Decimal, start: date, amounts: Sequence[Decimal] | None = No
         if sum(values, ZERO) != money(total):
             raise DepositRuleError("Die Raten ergeben zusammen nicht den Kautionsbetrag.")
     return [Instalment(number, due, value)
-            for number, (due, value) in enumerate(zip(instalment_due_dates(start, len(values)), values), 1)]
+            for number, (due, value) in enumerate(zip(instalment_due_dates(start, len(values), federal_state), values), 1)]
 
 
 # ─── Receipts ────────────────────────────────────────────────────────────────

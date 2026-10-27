@@ -97,6 +97,7 @@ export default function WorkCenter() {
           {!!item.workflow.blockers.length && <details><summary>Offene Voraussetzungen ({item.workflow.blockers.length})</summary><ul>{item.workflow.blockers.map((text, index) => <li key={index}>{text}</li>)}</ul></details>}
           {item.workflow.steps && <ol className="work-flow-steps">{item.workflow.steps.map(step => <li key={step.id}><Link to={step.href}>{step.label}</Link> · {step.done ? 'nachgewiesen' : 'offen'}</li>)}</ol>}
           <p className="work-item-context">Fristgrundlage: {item.workflow.deadline_basis}</p>
+          {item.workflow.deadline?.note && <p className="work-item-context">{item.workflow.deadline.note}</p>}
           {item.workflow.escalation.status === 'overdue' && <p>Bearbeitungsfrist seit {item.workflow.escalation.days_overdue} Tagen überschritten.</p>}
         </div>}
         {item.kind === 'task' && item.assignee && <p className="work-item-context">Zuständig: {item.assignee}</p>}

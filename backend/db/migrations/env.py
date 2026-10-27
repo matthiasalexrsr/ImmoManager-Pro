@@ -38,7 +38,7 @@ ORM_ADOPTION_TARGETS = frozenset({ORM_ADOPTION_HEAD, "f018a1b2c001", "f019a1b2c0
                                    "d1f3a5c7e9b2", "e4b6d8f0a2c3", "f5c7e9a1b3d4", "a6d8f0b2c4e5",
                                    "b8f0a2c4d6e7", "c9a1b3d5e7f9", "d0b2c4e6f8a1",
                                    "e1a3c5e7f9b2", "f2a4c6e8b0d3", "a3b5d7f9c1e4", "b4c6d8e0f2a5", "c5d7e9f1a3b6", "d6e8f0a2b4c7",
-                                   "e7f9013c5d8a", "f8a0124d6e9b"})
+                                   "e7f9013c5d8a", "f8a0124d6e9b", "a9c1e3f5b7d2"})
 
 
 def _current_addition_names():
@@ -111,6 +111,8 @@ def _current_additions_are_present(connection) -> bool:
         if (action == 'add_column' and difference[2] == 'privacy_controls'
                 and difference[3].name == 'file_keys_sha256'):
             continue  # f8a0124d6e9b adds the nullable locator tombstones
+        if action == 'add_column' and (difference[2], difference[3].name) == ('properties', 'federal_state'):
+            continue  # a9c1e3f5b7d2 adds the nullable federal state of a property
         # These fields are owned by the reviewed successor migration. It must
         # run after the additive families are adopted, including its validation.
         if (action == 'add_column' and difference[2] == 'billing_objections'

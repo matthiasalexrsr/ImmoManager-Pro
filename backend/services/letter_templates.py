@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ..db.daily_models import SettingRuleORM
-from ..domain.calendar_days import national_holidays
+from ..domain.calendar_days import STATES, holidays
 from . import daily_state as state
 from . import document_versions as archive
 from . import price_index
@@ -375,16 +375,16 @@ def month_end(value: date) -> date:
     return date(value.year, value.month, calendar.monthrange(value.year, value.month)[1])
 
 
-def working_day(value: date) -> bool:
-    """A working day for notice periods: Monday to Saturday, no nationwide public holiday."""
-    return value.weekday() < 6 and value not in national_holidays(value.year)
+def working_day(value: date, federal_state: str | None = None) -> bool:
+    """A working day for notice periods: Monday to Saturday, no public holiday (with the property's state, its own too)."""
+    return value.weekday() < 6 and value not in holidays(value.year, federal_state)
 
 
-def tenant_notice_end(received: date) -> date:
+def tenant_notice_end(received: date, federal_state: str | None = None) -> date:
     """§ 573c Abs. 1 BGB: notice by the third working day of a month ends the tenancy with the month after next."""
     count, current = 0, received.replace(day=1)
     while True:
-        if working_day(current):
+        if working_day(current, federal_state):
             count += 1
         if count == 3:
             break
@@ -546,7 +546,7 @@ def default_inputs(kind: str, source: dict, issue: date) -> dict[str, Any]:
                 "effective_date": start.isoformat(), "statement_reference": reference}
     if kind == "termination_confirmation":
         contract = source["contract"]
-        end = contract.get("end_date") or tenant_notice_end(issue).isoformat()
+        end = contract.get("end_date") or tenant_notice_end(issue, source["property"].get("federal_state")).isoformat()
         return {"notice_received": issue.isoformat(), "tenancy_end": end, "handover": None}
     if kind == "rent_certificate":
         return {"reference_date": issue.isoformat(), "purpose": None, "no_arrears": False}
@@ -627,13 +627,16 @@ def evaluate(kind: str, source: dict, inputs: dict, issue: date) -> dict[str, An
         received, end = date.fromisoformat(inputs["notice_received"]), date.fromisoformat(inputs["tenancy_end"])
         values.update({"kuendigung.eingang": day(received), "kuendigung.mietende": day(end),
                        "kuendigung.uebergabe": inputs.get("handover") or "nach Absprache mit Ihnen"})
-        earliest = tenant_notice_end(received)
+        state = prop.get("federal_state")
+        earliest = tenant_notice_end(received, state)
         if end < received:
             checks.append(_check("error", "Das Mietende liegt vor dem Eingang der Kündigung."))
         elif end < earliest:
             checks.append(_check("warning", f"Nach der gesetzlichen Kündigungsfrist des Mieters (§ 573c Abs. 1 BGB) "
                                             f"endet das Mietverhältnis frühestens am {day(earliest)}. Ein früheres Ende "
                                             "gilt nur, wenn Sie es vereinbaren (z. B. Aufhebungsvertrag)."))
+        if state in STATES:
+            checks.append(_check("info", f"Werktage gezählt mit den Feiertagen in {STATES[state]}."))
         if contract.get("notice_period"):
             checks.append(_check("info", f"Im Vertrag vermerkte Kündigungsfrist: {contract['notice_period']}."))
         if contract.get("end_date") != end.isoformat():

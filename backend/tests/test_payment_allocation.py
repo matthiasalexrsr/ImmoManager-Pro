@@ -185,7 +185,8 @@ def test_review_list_names_rents_and_payments_to_check(client, yilmaz):
     review = client.get("/api/v1/review").json()
     kinds = sorted(item["kind"] for item in review["items"])
 
-    assert kinds == ["adjustment_not_applied", "payment_without_tenant", "unassigned_payment", "unit_rent_differs"]
+    assert kinds == ["adjustment_not_applied", "federal_state_missing", "payment_without_tenant", "unassigned_payment",
+                     "unit_rent_differs"]
     unassigned = next(i for i in review["items"] if i["kind"] == "unassigned_payment")
     assert "davon 430,00 € ohne Vertrag" in unassigned["detail"]
     assert unassigned["link"] == f"/bookings?booking_id={excess['id']}"

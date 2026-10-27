@@ -127,10 +127,10 @@ def _check_due_day(due_day: int | None) -> None:
         raise ValueError("due_day must be between 1 and 28")
 
 
-def _due_date(first: date, due_day: int | None) -> date:
+def _due_date(first: date, due_day: int | None, federal_state: str | None = None) -> date:
     """When the rent of the month starting (or moved into) on ``first`` is due."""
     if due_day is None:
-        return rent_due_date(first)
+        return rent_due_date(first, federal_state)
     return max(first, first.replace(day=due_day))
 
 
@@ -238,6 +238,7 @@ class LeaseEngine:
         until_including: date,
         due_day: int | None = None,
         rent_steps: Iterable[RentStep] | None = None,
+        federal_state: str | None = None,
     ) -> List[ReceivableLine]:
         """Monthly receivables of a contract.
 
@@ -247,12 +248,13 @@ class LeaseEngine:
         a rent change during a month are charged by their days.
 
         Without ``due_day`` a month's rent is due by its third working day
-        (§ 556b Abs. 1 BGB), the first one counted from moving in; ``due_day``
-        fixes a calendar day instead, never before moving in.
+        (§ 556b Abs. 1 BGB), the first one counted from moving in; the holidays of
+        the property's ``federal_state`` do not count either. ``due_day`` fixes a
+        calendar day instead, never before moving in.
         """
         if rent_steps is not None:
             return LeaseEngine._receivables_from_history(
-                contract_start, contract_end, list(rent_steps), until_including, due_day)
+                contract_start, contract_end, list(rent_steps), until_including, due_day, federal_state)
         if charge is None:
             raise ValueError("charge or rent_steps is required")
         _check_due_day(due_day)
@@ -271,7 +273,7 @@ class LeaseEngine:
 
         while current <= last_month:
             period_end = _next_month(current)
-            due_date = _due_date(current, due_day)
+            due_date = _due_date(current, due_day, federal_state)
             lines.append(
                 ReceivableLine(
                     period_start=current,
@@ -294,6 +296,7 @@ class LeaseEngine:
         steps: list[RentStep],
         until_including: date,
         due_day: int | None,
+        federal_state: str | None = None,
     ) -> List[ReceivableLine]:
         _check_due_day(due_day)
         if contract_end is not None and contract_end < contract_start:
@@ -319,7 +322,7 @@ class LeaseEngine:
                 lines.append(ReceivableLine(
                     period_start=month,
                     period_end=following,
-                    due_date=_due_date(first, due_day),
+                    due_date=_due_date(first, due_day, federal_state),
                     cold_rent=cold,
                     service_charge_advance=service,
                     heating_advance=heating,

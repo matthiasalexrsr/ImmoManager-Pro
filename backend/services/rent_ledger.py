@@ -16,6 +16,7 @@ from typing import Any
 
 from ..domain.lease_engine import LeaseEngine, PaymentLine, ReceivableLine, RentStep
 from ..domain.money import ZERO, money
+from ..storage import NotFoundError
 from .rent_history import rent_steps
 
 CARRIED_LABEL = "Rückstand zum Übernahmetag"
@@ -29,12 +30,21 @@ def takeover(contract: Any) -> tuple[date | None, Decimal]:
     return start, money(getattr(contract, "carried_balance", None) or 0)
 
 
+def federal_state(store: Any, contract: Any) -> str | None:
+    """The state whose own public holidays count for the contract's due dates: its property's."""
+    try:
+        return getattr(store.get_property(contract.property_id), "federal_state", None)
+    except NotFoundError:
+        return None
+
+
 def account_receivables(store: Any, contract: Any, until: date,
                         steps: list[RentStep] | None = None) -> list[ReceivableLine]:
     """What the tenant owes on this contract's account up to *until*, oldest first."""
     lines = LeaseEngine.build_monthly_receivables(
         contract_start=contract.start_date, contract_end=contract.end_date,
-        rent_steps=rent_steps(store, contract) if steps is None else steps, until_including=until)
+        rent_steps=rent_steps(store, contract) if steps is None else steps, until_including=until,
+        federal_state=federal_state(store, contract))
     start, carried = takeover(contract)
     if start is None:
         return lines

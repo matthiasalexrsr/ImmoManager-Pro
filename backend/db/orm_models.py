@@ -79,6 +79,8 @@ class PropertyORM(Base):
     postal_code: Mapped[str | None] = mapped_column(Text)
     city: Mapped[str | None] = mapped_column(Text)
     country: Mapped[str | None] = mapped_column(Text)
+    # two-letter German state (domain/calendar_days.STATES): its own public holidays count for deadlines
+    federal_state: Mapped[str | None] = mapped_column(String(2))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

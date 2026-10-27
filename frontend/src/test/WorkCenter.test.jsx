@@ -51,6 +51,20 @@ it('shows source-derived blockers and waiting reason without offering an unautho
   expect(api.post).not.toHaveBeenCalled();
 });
 
+it('names a deadline that falls on a regional holiday', async () => {
+  const note = 'Der 01.11.2027 ist Allerheiligen, ein Feiertag in Nordrhein-Westfalen: Die Frist endet am nächsten Werktag, 02.11.2027 (§ 193 BGB).';
+  api.get.mockImplementation(path => path.startsWith('/work-center/items') ? Promise.resolve({ items: [{
+    work_item_key: 'invoice:i:invoice_due', kind: 'invoice', entity_id: 'i', title: 'Rechnung R-2', due_date: '2027-11-01',
+    href: '/invoice-review/i', revision: rev1, actions: [], can_edit: false, workflow: {
+      next_action: { label: 'Zahlung vorschlagen', href: '/invoice-review/i', allowed: true },
+      blockers: [], deadline_basis: 'Fälligkeit laut Beleg', escalation: { status: 'scheduled', days_overdue: 0 },
+      deadline: { due: '2027-11-01', effective: '2027-11-02', note },
+    } }], next_cursor: null }) : path.startsWith('/work-center/summary') ? Promise.resolve({ counts: {}, drilldowns: {} }) : Promise.resolve(empty()));
+  show(<WorkCenter />, '/work-center');
+  expect(await screen.findByText(note)).toBeInTheDocument();
+  expect(screen.queryByText(/Bearbeitungsfrist seit/)).not.toBeInTheDocument();
+});
+
 describe('shared entity activities', () => {
   it('does not display a previous entity response after changing the dossier', async () => {
     const old = deferred();
