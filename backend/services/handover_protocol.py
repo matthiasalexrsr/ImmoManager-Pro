@@ -84,6 +84,7 @@ from .handover_protocol_validation import (
 )
 from .housing_confirmation import etag
 from .housing_confirmation_validation import digest
+from .meter_history import order_problem
 from .utility_billing import DEFAULT_UNITS, READING_TOLERANCE_DAYS
 
 logger = logging.getLogger(__name__)
@@ -862,6 +863,10 @@ def _meter_plan(unit: archive.Unit, protocol: HandoverProtocol, content: dict[st
                 problems.append(_problem("METER_READING_CONFLICT", f"Zähler {reading.meter_number or meter_id[:8]}: "
                                          f"am {day:%d.%m.%Y} gibt es bereits eine andere Ablesung."))
                 continue
+            order = order_problem(existing.get(meter_id, []), meter_id, day, reading.reading_value, ignore=(taken.id,))
+            if order:
+                problems.append(_problem("METER_READING_ORDER", f"Zähler {reading.meter_number or meter_id[:8]}: {order}"))
+                continue
             plan.append(("update", reading, taken.model_copy(update={
                 "reading_date": day, "value": reading.reading_value, "notes": note, "updated_at": now()})))
             continue
@@ -874,6 +879,10 @@ def _meter_plan(unit: archive.Unit, protocol: HandoverProtocol, content: dict[st
                                          "Stand prüfen oder die vorhandene Ablesung unter Zähler korrigieren."))
                 continue
             plan.append(("attach", reading, match))
+            continue
+        order = order_problem(existing.get(meter_id, []), meter_id, day, reading.reading_value)
+        if order:
+            problems.append(_problem("METER_READING_ORDER", f"Zähler {reading.meter_number or meter_id[:8]}: {order}"))
             continue
         photo = next((p for p in content["photos"] if p.meter_reading_id == reading.id), None)
         stamp = now()

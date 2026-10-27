@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from ..domain.clock import local_today
 from ..domain.occupancy import OverlappingTenanciesError, billable_contracts, unit_segments
+from .meter_history import unusual_intervals
 from .utility_billing import (
     DEFAULT_UNITS,
     METER_TYPE_LABELS,
@@ -274,6 +275,19 @@ def guide(store: Any, property_id: str, period_id: Optional[str] = None, *, chec
         hints.add("readings", f"{len(missing_readings)} Zählerstände fehlen"
                   + (f", davon {len(moves)} Zwischenablesungen beim Mieterwechsel" if moves else "")
                   + ". Ohne sie teilt die Abrechnung den Verbrauch nach Tagen auf.", "warning")
+    # a typo, a unit mix-up or a leak shows as a jump: worth a look before it is billed
+    unusual = []
+    for meter in meters:
+        if meter.meter_type in needed_types:
+            for row in unusual_intervals(readings_by_meter.get(meter.id, [])):
+                if start <= date.fromisoformat(row["reading_date"]) <= end + timedelta(days=READING_TOLERANCE_DAYS):
+                    unusual.append((meter, row))
+    if unusual:
+        meter, row = unusual[0]
+        hints.add("readings", f"{len(unusual)} auffällige{'r' if len(unusual) == 1 else ''} Zählerstand"
+                  f"{'' if len(unusual) == 1 else 'e'} im Zeitraum, z. B. Zähler {meter.serial_number or meter.id[:8]} "
+                  f"({unit_label.get(meter.unit_id, '')}) am {_fmt(date.fromisoformat(row['reading_date']))}: "
+                  f"{row['warning']}. Bitte im Zählerverlauf prüfen, bevor abgerechnet wird.", "warning", "/meters")
 
     # ── situation hints ───────────────────────────────────────────────────────
     deadline = statement_deadline(end)

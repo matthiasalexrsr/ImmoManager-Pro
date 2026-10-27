@@ -18,6 +18,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -426,6 +427,7 @@ def apply(store: Any, document: Any, *, period: Any, property_id: str, costs: li
     """Cost items (source: the document) and meter readings, after every check, in one transaction."""
     from ..models import CostItemCreate, StandaloneMeterReadingCreate
     from .billing_writes import billing_write
+    from .meter_history import order_problem
 
     facts = property_facts(store, property_id)
     keys = {key.id: key for key in facts.keys}
@@ -446,12 +448,13 @@ def apply(store: Any, document: Any, *, period: Any, property_id: str, costs: li
             if cost.get("consumption_share") and keys[cost["allocation_key_id"]].key_type != "consumption":
                 raise HTTPException(422, f"„{cost['description']}“: ein Verbrauchsanteil braucht einen Verbrauchsschlüssel.")
     existing: dict[tuple[str, date], float] = {}
-    for reading in store.list_standalone_meter_readings():
-        if reading.meter_id in meters:
-            existing[(reading.meter_id, reading.reading_date)] = reading.value
-    new_readings, skipped, conflicts = [], 0, []
+    stored = [reading for reading in store.list_standalone_meter_readings() if reading.meter_id in meters]
+    for reading in stored:
+        existing[(reading.meter_id, reading.reading_date)] = reading.value
+    new_readings, skipped, conflicts, out_of_order = [], 0, [], []
     latest = local_today() + timedelta(days=1)
-    for reading in readings:
+    # in date order, so a document's own readings are checked against each other too
+    for reading in sorted(readings, key=lambda item: (item["reading_date"], item["value"])):
         meter = meters.get(reading["meter_id"])
         if meter is None:
             raise HTTPException(422, "Ein Zählerstand gehört zu keinem Zähler dieser Immobilie.")
@@ -465,11 +468,20 @@ def apply(store: Any, document: Any, *, period: Any, property_id: str, costs: li
                 continue
             conflicts.append(f"{meter.serial_number or meter.id[:8]} am {day:%d.%m.%Y}: gespeichert {known:g}, im Dokument {reading['value']:g}")
             continue
+        order = order_problem(stored, meter.id, day, reading["value"])
+        if order:
+            out_of_order.append(f"{meter.serial_number or meter.id[:8]} am {day:%d.%m.%Y}: {order}")
+            continue
         new_readings.append((meter, day, reading["value"]))
         existing[(meter.id, day)] = reading["value"]
+        stored.append(SimpleNamespace(id=f"document-{len(new_readings)}", meter_id=meter.id, reading_date=day,
+                                      value=reading["value"]))
     if conflicts:
         raise HTTPException(409, "Für diese Tage sind schon andere Zählerstände gespeichert: " + "; ".join(conflicts[:10])
                             + ". Bitte die Zeilen prüfen oder abwählen.")
+    if out_of_order:
+        raise HTTPException(422, "Diese Zählerstände passen nicht zu den gespeicherten Ablesungen: "
+                            + " ".join(out_of_order[:10]))
     note = f"aus „{document.title}“"[:200]
     recorded_by = getattr(actor, "full_name", None) or getattr(actor, "username", None)
     with billing_write(store, [period.id] if period is not None else []):

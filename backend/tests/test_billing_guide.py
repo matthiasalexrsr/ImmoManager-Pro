@@ -120,6 +120,19 @@ def test_readings_are_asked_for_on_the_days_tenants_changed(case):
     assert all(row["key_type"] != "consumption" for row in view["keys"]["suggested"])
 
 
+def test_an_unusual_reading_in_the_period_is_named_before_billing(case):
+    store.create_allocation_key(AllocationKeyCreate(property_id=case["property"].id, name="Kaltwasser", key_type="consumption",
+                                                    meter_type="cold_water", measure_unit="m³"))
+    assert not _hint(_guide(case, period_id=case["period"].id), "readings", "auffällig")
+    # about 0.02 m³ a day for three quarters, then 0.38: a typo, a unit mix-up or a leak
+    for day, value in ((date(2025, 4, 1), 12), (date(2025, 7, 1), 14), (date(2025, 10, 1), 16)):
+        store.create_standalone_meter_reading(StandaloneMeterReadingCreate(meter_id=case["meters"]["OG"].id,
+                                                                          reading_date=day, value=value))
+    hint = _hint(_guide(case, period_id=case["period"].id), "readings", "1 auffälliger Zählerstand im Zeitraum")
+    assert hint and hint["level"] == "warning" and hint["link"] == "/meters"
+    assert "Zähler WZ 20000 (OG) am 30.12.2025: Auffällig hoher Verbrauch je Tag" in hint["text"]
+
+
 def test_a_period_of_another_property_is_refused(case):
     other = store.create_property(PropertyCreate(portfolio_id=case["property"].portfolio_id, name="Anderes Haus", property_type="residential"))
     response = case["client"].get("/api/v1/billing/guide", params={"property_id": other.id, "period_id": case["period"].id})

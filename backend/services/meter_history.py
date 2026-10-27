@@ -117,6 +117,35 @@ def _contracts(store: Any, meter_id: str) -> list[dict]:
     return result
 
 
+def order_problem(readings: Any, meter_id: str, day: date, value: Any, *, ignore: tuple[str, ...] = ()) -> str | None:
+    """A meter only counts up: a reading must lie between the one before and the one after it.
+
+    Readings of the same day count as before (a second reading that day may be higher). `ignore`
+    names readings the new value replaces. A meter exchange is a new meter, not a lower value.
+    """
+    number = _number(value)
+    own = [r for r in readings if r.meter_id == meter_id and r.id not in ignore]
+    before = [r for r in own if r.reading_date <= day]
+    if before:
+        last = max(before, key=lambda r: (r.reading_date, _number(r.value)))
+        if number < _number(last.value):
+            return (f"Zählerstand {float(number):g} ist kleiner als der Stand {float(last.value):g} vom "
+                    f"{last.reading_date:%d.%m.%Y}. Bei einem Zählerwechsel bitte einen neuen Zähler anlegen.")
+    after = [r for r in own if r.reading_date > day]
+    if after:
+        following = min(after, key=lambda r: (r.reading_date, _number(r.value)))
+        if number > _number(following.value):
+            return (f"Zählerstand {float(number):g} ist größer als der spätere Stand {float(following.value):g} vom "
+                    f"{following.reading_date:%d.%m.%Y}. Bitte den Stand prüfen oder die spätere Ablesung korrigieren.")
+    return None
+
+
+def unusual_intervals(readings: list) -> list[dict]:
+    """The intervals of one meter's readings that deserve a second look, with their warning."""
+    return [row for row in _intervals(sorted(readings, key=lambda r: (r.reading_date, str(r.created_at), r.id)))
+            if row["warning"]]
+
+
 def history(store: Any, meter_id: str) -> dict:
     meter = store.get_meter(meter_id)
     readings = _readings(store, meter_id)

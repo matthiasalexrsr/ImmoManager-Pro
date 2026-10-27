@@ -176,6 +176,24 @@ def test_the_proposal_matches_meters_units_and_keys_and_is_taken_over_once(case)
     assert conflict.status_code == 409 and "gespeichert 97" in conflict.json()["error"]["message"]
 
 
+def test_readings_out_of_order_with_stored_ones_are_refused(case):
+    """A later reading below the document's value would make the consumption negative."""
+    meter = case["meters"]["10456790"]
+    store.create_standalone_meter_reading(StandaloneMeterReadingCreate(meter_id=meter.id, reading_date=date(2026, 3, 31),
+                                                                      value=200))
+    url = f"/api/v1/billing/meter-documents/{case['document']['id']}/apply"
+    body = {"billing_period_id": case["period"].id, "costs": [],
+            "readings": [{"meter_id": meter.id, "reading_date": "2025-12-31", "value": 288}]}
+    refused = case["clients"]["eigentuemer"].post(url, json=body)
+    assert refused.status_code == 422
+    assert "10456790 am 31.12.2025: Zählerstand 288 ist größer als der spätere Stand 200" in refused.json()["error"]["message"]
+    own = dict(body, readings=[{"meter_id": meter.id, "reading_date": "2025-06-30", "value": 150},
+                               {"meter_id": meter.id, "reading_date": "2025-12-31", "value": 140}])
+    refused = case["clients"]["eigentuemer"].post(url, json=own)
+    assert refused.status_code == 422 and "kleiner als der Stand 150 vom 30.06.2025" in refused.json()["error"]["message"]
+    assert [r.value for r in store.list_standalone_meter_readings() if r.meter_id == meter.id] == [200]
+
+
 def test_roles_take_over_their_part_only(case):
     proposal = _analysis(case).json()
     cost = {key: proposal["costs"][0][key] for key in ("description", "amount", "cost_category", "allocation_key_id",

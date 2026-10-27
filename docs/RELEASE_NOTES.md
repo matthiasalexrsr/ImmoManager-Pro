@@ -83,6 +83,7 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
   - Platzhalter wie `{{mieter.name}}` füllt das Programm aus dem Vertrag; eigene Vorlagen entstehen als Kopie einer mitgelieferten;
   - der fertige Brief wird als unveränderliches Original in der Akte abgelegt; versendet wird nichts.
 - **Zählerverlauf:** Ein Klick auf die Zählernummer zeigt alle Ablesungen mit Verbrauch je Zeitraum und je Kalenderjahr, weist auf Auffälligkeiten hin und verlinkt den eigenen Versorgungsvertrag sowie das Kundenportal des Anbieters.
+- **Zählerstände in der richtigen Reihenfolge:** Ein Stand muss zwischen der Ablesung davor und der danach liegen, auch wenn er nachträglich für einen früheren Tag eingetragen wird. Das gilt bei den Zählern, beim Stand aus Foto, im Übergabeprotokoll und bei Dokumenten des Messdienstes; sonst entstünde ein negativer Verbrauch. Der Nebenkosten-Assistent nennt vor dem Abrechnen auffällige Stände des Zeitraums, etwa einen ungewöhnlich hohen Verbrauch (Tippfehler, falsche Einheit oder ein Leck).
 - **Neuvermietung (Leerstand):** Jede frei werdende Einheit wird zum Projekt:
   - Angebot mit Miete, Kaution, Vorgaben und den Pflichtangaben des Energieausweises;
   - Exposé als PDF und Texte für Immobilienportale zum Kopieren (es wird nichts automatisch veröffentlicht);

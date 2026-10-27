@@ -387,6 +387,24 @@ def test_an_existing_reading_of_the_day_is_attached_and_a_different_one_refused(
     assert client.delete(f"/api/v1/meters/{estate['meter'].id}").status_code == 409
 
 
+def test_a_reading_out_of_order_with_the_meter_history_blocks_the_protocol(client):
+    """The move-out on 30.06. lies between two readings; the meter only counts up."""
+    estate = _estate()
+    for day, value in ((date(2026, 1, 31), 120), (date(2026, 9, 30), 140)):
+        store.create_standalone_meter_reading(StandaloneMeterReadingCreate(meter_id=estate["meter"].id,
+                                                                           reading_date=day, value=value))
+    detail = _fill(client, _create(client, estate["contract"].id), value=110)
+    problems = {p["code"]: p for p in client.post(f"{BASE}/{detail['protocol']['id']}/preview").json()["problems"]}
+    assert problems["METER_READING_ORDER"]["blocking"] and "kleiner als der Stand 120" in problems["METER_READING_ORDER"]["message"]
+    detail = _save(client, detail, meter_readings=[{**_content(detail)["meter_readings"][0], "reading_value": 150}])
+    problems = {p["code"]: p for p in client.post(f"{BASE}/{detail['protocol']['id']}/preview").json()["problems"]}
+    assert "größer als der spätere Stand 140 vom 30.09.2026" in problems["METER_READING_ORDER"]["message"]
+    detail = _save(client, detail, meter_readings=[{**_content(detail)["meter_readings"][0], "reading_value": 130}])
+    assert _finalize(client, detail["protocol"]["id"])[1].status_code == 200
+    assert _readings(estate["meter"].id) == [(date(2026, 1, 31), 120.0), (date(2026, 6, 30), 130.0),
+                                             (date(2026, 9, 30), 140.0)]
+
+
 # ─── Corrections ─────────────────────────────────────────────────────────────
 
 def test_a_correction_is_a_new_original_and_takes_over_the_meter_reading(client):

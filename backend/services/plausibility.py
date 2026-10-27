@@ -264,14 +264,11 @@ def meter_reading(data: dict, store: Any) -> None:
         raise ValidationError("Eine Ablesung kann nicht in der Zukunft liegen")
     if not isinstance(value, (int, float)) or not day or not data.get("meter_id"):
         return
-    earlier = [r for r in store.list_standalone_meter_readings()
-               if r.meter_id == data["meter_id"] and r.reading_date <= day and r.id != data.get("id")]
-    if earlier:
-        last = max(earlier, key=lambda r: r.reading_date)
-        if value < last.value:
-            raise ValidationError(f"Zählerstand {value:g} ist kleiner als der Stand {last.value:g} vom "
-                                  f"{last.reading_date:%d.%m.%Y}. Bei einem Zählerwechsel bitte einen neuen Zähler "
-                                  "anlegen.")
+    from .meter_history import order_problem
+    problem = order_problem(store.list_standalone_meter_readings(), data["meter_id"], day, value,
+                            ignore=(data["id"],) if data.get("id") else ())
+    if problem:
+        raise ValidationError(problem)
 
 
 def account(data: dict, store: Any) -> None:
