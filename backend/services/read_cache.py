@@ -21,6 +21,7 @@ class CachedReads:
         self._contracts: list[Any] | None = None
         self._periods: dict[str, list[Any]] | None = None
         self._units: dict[str, Any] | None = None
+        self._properties: dict[str, Any] | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._store, name)
@@ -42,6 +43,13 @@ class CachedReads:
             self._units = {unit.id: unit for unit in self._store.list_units()}
         found = self._units.get(unit_id)
         return found if found is not None else self._store.get_unit(unit_id)
+
+    def get_property(self, property_id: str) -> Any:
+        """A property from one read of all properties (the federal state of due dates); unknown ones as before."""
+        if self._properties is None:
+            self._properties = {prop.id: prop for prop in self._store.list_properties()}
+        found = self._properties.get(property_id)
+        return found if found is not None else self._store.get_property(property_id)
 
     def list_contract_rent_periods(self, contract_id: str | None = None) -> list[Any]:
         if self._periods is None:

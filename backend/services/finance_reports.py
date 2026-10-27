@@ -354,7 +354,7 @@ def forecast(store, d):
                 if prior:
                     steps = [s for s in steps if s.valid_from != a.effective_date] + [RentStep(a.effective_date,
                         ChargeConfig(money(a.new_rent), prior.service_charge_advance, prior.heating_advance))]
-        claims, payments = contract_ledger(store, c, last, credited.get(c.tenant_id, []), steps=steps,
+        claims, payments = contract_ledger(reads, c, last, credited.get(c.tenant_id, []), steps=steps,
                                            payments_until=last)
         settled_rent = LeaseEngine.build_settlement_report(claims, payments, today=d.as_of)
         arrears = ZERO

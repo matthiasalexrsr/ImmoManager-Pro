@@ -43,7 +43,7 @@ Rückgabecode `0` bedeutet, dass der Prüfbefehl keinen ausstehenden Upgradebeda
 
 Vor der Migration eines älteren Bestands erstellt und prüft dieser Weg eine Vollsicherung. Scheitert sie, wird das Schema nicht verändert. Den Schalter `--no-backup` für die reguläre Kundenaktualisierung nicht verwenden. Fehlermeldungen durch manuelles Setzen der Schema-Version zu umgehen, ist kein zulässiger Wiederanlauf.
 
-Die Erweiterung legt zusätzliche Fachtabellen an. Die Historienkennung wird für externe Akteure verlustfrei verbreitert; Datenschutzentscheidungen erhalten zusätzlich Hashes gesperrter Dateiverweise. Erwarteter Schema-Head dieses Quellstands: `f8a0124d6e9b`.
+Die Erweiterung legt zusätzliche Fachtabellen an. Die Historienkennung wird für externe Akteure verlustfrei verbreitert; Datenschutzentscheidungen erhalten zusätzlich Hashes gesperrter Dateiverweise. Runde 23 ergänzt bei den Immobilien die optionale Spalte für das Bundesland. Erwarteter Schema-Head dieses Quellstands: `a9c1e3f5b7d2`.
 
 | Code | Bedeutung | Nächster Schritt |
 | --- | --- | --- |
