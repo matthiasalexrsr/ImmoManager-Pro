@@ -412,7 +412,8 @@ def test_full_text_search_stays_within_the_portfolios_of_the_account(client, est
         document = estate[side]["document"]
         text = f"Wartungsprotokoll Rauchwarnmelder {MARK if side == 'south' else 'NORDTEXT'} geprüft"
         document_text.save(store, document_text.TextRow(document.id, f"file:{document.file_url}", "pdf_text", text,
-                                                         text.lower(), len(text), document_text.now()))
+            text.lower(), len(text), document_text.now(), complete=True,
+            source_updated_at=document_text._naive(document.updated_at)))
     if hasattr(store, "db"):
         store.db.commit()
     staff = _bearer(_staff("staff", estate["north"]["portfolio"]))

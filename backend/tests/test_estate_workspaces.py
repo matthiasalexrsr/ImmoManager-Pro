@@ -207,7 +207,8 @@ def test_document_content_search_and_index_counts_share_the_file_context_and_all
     expected = [row.id for row in sorted(own, key=lambda row: (row.created_at, row.id), reverse=True)]
     for binding in ({"property_id": props[0].id}, {"unit_id": units[0].id}, {"contract_id": contract.id}):
         assert client.get("/api/v1/documents/text-index", params=binding).json() == {
-            "documents": 31, "indexed": 31, "unreadable": 0}
+            "documents": 31, "indexed": 31, "unreadable": 0,
+            "partial": 0, "in_progress": 0, "limited": 0, "details": []}
         first = client.get("/api/v1/documents/search", params={"q": "RAUCHWARNMELDER", **binding})
         assert first.status_code == 200, first.text
         page = first.json()
