@@ -1,0 +1,17 @@
+# Registration only; commit this exact path on the default branch with [skip ci].
+# Selecting the reviewed codex branch runs THAT branch's canonical release.yml.
+name: Release (Windows)
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  registration_notice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Registration only; select the reviewed codex branch
+        run: |
+          printf '%s\n' 'This default-branch file only registers the manual workflow.'
+          printf '%s\n' 'Select codex/fix-audit-17-2026-11-04 to run its reviewed canonical Windows release workflow.'
+          echo '::error::No release package was built. Choose the reviewed codex branch before the authorized release dispatch.'
+          exit 1
