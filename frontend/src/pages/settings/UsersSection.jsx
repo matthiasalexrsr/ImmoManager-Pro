@@ -6,6 +6,7 @@ import FormModal from '../../components/FormModal';
 import { api } from '../../api';
 import PortfolioAccessDialog from './PortfolioAccessDialog';
 import { accessSummary } from './portfolioAccess';
+import { Pencil, KeyRound, ShieldCheck, UserCheck, UserX, Trash2 } from 'lucide-react';
 
 const ROLES = ['eigentuemer', 'verwalter', 'buchhaltung', 'techniker', 'readonly'];
 
@@ -142,11 +143,12 @@ export default function UsersSection({ currentUser }) {
         {users && users.length === 0 && <p className="text-muted">{u('empty')}</p>}
         {users && users.length > 0 && (
           <div className="table-scroll">
-            <table className="data-table">
+            <table className="data-table users-table">
+              <caption className="sr-only">Benutzer, Rollen, Objektzugriff und Kontoverwaltung</caption>
+              <colgroup><col style={{ width: '19%' }} /><col style={{ width: '23%' }} /><col style={{ width: '13%' }} /><col style={{ width: '18%' }} /><col style={{ width: '10%' }} /><col style={{ width: '17%' }} /></colgroup>
               <thead>
                 <tr>
                   <th>{u('username')}</th>
-                  <th>{u('fullName')}</th>
                   <th>{u('email')}</th>
                   <th>{u('role')}</th>
                   <th>{access('column')}</th>
@@ -160,8 +162,7 @@ export default function UsersSection({ currentUser }) {
                   const self = isSelf(user);
                   return (
                     <tr key={user.id}>
-                      <td>{user.username} {self && <span className="text-muted">{u('you')}</span>}</td>
-                      <td>{user.full_name}</td>
+                      <td><strong>{user.username}</strong> {self && <span className="text-muted">{u('you')}</span>}<span className="td-sub">{user.full_name}</span></td>
                       <td>{user.email}</td>
                       <td>{roleLabel(user.role)}</td>
                       <td>{(() => {
@@ -173,23 +174,23 @@ export default function UsersSection({ currentUser }) {
                           {user.is_active ? u('active') : u('inactive')}
                         </span>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td>
                         {manageable && (
-                          <>
-                            <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'edit', user })}>{u('edit')}</button>{' '}
-                            <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'password', user })}>{u('resetPassword')}</button>{' '}
+                          <div className="settings-user-actions">
+                            <button className="btn btn-sm btn-secondary" aria-label={u('edit')} title={`${u('edit')}: ${user.username}`} onClick={() => setModal({ kind: 'edit', user })}><Pencil size={16} aria-hidden="true" /></button>
+                            <button className="btn btn-sm btn-secondary" aria-label={u('resetPassword')} title={`${u('resetPassword')}: ${user.username}`} onClick={() => setModal({ kind: 'password', user })}><KeyRound size={16} aria-hidden="true" /></button>
                             {isOwner && user.role !== 'eigentuemer' && (
-                              <button className="btn btn-sm btn-secondary" onClick={() => setModal({ kind: 'access', user })}>{access('button')}</button>
-                            )}{' '}
-                            {!self && (
-                              <button className="btn btn-sm btn-secondary" onClick={() => toggleActive(user)}>
-                                {user.is_active ? u('deactivate') : u('activate')}
-                              </button>
-                            )}{' '}
-                            {isOwner && !self && (
-                              <button className="btn btn-sm btn-danger" onClick={() => handleDelete(user)}>{u('delete')}</button>
+                              <button className="btn btn-sm btn-secondary" aria-label={access('button')} title={`${access('button')}: ${user.username}`} onClick={() => setModal({ kind: 'access', user })}><ShieldCheck size={16} aria-hidden="true" /></button>
                             )}
-                          </>
+                            {!self && (
+                              <button className="btn btn-sm btn-secondary" aria-label={user.is_active ? u('deactivate') : u('activate')} title={`${user.is_active ? u('deactivate') : u('activate')}: ${user.username}`} onClick={() => toggleActive(user)}>
+                                {user.is_active ? <UserX size={16} aria-hidden="true" /> : <UserCheck size={16} aria-hidden="true" />}
+                              </button>
+                            )}
+                            {isOwner && !self && (
+                              <button className="btn btn-sm btn-danger" aria-label={u('delete')} title={`${u('delete')}: ${user.username}`} onClick={() => handleDelete(user)}><Trash2 size={16} aria-hidden="true" /></button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

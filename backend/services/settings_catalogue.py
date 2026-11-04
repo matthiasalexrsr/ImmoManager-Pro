@@ -170,8 +170,15 @@ def validate(values):
             raise HTTPException(422, f"Ungültiger Wert für {LABELS[key]}.")
         if key == "default_due_day" and (type(value) is not int or not 1 <= value <= 31):
             raise HTTPException(422, "Fälligkeitstag muss zwischen 1 und 31 (29–31: letzter verfügbarer Monatstag) liegen.")
-        if key == "reminder_days" and (not isinstance(value, str) or not value.isdecimal() or not 0 <= int(value) <= 365):
-            raise HTTPException(422, "Erinnerungsvorlauf muss zwischen 0 und 365 Tagen liegen.")
+        if key == "reminder_days":
+            valid_reminder = False
+            if isinstance(value, str) and value.isdecimal():
+                try:
+                    valid_reminder = 0 <= int(value) <= 365
+                except (ValueError, OverflowError):
+                    pass
+            if not valid_reminder:
+                raise HTTPException(422, "Erinnerungsvorlauf muss zwischen 0 und 365 Tagen liegen.")
 
         if key in ("quiet_start", "quiet_end") and (not isinstance(value, str) or value != "" and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)):
             raise HTTPException(422, "Ruhezeiten im Format HH:MM angeben oder beide Felder leeren.")

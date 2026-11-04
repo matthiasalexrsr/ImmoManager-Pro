@@ -82,7 +82,7 @@ it('server and secret values expose no editable clear operation', async () => {
 
 it('matches independent words, accent variants and scope without losing a pending draft', async () => {
   const currency = { ...row, key: 'currency_display', label: 'Währungsdarstellung', value: 'symbol', group: 'Ansicht', choices: ['symbol', 'code'] };
-  api.get.mockResolvedValue({ items: [row, currency] });
+  mockSettings([row, currency]);
   mount(); await screen.findByLabelText(currency.label);
   fireEvent.change(screen.getByLabelText('Suche nach Einstellung oder Bereich'), { target: { value: 'personal wahrung' } });
   expect(screen.getByLabelText(currency.label)).toBeInTheDocument();

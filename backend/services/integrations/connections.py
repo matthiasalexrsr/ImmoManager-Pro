@@ -24,7 +24,7 @@ from ..secret_box import SecretBox
 from ..workspace_contexts import resolve_context
 from . import connection_storage as storage
 from .connection_types import ConnectionCreate, ConnectionUpdate, LegacyAdoption, MappingDecision, SourceObservation
-from .validation import config_fields, field_errors
+from .validation import config_fields, field_errors, missing_value
 
 # Effects are an allowlist maintained with the actual adapter, never inferred
 # from a discovered endpoint or from a friendly action title.
@@ -81,7 +81,11 @@ class Connections:
             if item.connection_id != connection.id or item.field_name != field:
                 raise HTTPException(503, "Eine Geheimnisreferenz passt nicht zur Verbindung.")
             config[field] = storage.unseal(item.value_token, f"connection-secret/{item.id}", self.box)
-        return config
+        known = {field["key"] for field in config_fields(self.provider(connection.provider_id).manifest)}
+        # JSON null means an unset declared option. Apply this to old encrypted
+        # rows and frozen snapshots as well, so every consumer uses its adapter's
+        # default rather than interpreting e.g. smtp_use_tls=None as disabled.
+        return {key: value for key, value in config.items() if key not in known or value is not None}
 
     def snapshot(self, connection) -> dict:
         return {"config": storage.unseal(connection.config_token, f"connection/{connection.id}/config", self.box),
@@ -92,21 +96,23 @@ class Connections:
         provider = self.provider(provider_id)
         fields = config_fields(provider.manifest)
         known = {field["key"] for field in fields}
-        applicable = {key: value for key, value in config.items() if key in known}
+        applicable = {key: value for key, value in config.items() if key in known and value is not None}
         errors = field_errors(applicable, fields, required=complete)
         if provider_id == "email":
             if applicable.get("smtp_use_ssl") and applicable.get("smtp_use_tls", True):
                 errors["smtp_use_ssl"] = "STARTTLS und direktes TLS können nicht gleichzeitig aktiv sein."
             if complete and applicable.get("smtp_user") and not applicable.get("smtp_password"):
                 errors["smtp_password"] = "Für den SMTP-Benutzer fehlt das Passwort."
-        if hasattr(provider, "config_errors"):
+        validator = getattr(provider, "draft_config_errors", None) if not complete else None
+        validator = validator or getattr(provider, "config_errors", None)
+        if validator is not None:
             try:
-                errors.update(provider.config_errors(applicable))
+                errors.update(validator(applicable))
             except Exception:
                 raise HTTPException(422, "Die Verbindungseinstellungen konnten nicht geprüft werden.") from None
         if complete:
             for key in provider.manifest.required_config_keys:
-                if not applicable.get(key):
+                if missing_value(applicable.get(key)):
                     errors.setdefault(key, "Pflichtangabe fehlt.")
         return {"valid": not errors, "errors": errors, "applicable": applicable,
                 "unmapped_fields": sorted(set(config) - known)}
@@ -150,7 +156,7 @@ class Connections:
         checked = self.validation(connection.provider_id, raw, complete=True)
         secret_fields = set(provider.manifest.secret_config_keys) | {field["key"] for field in config_fields(provider.manifest) if field.get("secret")}
         known = {field["key"] for field in config_fields(provider.manifest)}
-        display = {key: ("***" if key in secret_fields and value else value) for key, value in raw.items() if key in known}
+        display = {key: ("***" if key in secret_fields and value else value) for key, value in raw.items() if key in known and value is not None}
         return {"id": connection.id, "provider_id": connection.provider_id, "provider_name": provider.manifest.name,
                 "name": connection.name, "revision": connection.revision, "enabled": connection.enabled,
                 "archived": connection.archived, "is_default": connection.is_default, "config": display,
@@ -204,7 +210,9 @@ class Connections:
         if prior:
             return self.public(unit, storage.row(unit, IntegrationConnectionORM, prior["connection_id"]))
         self.provider(payload.provider_id)
-        raw = deepcopy(payload.config)
+        fields = config_fields(self.provider(payload.provider_id).manifest)
+        known = {field["key"] for field in fields}
+        raw = {key: deepcopy(value) for key, value in payload.config.items() if key not in known or value is not None}
         secret_keys = set(self.provider(payload.provider_id).manifest.secret_config_keys) | {
             field["key"] for field in config_fields(self.provider(payload.provider_id).manifest) if field.get("secret")}
         if any(raw.get(key) == "***" for key in secret_keys):
@@ -259,6 +267,7 @@ class Connections:
                      "ciphertext_preserved": True})
                 return self._unreadable(connection)
             fields = config_fields(self.provider(connection.provider_id).manifest)
+            known = {field["key"] for field in fields}
             secrets = set(self.provider(connection.provider_id).manifest.secret_config_keys) | {field["key"] for field in fields if field.get("secret")}
             if set(payload.clear_secrets) - secrets:
                 raise HTTPException(422, "Die Löschliste enthält kein bekanntes Geheimnisfeld.")
@@ -267,7 +276,10 @@ class Connections:
                     continue
                 if key in payload.clear_secrets:
                     raise HTTPException(422, "Ein Geheimnis kann nicht gleichzeitig ersetzt und gelöscht werden.")
-                raw[key] = value
+                if key in known and value is None:
+                    raw.pop(key, None)
+                else:
+                    raw[key] = value
             for key in payload.clear_secrets:
                 raw.pop(key, None)
             enabled = payload.enabled if payload.enabled is not None else connection.enabled

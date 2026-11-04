@@ -20,6 +20,7 @@ from ...db.integration_connection_models import (
     IntegrationActionRunORM,
     IntegrationConnectionORM,
 )
+from ...permissions import may_write
 from .. import document_versions as archive
 from ..secret_box import SecretError
 from ..sqlite_writes import sqlite_write_gate
@@ -54,7 +55,50 @@ class ConnectionRuns(Connections):
                 return {**source, "state": "unavailable"}
         return None
 
-    def public_run(self, unit, run) -> dict:
+    def _dispatch_configuration_valid(self, unit, connection, cache=None) -> bool:
+        key = (connection.id, connection.revision)
+        if cache is not None and key in cache:
+            return cache[key]
+        try:
+            self._checked(connection.provider_id, self.effective_config(unit, connection), enabled=True)
+            valid = True
+        except HTTPException as error:
+            if error.status_code not in {404, 409, 422, 503}:
+                raise
+            valid = False
+        if cache is not None:
+            cache[key] = valid
+        return valid
+
+    def _command_capabilities(self, unit, run, connection, *, source_current: bool, expired: bool, configuration_cache=None) -> dict:
+        writable = may_write(unit.user["role"], "/integrations")
+        owns_run = run.actor_id == unit.actor_id
+        recoverable_actor = owns_run or unit.user["role"] == "eigentuemer"
+        pending = run.state in {"prepared", "retryable", "awaiting_page"}
+        can_dispatch = bool(writable and owns_run and source_current and pending
+                            and (run.effect != "external_write" or run.state == "prepared"))
+        if can_dispatch:
+            connection = connection or storage.row(unit, IntegrationConnectionORM, run.connection_id, required=False)
+            can_dispatch = bool(connection is not None and connection.enabled and not connection.archived
+                                and connection.revision == run.config_revision)
+            if can_dispatch:
+                can_dispatch = self._dispatch_configuration_valid(unit, connection, configuration_cache)
+            if can_dispatch:
+                try:
+                    action = self.action(connection.provider_id, run.action)
+                    frozen = storage.unseal(run.action_manifest_token, f"connection-run/{run.id}/action", self.box)
+                    can_dispatch = storage.digest(action) == storage.digest(frozen)
+                except HTTPException as error:
+                    if error.status_code not in {404, 409, 422, 503}:
+                        raise
+                    can_dispatch = False
+        return {"can_dispatch": can_dispatch,
+                "can_cancel": bool(writable and recoverable_actor and pending),
+                # This command only closes the interrupted lease as unknown or
+                # retryable; dispatch() returns before entering any provider.
+                "can_recover_interrupted": bool(writable and owns_run and source_current and expired)}
+
+    def public_run(self, unit, run, *, connection=None, configuration_cache=None) -> dict:
         source = self._access(unit, run)
         source_state = (source or {}).get("state", "current")
         source_changed = bool(source and not storage.commands.same_revision(source.get("revision", ""), run.source_revision or ""))
@@ -70,25 +114,30 @@ class ConnectionRuns(Connections):
                 "result_bytes": run.result_bytes, "result_blocks": run.result_blocks,
                 "created_at": storage.stamp(run.created_at), "updated_at": storage.stamp(run.updated_at),
                 "source_status": source_state, "source_changed": source_changed,
-                "can_dispatch": source_state == "current" and not source_changed,
+                **self._command_capabilities(unit, run, connection,
+                    source_current=source_state == "current" and not source_changed, expired=expired,
+                    configuration_cache=configuration_cache),
                 "result_hash_scope": "latest_applied_attempt", **attempts.summary(unit, run.id)}
 
     def get_run(self, identifier: str, run_id: str, actor_id: str) -> dict:
         with storage.work(self.store, actor_id) as unit:
-            storage.row(unit, IntegrationConnectionORM, identifier)
+            connection = storage.row(unit, IntegrationConnectionORM, identifier)
             run = storage.row(unit, IntegrationActionRunORM, run_id)
             if run.connection_id != identifier:
                 raise HTTPException(404, "Vorgang nicht gefunden.")
-            return self.public_run(unit, run)
+            return self.public_run(unit, run, connection=connection)
 
     def runs(self, identifier: str, actor_id: str, *, cursor=None, limit=50) -> dict:
         with storage.work(self.store, actor_id) as unit:
-            storage.row(unit, IntegrationConnectionORM, identifier)
+            connection = storage.row(unit, IntegrationConnectionORM, identifier)
             filters = {"connection_id": identifier}
             if unit.user["role"] != "eigentuemer":
                 filters["actor_id"] = actor_id
             page = storage.page(unit, IntegrationActionRunORM, actor_id, cursor=cursor, limit=limit, **filters)
-            page["items"] = [self.public_run(unit, run) for run in page["items"]]
+            # One current connection check per page, never a shared or persistent
+            # credential cache. Each run still verifies its own frozen action.
+            configuration_cache: dict = {}
+            page["items"] = [self.public_run(unit, run, connection=connection, configuration_cache=configuration_cache) for run in page["items"]]
             return page
 
     def prepare(self, identifier: str, payload: RunPreparation, actor_id: str) -> dict:
@@ -96,7 +145,7 @@ class ConnectionRuns(Connections):
             connection = storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             prior = storage.replay(unit, "prepare:" + identifier, payload)
             if prior:
-                return self.public_run(unit, storage.row(unit, IntegrationActionRunORM, prior["run_id"]))
+                return self.public_run(unit, storage.row(unit, IntegrationActionRunORM, prior["run_id"]), connection=connection)
             storage.revision(connection, payload.config_revision)
             if connection.archived or not connection.enabled:
                 raise HTTPException(409, "Diese Verbindung ist deaktiviert.")
@@ -116,7 +165,7 @@ class ConnectionRuns(Connections):
                 storage.commands.check_revision(payload.source_revision, source["revision"])
                 source_snapshot = {key: source.get(key) for key in ("kind", "entity_id", "revision", "title", "href", "property_id", "portfolio_ids")}
             identifier_run = str(uuid4())
-            request = {**payload.payload, "action": payload.action}
+            request = {**{key: value for key, value in payload.payload.items() if value is not None}, "action": payload.action}
             stamp = storage.now()
             run = storage.put(unit, IntegrationActionRunORM, {
                 "id": identifier_run, "connection_id": identifier, "actor_id": actor_id,
@@ -135,7 +184,7 @@ class ConnectionRuns(Connections):
             storage.record_event(unit, identifier, "run_prepared", {"request_sha256": run.request_sha256,
                 "config_revision": run.config_revision, "effect": run.effect}, run_id=run.id, box=self.box)
             storage.receipt(unit, "prepare:" + identifier, payload, identifier, {"run_id": run.id})
-            return self.public_run(unit, run)
+            return self.public_run(unit, run, connection=connection)
 
     @contextmanager
     def _receipt_writer(self, actor_id: str):
@@ -188,7 +237,7 @@ class ConnectionRuns(Connections):
             source = self._access(unit, run, write=True)
             prior = storage.replay(unit, "dispatch:" + run_id, payload)
             if prior:
-                return self.public_run(unit, run)
+                return self.public_run(unit, run, connection=connection)
             storage.revision(run, payload.base_revision)
             if run.state == "executing":
                 if run.lease_until is not None and run.lease_until > storage.now():
@@ -198,7 +247,7 @@ class ConnectionRuns(Connections):
                     "lease_token": None, "lease_until": None, "revision": run.revision + 1,
                     "safe_summary": "Ein früherer Versuch wurde unterbrochen; Ergebnis zuerst prüfen.", "updated_at": storage.now()})
                 storage.receipt(unit, "dispatch:" + run_id, payload, identifier, {"run_id": run_id})
-                return self.public_run(unit, run)
+                return self.public_run(unit, run, connection=connection)
             if run.state not in {"prepared", "retryable", "awaiting_page"} or (run.effect == "external_write" and run.state != "prepared"):
                 raise HTTPException(409, "Dieser Vorgang darf nicht erneut ausgeführt werden. Bitte seinen Ergebnisstand prüfen.")
             storage.revision(connection, run.config_revision)
@@ -259,14 +308,14 @@ class ConnectionRuns(Connections):
 
     def cancel(self, identifier: str, run_id: str, payload: RunCancellation, actor_id: str) -> dict:
         with storage.work(self.store, actor_id, write=True, command_key=payload.idempotency_key) as unit:
-            storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
+            connection = storage.row(unit, IntegrationConnectionORM, identifier, lock=True)
             run = storage.row(unit, IntegrationActionRunORM, run_id, lock=True)
             if run.connection_id != identifier:
                 raise HTTPException(404, "Vorgang nicht gefunden.")
             self._access(unit, run, write=True, recovery=True)
             prior = storage.replay(unit, "cancel:" + run_id, payload)
             if prior:
-                return self.public_run(unit, run)
+                return self.public_run(unit, run, connection=connection)
             storage.revision(run, payload.base_revision)
             if run.state not in {"prepared", "retryable", "awaiting_page"}:
                 raise HTTPException(409, "Eine begonnene oder unklare externe Aktion kann nicht als ungesendet abgebrochen werden.")
@@ -275,7 +324,7 @@ class ConnectionRuns(Connections):
                 "updated_at": storage.now()})
             storage.record_event(unit, identifier, "run_cancelled", {"reason": payload.reason}, run_id=run_id, box=self.box)
             storage.receipt(unit, "cancel:" + run_id, payload, identifier, {"run_id": run_id})
-            return self.public_run(unit, run)
+            return self.public_run(unit, run, connection=connection)
 
     def preview(self, identifier: str, run_id: str, actor_id: str) -> dict:
         """Read the frozen, user-selected action, never the connection credentials."""

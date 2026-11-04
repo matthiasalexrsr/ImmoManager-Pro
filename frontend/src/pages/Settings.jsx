@@ -19,6 +19,7 @@ import ImportWizard from '../features/dataTransfer/ImportWizard';
 import CustomerExports from '../features/dataTransfer/CustomerExports';
 import PortalAdmin from '../features/externalPortal/PortalAdmin';
 import PrivacyCenter from '../features/privacy/PrivacyCenter';
+import './settings/settings.css';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -64,22 +65,25 @@ export default function Settings() {
   ];
 
   return (
-    <div className="page">
-      <h1 className="page-title">{t('pages.settings.title')}</h1>
+    <div className="page settings-page">
+      <div className="settings-heading"><h1 className="page-title">{t('pages.settings.title')}</h1>
+        <p>Persönliche Einstellungen, Vorgaben Ihrer Verwaltung und Systemfunktionen an einem Ort.</p></div>
 
-      <div className="tab-bar" style={{ marginBottom: '1.25rem' }}>
+      <nav className="settings-navigation" aria-label="Einstellungsbereiche">
         {tabs.map(tab => (
           <button
             key={tab.key}
-            className={`detail-tab ${settingsTab === tab.key ? 'active' : ''}`}
+            id={`settings-tab-${tab.key}`}
+            aria-current={settingsTab === tab.key ? 'page' : undefined}
+            aria-controls="settings-section"
             onClick={() => setSettingsTab(tab.key)}
           >
             {tab.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="settings-grid">
+      <div id="settings-section" className="settings-grid" role="region" aria-labelledby={`settings-tab-${settingsTab}`}>
         {settingsTab === 'catalogue' && <><SettingsCatalogue /><button className="btn btn-secondary" onClick={() => tutorial?.start(0)}>Bedienungstour starten</button></>}
         {settingsTab === 'ai' && <AiSettingsSection />}
         {settingsTab === 'letterhead' && <LetterheadSection />}

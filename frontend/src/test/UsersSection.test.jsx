@@ -31,24 +31,24 @@ describe('UsersSection', () => {
   it('lets an owner manage others but not deactivate or delete themselves', async () => {
     render(<UsersSection currentUser={owner} />);
     const self = await row('owner');
-    expect(within(self).queryByText('pages.settings.users.deactivate')).not.toBeInTheDocument();
-    expect(within(self).queryByText('pages.settings.users.delete')).not.toBeInTheDocument();
+    expect(within(self).queryByRole('button', { name: 'pages.settings.users.deactivate' })).not.toBeInTheDocument();
+    expect(within(self).queryByRole('button', { name: 'pages.settings.users.delete' })).not.toBeInTheDocument();
     const other = await row('staff');
-    expect(within(other).getByText('pages.settings.users.deactivate')).toBeInTheDocument();
-    expect(within(other).getByText('pages.settings.users.delete')).toBeInTheDocument();
+    expect(within(other).getByRole('button', { name: 'pages.settings.users.deactivate' })).toBeInTheDocument();
+    expect(within(other).getByRole('button', { name: 'pages.settings.users.delete' })).toBeInTheDocument();
   });
 
   it('limits a manager to read-only accounts', async () => {
     const manager = { ...staff, id: 'm1', username: 'manager', role: 'verwalter' };
     api.list.mockImplementation(listing([owner, manager, reader]));
     render(<UsersSection currentUser={manager} />);
-    expect(within(await row('owner')).queryByText('pages.settings.users.edit')).not.toBeInTheDocument();
+    expect(within(await row('owner')).queryByRole('button', { name: 'pages.settings.users.edit' })).not.toBeInTheDocument();
     const readerRow = await row('reader');
-    expect(within(readerRow).getByText('pages.settings.users.edit')).toBeInTheDocument();
-    expect(within(readerRow).queryByText('pages.settings.users.delete')).not.toBeInTheDocument();
+    expect(within(readerRow).getByRole('button', { name: 'pages.settings.users.edit' })).toBeInTheDocument();
+    expect(within(readerRow).queryByRole('button', { name: 'pages.settings.users.delete' })).not.toBeInTheDocument();
     expect(screen.getByText(/pages\.settings\.users\.managerHint/)).toBeInTheDocument();
     // managers never assign portfolios
-    expect(within(readerRow).queryByText('pages.settings.users.access.button')).not.toBeInTheDocument();
+    expect(within(readerRow).queryByRole('button', { name: 'pages.settings.users.access.button' })).not.toBeInTheDocument();
     expect(api.list).not.toHaveBeenCalledWith('/portfolios');
   });
 
@@ -56,7 +56,7 @@ describe('UsersSection', () => {
     confirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     api.patch.mockResolvedValue({ ...staff, is_active: false });
     render(<UsersSection currentUser={owner} />);
-    const button = within(await row('staff')).getByText('pages.settings.users.deactivate');
+    const button = within(await row('staff')).getByRole('button', { name: 'pages.settings.users.deactivate' });
     fireEvent.click(button);
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(api.patch).not.toHaveBeenCalled();
@@ -97,9 +97,9 @@ describe('UsersSection', () => {
 
     expect(within(await row('reader')).getByText('Nord')).toBeInTheDocument();
     expect(within(await row('staff')).getByText('pages.settings.users.access.summaryNone')).toBeInTheDocument();
-    expect(within(await row('owner')).queryByText('pages.settings.users.access.button')).not.toBeInTheDocument();
+    expect(within(await row('owner')).queryByRole('button', { name: 'pages.settings.users.access.button' })).not.toBeInTheDocument();
 
-    fireEvent.click(within(await row('reader')).getByText('pages.settings.users.access.button'));
+    fireEvent.click(within(await row('reader')).getByRole('button', { name: 'pages.settings.users.access.button' }));
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(within(dialog).getByLabelText('Süd')).toBeInTheDocument());
     fireEvent.click(within(dialog).getByLabelText('Nord'));
@@ -114,7 +114,7 @@ describe('UsersSection', () => {
     api.list.mockImplementation(listing([owner, { ...staff, portfolio_access: 'selected', portfolio_ids: ['p-nord'] }]));
     api.patch.mockResolvedValue(staff);
     render(<UsersSection currentUser={owner} />);
-    fireEvent.click(within(await row('staff')).getByText('pages.settings.users.access.button'));
+    fireEvent.click(within(await row('staff')).getByRole('button', { name: 'pages.settings.users.access.button' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getAllByRole('radio')[0]);   // "Alle Portfolios"
     fireEvent.submit(dialog.querySelector('form'));
@@ -142,7 +142,7 @@ describe('UsersSection', () => {
     const limited = { ...reader, portfolio_access: 'selected', portfolio_ids: ['p-nord'] };
     api.list.mockImplementation(path => path === '/portfolios' ? pending : Promise.resolve([owner, limited]));
     render(<UsersSection currentUser={owner} />);
-    fireEvent.click(within(await row('reader')).getByText('pages.settings.users.access.button'));
+    fireEvent.click(within(await row('reader')).getByRole('button', { name: 'pages.settings.users.access.button' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'ui.buttons.save' })).toBeDisabled();
     fireEvent.submit(dialog.querySelector('form'));

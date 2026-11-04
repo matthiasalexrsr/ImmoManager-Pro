@@ -15,7 +15,9 @@ class TehaProvider:
     @property
     def manifest(self):
         def text(key):
-            return {"key": key, "type": "string", "required": True}
+            labels = {"username": "Benutzername", "password": "Passwort",
+                      "lieg_nr": "Liegenschaftsnummer", "reference": "Dokumentreferenz"}
+            return {"key": key, "label": labels[key], "type": "string", "required": True}
         return IntegrationManifest(integration_id="teha", name="TEHA Kundenportal", category="Abrechnung",
             description="Versionierter Empfang mit anschließender Zuordnung und bestätigter Übernahme.",
             capabilities=["receive", "originals", "explicit_mapping"],
@@ -26,7 +28,7 @@ class TehaProvider:
                      {"id": "document", "label": "Dokumentoriginal empfangen", "effect": "read", "inputs": [text("lieg_nr"), text("reference")]},
                      {"id": "orders", "label": "Techniktermine empfangen", "effect": "read", "inputs": []},
                      {"id": "users", "label": "Nutzer eines Techniktermins empfangen", "effect": "read",
-                      "inputs": [{"key": "termin_id", "type": "integer", "required": True}, text("lieg_nr")]}])
+                      "inputs": [{"key": "termin_id", "label": "Termin-ID", "type": "integer", "required": True}, text("lieg_nr")]}])
 
     def is_configured(self, config):
         return bool(config.get("username") and config.get("password"))

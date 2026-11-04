@@ -101,6 +101,7 @@ try {
     assert.equal((await apiCall('GET', '/tasks/' + taskId)).status, 'open');
   });
   await page.goto(base.origin + '/integrations');
+  await page.getByRole('button', { name: /^E-Mail \(SMTP\)/ }).click();
   const card = page.getByRole('region', { name: 'E-Mail (SMTP)', exact: true });
   await step('Configure actual loopback SMTP via UI', async () => {
     await card.getByLabel('Absender', { exact: true }).fill('sender@example.invalid');
@@ -137,7 +138,10 @@ try {
       await step(`${route} ${width}px without document overflow`, async () => {
         await page.setViewportSize({ width, height: 1000 }); await page.goto(base.origin + '/' + route);
         await expect(page.locator('h1:visible')).toBeVisible();
-        if (route === 'integrations') await expect(card).toBeVisible();
+        if (route === 'integrations') {
+          await page.getByRole('button', { name: /^E-Mail \(SMTP\)/ }).click();
+          await expect(card).toBeVisible();
+        }
         else await expect(page.locator('.data-table-wrapper')).toBeVisible();
         await page.evaluate(() => document.fonts.ready);
         const sizes = await page.evaluate(() => ({ width: innerWidth, content: document.documentElement.scrollWidth }));
@@ -149,7 +153,8 @@ try {
   await step('Read-only integration page has history but no write actions', async () => {
     const reader = await login(process.env.QA_READONLY || 'stb.hofmann');
     await reader.goto(base.origin + '/integrations');
-    await expect(reader.getByText('Nur Lesezugriff').first()).toBeVisible();
+    await reader.getByRole('button', { name: /^E-Mail \(SMTP\)/ }).click();
+    await expect(reader.getByRole('region', { name: 'E-Mail (SMTP)', exact: true }).getByText('Nur Lesezugriff', { exact: false })).toBeVisible();
     await expect(reader.getByRole('button', { name: 'Konfiguration speichern' })).toHaveCount(0);
     await expect(reader.getByRole('button', { name: 'Aktion ausführen' })).toHaveCount(0);
     await reader.getByRole('region', { name: 'E-Mail (SMTP)', exact: true }).getByRole('button', { name: 'Verlauf anzeigen' }).click();

@@ -23,7 +23,7 @@ from .providers import (
     ListingPortalProvider,
     WhatsAppIntegrationProvider,
 )
-from .validation import config_fields, field_errors
+from .validation import config_fields, field_errors, missing_value
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +68,20 @@ class IntegrationManager:
         categories = {provider.manifest.category for provider in self._providers.values()}
         return sorted(categories)
 
+    def _normalized_config(self, integration_id: str, config: dict) -> dict:
+        known = {field["key"] for field in config_fields(self._providers[integration_id].manifest)}
+        return {key: deepcopy(value) for key, value in config.items() if key not in known or value is not None}
+
     def get_integration(self, integration_id: str) -> dict:
         provider = self._providers.get(integration_id)
         if provider is None:
             raise KeyError(integration_id)
 
         manifest = provider.manifest
-        config = self._config.get(integration_id, {})
+        config = self._normalized_config(integration_id, self._config.get(integration_id, {}))
         health = provider.health(config)
         enabled = self._enabled.get(integration_id, False)
-        configured = provider.is_configured(config) and self.validate_config(integration_id, config)["valid"]
+        configured = provider.is_configured(config) and self._validate_snapshot(integration_id, config)["valid"]
         return {
             "id": manifest.integration_id,
             "name": manifest.name,
@@ -87,11 +91,12 @@ class IntegrationManager:
             "enabled": enabled,
             "configured": configured,
             "capabilities": manifest.capabilities,
-            "health": health,
+            "health": self._public_value(integration_id, health, config=config),
             "config": self._safe_config(manifest, config),
             "required_config_keys": manifest.required_config_keys,
             "secret_config_keys": manifest.secret_config_keys,
             "config_fields": config_fields(manifest),
+            "unmapped_fields": sorted(set(config) - {field["key"] for field in config_fields(manifest)}),
             "actions": manifest.actions,
             "persistence_error": self._state_error,
             "message": self._to_message(configured=configured, enabled=enabled, health=health),
@@ -119,8 +124,12 @@ class IntegrationManager:
         if not isinstance(config, dict):
             return {"valid": False, "missing_keys": [], "message": "Konfiguration muss ein Objekt sein"}
 
-        manifest = provider.manifest
         config = self._candidate_config(integration_id, config)
+        return self._validate_snapshot(integration_id, config)
+
+    def _validate_snapshot(self, integration_id: str, config: dict) -> dict:
+        provider = self._providers[integration_id]
+        manifest = provider.manifest
         fields = config_fields(manifest)
         errors = field_errors(config, fields, required=True)
         errors.update({key: "Unbekanntes Konfigurationsfeld" for key in set(config) - {field["key"] for field in fields}})
@@ -132,7 +141,7 @@ class IntegrationManager:
                 errors["smtp_password"] = "Passwort für SMTP-Benutzer fehlt"
             if config.get("smtp_use_ssl") and config.get("smtp_use_tls", True):
                 errors["smtp_use_ssl"] = "STARTTLS und direktes TLS können nicht gleichzeitig aktiv sein"
-        missing = [k for k in manifest.required_config_keys if not config.get(k)]
+        missing = [k for k in manifest.required_config_keys if missing_value(config.get(k))]
         if missing:
             return {"valid": False, "missing_keys": missing, "errors": errors, "message": "Pflichtfelder fehlen"}
         if errors:
@@ -276,7 +285,7 @@ class IntegrationManager:
                        if isinstance(values[key], str) and values[key])
 
     def _candidate_config(self, integration_id, updates):
-        current = deepcopy(self._config.get(integration_id, {}))
+        current = self._normalized_config(integration_id, self._config.get(integration_id, {}))
         secrets = self._secret_keys(integration_id)
         for key, value in updates.items():
             if key in secrets and value == "***":
@@ -285,7 +294,7 @@ class IntegrationManager:
                 current.pop(key, None)
             else:
                 current[key] = value
-        return current
+        return self._normalized_config(integration_id, current)
 
     def run(self, integration_id: str, payload: dict) -> dict:
         from ...config import settings
@@ -312,11 +321,12 @@ class IntegrationManager:
                 errors.update(field_errors(payload, action_schema.get("inputs", []), required=True))
                 allowed = {"action"} | {field["key"] for field in action_schema.get("inputs", [])}
                 errors.update({key: "Unbekanntes Aktionsfeld" for key in set(payload) - allowed})
-                payload = {**payload, "action": action_id}
+                payload = {**{key: value for key, value in payload.items() if value is not None}, "action": action_id}
         result: dict[str, Any]
         if errors:
             result = {"success": False, "message": "Ungültige Aktionsangaben: " + ", ".join(errors),
                       "details": {"code": "invalid_payload", "errors": errors}}
+            result = self._public_value(integration_id, result)
             self._append_history(integration_id, payload, result)
             return result
 
@@ -328,9 +338,9 @@ class IntegrationManager:
         provider = self._providers.get(integration_id)
         if provider is None:
             raise KeyError(integration_id)
-        config = self._config.get(integration_id, {})
+        config = self._normalized_config(integration_id, self._config.get(integration_id, {}))
         enabled = bool(self._enabled.get(integration_id, False))
-        configured = bool(provider.is_configured(config) and self.validate_config(integration_id, config).get("valid"))
+        configured = bool(provider.is_configured(config) and self._validate_snapshot(integration_id, config).get("valid"))
         return {"enabled": enabled, "configured": configured, "ready": enabled and configured}
 
     def execute(self, integration_id: str, payload: dict, work, *, journal_all_keys: bool = False) -> dict:
@@ -346,8 +356,8 @@ class IntegrationManager:
             self._append_history(integration_id, payload, result)
             return result
 
-        config = self._config.get(integration_id, {})
-        validation = self.validate_config(integration_id, config)
+        config = self._normalized_config(integration_id, self._config.get(integration_id, {}))
+        validation = self._validate_snapshot(integration_id, config)
         if not validation.get("valid"):
             result = {
                 "success": False,
@@ -358,7 +368,7 @@ class IntegrationManager:
             return result
 
         record = IntegrationRunRecord(integration_id, False, "Ausführung begonnen; Ergebnis unbestätigt",
-                                      self._history_payload(manifest, payload, all_keys=journal_all_keys),
+                                      self._public_value(integration_id, self._history_payload(manifest, payload, all_keys=journal_all_keys), config=config),
                                       {"code": "in_progress"})
         try:
             self._ensure_writable()
@@ -372,6 +382,7 @@ class IntegrationManager:
         except Exception as exc:
             result = {"success": False, "message": "Integration fehlgeschlagen. Konfiguration prüfen und erneut versuchen.",
                       "details": {"code": "provider_error", "error_type": type(exc).__name__}}
+        result = self._public_value(integration_id, result, config=config)
         record.success = bool(result["success"])
         record.message = result["message"]
         record.details = result.get("details")
@@ -386,7 +397,7 @@ class IntegrationManager:
             raise KeyError(integration_id)
         if limit < 1 or limit > 100 or skip < 0:
             raise ValueError("Ungültige Journal-Seitenauswahl")
-        return self._journal.list(integration_id, limit=limit, skip=skip)
+        return self._public_value(integration_id, self._journal.list(integration_id, limit=limit, skip=skip))
 
     def history_count(self, integration_id):
         if integration_id not in self._providers:
@@ -402,9 +413,7 @@ class IntegrationManager:
     def get_metrics(self) -> dict:
         total = len(self._providers)
         enabled = sum(1 for k in self._providers if self._enabled.get(k, False))
-        configured = sum(
-            1 for k, provider in self._providers.items() if provider.is_configured(self._config.get(k, {}))
-        )
+        configured = sum(1 for key in self._providers if self.readiness(key)["configured"])
         runs_total, successful = self._journal.metrics()
         failed = runs_total - successful
         return {
@@ -418,12 +427,13 @@ class IntegrationManager:
         }
 
     def _append_history(self, integration_id: str, payload: dict, result: dict) -> None:
+        result = self._public_value(integration_id, result)
         record = IntegrationRunRecord(
             integration_id=integration_id,
             success=bool(result.get("success")),
             message=result.get("message", ""),
-            payload=self._history_payload(self._providers[integration_id].manifest, payload),
-            details=result.get("details"),
+            payload=self._public_value(integration_id, self._history_payload(self._providers[integration_id].manifest, payload)),
+            details=self._public_value(integration_id, result.get("details")),
         )
         self._journal.append(record)
 
@@ -456,7 +466,7 @@ class IntegrationManager:
             for integration_id, value in config.items():
                 if integration_id in self._providers and isinstance(value, dict):
                     opened, found, problems = self._unsealed(integration_id, value)
-                    self._config[integration_id] = opened
+                    self._config[integration_id] = self._normalized_config(integration_id, opened)
                     plaintext += found
                     errors += problems
         if errors:
@@ -473,12 +483,23 @@ class IntegrationManager:
 
     @staticmethod
     def _safe_config(manifest, config: dict) -> dict:
-        masked = dict(config)
+        known = {field["key"] for field in config_fields(manifest)}
+        masked = {key: value for key, value in config.items() if key in known}
         secret = set(manifest.secret_config_keys) | {field["key"] for field in config_fields(manifest) if field.get("secret")}
         for key, value in masked.items():
             if (key in secret and value) or is_sealed(value):
                 masked[key] = "***"
         return masked
+
+    def _public_value(self, integration_id: str, value, *, config: dict | None = None):
+        # Providers can echo credentials in an unexpected response field or
+        # message. Protect both new outcomes and already retained journal rows.
+        # The live configuration and provider request remain unchanged.
+        from .connection_evidence import public_projection
+        config = self._normalized_config(integration_id, self._config.get(integration_id, {})) if config is None else config
+        secrets = [secret for key, secret in config.items() if key in self._secret_keys(integration_id)
+                   and isinstance(secret, str) and secret]
+        return public_projection(value, secrets=secrets)
 
     @staticmethod
     def _to_message(*, configured: bool, enabled: bool, health: dict) -> str:

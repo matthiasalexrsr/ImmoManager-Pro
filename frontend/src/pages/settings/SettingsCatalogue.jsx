@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,7 @@ const ORIGINS = { explicit: 'Beim Start übergeben', process_env: 'Umgebungsvari
   secret_file: 'Geheimnisdatei', default: 'Standard', global: 'Installation', personal: 'Persönlich',
   launcher_env_file: '.env-Datei des Starters' };
 const originLabel = origin => ORIGINS[origin] || (String(origin || '').startsWith('object:') ? 'Ausgewähltes Objekt' : origin);
+const SESSION_MESSAGE = 'Die Sitzung wurde geändert. Bitte erneut anmelden.';
 
 export function SettingField({ item, onSaved }) {
   const storage = privateStorageKey(`setting-draft:${item.scope}:${item.key}`);
@@ -23,6 +24,7 @@ export function SettingField({ item, onSaved }) {
   const [comparisonRevision, setComparisonRevision] = useState(expected.current);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [sessionInvalid, setSessionInvalid] = useState(false);
   const [dirty, setDirty] = useState(Boolean(recovery));
   const dirtyNow = useRef(Boolean(recovery));
   const pending = useRef(recovery?.command || null);
@@ -43,18 +45,19 @@ export function SettingField({ item, onSaved }) {
     try { sessionStorage.setItem(storage, JSON.stringify({ value: next, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
   };
   const save = async (reset = false) => {
-    if (submitting.current) return;
+    if (submitting.current || sessionInvalid) return;
     submitting.current = true;
-    const chosen = reset ? item.value : value;
-    const parsed = typeof item.value === 'boolean' ? chosen === true || chosen === 'true' : typeof item.value === 'number' ? Number(chosen) : chosen;
-    if (pending.current?.values[item.key] !== parsed || Boolean(pending.current?.reset) !== reset) pending.current = { values: { [item.key]: parsed }, scope: item.scope,
-      base_revision: expected.current, reset, idempotency_key: crypto.randomUUID() };
-    try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
-    setBusy(true); setError(null); const same = api.captureSession();
-    const sent = pending.current;
-    let sentRecovery = null;
-    try { sentRecovery = sessionStorage.getItem(storage); } catch { /* optional recovery */ }
+    setBusy(true); setError(null);
     try {
+      const same = api.captureSession();
+      const chosen = reset ? item.value : value;
+      const parsed = typeof item.value === 'boolean' ? chosen === true || chosen === 'true' : typeof item.value === 'number' ? Number(chosen) : chosen;
+      if (pending.current?.values[item.key] !== parsed || Boolean(pending.current?.reset) !== reset) pending.current = { values: { [item.key]: parsed }, scope: item.scope,
+        base_revision: expected.current, reset, idempotency_key: crypto.randomUUID() };
+      try { sessionStorage.setItem(storage, JSON.stringify({ value, base_revision: expected.current, command: pending.current })); } catch { /* optional recovery */ }
+      const sent = pending.current;
+      let sentRecovery = null;
+      try { sentRecovery = sessionStorage.getItem(storage); } catch { /* optional recovery */ }
       await api.put('/auth/users/me/settings', sent); same();
       // A late answer from an unmounted card must not erase a newer draft of
       // this same setting created after remount/filter/navigation.
@@ -65,6 +68,7 @@ export function SettingField({ item, onSaved }) {
       pending.current = null; dirtyNow.current = false; setDirty(false); onSaved(); prefs?.reload?.();
     } catch (failure) {
       if (!mounted.current) return;
+      if (failure.code === 'SESSION_CHANGED') { pending.current = null; setSessionInvalid(true); return; }
       setError(failure.message || 'Nicht gespeichert. Eingabe bleibt erhalten.');
       if ((failure.statusCode || failure.status) === 409) {
         pending.current = null;
@@ -80,6 +84,7 @@ export function SettingField({ item, onSaved }) {
   };
   const choiceLabels = { symbol: 'Währungssymbol (Quellwährung)', code: 'ISO-Währungscode (Quellwährung)', '\t': 'Tabulator', housing_provider: 'Wohnungsgeber', authorized_person: 'Beauftragte Person', light: 'Hell', dark: 'Dunkel', system: 'Wie das Betriebssystem', 'de-DE': 'Deutsch', 'en-US': 'Englisch', 'es-ES': 'Spanisch', all: 'Alle Hinweise', important: 'Wichtige Hinweise', none: 'Keine E-Mail-Hinweise', comfortable: 'Normal', compact: 'Kompakt', '/': 'Übersicht', '/work-center': 'Arbeitszentrale', '/properties': 'Immobilien', '/tasks': 'Aufgaben', '/notifications': 'Persönlicher Eingang' };
   const id = `setting-${item.scope}-${item.key}`;
+  if (sessionInvalid) return <article className="setting-card"><p role="alert">{SESSION_MESSAGE}</p></article>;
   return <article className="setting-card">
     <label htmlFor={id} className="setting-card-title">{item.label}</label>
     <p className="setting-card-meta">Geltung: {item.scope === 'personal' ? 'Nur für mich' : item.scope === 'global' ? 'Installation' : item.scope.startsWith('object:') ? 'Ausgewähltes Objekt' : 'Server'} · Herkunft: {originLabel(item.origin)}</p>
@@ -110,21 +115,47 @@ export default function SettingsCatalogue() {
   const [propertyAttempt, setPropertyAttempt] = useState(0);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [sessionInvalid, setSessionInvalid] = useState(false);
+  const invalidated = useRef(false);
+  const invalidate = useCallback(() => {
+    invalidated.current = true;
+    setSessionInvalid(true); setProperties([]); setItems([]); setLoadedProperty(null); setPropertyError(null); setError(SESSION_MESSAGE); setLoading(false);
+  }, []);
   useEffect(() => {
-    let live = true; const same = api.captureSession();
+    if (sessionInvalid || invalidated.current) return;
+    let live = true;
     setPropertyError(null);
-    api.list('/properties').then(data => { same(); if (live) setProperties(data); }).catch(failure => { if (live) setPropertyError(failure.message); });
+    async function load() {
+      try {
+        const same = api.captureSession();
+        const data = await api.list('/properties'); same(); if (live) setProperties(data);
+      } catch (failure) {
+        if (!live) return;
+        if (failure.code === 'SESSION_CHANGED') invalidate();
+        else setPropertyError(failure.message);
+      }
+    }
+    load();
     return () => { live = false; };
-  }, [propertyAttempt]);
+  }, [propertyAttempt, sessionInvalid, invalidate]);
   useEffect(() => {
-    let live = true; const same = api.captureSession(); setError(null); setLoading(true);
-    api.get(`/auth/users/me/settings${property ? `?property_id=${encodeURIComponent(property)}` : ''}`).then(data => {
-      same();
-      if (!Array.isArray(data?.items)) throw new Error('Die Einstellungsantwort ist unvollständig. Bitte erneut laden.');
-      if (live) { setItems(data.items); setLoadedProperty(property); }
-    }).catch(failure => { if (live) setError(failure.message); }).finally(() => { if (live) setLoading(false); });
+    if (sessionInvalid || invalidated.current) return;
+    let live = true; setError(null); setLoading(true);
+    async function load() {
+      try {
+        const same = api.captureSession();
+        const data = await api.get(`/auth/users/me/settings${property ? `?property_id=${encodeURIComponent(property)}` : ''}`); same();
+        if (!Array.isArray(data?.items)) throw new Error('Die Einstellungsantwort ist unvollständig. Bitte erneut laden.');
+        if (live) { setItems(data.items); setLoadedProperty(property); }
+      } catch (failure) {
+        if (!live) return;
+        if (failure.code === 'SESSION_CHANGED') invalidate();
+        else setError(failure.message);
+      } finally { if (live) setLoading(false); }
+    }
+    load();
     return () => { live = false; };
-  }, [property, attempt]);
+  }, [property, attempt, sessionInvalid, invalidate]);
   const normalize = value => String(value).normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('de').replaceAll('ß', 'ss');
   const words = normalize(search).trim().split(/\s+/).filter(Boolean);
   const matches = value => words.every(word => normalize(value).includes(word));
@@ -134,6 +165,7 @@ export default function SettingsCatalogue() {
   const found = currentItems.filter(item => (!scope || (scope === 'object' ? item.scope.startsWith('object:') : item.scope === scope))
     && (!group || item.group === group) && matches(`${item.label} ${item.group} ${item.origin} ${item.scope} ${item.key}`));
   const groups = [...new Set(currentItems.map(item => item.group).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
+  const visibleGroups = [...new Set(found.map(item => item.group || 'Allgemein'))].sort((a, b) => a.localeCompare(b, 'de'));
   const links = [
     ['Favoriten und gespeicherte Ansichten', '/work-center'], ['Dokumente, Vorlagen und Originale', '/documents'],
     ['Benachrichtigungen und Archiv', '/notifications'], ['Sicherheit, Anmeldung, MFA und Authenticator', '/settings?section=security'], ['Import und Export', '/bookings'],
@@ -141,6 +173,7 @@ export default function SettingsCatalogue() {
     ...(['eigentuemer', 'verwalter'].includes(auth?.user?.role) ? [['Mieter- und Eigentümerportale, Einladungen und Veröffentlichungen', '/settings?section=portal']] : []),
     ...(auth?.isAdmin ? [['Integrationen und Zugangsdaten', '/integrations'], ['Benutzer, Rollen und Objektzugriff', '/settings?section=users'], ['Sicherung, Wiederherstellung, Backupzeit, Aufbewahrung, Jobs und Betrieb', '/settings?section=system'], ['Updates und Erweiterungen', '/settings?section=system']] : []),
   ].filter(([label]) => matches(label));
+  if (sessionInvalid) return <section className="settings-catalogue"><p role="alert">{SESSION_MESSAGE}</p></section>;
   return <section className="settings-catalogue"><h2>Einstellungen finden</h2>
     <div className="settings-catalogue-filters">
       <div className="settings-catalogue-field"><label htmlFor="settings-search">Suche nach Einstellung oder Bereich</label><input id="settings-search" type="search" value={search} onChange={e => setSearch(e.target.value)} /></div>
@@ -159,9 +192,14 @@ export default function SettingsCatalogue() {
     {error && <p role="alert">{error} <button onClick={() => setAttempt(n => n + 1)}>Erneut laden</button></p>}
     <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => setAttempt(n => n + 1)}>Aktuelle Werte laden</button>
     <p role="status" className="settings-catalogue-count">{loading || loadedProperty !== property && !error ? 'Einstellungen werden geladen …' : error ? 'Aktuelle Einstellungen konnten nicht geladen werden.' : `${found.length} Einstellungen gefunden`}</p>
-    <div className="setting-grid">{found.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div>
+    <div className="settings-groups">{visibleGroups.map(label => {
+      const entries = found.filter(item => (item.group || 'Allgemein') === label);
+      return <section key={label} className="settings-group" aria-label={label}><h3>{label}<span>{entries.length} Einstellungen</span></h3>
+        <div className="setting-grid">{entries.map(item => <SettingField key={`${property}:${item.scope}:${item.key}`} item={item} onSaved={() => setAttempt(n => n + 1)} />)}</div></section>;
+    })}</div>
+    {!loading && !error && found.length === 0 && <div className="settings-empty"><p>Keine passenden Einstellungen gefunden.</p><button className="btn btn-secondary" onClick={() => { setSearch(''); setScope(''); setGroup(''); }}>Filter zurücksetzen</button></div>}
     {(!search || /sitz|sicher|anmeld|session/i.test(search)) && <SessionInventory />}
     {auth?.isAdmin && (!search || /api|plugin|erweiter/i.test(search)) && <ConfigurationContract />}
-    <nav aria-label="Weitere Einstellungsbereiche">{links.map(([label, href]) => <p key={label}><Link to={href}>{label}</Link></p>)}</nav>
+    <nav className="settings-shortcuts" aria-label="Weitere Einstellungsbereiche">{links.map(([label, href]) => <p key={label}><Link to={href}>{label}</Link></p>)}</nav>
   </section>;
 }

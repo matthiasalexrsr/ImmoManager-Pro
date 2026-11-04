@@ -8,6 +8,10 @@ def is_email(value):
     return isinstance(value, str) and bool(re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", value))
 
 
+def missing_value(value):
+    return value is None or isinstance(value, str) and not value.strip()
+
+
 def config_fields(manifest):
     if manifest.config_fields:
         return manifest.config_fields
@@ -31,7 +35,9 @@ def field_errors(values, fields, *, required=False):
                  "object": isinstance(value, dict), "array": isinstance(value, list)}.get(kind, False)
         if not valid:
             errors[key] = f"Ungültiger Typ: {kind} erwartet"
-        elif kind in ("integer", "number") and (not math.isfinite(value) or
+        elif kind == "string" and field.get("required") and not value.strip():
+            errors[key] = "Pflichtfeld fehlt"
+        elif kind in ("integer", "number") and ((isinstance(value, float) and not math.isfinite(value)) or
                 value < field.get("min", -math.inf) or value > field.get("max", math.inf)):
             errors[key] = "Wert außerhalb des erlaubten Bereichs"
         elif field.get("format") == "email" and not is_email(value):

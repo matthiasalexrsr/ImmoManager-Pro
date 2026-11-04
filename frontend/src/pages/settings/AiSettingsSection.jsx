@@ -17,15 +17,21 @@ export default function AiSettingsSection({ service = aiReadingApi }) {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    const same = api.captureSession();
     setError(null);
-    Promise.all([service.options(), api.get('/auth/users/me/settings')]).then(([found, settings]) => {
-      same();
-      if (!live) return;
-      if (!Array.isArray(settings?.items)) throw new Error('Die Einstellungsantwort ist unvollständig. Bitte erneut laden.');
-      setOptions(found);
-      setItems(settings.items.filter(item => item.group === 'KI-Verarbeitung'));
-    }).catch(failure => { if (live) setError(failure.message || 'Die Einstellungen zur KI-Verarbeitung sind nicht erreichbar.'); });
+    async function load() {
+      try {
+        const same = api.captureSession();
+        const [found, settings] = await Promise.all([service.options(), api.get('/auth/users/me/settings')]); same();
+        if (!live) return;
+        if (!Array.isArray(settings?.items)) throw new Error('Die Einstellungsantwort ist unvollständig. Bitte erneut laden.');
+        setOptions(found); setItems(settings.items.filter(item => item.group === 'KI-Verarbeitung'));
+      } catch (failure) {
+        if (!live) return;
+        if (failure.code === 'SESSION_CHANGED') { setOptions(null); setItems(null); setError('Die Sitzung wurde geändert. Bitte erneut anmelden.'); }
+        else setError(failure.message || 'Die Einstellungen zur KI-Verarbeitung sind nicht erreichbar.');
+      }
+    }
+    load();
     return () => { live = false; };
   }, [service, attempt]);
 
@@ -73,9 +79,10 @@ export default function AiSettingsSection({ service = aiReadingApi }) {
       <h3>Einlesestellen</h3>
       <div className="table-scroll"><table className="data-table">
         <caption className="sr-only">Wo Dokumente eingelesen werden</caption>
+        <colgroup><col style={{ width: '35%' }} /><col style={{ width: '42%' }} /><col style={{ width: '9%' }} /><col style={{ width: '14%' }} /></colgroup>
         <thead><tr><th>Stelle</th><th>Zu finden unter</th><th>KI</th><th>Für Sie</th></tr></thead>
         <tbody>{(options.surfaces || []).map(surface => <tr key={surface.id}>
-          <th scope="row">{surface.label}<small className="td-sub">{surface.purpose}</small></th>
+          <th scope="row">{surface.label}<small className="ai-surface-purpose">{surface.purpose}</small></th>
           <td>{surface.entry}</td>
           <td>{surface.ai_allowed ? (surface.needs_ai ? 'ja (nötig)' : 'ja') : 'aus'}</td>
           <td>{surface.may_use ? 'nutzbar' : 'nicht in Ihrer Rolle'}</td>

@@ -142,6 +142,12 @@ class ListingPortalProvider:
             return {"default_portal": "Protokollzugang vollständig ausfüllen."}
         return {}
 
+    def draft_config_errors(self, config):
+        # Field types/options still pass the shared validator. Missing protocol
+        # credentials keep an inactive draft unconfigured, rather than preventing
+        # the user from saving it or explicitly clearing a disabled secret.
+        return {}
+
     def health(self, config):
         return {"status": "configured" if self.is_configured(config) else "not_configured", "transport_checked": False}
 
