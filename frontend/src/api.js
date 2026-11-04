@@ -331,11 +331,19 @@ async function requestList(path, { signal } = {}) {
   const current = captureSession();
   const rows = [];
   const seen = new Set();
-  for (let page = 0; page < LIST_MAX_PAGES; page += 1) {
+  for (let page = 0; page <= LIST_MAX_PAGES; page += 1) {
     current();
     const data = await request(pagePath(path, page * LIST_PAGE_SIZE), { signal });
     current();
-    if (!Array.isArray(data)) return page === 0 ? data : rows;
+    if (!Array.isArray(data)) {
+      if (page === 0) return data;
+      throw new Error('Die Liste wurde unvollständig geliefert. Bitte erneut laden.');
+    }
+    if (page === LIST_MAX_PAGES && data.length) {
+      const error = new Error('Die Liste umfasst mehr als 500.000 Einträge und wurde nicht vollständig geladen. Bitte die Auswahl eingrenzen oder den vollständigen Datenexport verwenden.');
+      error.code = 'LIST_LIMIT_REACHED'; error.nextSkip = page * LIST_PAGE_SIZE; error.loadedCount = rows.length;
+      throw error;
+    }
     let added = 0;
     for (const row of data) {
       if (row?.id != null) {
@@ -345,7 +353,8 @@ async function requestList(path, { signal } = {}) {
       rows.push(row);
       added += 1;
     }
-    if (data.length < LIST_PAGE_SIZE || added === 0) break;
+    if (data.length < LIST_PAGE_SIZE) break;
+    if (added === 0) throw new Error('Die Liste liefert wiederholte Seiten und ist möglicherweise unvollständig. Bitte erneut laden.');
   }
   return rows;
 }

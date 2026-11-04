@@ -364,6 +364,12 @@ class DocumentTextORM(Base):
     search_text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     characters: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     indexed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
+    complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    cursor: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    source_sha256: Mapped[str | None] = mapped_column(String(64))
+    indexed_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    total_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    warning: Mapped[str | None] = mapped_column(Text)
 
 
 class TaskORM(Base):

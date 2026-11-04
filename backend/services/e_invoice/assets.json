@@ -122,22 +122,22 @@
     },
     {
       "name": "temurin-windows-x64",
-      "version": "21.0.12.1+1",
-      "filename": "OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
-      "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636",
+      "version": "21.0.13+9",
+      "filename": "OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
+      "sha256": "2332c0b4cff6bed722da3567c91d5e47568bcba863fa4945d0a8d6fc76158628",
       "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
-      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.12.1%2B1",
+      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13%2B9",
       "extract": "runtime",
       "platform": "windows-x64"
     },
     {
       "name": "temurin-linux-x64",
       "platform": "linux-x64",
-      "version": "21.0.12.1+1",
-      "filename": "OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
-      "sha256": "2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500",
+      "version": "21.0.13+9",
+      "filename": "OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz",
+      "sha256": "a535a1df9c6284d9618872984e026ae0352d1f7e9e0605425c0e6114f47351dd",
       "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
       "extract": "runtime"
     }

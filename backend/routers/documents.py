@@ -1,5 +1,6 @@
 import json
 import uuid
+from dataclasses import replace
 from io import BytesIO
 from typing import Annotated
 from urllib.parse import quote
@@ -228,11 +229,25 @@ def document_details(document_id: str, actor: Annotated[UserRead | None, Depends
             if exc.status_code >= 500:
                 raise
             versions["unavailable"] = str(exc.detail)
+    text_details = None
+    if text is not None:
+        from ..services import document_versions
+
+        # Reuse the index's source revision rules, independently of whether its
+        # cursor finished. Reading archive metadata does not open/parse files.
+        head = document_versions.head(document_text._archive_unit(store), document.id)
+        stale = document_text._stale(document, replace(text, complete=True), head)
+        filename = (head.filename if head is not None else document.file_url) or ""
+        text_details = {
+            "source": text.source, "characters": text.characters, "indexed_at": text.indexed_at.isoformat(),
+            "excerpt": text.text[:3000], "source_ref": text.source_ref,
+            "complete": text.complete, "warning": text.warning, "stale": stale,
+            "indexed_units": text.indexed_units, "total_units": text.total_units,
+            "progress_unit": "pages" if text.source == "pdf_text" or filename.lower().endswith(".pdf") else "characters",
+        }
     return {"document": document.model_dump(mode="json"), "context": context, "places": places,
             "retention": document_retention.assess_all(store, [document])[document.id],
-            "text": None if text is None else {"source": text.source, "characters": text.characters,
-                                               "indexed_at": text.indexed_at.isoformat(), "excerpt": text.text[:3000],
-                                               "source_ref": text.source_ref},
+            "text": text_details,
             "versions": versions}
 
 

@@ -135,6 +135,7 @@ export default function SearchBar() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [groups, setGroups] = useState({});
+  const [documentIndex, setDocumentIndex] = useState(null);
   // the query the shown records belong to: while typing on, older records are not offered
   const [resultsFor, setResultsFor] = useState('');
   const [loadingMore, setLoadingMore] = useState(null);
@@ -183,6 +184,7 @@ export default function SearchBar() {
         .then(data => {
           if (cancelled) return;
           setResults(data.results || []);
+          setDocumentIndex(data.document_index || null);
           setResultsFor(query);
           setGroups(Object.fromEntries((data.groups || []).map(g => [g.entity_type, g])));
           setActiveIndex(-1);
@@ -197,6 +199,8 @@ export default function SearchBar() {
   const currentResults = query.length < 2 || resultsFor !== query ? [] : results;
   const awaitingResults = loading || (query.length >= 2 && resultsFor !== query);
   const searching = query.trim().length >= 2;
+  const incompleteDocuments = documentIndex
+    ? Math.max(0, (documentIndex.documents || 0) - (documentIndex.indexed || 0)) + (documentIndex.partial || 0) : 0;
   const pageMatches = searching ? PAGES
     .map(page => ({ ...page, kind: 'page', label: tr(page.labelKey, page.fallback), section: tr(page.sectionKey, page.sectionFallback) }))
     .filter(page => fold(page.label).includes(fold(query.trim())))
@@ -339,6 +343,7 @@ export default function SearchBar() {
       </div>
       {dropdownOpen && (
         <div className="search-bar-dropdown" id="search-results-listbox" role="listbox" ref={listRef} aria-label={t('ui.form.search')}>
+          {searching && !awaitingResults && incompleteDocuments > 0 && <p role="status">Die Inhaltssuche ist bei {incompleteDocuments} Dokumenten unvollständig. Suchtreffer können fehlen.</p>}
           {(() => {
             let globalIndex = 0;
             const option = (r, title, detail, Icon) => {

@@ -2306,7 +2306,7 @@
     {
       "ecosystem": "runtime",
       "name": "Eclipse Temurin JRE",
-      "version": "21.0.12.1+1",
+      "version": "21.0.13+9",
       "license": "GPL-2.0-only WITH Classpath-exception-2.0 AND bundled legal notices",
       "source_included": true
     }
@@ -4113,38 +4113,38 @@
     },
     {
       "file": "texts/b035d30925a4a13d65a64276.txt",
-      "sha256": "20d1b5a8d86a7de4da9bfdf82c74dc07864fb80d48f6cbb6fcca27bbfbafc18b",
-      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac!temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/.github/workflows/license-checker.yml",
-      "archive_sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "original_notice_path": "upstream/temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/4a913b2f6b3f-license-checker.yml"
+      "sha256": "4afbfff9bbec5428b2793c5823aa3649df81b5b85c6c65c41f4e013001125f17",
+      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d!temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/.github/workflows/license-checker.yml",
+      "archive_sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "original_notice_path": "upstream/temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/4a913b2f6b3f-license-checker.yml"
     },
     {
       "file": "texts/3573c4f94d82f112670e0e57.txt",
       "sha256": "4cdf7a45257416fc78710bc4ba96251dc51347a79753a875081b418e7291ea14",
-      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac!temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/.licenserc.yaml",
-      "archive_sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "original_notice_path": "upstream/temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/5c9a211541e5-.licenserc.yaml"
+      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d!temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/.licenserc.yaml",
+      "archive_sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "original_notice_path": "upstream/temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/5c9a211541e5-.licenserc.yaml"
     },
     {
       "file": "texts/ae0b9f73e37be84d1dd561c0.txt",
       "sha256": "6b9522191b8cb7126b2d214edd7f782d2ccd83c467e9c03b8af9e0bf903b49b4",
-      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac!temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/LICENSE",
-      "archive_sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "original_notice_path": "upstream/temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/ae933df930eb-LICENSE"
+      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d!temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/LICENSE",
+      "archive_sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "original_notice_path": "upstream/temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/ae933df930eb-LICENSE"
     },
     {
       "file": "texts/ef84076438ed632675106a50.txt",
       "sha256": "af830a6ca6ad0a57f357dc0435f9d8b5770704bbe0cf99a9fd82c97bfb0b3ca9",
-      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac!temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/NOTICE",
-      "archive_sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "original_notice_path": "upstream/temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/f2003bac1492-NOTICE"
+      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d!temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/NOTICE",
+      "archive_sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "original_notice_path": "upstream/temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/f2003bac1492-NOTICE"
     },
     {
       "file": "texts/01e356555f99ef69de0f5637.txt",
       "sha256": "c02756bcd9fa8191bf0fda4451bc018414dd44ee35bf09922c24377a475e4b5a",
-      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac!temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/sbin/NOTICE.template",
-      "archive_sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "original_notice_path": "upstream/temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac/833063991543-NOTICE.template"
+      "origin": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d!temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/sbin/NOTICE.template",
+      "archive_sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "original_notice_path": "upstream/temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d/833063991543-NOTICE.template"
     },
     {
       "file": "texts/a83f1097932885c66a43745e.txt",
@@ -4954,11 +4954,12 @@
   ],
   "sources": [
     {
-      "name": "OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz",
-      "sha256": "573057d03584ae793fb7ec9a14c76d826d9187a53efeefd99da47403a5308234",
-      "checksum_url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz.sha256.txt",
-      "filename": "OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz"
+      "name": "OpenJDK21U-jdk-sources_21.0.13_9.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk-sources_21.0.13_9.tar.gz",
+      "sha256": "b5232c9980d8a0f0459676c084c41c6e2c771ed9e785890b03c6a438406ad1ca",
+      "checksum_url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk-sources_21.0.13_9.tar.gz.sha256.txt",
+      "filename": "OpenJDK21U-jdk-sources_21.0.13_9.tar.gz",
+      "bytes": 115231532
     },
     {
       "url": "https://codeload.github.com/ConnectingEurope/eInvoicing-EN16931/tar.gz/refs/tags/validation-1.3.16",
@@ -5567,10 +5568,10 @@
       "filename": "source-serif-pro-3.001R.tar.gz"
     },
     {
-      "url": "https://codeload.github.com/adoptium/temurin-build/tar.gz/e6ba7dec3d07654074559310376a3ae89da5f4ac",
-      "sha256": "b1340378b9ed62b32acfacd012dd069ec2b9d940fc39d3c73f32142d64e89713",
-      "bytes": 584568,
-      "filename": "temurin-build-e6ba7dec3d07654074559310376a3ae89da5f4ac.tar.gz"
+      "url": "https://codeload.github.com/adoptium/temurin-build/tar.gz/1cf43d7a3e77886bfea7d550a902e151a87d724d",
+      "sha256": "f524e42fdb6480934dae49e59b07bd979763dfb413046f73b8cbceefe5b08591",
+      "bytes": 625385,
+      "filename": "temurin-build-1cf43d7a3e77886bfea7d550a902e151a87d724d.tar.gz"
     },
     {
       "url": "https://codeload.github.com/itplr-kosit/validator-configuration-xrechnung/tar.gz/refs/tags/v2026-08-31",

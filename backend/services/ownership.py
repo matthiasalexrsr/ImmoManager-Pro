@@ -27,7 +27,7 @@ every report by owner adds up to the report of all owners.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -39,6 +39,7 @@ from ..domain.money import ZERO, money
 from ..models_ownership import OwnershipShare, OwnershipShareCreate
 from ..storage import NotFoundError
 from .maintenance_rows import Rows
+from .ownership_guard import lock_ownership
 
 HUNDRED = Decimal(100)
 NOBODY = "none"          # filter value for the part no owner is recorded for
@@ -76,6 +77,7 @@ class Ownership:
         self._changes: dict[str, list[date]] = {}
         self._store = store
         self._reversed: dict[str, Optional[date]] = {}
+        self._reversal_parts: dict[str, dict[Optional[str], Decimal]] = {}
 
     def split_day(self, reverses_booking_id: Optional[str], day: date) -> date:
         """The day a booking is split by. A reversal takes back the parts of the booking it cancels, so it
@@ -191,6 +193,34 @@ class Ownership:
         return self._allocate(amount, self.period_weights(property_id, unit_id, first, last))
 
     def booking_split(self, booking: Any, amount: Any = None) -> dict[Optional[str], Decimal]:
+        original_id = getattr(booking, "reverses_booking_id", None)
+        if original_id:
+            if booking.id not in self._reversal_parts:
+                rows = Rows.reading(self._store)
+                original = rows.get("bookings", original_id)
+                if original is not None:
+                    from ..domain.booking_reversal import reversal_problem
+
+                    reversals = sorted(rows.find("bookings", reverses_booking_id=original_id), key=lambda row: (
+                        row.created_at.replace(tzinfo=timezone.utc) if row.created_at.tzinfo is None
+                        else row.created_at.astimezone(timezone.utc), row.id))
+                    for reversal in reversals:
+                        problem = reversal_problem(reversal, existing=None, original=original, reversals=(),
+                                                   siblings=[row for row in reversals if row.id != reversal.id])
+                        if problem:
+                            raise HTTPException(409, "Die gespeicherte Stornofolge ist widersprüchlich: " + problem)
+                    remaining = {owner: abs(part) for owner, part in self.split(
+                        original.amount, original.property_id, original.unit_id, original.booking_date,
+                        getattr(original, "owner_contact_id", None)).items()}
+                    for reversal in reversals:
+                        parts = self._allocate(money(reversal.amount), remaining)
+                        self._reversal_parts[reversal.id] = parts
+                        remaining = {owner: max(ZERO, value - abs(parts.get(owner, ZERO)))
+                                     for owner, value in remaining.items()}
+            if booking.id in self._reversal_parts:
+                parts = self._reversal_parts[booking.id]
+                return dict(parts) if amount is None or money(amount) == money(booking.amount) else self._allocate(
+                    money(amount), {owner: abs(part) for owner, part in parts.items()})
         day = self.split_day(getattr(booking, "reverses_booking_id", None), booking.booking_date)
         return self.split(booking.amount if amount is None else amount, booking.property_id, booking.unit_id,
                           day, getattr(booking, "owner_contact_id", None))
@@ -308,6 +338,7 @@ def create_share(store: Any, data: OwnershipShareCreate, actor_id: Optional[str]
     from .maintenance_rows import stamp
 
     with work(store, actor_id, AREAS) as unit:
+        lock_ownership(unit.db)
         rows = Rows.of(unit)
         _check(rows, unit.store, data, None)
         now = stamp("ownership_shares")
@@ -320,6 +351,7 @@ def update_share(store: Any, share_id: str, data: OwnershipShareCreate, actor_id
     from .maintenance_projects import work
 
     with work(store, actor_id, AREAS) as unit:
+        lock_ownership(unit.db)
         rows = Rows.of(unit)
         rows.require("ownership_shares", share_id, "Eigentumsanteil nicht gefunden")
         _check(rows, unit.store, data, share_id)
@@ -330,6 +362,7 @@ def delete_share(store: Any, share_id: str, actor_id: Optional[str]) -> None:
     from .maintenance_projects import work
 
     with work(store, actor_id, AREAS) as unit:
+        lock_ownership(unit.db)
         rows = Rows.of(unit)
         rows.require("ownership_shares", share_id, "Eigentumsanteil nicht gefunden")
         rows.delete("ownership_shares", share_id)
@@ -509,6 +542,20 @@ def _owner_contact(store: Any, contact_id: str, role: str) -> Any:
     return contact
 
 
+def _journal_stamp(rows: Rows, property_id: str) -> Any:
+    """Keep owner-change order even on Windows clocks with repeated values."""
+    from ..domain.revision_time import next_updated_at
+    from .maintenance_rows import stamp
+
+    current = stamp("ownership_transfers")
+    naive = current.tzinfo is None
+    for previous in rows.find("ownership_transfers", property_id=property_id):
+        for value in (previous.created_at, previous.reverted_at):
+            if value is not None:
+                current = next_updated_at(value, current)
+    return current.replace(tzinfo=None) if naive else current
+
+
 def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
     """Record a change of owners on a day, in one step.
 
@@ -523,10 +570,10 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
 
     from ..models_ownership import TRANSFER_KINDS, OwnershipTransfer
     from .maintenance_projects import work
-    from .maintenance_rows import stamp
 
     day = data.effective_date
     with work(store, actor_id, AREAS) as unit_of_work:
+        lock_ownership(unit_of_work.db)
         rows, target = Rows.of(unit_of_work), unit_of_work.store
         giver = _owner_contact(target, data.from_owner_contact_id, "Der Abgebende")
         receivers = [_owner_contact(target, r.owner_contact_id, "Ein Empfänger") for r in data.receivers]
@@ -552,14 +599,16 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
             objects = [data.unit_id]
         involved = {giver.id, *(r.id for r in receivers)}
         kind = TRANSFER_KINDS[data.kind]
-        now = stamp("ownership_shares")
+        now = _journal_stamp(rows, prop.id)
         # what the change does to the shares, kept in the journal so that it can be undone (revert_transfer)
         changes: dict[str, list] = {"ended": [], "removed": [], "created": []}
 
         def close(share: Any) -> None:
             if (share.valid_from or date.min) < day:
-                changes["ended"].append({"id": share.id, "valid_to": share.valid_to.isoformat() if share.valid_to else None})
-                rows.update("ownership_shares", share.id, valid_to=day - timedelta(days=1))
+                before = share.model_dump(mode="json")
+                ended = rows.update("ownership_shares", share.id, valid_to=day - timedelta(days=1))
+                changes["ended"].append({"id": share.id, "valid_to": before["valid_to"],
+                                         "before": before, "after": ended.model_dump(mode="json")})
             else:
                 changes["removed"].append(share.model_dump(mode="json"))
                 rows.delete("ownership_shares", share.id)
@@ -611,6 +660,47 @@ def record_transfer(store: Any, data: Any, actor_id: Optional[str]) -> Any:
 SHARE_FIELDS = ("owner_contact_id", "property_id", "unit_id", "share_percent", "valid_from", "valid_to", "note")
 
 
+def _undo_changes(transfer: Any) -> dict:
+    """A restored/imported journal is data, not authority to move arbitrary shares."""
+    changes = transfer.changes
+    if not isinstance(changes, dict) or any(not isinstance(changes.get(key), list) for key in ("ended", "removed", "created")):
+        raise HTTPException(409, "Die Vergleichsdaten dieses Eigentümerwechsels sind unvollständig. Bitte die Anteile von Hand korrigieren.")
+    if any(not isinstance(entry, dict) or not entry.get("before") or not entry.get("after") for entry in changes["ended"]):
+        raise HTTPException(409, "Dieser ältere Eigentümerwechsel enthält keine vollständigen Vergleichsdaten. "
+                                 "Bitte die Anteile von Hand korrigieren.")
+    try:
+        snapshots = [*changes["created"], *changes["removed"]]
+        for entry in changes["ended"]:
+            before, after = entry["before"], entry["after"]
+            if (before["id"] != entry["id"] or after["id"] != entry["id"]
+                    or transfer.effective_date == date.min
+                    or after["valid_to"] != (transfer.effective_date - timedelta(days=1)).isoformat()
+                    or any(before[key] != after[key] for key in SHARE_FIELDS if key != "valid_to")):
+                raise ValueError("changed end snapshot")
+            snapshots.extend([before, after])
+        for snapshot in snapshots:
+            if not isinstance(snapshot, dict) or not set(("id", *SHARE_FIELDS)) <= snapshot.keys():
+                raise ValueError("incomplete share snapshot")
+            record = OwnershipShare.model_validate(snapshot)
+            if record.property_id != transfer.property_id:
+                raise ValueError("foreign property in journal")
+        identities = [row["id"] for row in changes["created"] + changes["removed"] + changes["ended"]]
+        if len(identities) != len(set(identities)):
+            raise ValueError("duplicate share in journal")
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(409, "Die Vergleichsdaten dieses Eigentümerwechsels sind widersprüchlich. "
+                                 "Bitte die Anteile von Hand korrigieren.") from None
+    return changes
+
+
+def _has_undo_changes(transfer: Any) -> bool:
+    try:
+        _undo_changes(transfer)
+        return True
+    except HTTPException:
+        return False
+
+
 def revert_transfer(store: Any, transfer_id: str, actor_id: Optional[str]) -> Any:
     """Undo the latest owner change of a property: the shares are as before it, the journal keeps it.
 
@@ -618,9 +708,9 @@ def revert_transfer(store: Any, transfer_id: str, actor_id: Optional[str]) -> An
     are as it left them; otherwise the shares are corrected by hand.
     """
     from .maintenance_projects import work
-    from .maintenance_rows import stamp
 
     with work(store, actor_id, AREAS) as unit_of_work:
+        lock_ownership(unit_of_work.db)
         rows = Rows.of(unit_of_work)
         transfer = rows.require("ownership_transfers", transfer_id, "Eigentümerwechsel nicht gefunden")
         if transfer.reverted_at:
@@ -628,12 +718,12 @@ def revert_transfer(store: Any, transfer_id: str, actor_id: Optional[str]) -> An
         if not transfer.changes:
             raise HTTPException(409, "Dieser Eigentümerwechsel wurde vor dieser Version erfasst und lässt sich nicht "
                                      "automatisch rückgängig machen. Bitte die Anteile von Hand korrigieren.")
+        changes = _undo_changes(transfer)
         later = [t for t in rows.find("ownership_transfers", property_id=transfer.property_id)
                  if not t.reverted_at and t.id != transfer.id and str(t.created_at) > str(transfer.created_at)]
         if later:
             raise HTTPException(409, "Nach diesem Wechsel ist am Objekt schon ein weiterer erfasst. Bitte zuerst den "
                                      "letzten Wechsel rückgängig machen.")
-        day = transfer.effective_date
         current = {share.id: share for share in rows.find("ownership_shares", property_id=transfer.property_id)}
 
         def unchanged(snapshot: dict) -> bool:
@@ -643,19 +733,33 @@ def revert_transfer(store: Any, transfer_id: str, actor_id: Optional[str]) -> An
             now = share.model_dump(mode="json")
             return all(now[key] == snapshot[key] for key in SHARE_FIELDS)
 
-        ended_ok = all(entry["id"] in current and current[entry["id"]].valid_to == day - timedelta(days=1)
-                       for entry in transfer.changes["ended"])
-        if not ended_ok or not all(unchanged(snapshot) for snapshot in transfer.changes["created"]):
+        ended_ok = all(unchanged(entry["after"]) for entry in changes["ended"])
+        if not ended_ok or not all(unchanged(snapshot) for snapshot in changes["created"]):
             raise HTTPException(409, "Die Anteile wurden seit dem Wechsel von Hand geändert. Bitte die Anteile von Hand "
                                      "korrigieren.")
-        for snapshot in transfer.changes["created"]:
+        from .ownership_guard import problems
+
+        restored = {key: value for key, value in current.items()
+                    if key not in {s["id"] for s in changes["created"]}}
+        for entry in changes["ended"]:
+            restored[entry["id"]] = OwnershipShare(**entry["before"])
+        for snapshot in changes["removed"]:
+            if rows.get("ownership_shares", snapshot["id"]) is not None:
+                raise HTTPException(409, "Ein früherer Anteil wurde inzwischen erneut angelegt. Bitte von Hand korrigieren.")
+            restored[snapshot["id"]] = OwnershipShare(**snapshot)
+        target = unit_of_work.store
+        invalid = problems(list(restored.values()), {c.id: c for c in target.list_contacts()},
+                           {p.id: p for p in target.list_properties()}, {u.id: u for u in target.list_units()})
+        if invalid:
+            raise HTTPException(409, "Die Rücknahme würde ungültige Eigentumsanteile erzeugen: " + invalid[0])
+        for snapshot in changes["created"]:
             rows.delete("ownership_shares", snapshot["id"])
-        for entry in transfer.changes["ended"]:
+        for entry in changes["ended"]:
             rows.update("ownership_shares", entry["id"],
-                        valid_to=date.fromisoformat(entry["valid_to"]) if entry["valid_to"] else None)
-        for snapshot in transfer.changes["removed"]:
+                        **{key: getattr(OwnershipShare(**entry["before"]), key) for key in SHARE_FIELDS})
+        for snapshot in changes["removed"]:
             rows.add("ownership_shares", OwnershipShare(**snapshot))
-        return rows.update("ownership_transfers", transfer.id, reverted_at=stamp("ownership_transfers"),
+        return rows.update("ownership_transfers", transfer.id, reverted_at=_journal_stamp(rows, transfer.property_id),
                            reverted_by=actor_id)
 
 
@@ -699,7 +803,7 @@ def history(store: Any, property_id: str) -> dict[str, Any]:
                     *({"unit_id": u.id, "label": u.label, "periods": periods(u.id)} for u in units)],
         "transfers": [{**t.model_dump(mode="json", exclude={"changes"}), "kind_label": TRANSFER_KINDS.get(t.kind, t.kind),
                        # only the latest change still in force can be undone (revert_transfer)
-                       "revertible": t.id == latest and bool(t.changes),
+                       "revertible": t.id == latest and _has_undo_changes(t),
                        "from_name": names.get(t.from_owner_contact_id, "Eigentümer"),
                        "unit_label": next((u.label for u in units if u.id == t.unit_id), None),
                        "receivers": [{**r, "name": names.get(r["owner_contact_id"], "Eigentümer")} for r in t.receivers]}

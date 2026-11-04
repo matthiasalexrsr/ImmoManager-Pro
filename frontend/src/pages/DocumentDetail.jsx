@@ -220,10 +220,19 @@ function DocumentPage({ id, service }) {
       {text && <section className="panel" aria-label="Gelesener Text">
         <div className="panel-header">Gelesener Text für die Suche</div>
         <div className="panel-body">
-          <p className="text-muted document-dossier-note">{TEXT_SOURCES[text.source] || text.source} · {text.characters.toLocaleString('de-DE')} Zeichen · gelesen {formatDateTime(text.indexed_at)}
+          {text.stale && <p role="status" className="alert alert-warning">Der gelesene Text ist veraltet. Die Quelle wurde geändert und muss erneut ausgewertet werden.</p>}
+          {text.complete === false && <p role="status">Die Texterfassung ist noch nicht abgeschlossen. Weitere Inhalte stehen noch aus.</p>}
+          {text.warning && <div role="status" className="alert alert-warning">Text nur teilweise erfasst. Die Inhaltssuche ist unvollständig.<p>{text.warning}</p></div>}
+          {text.complete === true && !text.warning && !text.stale && <p role="status">Texterfassung abgeschlossen.</p>}
+          {Number.isFinite(text.indexed_units) && Number.isFinite(text.total_units) && text.total_units > 0 &&
+            <p className="document-dossier-note">{text.stale ? 'Letzter Lesestand' : 'Fortschritt'}: {text.indexed_units.toLocaleString('de-DE')} von {text.total_units.toLocaleString('de-DE')} {text.progress_unit === 'pages' ? 'Seiten' : 'Zeichen'} gelesen.</p>}
+          <p className="text-muted document-dossier-note">{text.source === 'none' && (text.complete === false || text.warning || text.stale) ? 'Bisher kein lesbarer Text' : TEXT_SOURCES[text.source] || text.source} · {text.characters.toLocaleString('de-DE')} Zeichen · gelesen {formatDateTime(text.indexed_at)}
             {text.source_ref?.startsWith('version:') ? ` · aus Fassung ${versions.find(item => `version:${item.id}` === text.source_ref)?.number ?? 'des Archivs'}` : ''}</p>
           {text.excerpt ? <details><summary>Text anzeigen{text.characters > text.excerpt.length ? ' (Anfang)' : ''}</summary><pre className="document-dossier-text">{text.excerpt}</pre></details>
-            : <p className="text-muted">Aus dieser Datei ließ sich kein Text lesen.</p>}
+            : <p className="text-muted">{text.stale ? 'Für die aktuelle Quelle liegt noch kein gelesener Text vor.'
+              : text.complete === false ? 'Bisher wurde noch kein Text erfasst.'
+                : text.warning ? 'Die begrenzte Auswertung hat keinen lesbaren Text ergeben.'
+                  : 'Aus dieser Datei ließ sich kein Text lesen.'}</p>}
         </div>
       </section>}
 

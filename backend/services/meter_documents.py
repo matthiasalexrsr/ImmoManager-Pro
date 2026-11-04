@@ -426,7 +426,6 @@ def apply(store: Any, document: Any, *, period: Any, property_id: str, costs: li
           actor: Any = None) -> dict:
     """Cost items (source: the document) and meter readings, after every check, in one transaction."""
     from ..models import CostItemCreate, StandaloneMeterReadingCreate
-    from .billing_writes import billing_write
     from .meter_history import order_problem
 
     facts = property_facts(store, property_id)
@@ -484,7 +483,8 @@ def apply(store: Any, document: Any, *, period: Any, property_id: str, costs: li
                             + " ".join(out_of_order[:10]))
     note = f"aus „{document.title}“"[:200]
     recorded_by = getattr(actor, "full_name", None) or getattr(actor, "username", None)
-    with billing_write(store, [period.id] if period is not None else []):
+    from .meter_writes import meter_write
+    with meter_write(store, [period.id] if period is not None else []):
         created = [store.create_cost_item(CostItemCreate(
             billing_period_id=period.id, description=cost["description"], amount=round(cost["amount"], 2),
             allocation_key_id=cost["allocation_key_id"], is_recoverable=cost.get("is_recoverable", True),

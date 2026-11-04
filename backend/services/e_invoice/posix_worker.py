@@ -12,15 +12,16 @@ def main(arguments=None):
     folder, mode, seconds, *command = args
     owned = os.environ.get('E_INVOICE_LIMIT_DIR', '')
     if (not owned or Path(folder).resolve(strict=True) != Path(owned).resolve(strict=True)
-            or not Path(folder).name.startswith('immo-e-invoice-') or mode not in ('java', 'extract')):
+            or not Path(folder).name.startswith('immo-e-invoice-') or mode not in ('java', 'extract', 'text')):
         raise RuntimeError('Owned invoice resource boundary required')
     seconds = int(seconds)
     if seconds < 5 or seconds > 180 or not Path(command[0]).is_absolute():
         raise RuntimeError('Invalid invoice process budget or executable')
     resource = import_module('resource')  # absent from Windows Python/type stubs
     memory = (3072 if mode == 'java' else 768) * 1024 * 1024
+    file_bytes = (128 if mode == 'text' else 8) * 1024 * 1024
     limits = ((resource.RLIMIT_AS, memory), (resource.RLIMIT_CPU, seconds),
-              (resource.RLIMIT_CORE, 0), (resource.RLIMIT_FSIZE, 8 * 1024 * 1024), (resource.RLIMIT_NOFILE, 128))
+              (resource.RLIMIT_CORE, 0), (resource.RLIMIT_FSIZE, file_bytes), (resource.RLIMIT_NOFILE, 128))
     for name, value in limits:
         _, hard = resource.getrlimit(name)
         if hard != resource.RLIM_INFINITY:

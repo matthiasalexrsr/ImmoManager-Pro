@@ -194,11 +194,14 @@ function RoutedDataTable(props) {
   useEffect(() => {
     if (viewRoute.applying) setViewRoute(current => ({ ...current, applying: false }));
   }, [viewRoute.applying]);
-  const applyView = props.onApplyView && (config => {
-    startTransition(() => {
+  const applyView = props.onApplyView && ((config, options) => {
+    const update = () => {
       setViewRoute(current => ({ ...current, applying: true }));
       props.onApplyView(config);
-    });
+    };
+    // Hydration is part of the table's current render, not a new navigation.
+    // Deferring it can reset a page the person selected in the meantime.
+    if (options?.fromWorkspace) update(); else startTransition(update);
   });
   return <TableWithKey {...props} onApplyView={applyView} pathname={pathname} routeSearch={search} routeViewKey={viewRoute.version}
     restoreLocationState={navigation === 'POP'} clearFocusedRow={resetFilters => {
@@ -227,7 +230,7 @@ function TableWithKey(props) {
 }
 
 function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
-  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, loadExportData, exportLabel = 'CSV', hideTitle = false,
+  onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, persistServerView = false, loadExportData, exportLabel = 'CSV', hideTitle = false,
   resolvedSettingsKey: storageKey, pathname, routeSearch, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText,
   viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true, inheritRouteSearch = true }) {
   const { t } = useTranslation();
@@ -337,7 +340,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     visible_columns: columns.filter(col => !hiddenCols[col.key]).map(col => col.key), hidden_defaults: defaultHidden,
     column_order: stored.columnOrder || columns.map(col => col.key), page_size: pageSize,
     ...viewConfig, column_filters: { ...columnFilters, ...viewConfig?.column_filters } };
-  const applyView = config => {
+  const applyView = (config, options) => {
     if (!serverPaged) {
       setSearch(typeof config.search === 'string' ? config.search : '');
       const filters = config.column_filters || {};
@@ -356,7 +359,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
       columnOrder: Array.isArray(config.column_order) ? config.column_order.filter(key => columns.some(col => col.key === key)) : columns.map(col => col.key),
     }));
     setPage(0);
-    onApplyView?.(config);
+    if (options) onApplyView?.(config, options); else onApplyView?.(config);
   };
   const lastDrilldown = useRef(drilldownKey);
   useEffect(() => {
@@ -364,8 +367,14 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     lastDrilldown.current = drilldownKey;
     setSearch(''); setColumnFilters({}); setPage(0);
   }, [drilldownKey]);
-  useWorkspaceViewState(!serverPaged && !linkedOnMount ? viewContext : null,
-    { ...namedConfig, page_cursor: String(page) }, state => { if (savedView) return; applyView(state); if (/^\d+$/.test(state.page_cursor || '')) setPage(Number(state.page_cursor)); });
+  const viewPersistence = useWorkspaceViewState((!serverPaged || persistServerView) && !linkedOnMount ? viewContext : null,
+    { ...namedConfig, page_cursor: serverPaged ? String(viewConfig?.page_cursor || '0') : String(page) }, (state, { reload = false } = {}) => {
+      // A tab's existing view wins on initial navigation. An explicit conflict
+      // recovery must still apply the server view the person chose to reload.
+      if (savedView && !reload) return false;
+      applyView(state, { fromWorkspace: true });
+      if (!serverPaged && /^\d+$/.test(state.page_cursor || '')) setPage(Number(state.page_cursor));
+    });
   const [rowMark, setRowMark] = useState(() => readWorkspaceRow(storageKey));
   const markRow = row => { markWorkspaceRow(storageKey, row.id); setRowMark(String(row.id)); };
 
@@ -478,18 +487,19 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
     try {
       // A server page supplies only the visible slice; its loader owns the
       // complete selection and enrichment. A failed loader never falls back.
-      const exportData = loadExportData ? await loadExportData() : sorted;
+      const exportData = loadExportData ? await loadExportData(visibleColumns) : sorted;
       // The load may finish after the account changed or the table unmounted.
       // Do not materialize a stale CSV file or report an error in another view.
       if (epoch !== exportEpochRef.current) return;
-      if (!Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
-      const csv = buildCsv(visibleColumns, exportData);
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const serverFile = exportData?.blob instanceof Blob;
+      if (!serverFile && !Array.isArray(exportData)) throw new Error('Exportdaten konnten nicht geladen werden.');
+      const blob = serverFile ? exportData.blob : new Blob(['\ufeff' + buildCsv(visibleColumns, exportData)], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       try {
         const a = document.createElement('a');
         a.href = url;
-        a.download = safeCsvFilename(title);
+        a.download = safeCsvFilename(serverFile && typeof exportData.filename === 'string'
+          ? exportData.filename.split(/[\\/]/).at(-1).replace(/\.csv$/i, '') : title);
         a.click();
       } finally {
         URL.revokeObjectURL(url);
@@ -677,6 +687,12 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
 
   return (
     <div ref={wrapperRef} className={`data-table-wrapper data-table-workspace${titleHidden ? ' table-title-hidden' : ''}`}>
+      {viewPersistence.error && <div role="alert" className="alert alert-warning">
+        <p>{viewPersistence.error}</p>
+        {viewPersistence.conflict
+          ? <button type="button" className="btn btn-secondary" onClick={viewPersistence.reload}>Serveransicht laden</button>
+          : <button type="button" className="btn btn-secondary" onClick={viewPersistence.retry}>Speicherung erneut versuchen</button>}
+      </div>}
       <div className="table-header">
         {titleHidden ? <span id={titleId} className="sr-only">{title}</span> : <h2 id={titleId}>{title}</h2>}
         <div className="table-actions">

@@ -62,11 +62,15 @@ def invite(store, actor_id, command):
         return {**response, "invitation_url": address + "/portal/accept#" + token}
 
 
-def listing(store, actor_id, *, skip=0, limit=50):
+def listing(store, actor_id, *, skip=0, limit=50, case_id=None):
     with admin_work(store, actor_id) as unit:
+        case = unit.store.get_maintenance_case(case_id) if case_id else None
         visible = rows(unit, PortalGrantORM)
         result = []
         for access in visible:
+            if case and (access.binding.get("property_id") != case.property_id
+                         or access.binding.get("unit_id") != case.unit_id):
+                continue
             # SQL collection scope is automatic; memory must resolve every row.
             try:
                 binding(unit, access.kind, access.tenant_id or access.contact_id, access.contract_id or access.ownership_id)
@@ -83,6 +87,7 @@ def listing(store, actor_id, *, skip=0, limit=50):
             identity = db.row(unit, PortalIdentityORM, access.identity_id)
             result.append({**public(access, GRANT_FIELDS), "email": identity.email, "identity_active": identity.active,
                            "identity_revision": identity.revision})
+        result.sort(key=lambda item: item["id"])
         return {"items": result[skip:skip + limit], "total": len(result), "skip": skip, "limit": limit}
 
 

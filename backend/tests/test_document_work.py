@@ -667,3 +667,58 @@ def test_document_page_and_version_upload_over_http(prepared, owner):
     page = client.get(f"/api/v1/documents/{loose.id}/details")
     assert page.status_code == 200 and page.json()["versions"]["items"] == []
     assert "keiner Immobilie" in page.json()["versions"]["unavailable"]
+
+
+@pytest.mark.parametrize("complete,warning,excerpt", [
+    (False, None, ""),
+    (True, "Eine Seite konnte nicht vollständig gelesen werden.", "Lesbarer Teil"),
+    (True, None, "Vollständig erfasster Text"),
+])
+def test_document_details_expose_read_progress_and_warnings_without_reading_files(prepared, owner, monkeypatch, complete, warning, excerpt):
+    from backend.services import document_text, document_versions
+
+    identifier = prepared["document"].id
+    text = document_text.TextRow(identifier, "file:" + prepared["document"].file_url, "office", excerpt,
+                                excerpt.lower(), len(excerpt), document_text.now(), complete=complete,
+                                indexed_units=200, total_units=900, warning=warning)
+    document_text.save(store, text)
+    if hasattr(store, "db"):
+        store.db.commit()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Document details must use metadata without reading or parsing the source")
+
+    monkeypatch.setattr(document_text, "extract_part", forbidden)
+    monkeypatch.setattr(document_versions, "original_bytes", forbidden)
+    client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(owner.id)})
+    response = client.get(f"/api/v1/documents/{identifier}/details")
+    assert response.status_code == 200, response.text
+    row = response.json()["text"]
+    assert row["complete"] is complete and row["warning"] == warning and row["stale"] is False
+    assert row["indexed_units"] == 200 and row["total_units"] == 900 and row["progress_unit"] == "characters"
+    assert row["excerpt"] == excerpt and row["characters"] == len(excerpt)
+
+
+def test_document_details_recognize_a_new_archive_head_without_parsing_it(prepared, owner, monkeypatch):
+    from backend.services import document_text, document_versions
+
+    initial, _ = archived(prepared, owner)
+    identifier = prepared["document"].id
+    old = document_text.TextRow(identifier, "version:" + initial["version"]["id"], "office", "Alter Text",
+                               "alter text", 10, document_text.now(), complete=True, indexed_units=10, total_units=10)
+    document_text.save(store, old)
+    if hasattr(store, "db"):
+        store.db.commit()
+    original_updated_at = store.get_document(identifier).updated_at
+    service.upload_version(store, identifier, command(initial), docx_bytes("Neue Fassung", 2), "neu.docx", "neu", owner.id)
+    assert store.get_document(identifier).updated_at == original_updated_at
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Document details must use archive metadata only")
+
+    monkeypatch.setattr(document_text, "extract_part", forbidden)
+    monkeypatch.setattr(document_versions, "original_bytes", forbidden)
+    client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(owner.id)})
+    response = client.get(f"/api/v1/documents/{identifier}/details")
+    assert response.status_code == 200, response.text
+    assert response.json()["text"]["complete"] is True and response.json()["text"]["stale"] is True

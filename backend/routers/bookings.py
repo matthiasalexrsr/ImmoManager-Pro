@@ -1,19 +1,22 @@
+import json
 from datetime import date
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..dependencies import store
 from ..domain.clock import local_today
-from ..domain.money import as_number, money, money_sum
+from ..domain.money import money, money_sum
 from ..models import Booking, BookingCreate, BookingPatch, PaymentAllocation
+from ..services import booking_pages
 from ..services.bank_imports import protect_bank_booking
 from ..services.booking_writes import booking_write
 from ..services.deletion_guard import ensure_deletable
 from ..services.deposits import _booking_linked, ensure_booking_unchanged
 from ..services.maintenance_projects import ensure_booking_unallocated
-from ..services.ownership import NOBODY, Ownership, owner_key, require_owner
+from ..services.ownership import require_owner
 from ..services.payment_allocations import (
     allocate_unassigned,
     auto_allocate,
@@ -69,19 +72,49 @@ def list_bookings(
 
     if owner is None:
         return page(skip, limit)
-    # the owner's bookings: those with a part for them (services.ownership), each with that part
-    if owner != NOBODY:
-        try:
-            store.get_contact(owner)
-        except NotFoundError as exc:
-            raise HTTPException(status_code=422, detail="Der Eigentümer ist nicht im Adressbuch.") from exc
-    ownership, key = Ownership(store), owner_key(owner)
-    owned = []
-    for booking in page(0, 10**9):
-        part = ownership.booking_split(booking).get(key)
-        if part:
-            owned.append(booking.model_dump(mode="json") | {"owner_part": as_number(part)})
-    return JSONResponse(owned[skip:skip + limit])
+    options: dict[str, Any] = {"owner_contact_id": owner, "flow": "all", "sort_by": sort_by if isinstance(sort_by, str) else "created_at",
+               "sort_order": sort_order if isinstance(sort_order, str) else "asc"}
+    options.update({key: value for key, value in filters.items() if isinstance(value, str)})
+    options.update({key: value for key, value in [("date_from", date_from), ("date_to", date_to)] if isinstance(value, date)})
+    return JSONResponse(booking_pages.page(store, options, skip=skip, limit=limit)["items"])
+
+
+def booking_page_options(account_id: str | None = None, tenant_id: str | None = None, category_id: str | None = None,
+                         status_filter: str | None = Query(None, alias="status"), date_from: date | None = None,
+                         date_to: date | None = None, portfolio_id: str | None = None, property_id: str | None = None,
+                         unit_id: str | None = None, owner_contact_id: str | None = None,
+                         search: str = Query("", max_length=500), flow: str = "all", sort_by: str = "booking_date", sort_order: str = "desc",
+                         column_filters: str | None = Query(None, max_length=5000)):
+    try:
+        parsed = json.loads(column_filters) if column_filters else {}
+        if not isinstance(parsed, dict):
+            raise ValueError
+    except (ValueError, TypeError, RecursionError):
+        raise HTTPException(422, "Die Spaltenfilter konnten nicht gelesen werden.") from None
+    return {"account_id": account_id, "tenant_id": tenant_id, "category_id": category_id, "status": status_filter,
+            "date_from": date_from, "date_to": date_to, "portfolio_id": portfolio_id, "property_id": property_id,
+            "unit_id": unit_id, "owner_contact_id": owner_contact_id, "search": search, "flow": flow,
+            "sort_by": sort_by, "sort_order": sort_order, "column_filters": parsed}
+
+
+@router.get("/page")
+def booking_page(skip: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), options: dict = Depends(booking_page_options)):
+    return booking_pages.page(store, options, skip=skip, limit=limit)
+
+
+@router.get("/page/export", response_model=None)
+def export_booking_page(options: dict = Depends(booking_page_options), columns: str | None = Query(None, max_length=1000)):
+    return booking_pages.export_csv(store, options, columns=columns.split(",") if columns else None)
+
+
+@router.get("/{booking_id}/allocation-overview")
+def booking_allocation_overview(booking_id: str):
+    try:
+        store.get_booking(booking_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    allocated, reserved = booking_pages.allocations(store, [booking_id])
+    return {"allocations": allocated, "reserved_amounts": reserved}
 
 
 @router.post("", response_model=Booking, status_code=status.HTTP_201_CREATED)

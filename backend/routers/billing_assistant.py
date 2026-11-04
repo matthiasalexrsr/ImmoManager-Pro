@@ -120,7 +120,12 @@ def analyse_meter_document(document_id: str, payload: AnalysisRequest,
     period = _period(payload.billing_period_id)
     property_id = _property(document, period, payload.property_id)
     file = document_share.current_file(store, document)
-    text, source = document_text.extract(file.content, file.filename)
+    try:
+        text, source = document_text.extract(file.content, file.filename)
+    except ValueError as exc:
+        raise HTTPException(422, "Die Datei konnte nicht vollständig gelesen werden. Wegen einer Lese- oder "
+                            "Ressourcenbegrenzung werden keine Teilwerte übernommen. Bitte das Original prüfen "
+                            "oder eine vollständig lesbare Datei verwenden.") from exc
     if payload.reader == "local":
         if not text.strip():
             raise HTTPException(422, "Aus dieser Datei ließ sich kein Text lesen (Scan oder Foto ohne Texterkennung). "

@@ -1,4 +1,5 @@
 """Full-text search: text from PDF, office and plain files, the index, the search API and global search."""
+
 import zipfile
 from io import BytesIO
 from uuid import uuid4
@@ -41,7 +42,9 @@ def test_text_comes_from_pdf_office_and_plain_files():
     text, source = document_text.extract(_pdf("Energieausweis Bautzner Straße 61", "gültig bis 2034"), "ea.pdf")
     assert source == "pdf_text" and "Energieausweis Bautzner Straße 61" in text and "2034" in text
     assert document_text.extract(_docx("Hausordnung: Ruhezeiten 22 bis 6 Uhr"), "h.docx") == (
-        "Hausordnung: Ruhezeiten 22 bis 6 Uhr", "office")
+        "Hausordnung: Ruhezeiten 22 bis 6 Uhr",
+        "office",
+    )
     assert document_text.extract("Zählerstand 4711 m³".encode("cp1252", errors="ignore"), "z.txt")[1] == "plain"
     assert document_text.extract(b"%PDF-1.4 kaputt", "x.pdf") == ("", "none")
     assert document_text.extract(b"\x00\x01", "x.bin") == ("", "none")
@@ -55,6 +58,7 @@ def test_text_comes_from_pdf_office_and_plain_files():
 @pytest.fixture
 def case(monkeypatch):
     from backend.services import file_storage
+
     monkeypatch.setattr(file_storage, "_storage", file_storage.LocalStorage())
     purge_originals(store)
     clear_business_data(store)
@@ -62,8 +66,9 @@ def case(monkeypatch):
     auth.clear_users()
     owner = auth.register_user("text-owner", "text@example.test", "Linda Reiser", "Secret123", "eigentuemer")
     portfolio = store.create_portfolio(PortfolioCreate(name="Bestand", owner_name="Linda Reiser"))
-    prop = store.create_property(PropertyCreate(portfolio_id=portfolio.id, name="Bautzner Straße 61",
-                                                property_type="residential"))
+    prop = store.create_property(
+        PropertyCreate(portfolio_id=portfolio.id, name="Bautzner Straße 61", property_type="residential")
+    )
     client = TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(owner.id)})
     yield {"property": prop, "client": client}
     client.close()
@@ -72,10 +77,12 @@ def case(monkeypatch):
 
 
 def _upload(case, name, content, title):
-    name = f"{uuid4().hex}-{name}"            # the upload root keeps files between runs
+    name = f"{uuid4().hex}-{name}"  # the upload root keeps files between runs
     get_file_storage().save(f"documents/{name}", BytesIO(content), content_type="application/octet-stream")
-    response = case["client"].post("/api/v1/documents", json={"title": title, "property_id": case["property"].id,
-                                                             "file_url": f"/uploads/documents/{name}"})
+    response = case["client"].post(
+        "/api/v1/documents",
+        json={"title": title, "property_id": case["property"].id, "file_url": f"/uploads/documents/{name}"},
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -89,17 +96,41 @@ def _index():
 
 def test_indexed_documents_are_found_by_their_content_in_both_searches(case):
     client = case["client"]
-    smoke = _upload(case, "rwm.pdf", _pdf("Wartungsprotokoll Rauchwarnmelder", "alle 12 Melder geprüft"), "Protokoll 2026")
+    smoke = _upload(
+        case, "rwm.pdf", _pdf("Wartungsprotokoll Rauchwarnmelder", "alle 12 Melder geprüft"), "Protokoll 2026"
+    )
     rules = _upload(case, "hausordnung.docx", _docx("Ruhezeiten von 22 bis 6 Uhr"), "Hausordnung")
-    _upload(case, "scan.png", b"\x89PNG\r\n\x1a\n kein bild", "Foto")
-    assert client.get("/api/v1/documents/text-index").json() == {"documents": 3, "indexed": 0, "unreadable": 0}
+    photo = _upload(case, "scan.png", b"\x89PNG\r\n\x1a\n kein bild", "Foto")
+    assert client.get("/api/v1/documents/text-index").json() == {
+        "documents": 3,
+        "indexed": 0,
+        "unreadable": 0,
+        "partial": 0,
+        "in_progress": 0,
+        "limited": 0,
+        "details": [],
+    }
     _index()
-    assert client.get("/api/v1/documents/text-index").json() == {"documents": 3, "indexed": 3, "unreadable": 1}
+    index = client.get("/api/v1/documents/text-index").json()
+    assert {key: index[key] for key in ["documents", "indexed", "unreadable", "partial", "in_progress", "limited"]} == {
+        "documents": 3,
+        "indexed": 3,
+        "unreadable": 1,
+        "partial": 1,
+        "in_progress": 0,
+        "limited": 1,
+    }
+    assert (
+        len(index["details"]) == 1
+        and index["details"][0]["document_id"] == photo["id"]
+        and index["details"][0]["warning"]
+    )
     found = client.get("/api/v1/documents/search", params={"q": "RAUCHWARNMELDER"}).json()
     assert [item["id"] for item in found["items"]] == [smoke["id"]] and found["total"] == 1
     assert "Rauchwarnmelder" in found["items"][0]["snippet"] and found["items"][0]["text_source"] == "pdf_text"
-    assert [item["id"] for item in client.get("/api/v1/documents/search", params={"q": "ruhezeiten"}).json()["items"]] \
-        == [rules["id"]]
+    assert [
+        item["id"] for item in client.get("/api/v1/documents/search", params={"q": "ruhezeiten"}).json()["items"]
+    ] == [rules["id"]]
     assert client.get("/api/v1/documents/search", params={"q": "x"}).status_code == 422
     assert client.get("/api/v1/documents/search", params={"q": "100%_"}).json()["items"] == []
     hits = client.get("/api/v1/search", params={"q": "melder geprüft"})
@@ -120,8 +151,9 @@ def test_indexed_documents_are_found_by_their_content_in_both_searches(case):
 
 
 def test_a_document_without_a_local_file_is_not_read_again(case):
-    document = store.create_document(DocumentCreate(title="Link", file_url="https://example.test/datei.pdf",
-                                                    property_id=case["property"].id))
+    document = store.create_document(
+        DocumentCreate(title="Link", file_url="https://example.test/datei.pdf", property_id=case["property"].id)
+    )
     _index()
     row = document_text.get(store, document.id)
     assert row is not None and row.source == "none" and row.text == ""

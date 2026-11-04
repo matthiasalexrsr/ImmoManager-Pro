@@ -519,7 +519,8 @@ def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional
             ids.setdefault(document_id, "same_file")
         if len(text) >= 200:
             for row in store.db.execute(select(DocumentTextORM.document_id, DocumentTextORM.text)
-                                        .where(DocumentTextORM.characters == len(text))):
+                                        .where(DocumentTextORM.complete.is_(True), DocumentTextORM.warning.is_(None),
+                                               DocumentTextORM.characters == len(text))):
                 if row.text == text:
                     ids.setdefault(row.document_id, "same_text")
     else:
@@ -533,7 +534,7 @@ def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional
                 ids.setdefault(intake.document_id, "same_file")
         if len(text) >= 200:
             for row in document_text.memory_rows(store).values():
-                if row.characters == len(text) and row.text == text:
+                if row.complete and row.warning is None and row.characters == len(text) and row.text == text:
                     ids.setdefault(row.document_id, "same_text")
     _same_stored_files(store, sha256, size, ids)
     ids.pop(exclude or "", None)

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from ..dependencies import store
+from ..services import document_text
 from ..services import global_search as gs
 from ..services.ai.schemas import SearchHit
 from ..services.ai.semantic_search import IndexEntry, search_index
@@ -89,7 +90,8 @@ def global_search(
             page = gs.search_page(store, spec, q, limit=limit, cursor=cursor)
             return {"query": q, "count": len(page.items), "results": page.items, "semantic": False,
                     "groups": [_page_info(type, page)], "total": page.total,
-                    "has_more": page.has_more, "next_cursor": page.next_cursor}
+                    "has_more": page.has_more, "next_cursor": page.next_cursor,
+                    "document_index": document_text.status(store) if type == "document" else None}
         results: list[dict] = []
         groups = []
         for spec in gs.SEARCH_TYPES:
@@ -119,9 +121,10 @@ def global_search(
             for h in reranked
         ]
         return {"query": q, "count": len(reranked_results), "results": reranked_results, "semantic": True,
-                "groups": groups}
+                "groups": groups, "document_index": document_text.status(store)}
 
-    return {"query": q, "count": len(results), "results": results, "semantic": False, "groups": groups}
+    return {"query": q, "count": len(results), "results": results, "semantic": False, "groups": groups,
+            "document_index": document_text.status(store)}
 
 
 _CSV_COLUMNS = ("entity_type", "id", "display", "detail", "url")

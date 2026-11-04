@@ -25,6 +25,17 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('SearchBar', () => {
+  it('warns about unindexed and partially indexed files and removes the notice with the query', async () => {
+    api.get.mockResolvedValueOnce({ results: [], groups: [],
+      document_index: { documents: 5, indexed: 3, partial: 1 } });
+    render(<MemoryRouter><SearchBar /></MemoryRouter>);
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'Inhaltsfund' } });
+    expect(await screen.findByText(/bei 3 Dokumenten unvollständig/)).toHaveAttribute('role', 'status');
+    fireEvent.change(box, { target: { value: '' } });
+    expect(screen.queryByText(/Suchtreffer können fehlen/)).not.toBeInTheDocument();
+  });
+
   it('keeps the latest query when an older request finishes later', async () => {
     const old = deferred();
     api.get.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ results: [hit('new')], groups: [] });

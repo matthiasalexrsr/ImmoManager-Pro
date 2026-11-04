@@ -1,5 +1,5 @@
 import NotificationArrival from '../components/NotificationArrival';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
@@ -14,11 +14,10 @@ import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
 import { useCanWrite } from '../contexts/AuthContext';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoney, plainLabel } from '../utils/format';
 import './bookingReview.css';
 import { Copy as CopyIcon } from 'lucide-react';
 import { duplicateOf } from '../utils/duplicate';
-import { cashflowSide } from '../utils/cashflowBasis';
 import BankImport from '../components/BankImport';
 import FinTSImport from '../components/FinTSImport';
 import BankOriginal from '../components/BankOriginal';
@@ -52,10 +51,10 @@ export default function Bookings() {
   // A navigation starts a new editing/viewing session; old requests cannot own it.
   return <BookingsWorkspace key={bookingId === null ? 'list' : `booking:${bookingId}`} bookingId={bookingId}
     accountId={accountId} sourceFilters={sourceFilters} onApplySourceFilters={applySourceFilters} onClearAccount={clearAccount}
-    onOwner={chooseOwner} />;
+    onOwner={chooseOwner} initialSearch={params.get('suche') || ''} />;
 }
 
-function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters, onApplySourceFilters, onOwner }) {
+function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters, onApplySourceFilters, onOwner, initialSearch }) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const toast = useToast();
@@ -76,9 +75,14 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
 
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const owner = sourceFilters.owner_contact_id;
-  // the chosen owner's part of each of their bookings (services/ownership.py on the server)
-  const [ownerParts, setOwnerParts] = useState({ owner: '', parts: null, error: null });
+  const [page, setPage] = useState(0), [pageSize, setPageSize] = useState(25);
+  const [searchInput, setSearchInput] = useState(initialSearch), [search, setSearch] = useState(initialSearch);
+  const [sortBy, setSortBy] = useState('booking_date'), [sortOrder, setSortOrder] = useState('desc');
+  const [pageInfo, setPageInfo] = useState({ total: 0, summary: {} });
+  const [columnDraft, setColumnDraft] = useState({}), [columnFilters, setColumnFilters] = useState({});
+  const restoredPage = useRef(0), [viewGeneration, setViewGeneration] = useState(0);
   const [loadError, setLoadError] = useState(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
@@ -99,6 +103,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const [selectedLoading, setSelectedLoading] = useState(bookingId !== null);
   const [selectedError, setSelectedError] = useState(null);
   const [selectedAttempt, setSelectedAttempt] = useState(0);
+  const [selectedAllocations, setSelectedAllocations] = useState({ id: null, ready: false, error: '', allocations: [], reserved_amounts: {} });
   const [viewer, setViewer] = useState(null);
   const [reversing, setReversing] = useState(false);
   const mounted = useRef(false);
@@ -106,13 +111,12 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const splitSession = useRef(null);
 
   const noneOpt = t('ui.form.none') || '— Keine —';
-  const categoryTypes = useMemo(() => new Map(categories.map(category => [category.id, category.category_type])), [categories]);
-  const unitProperties = useMemo(() => new Map(units.map(unit => [unit.id, unit.property_id])), [units]);
-  const accountPortfolios = useMemo(() => new Map(accounts.map(account => [account.id, account.portfolio_id])), [accounts]);
   const basisLoading = categorySource.loading || (sourceFilters.property_id && unitSource.loading) || (sourceFilters.portfolio_id && accountSource.loading);
   const basisError = categorySource.error || (sourceFilters.property_id && unitSource.error) || (sourceFilters.portfolio_id && accountSource.error);
   const allocationReady = allocationStatus === 'ready';
-  const canSplit = canWrite && allocationReady && !contractSource.loading && !contractSource.error;
+  const splitRights = canWrite && !contractSource.loading && !contractSource.error;
+  const canSplit = splitRights && allocationReady;
+  const canSplitSelected = splitRights && selectedAllocations.ready;
 
   useEffect(() => {
     mounted.current = true;
@@ -127,58 +131,72 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   // An old save may finish after cancellation and reopening; only its own session may close.
   const closeModal = session => setModal(current => current === session ? null : current);
 
+  useEffect(() => { setSearchInput(initialSearch); }, [initialSearch]);
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 250);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  const columnKey = JSON.stringify(columnDraft);
+  useEffect(() => {
+    const timer = setTimeout(() => setColumnFilters(JSON.parse(columnKey)), 250);
+    return () => clearTimeout(timer);
+  }, [columnKey]);
+  const sourceKey = JSON.stringify(sourceFilters);
+  const appliedColumnsKey = JSON.stringify(columnFilters);
+  useEffect(() => { if (!owner && sortBy === 'owner_part') setSortBy('amount'); }, [owner, sortBy]);
+  useEffect(() => { setPage(restoredPage.current); restoredPage.current = 0; }, [sourceKey, accountId, search, sortBy, sortOrder, pageSize, filter, appliedColumnsKey, viewGeneration]);
+  const query = new URLSearchParams(Object.fromEntries(Object.entries(sourceFilters).filter(([key, value]) => value && key !== 'flow')));
+  if (accountId) query.set('account_id', accountId);
+  query.set('search', search); query.set('flow', filter); query.set('sort_by', sortBy); query.set('sort_order', sortOrder);
+  if (Object.keys(columnFilters).length) query.set('column_filters', appliedColumnsKey);
+  const selectionQuery = query.toString();
+  query.set('skip', String(page * pageSize)); query.set('limit', String(pageSize));
+  const pageQuery = query.toString();
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setLoadError(null);
-    api.list('/bookings', { signal: controller.signal })
+    setAllocationStatus('loading'); setAllocationError(null);
+    api.get(`/bookings/page?${pageQuery}`, { signal: controller.signal })
       .then(data => {
         if (controller.signal.aborted) return;
-        if (!Array.isArray(data)) throw new Error('Die Buchungen konnten nicht gelesen werden.');
-        setBookings(data);
+        if (!Array.isArray(data?.items) || !Number.isSafeInteger(data.total) || data.total < 0 || !data.summary
+            || ['count', 'income', 'expense', 'withdrawal', 'contribution', 'no_category', 'no_receipt'].some(key => !Number.isFinite(data.summary[key])))
+          throw new Error('Die Buchungsseite oder ihre vollständigen Summen konnten nicht gelesen werden.');
+        setBookings(data.items); setPageInfo({ total: data.total, summary: data.summary }); setHasLoaded(true);
+        if (Array.isArray(data.allocations) && data.reserved_amounts && !Array.isArray(data.reserved_amounts)
+            && Object.values(data.reserved_amounts).every(value => Number.isFinite(value))) {
+          setAllocations(data.allocations); setReservedAmounts(data.reserved_amounts); setAllocationStatus('ready');
+        } else {
+          setAllocations([]); setReservedAmounts({}); setAllocationStatus('error');
+          setAllocationError('Die Zuordnungen konnten nicht gelesen werden.');
+        }
+        if (page * pageSize >= data.total && page > 0) setPage(Math.max(0, Math.ceil(data.total / pageSize) - 1));
       })
-      .catch(err => { if (!controller.signal.aborted) setLoadError(err.message || 'Buchungen konnten nicht geladen werden.'); })
+      .catch(err => { if (!controller.signal.aborted) { setLoadError(err.message || 'Buchungen konnten nicht geladen werden.'); setAllocationStatus('error'); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [refreshVersion]);
-
-  useEffect(() => {
-    if (!owner) return undefined;
-    const controller = new AbortController();
-    api.list(`/bookings?owner_contact_id=${encodeURIComponent(owner)}`, { signal: controller.signal })
-      .then(data => {
-        if (controller.signal.aborted) return;
-        if (!Array.isArray(data)) throw new Error('Die Anteile des Eigentümers konnten nicht gelesen werden.');
-        setOwnerParts({ owner, parts: new Map(data.map(row => [row.id, Number(row.owner_part)])), error: null });
-      })
-      .catch(err => { if (!controller.signal.aborted) setOwnerParts({ owner, parts: null, error: err.message || 'Die Anteile des Eigentümers konnten nicht geladen werden.' }); });
-    return () => controller.abort();
-  }, [owner, refreshVersion]);
-  const parts = owner && ownerParts.owner === owner ? ownerParts.parts : null;
-  const ownerLoading = Boolean(owner) && (ownerParts.owner !== owner || (!ownerParts.parts && !ownerParts.error));
-  const ownerError = owner && ownerParts.owner === owner ? ownerParts.error : null;
+  }, [refreshVersion, pageQuery, allocationAttempt, page, pageSize]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setAllocationStatus('loading');
-    setAllocationError(null);
-    api.get('/bookings/allocations?include_reservations=true', { signal: controller.signal })
+    if (bookingId === null || !bookingId.trim()) return undefined;
+    setSelectedAllocations({ id: bookingId, ready: false, error: '', allocations: [], reserved_amounts: {} });
+    api.get(`/bookings/${encodeURIComponent(bookingId)}/allocation-overview`, { signal: controller.signal })
       .then(data => {
         if (controller.signal.aborted) return;
         if (!Array.isArray(data?.allocations) || !data.reserved_amounts || Array.isArray(data.reserved_amounts)
             || typeof data.reserved_amounts !== 'object' || Object.values(data.reserved_amounts).some(v => !Number.isFinite(v)))
           throw new Error('Die Zuordnungen konnten nicht gelesen werden.');
-        setAllocations(data.allocations);
-        setReservedAmounts(data.reserved_amounts);
-        setAllocationStatus('ready');
+        setSelectedAllocations({ id: bookingId, ready: true, error: '', ...data });
       })
       .catch(err => {
         if (controller.signal.aborted) return;
-        setAllocationError(err.message || 'Zuordnungen konnten nicht geladen werden.');
-        setAllocationStatus('error');
+        setSelectedAllocations({ id: bookingId, ready: false, error: err.message || 'Zuordnungen konnten nicht geladen werden.', allocations: [], reserved_amounts: {} });
       });
     return () => controller.abort();
-  }, [refreshVersion, allocationAttempt]);
+  }, [bookingId, refreshVersion, selectedAttempt]);
 
   useEffect(() => {
     if (bookingId === null) return;
@@ -210,17 +228,20 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
   const contractNumber = Object.fromEntries(contracts.map(c => [c.id, c.contract_number]));
   const allocationsByBooking = {};
-  allocations.forEach(a => { (allocationsByBooking[a.booking_id] ||= []).push(a); });
+  const allAllocations = new Map(allocations.map(row => [row.id, row]));
+  if (selectedAllocations.id === bookingId) selectedAllocations.allocations.forEach(row => allAllocations.set(row.id, row));
+  allAllocations.forEach(a => { (allocationsByBooking[a.booking_id] ||= []).push(a); });
+  const allReserved = { ...reservedAmounts, ...(selectedAllocations.id === bookingId ? selectedAllocations.reserved_amounts : {}) };
 
   // Short label for the list (contract numbers), the amounts per contract as tooltip.
   const allocationInfo = (b) => {
     if (!b.tenant_id) return { label: '—', detail: '', unassigned: 0 };
-    if (!allocationReady) return {
-      label: allocationStatus === 'loading' ? 'Zuordnung wird geladen …' : 'Zuordnung nicht verfügbar',
+    if (!allocationReady || (b.id === bookingId && !selectedAllocations.ready)) return {
+      label: allocationStatus === 'loading' || (b.id === bookingId && !selectedAllocations.error) ? 'Zuordnung wird geladen …' : 'Zuordnung nicht verfügbar',
       detail: '', unassigned: null,
     };
     const own = allocationsByBooking[b.id] || [];
-    const reserved = Number(reservedAmounts[b.id] || 0);
+    const reserved = Number(allReserved[b.id] || 0);
     const rest = (Math.round(Number(b.amount) * 100) - Math.round(reserved * 100)
       - own.reduce((s, a) => s + Math.round(Number(a.amount) * 100), 0)) / 100;
     const parts = own.map(a => `${contractNumber[a.contract_id] || '?'}: ${formatMoney(a.amount)}`);
@@ -243,46 +264,14 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
     unit_label: unitMap[b.unit_id] || '—',
     tenant_name: tenantMap[b.tenant_id] || '—',
     has_receipt: hasReceipt(b.receipt_url) ? 'Vorhanden' : b.receipt_url?.trim() ? 'Ungültig' : 'Fehlt',
-    ...(parts ? { owner_part: parts.get(b.id) ?? 0 } : {}),
   }));
-  // with an owner chosen, every figure is their part
-  const amountOf = b => Math.round(Number(parts ? b.owner_part : b.amount) * 100);
-
-  // Filtered data
-  const basis = enriched.filter(row => (!accountId || row.account_id === accountId)
-    && (!sourceFilters.date_from || row.booking_date >= sourceFilters.date_from)
-    && (!sourceFilters.date_to || row.booking_date <= sourceFilters.date_to)
-    && (!sourceFilters.property_id || (row.property_id || unitProperties.get(row.unit_id)) === sourceFilters.property_id)
-    && (!sourceFilters.unit_id || row.unit_id === sourceFilters.unit_id)
-    && (!sourceFilters.tenant_id || row.tenant_id === sourceFilters.tenant_id)
-    && (!sourceFilters.category_id || row.category_id === sourceFilters.category_id)
-    && (!sourceFilters.status || row.status === sourceFilters.status)
-    && (!sourceFilters.portfolio_id || accountPortfolios.get(row.account_id) === sourceFilters.portfolio_id)
-    && (!owner || Boolean(parts?.has(row.id))));
-  const filtered = useMemo(() => {
-    const rows = basis;
-    switch (filter) {
-      case 'open': return rows.filter(b => b.status === 'open');
-      case 'unassigned': return rows.filter(b => b.unassigned);
-      case 'no_category': return rows.filter(b => !b.category_id);
-      case 'no_receipt': return rows.filter(b => !hasReceipt(b.receipt_url));
-      case 'income': return rows.filter(b => cashflowSide(b, categoryTypes) === 'income');
-      case 'expense': return rows.filter(b => cashflowSide(b, categoryTypes) === 'expense');
-      case 'withdrawal': return rows.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal');
-      case 'contribution': return rows.filter(b => cashflowSide(b, categoryTypes) === 'contribution');
-      default: return rows;
-    }
-  }, [basis, filter, categoryTypes]);
-
-  // Summary stats
-  const totalCount = basis.length;
-  const totalIncome = basis.filter(b => cashflowSide(b, categoryTypes) === 'income').reduce((s, b) => s + amountOf(b), 0) / 100;
-  const totalExpense = -basis.filter(b => cashflowSide(b, categoryTypes) === 'expense').reduce((s, b) => s + amountOf(b), 0) / 100;
-  // the owners' own money (category type "private"): neither income nor expense
-  const totalWithdrawn = -basis.filter(b => cashflowSide(b, categoryTypes) === 'withdrawal').reduce((s, b) => s + amountOf(b), 0) / 100;
-  const totalContributed = basis.filter(b => cashflowSide(b, categoryTypes) === 'contribution').reduce((s, b) => s + amountOf(b), 0) / 100;
-  const noCategory = basis.filter(b => !b.category_id).length;
-  const noReceipt = basis.filter(b => !hasReceipt(b.receipt_url)).length;
+  const totalCount = pageInfo.summary.count || 0;
+  const totalIncome = pageInfo.summary.income || 0;
+  const totalExpense = pageInfo.summary.expense || 0;
+  const totalWithdrawn = pageInfo.summary.withdrawal || 0;
+  const totalContributed = pageInfo.summary.contribution || 0;
+  const noCategory = pageInfo.summary.no_category || 0;
+  const noReceipt = pageInfo.summary.no_receipt || 0;
 
   const receiptAction = row => bankOriginalPath(row.receipt_url) ? <BankOriginal value={row.receipt_url} /> : resolveFileUrl(row.receipt_url)
     ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => setViewer({ fileUrl: row.receipt_url, title: `Beleg: ${row.payment_text || formatDate(row.booking_date)}` })}>Beleg öffnen</button>
@@ -309,7 +298,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         return <span className="cell-inline"><span className={cls}>{formatMoney(n)}</span>
           {row.reverses_booking_id && <span className="badge badge-gray" title="Storno: zählt mit der stornierten Buchung zusammen">Storno</span>}</span>;
       }},
-    ...(parts ? [{ key: 'owner_part', label: 'Anteil des Eigentümers (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
+    ...(owner ? [{ key: 'owner_part', label: 'Anteil des Eigentümers (€)', type: 'number', sum: true, align: 'right', filterType: 'numberRange',
       render: v => <span className={Number(v) < 0 ? 'text-red' : 'text-green'}>{formatMoney(Number(v))}</span> }] : []),
     { key: 'payment_text', narrow: true, label: t('finance.bookings.form.paymentText') || 'Buchungstext', filterType: 'text' },
     { key: 'property_name', label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text', link: 'property' },
@@ -388,7 +377,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   };
 
   const openSplit = (row) => {
-    if (!canSplit) return;
+    if (!(row.id === selected?.id ? canSplitSelected : canSplit)) return;
     const session = {};
     splitSession.current = session;
     setSplitError(null);
@@ -405,7 +394,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   };
 
   const saveSplit = async () => {
-    if (!canSplit || splitRequest.current || split.loading || !split.revision) return;
+    if (!splitRights || splitRequest.current || split.loading || !split.revision) return;
     const request = { session: splitSession.current };
     splitRequest.current = request;
     setSplitSaving(true);
@@ -510,12 +499,47 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
             {receiptAction(selected)}
             {selected.tenant_id && <Link className="btn btn-sm btn-secondary" to={`/tenants/${encodeURIComponent(selected.tenant_id)}/account?as_of=${encodeURIComponent(selected.booking_date)}`}>Mieterkonto zum Buchungsdatum</Link>}
             {canWrite && <button type="button" className="btn btn-sm btn-primary" onClick={() => openModal(selected)}>Bearbeiten</button>}
-            {selected.tenant_id && canSplit && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
+            {selected.tenant_id && canSplitSelected && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" onClick={() => openSplit(selected)}>Aufteilen</button>}
             {canWrite && !selected.reverses_booking_id && <button type="button" className="btn btn-sm btn-secondary" disabled={reversing}
               onClick={() => reverseBooking(selected)}>Stornieren</button>}
           </div>
         </>}
       </section>}
+
+      {selected && selectedAllocations.error && <div className="alert alert-error" role="alert">
+        <p>Zuordnungen konnten nicht geladen werden. {selectedAllocations.error}</p>
+        <button type="button" className="btn btn-secondary" onClick={() => setSelectedAttempt(value => value + 1)}>Erneut laden</button>
+      </div>}
+
+      <div className="filter-chips" role="search" aria-label="Buchungen suchen und sortieren">
+        <label>Buchungen durchsuchen<input type="search" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Text, Partei, Objekt oder Vertrag" /></label>
+        <label>Sortieren nach<select value={sortBy} onChange={event => setSortBy(event.target.value)}>
+          {[['booking_date', 'Datum'], ['amount', 'Betrag'], ...(owner ? [['owner_part', 'Eigentümeranteil']] : []), ['payment_text', 'Buchungstext'], ['tenant_name', 'Mieter'], ['account_name', 'Konto'], ['category_name', 'Kategorie'], ['property_name', 'Immobilie'], ['unit_label', 'Einheit'], ['status', 'Status']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select></label>
+        <label>Reihenfolge<select value={sortOrder} onChange={event => setSortOrder(event.target.value)}><option value="desc">Absteigend</option><option value="asc">Aufsteigend</option></select></label>
+      </div>
+      <details><summary>Spaltenfilter</summary><div className="filter-chips">
+        {columns.filter(column => column.filterType).map(column => {
+          const label = plainLabel(column.label), value = column.key === 'status' ? sourceFilters.status : columnDraft[column.key];
+          const change = next => {
+            if (column.key === 'status') { onApplySourceFilters({ column_filters: { ...sourceFilters, account_id: accountId || '', workflow_filter: filter, status: next } }); return; }
+            setColumnDraft(current => {
+            const result = { ...current };
+            if (Array.isArray(next) ? next.some(Boolean) : Boolean(next)) result[column.key] = next; else delete result[column.key];
+            return result;
+            });
+          };
+          if (['dateRange', 'numberRange'].includes(column.filterType)) return <span key={column.key}>
+            <label>{label} ab<input aria-label={`${label} ab`} type={column.filterType === 'dateRange' ? 'date' : 'number'} step="any" value={value?.[0] || ''} onChange={event => change([event.target.value, value?.[1] || ''])} /></label>
+            <label>{label} bis<input aria-label={`${label} bis`} type={column.filterType === 'dateRange' ? 'date' : 'number'} step="any" value={value?.[1] || ''} onChange={event => change([value?.[0] || '', event.target.value])} /></label>
+          </span>;
+          if (column.key === 'status') return <label key={column.key}>{label}<select aria-label={`${label} filtern`} value={value || ''} onChange={event => change(event.target.value)}>
+            <option value="">Alle</option>{[...new Set(['open', 'matched', 'booked', ...(sourceFilters.status ? [sourceFilters.status] : [])])].map(option => <option key={option} value={option}>{option === 'open' ? 'Offen' : option === 'booked' ? 'Gebucht' : option === 'matched' ? 'Zugeordnet' : option}</option>)}
+          </select></label>;
+          return <label key={column.key}>{label}<input type="text" aria-label={`${label} filtern`} value={value || ''} onChange={event => change(event.target.value)} /></label>;
+        })}
+      </div></details>
+      {Object.keys(columnFilters).length > 0 && <p role="status">Spaltenfilter sind aktiv. <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setColumnDraft({}); setColumnFilters({}); }}>Spaltenfilter zurücksetzen</button></p>}
 
       {allocationError && <div className="alert alert-error booking-load-error" role="alert">
         <p>Zahlungszuordnungen konnten nicht geladen werden. Der Zuordnungsstand ist unbekannt.</p><p>{allocationError}</p>
@@ -531,12 +555,10 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
       </div>}
 
-      {ownerError && <div className="alert alert-error booking-load-error" role="alert">
-        <p>Die Anteile des Eigentümers konnten nicht geladen werden.</p><p>{ownerError}</p>
-        <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button>
-      </div>}
-      {!loading && !loadError && ownerLoading && <p role="status">Anteile des Eigentümers werden geladen …</p>}
-      {!loading && !loadError && !ownerLoading && !ownerError && <>
+      {/* Keep view persistence mounted while another bounded page loads. A
+          remount would restore the old server view over the new page/search.
+          The hidden container removes stale controls from focus and access. */}
+      {hasLoaded && <div hidden={loading || Boolean(loadError)} aria-busy={loading || undefined}>
       {Object.entries(sourceFilters).some(([key, value]) => value && key !== 'owner_contact_id') && <p role="status" className="draft-status">Quellenauswahl: {sourceFilters.date_from && `ab ${formatDate(sourceFilters.date_from)} `}{sourceFilters.date_to && `bis ${formatDate(sourceFilters.date_to)} `}{(sourceFilters.property_id || sourceFilters.unit_id || sourceFilters.portfolio_id || sourceFilters.tenant_id || sourceFilters.category_id || sourceFilters.status) && 'mit übernommener Objekt- und Vorgangsauswahl'}</p>}
       {/* Summary cards */}
       {basisLoading && <p role="status">Finanzgrundlage wird geladen …</p>}
@@ -585,13 +607,22 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         )}
       </div>
 
-      {filter === 'unassigned' && !allocationReady ? <p>Der Zuordnungsstand ist derzeit nicht verfügbar.</p> : <DataTable
+      {filter === 'unassigned' && !allocationReady && <p>Der Zuordnungsstand ist derzeit nicht verfügbar.</p>}
+      <div hidden={filter === 'unassigned' && !allocationReady}><DataTable
         title={t('finance.bookings.title') || 'Buchungen'}
         columns={columns}
-        data={filtered}
+        data={enriched}
+        serverPaged
+        persistServerView={bookingId === null && !accountId && !initialSearch && !Object.values(sourceFilters).some(Boolean)}
+        loadExportData={async visible => ({ ...(await api.getFile(`/bookings/page/export?${selectionQuery}&columns=${encodeURIComponent(visible.map(column => column.key).join(','))}`)), filename: 'Buchungen.csv' })}
         drilldownKey={drilldown}
-        viewConfig={{ column_filters: { ...sourceFilters, account_id: accountId || '', workflow_filter: filter } }}
-        onApplyView={config => { setFilter(config.column_filters?.workflow_filter || 'all'); onApplySourceFilters(config); }}
+        viewConfig={{ search, sort: { key: sortBy, direction: sortOrder }, page_size: pageSize, page_cursor: String(page), column_filters: { ...columnFilters, ...sourceFilters, account_id: accountId || '', workflow_filter: filter } }}
+        onApplyView={config => {
+          const restored = Object.fromEntries(Object.entries(config.column_filters || {}).filter(([key]) => !Object.hasOwn(sourceFilters, key) && !['account_id', 'workflow_filter'].includes(key) && columns.some(column => column.key === key && column.filterType)));
+          restoredPage.current = /^\d+$/.test(config.page_cursor || '') ? Number(config.page_cursor) : 0; setViewGeneration(value => value + 1);
+          setColumnDraft(restored); setColumnFilters(restored); setFilter(config.column_filters?.workflow_filter || 'all'); setSearchInput(config.search || ''); setSearch(config.search || '');
+          setSortBy(config.sort?.key || 'booking_date'); setSortOrder(config.sort?.direction || 'desc'); setPageSize([10,25,50,100].includes(config.page_size) ? config.page_size : 25); onApplySourceFilters(config);
+        }}
         onAdd={values => setModal({ generation: ++modalGeneration.current, initial: 'create', prefill: values || null })}
         onEdit={openModal}
         onDelete={handleDelete}
@@ -599,8 +630,14 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         rowName={row => row.payment_text || formatDate(row.booking_date)}
         // receipts (deductible ones above all) for the document management system
         bulkActions={aktenwerkReady ? [aktenwerkBulkAction(row => (resolveFileUrl(row.receipt_url) ? receiptExchangeId(row.id) : null), 'Belege an Aktenwerk')] : []}
-      />}
-      </>}
+      /></div>
+      </div>}
+      <nav className="table-footer table-footer-controls" aria-label="Buchungsseiten">
+        <label className="inline-field">Zeilen pro Seite<select className="page-size-select" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[10, 25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+        <span role="status">{loading ? 'Buchungsseite wird geladen …' : loadError ? 'Buchungsseite nicht verfügbar' : `${pageInfo.total ? page * pageSize + 1 : 0}–${Math.min(page * pageSize + bookings.length, pageInfo.total)} von ${pageInfo.total} Buchungen`}</span>
+        <button type="button" className="btn btn-secondary" disabled={!page || loading} onClick={() => setPage(value => value - 1)}>Zurück</button>
+        <button type="button" className="btn btn-secondary" disabled={loading || (page + 1) * pageSize >= pageInfo.total} onClick={() => setPage(value => value + 1)}>Weiter</button>
+      </nav>
 
       {split && (
         <div className="modal-overlay" onClick={closeSplit} role="presentation">
@@ -628,7 +665,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
               <p className="text-muted">Was keinem Vertrag zugeordnet wird, bleibt „nicht zugeordnet“.</p>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={closeSplit}>Abbrechen</button>
-                <button className="btn btn-primary" onClick={saveSplit} disabled={splitSaving || split.loading || !split.revision || !canSplit}>{splitSaving ? 'Speichert …' : 'Speichern'}</button>
+                <button className="btn btn-primary" onClick={saveSplit} disabled={splitSaving || split.loading || !split.revision || !splitRights}>{splitSaving ? 'Speichert …' : 'Speichern'}</button>
               </div>
             </div>
           </div>

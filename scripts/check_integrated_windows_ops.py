@@ -139,7 +139,7 @@ def main():
                 "e-invoice/sources/cen-en16931-validation-1.3.16.tar.gz",
                 "e-invoice/sources/freefont-sfd-20100919.tar.gz",
                 "e-invoice/sources/net.sf.saxon-Saxon-HE-12.10-sources.jar",
-                "e-invoice/sources/OpenJDK21U-jdk-sources_21.0.12.1_1.tar.gz",
+                "e-invoice/sources/OpenJDK21U-jdk-sources_21.0.13_9.tar.gz",
             ):
                 entry = next(row for row in catalog["files"] if row["path"] == filename)
                 digest, size = hashlib.sha256(), 0

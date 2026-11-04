@@ -474,14 +474,18 @@ def forecast(store, d):
             "sources": sorted(events.values(), key=lambda e: (e["day"], e["identity"])), "warnings": warnings}
 
 
-def compute(store, definition):
+def retrieval_time():
     from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def compute(store, definition):
 
     from . import report_provenance
     from .portfolio_scope import current_scope, refresh_scope
     captured = current_scope()
     with report_provenance.snapshot(store) as (source, mode):
-        sampled_at = datetime.now(timezone.utc).isoformat()
+        sampled_at = retrieval_time().isoformat()
         result = _compute(source, definition)
         report_provenance.enrich(source, result, mode)
         result["result_hash"] = digest(result)

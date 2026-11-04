@@ -217,23 +217,29 @@ def _policy(root: Path, work: Path) -> str:
     ])
 
 
-def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None = None) -> tuple[int, str, str]:
+def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None = None,
+         timeout_seconds: int | None = None, max_processes: int = 2,
+         file_limit_bytes: int | None = None, resource_mode: str | None = None) -> tuple[int, str, str]:
+    seconds = settings.e_invoice_timeout_seconds if timeout_seconds is None else timeout_seconds
+    if seconds < 5 or seconds > 180:
+        raise ValidatorUnavailable('Ungültiges Zeitbudget für den lokalen Prüfprozess.')
     env = {k: v for k, v in os.environ.items() if k.upper() in {"SYSTEMROOT", "WINDIR"}}
     env.update(TEMP=str(profile), TMP=str(profile), HOME=str(profile), USERPROFILE=str(profile), LANG="C.UTF-8")
     env.update(environment or {})
     if os.name != 'nt':
         # A child exec wrapper avoids unsafe preexec_fn in the multithreaded
         # API process. CPU, address space, output files and open FDs are bounded.
-        mode = 'java' if Path(argv[0]).name == 'java' else 'extract'
+        mode = resource_mode or ('java' if Path(argv[0]).name == 'java' else 'extract')
         wrapper = ([sys.executable, 'e-invoice-limit-worker'] if getattr(sys, 'frozen', False) else
                    [sys.executable, '-m', 'backend.services.e_invoice.posix_worker'])
         env.update(E_INVOICE_LIMIT_DIR=str(profile), PYTHONPATH=str(Path(__file__).resolve().parents[3]))
-        argv = [*wrapper, str(profile), mode, str(settings.e_invoice_timeout_seconds), *argv]
+        argv = [*wrapper, str(profile), mode, str(seconds), *argv]
     outputs: dict[str, list[str]] = {"stdout": [], "stderr": []}
     size = 0
     closed: set[str] = set()
-    deadline = time.monotonic() + settings.e_invoice_timeout_seconds
-    with CliProcess(argv, profile, env=env, memory_limit_bytes=768 * 1024 * 1024) as process:
+    deadline = time.monotonic() + seconds
+    options = {'max_processes': max_processes} if max_processes != 2 else {}
+    with CliProcess(argv, profile, env=env, memory_limit_bytes=768 * 1024 * 1024, **options) as process:
         # KoSIT checks stdin.available(); a closed pipe works on Windows where
         # DEVNULL/console handles can raise 'Invalid function'.
         assert process.process.stdin is not None
@@ -241,6 +247,16 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
         while len(closed) < 2:
             if time.monotonic() > deadline:
                 raise ValidatorUnavailable("Die lokale Prüfung hat ihr Zeitlimit überschritten.")
+            if file_limit_bytes is not None:
+                total = 0
+                for path in profile.rglob('*'):
+                    try:
+                        if path.is_file():
+                            total += path.stat().st_size
+                    except FileNotFoundError:
+                        continue
+                if total > file_limit_bytes:
+                    raise ValidatorUnavailable('Der lokale Prüfprozess überschreitet das Arbeitsdateibudget.')
             item = process.next_line(.1)
             if item is None:
                 continue

@@ -44,6 +44,19 @@ describe('DataTable server paging and complete CSV export', () => {
     });
   });
 
+  it('downloads a complete server CSV file unchanged and passes the selected columns', async () => {
+    const body = '\ufeffTitel;Partei\r\nAuch außerhalb der Seite;Mia';
+    const blob = new Blob([body], { type: 'text/csv;charset=utf-8' });
+    const loader = vi.fn().mockResolvedValue({ blob, filename: '../Buchungen.csv' });
+    render(<DataTable title="Buchungen" columns={columns} data={rows.slice(0, 2)} serverPaged loadExportData={loader} />);
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(exportedBlob).toBe(blob);
+    expect(await readBlob(exportedBlob)).toContain('Auch außerhalb der Seite');
+    expect(loader.mock.calls[0][0].map(column => column.key)).toEqual(['title', 'party']);
+    expect(downloads[0].filename).toBe('Buchungen.csv');
+  });
+
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();

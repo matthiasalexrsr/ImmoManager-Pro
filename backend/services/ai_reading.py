@@ -217,7 +217,12 @@ def _source(store: Any, command: StartCommand) -> Source:
         filename = document_share.shown_name(key.rsplit("/", 1)[-1])
         media_type = mimetypes.guess_type(filename)[0] or ("application/pdf" if content.startswith(b"%PDF-") else "application/octet-stream")
         reference = "file:" + (command.file_url or "")
-    text, text_source = document_text.extract(content, filename)
+    try:
+        text, text_source = document_text.extract(content, filename)
+    except ValueError as exc:
+        raise HTTPException(422, "Die Datei konnte nicht vollständig gelesen werden. Wegen einer Lese- oder "
+                            "Ressourcenbegrenzung werden keine Teilwerte übernommen. Bitte das Original prüfen "
+                            "oder eine vollständig lesbare Datei verwenden.") from exc
     return Source(content, filename, media_type, hashlib.sha256(content).hexdigest(), text or "", text_source,
                   document, command.file_url, reference)
 

@@ -1,0 +1,20 @@
+{
+  "format": "immomanager-audit-exceptions/1",
+  "entries": [
+    {
+      "advisory": "GHSA-g3hv-75wg-m249",
+      "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+      "source": 1244012,
+      "package": "minimatch",
+      "version": "3.1.5",
+      "entrypoint": "minimatch.js",
+      "sha256": "746849f267c4868a53729225bd85c7dccd387712136fb305fcc0a3eadd4a3d9d",
+      "range": "<11.0.1",
+      "severity": "moderate",
+      "title": "minimatch has potential denial of service via globparts amplification",
+      "review_until": "2026-12-04",
+      "reason": "Registry range includes legacy v3. The maintainer describes firstPhasePreProcess/optimizationLevel of v10.2.6; both are absent from the reviewed, hash-pinned v3.1.5 implementation. Development-only dependency; no exception for v10 or any different code.",
+      "maintainer": "https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249"
+    }
+  ]
+}

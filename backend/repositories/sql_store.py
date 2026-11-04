@@ -210,6 +210,12 @@ class SQLAlchemyStore(ServiceContractStoreMethods, DepositStoreMethods):
 
     def _patch_entity(self, entity_type: str, entity_id: str, patch: PydanticBaseModel):
         """Apply a partial update using the entity type string to resolve the repository."""
+        if entity_type == "standalone_reading":
+            from ..services.meter_writes import meter_write
+            with meter_write(self):
+                current = self.get_standalone_meter_reading(entity_id)
+                merged = StandaloneMeterReadingCreate.model_validate({**current.model_dump(), **patch.model_dump(exclude_unset=True)})
+                return self.update_standalone_meter_reading(entity_id, merged)
         repo = self._resolve_repo(entity_type)
         # Validate the merged record before writing: an invalid value must not
         # be committed (it would break every later read of the table).

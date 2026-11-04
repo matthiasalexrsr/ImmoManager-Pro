@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Bookings from '../pages/Bookings';
 import { api } from '../api';
+import { installBookingPageFixture } from './bookingPageFixture';
 
 const context = vi.hoisted(() => ({
   owners: [{ id: 'linda', name: 'Linda' }, { id: 'matthias', name: 'Matthias' }],
@@ -34,12 +35,13 @@ afterEach(cleanup);
 
 describe('bookings of one owner', () => {
   it('lists only the owner\'s bookings with their part and adds up their part', async () => {
+    installBookingPageFixture(api, { categories: context.categories });
     render(<MemoryRouter initialEntries={['/bookings']}><Bookings /></MemoryRouter>);
     await screen.findByText('Kontoführung');
     expect(screen.getByRole('button', { name: 'Ausgaben: Quellvorgänge anzeigen' })).toHaveTextContent('310,00');
     fireEvent.change(screen.getByLabelText('Eigentümer'), { target: { value: 'linda' } });
     await screen.findByRole('columnheader', { name: /Anteil des Eigentümers/ });
-    expect(api.list).toHaveBeenCalledWith('/bookings?owner_contact_id=linda', expect.anything());
+    expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/bookings/page?owner_contact_id=linda'), expect.anything());
     expect(screen.queryByText('Kontoführung')).not.toBeInTheDocument();
     const insurance = screen.getByText('Gebäudeversicherung').closest('tr');
     expect(within(insurance).getByText(/-110,00/)).toBeInTheDocument();

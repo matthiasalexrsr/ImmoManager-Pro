@@ -79,7 +79,7 @@ function ScopedContentSearch({ onOpen, places = {}, canWrite = false, service = 
     finally { if (request.current === controller) { request.current = null; setBusy(false); } }
   };
 
-  const pending = status ? Math.max(0, status.documents - status.indexed) : 0;
+  const pending = status ? Math.max(0, status.documents - status.indexed) + (status.in_progress || 0) : 0;
   return (
     <section className="document-content-search" aria-label="Volltextsuche in Dokumenten">
       <form className="document-content-search-form" onSubmit={run} role="search">
@@ -94,6 +94,16 @@ function ScopedContentSearch({ onOpen, places = {}, canWrite = false, service = 
             {pending > 0 && <> {pending} werden noch gelesen.{canWrite && <> <button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={refresh}>Jetzt lesen</button></>}</>}</> : 'Durchsucht den Text von PDFs, Office- und Textdateien sowie erkannte Scans.'}
         </small>
       </form>
+      {status?.partial > 0 && <div role="status" className="document-content-search-status">
+        <p>Die Inhaltssuche ist bei {status.partial} Dokumenten noch unvollständig. Suchtreffer können fehlen.
+          {status.in_progress > 0 && ' Die Indexierung setzt große Dateien abschnittsweise fort.'}</p>
+        {status.limited > 0 && <details><summary>Grenzen der Inhaltssuche anzeigen</summary><ul>
+          {(status.details || []).filter(item => item.warning).map(item => <li key={item.document_id}>
+            {item.title && <strong>{item.title}: </strong>}<span>{item.warning}</span>
+          </li>)}
+        </ul></details>}
+        {status.limited > 0 && canWrite && <button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={refresh}>Begrenzte Dokumente erneut lesen</button>}
+      </div>}
       {error && <p className="document-content-search-error" role="alert">{error}</p>}
       {result && <div className="document-content-search-results" aria-live="polite">
         <p className="document-content-search-count">{result.total === 0 ? `Kein Dokument enthält „${result.query}“.`

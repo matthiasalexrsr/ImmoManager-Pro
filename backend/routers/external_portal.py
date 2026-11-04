@@ -164,8 +164,8 @@ def configuration(actor: Actor):
 
 
 @router.get("/grants")
-def grants(actor: Actor, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
-    return _call(admin.listing, store, actor.id, skip=skip, limit=limit)
+def grants(actor: Actor, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), case_id: str | None = None):
+    return _call(admin.listing, store, actor.id, skip=skip, limit=limit, case_id=case_id)
 
 
 @router.post("/invitations", status_code=201)

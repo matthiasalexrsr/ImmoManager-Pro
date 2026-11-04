@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from sqlalchemy import Integer, create_engine, event, insert, select, text, update
+from sqlalchemy import Integer, Table, create_engine, event, insert, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, scoped_session, sessionmaker
 from test_stress_findings import client, world  # noqa: F401
 
@@ -87,6 +87,24 @@ def test_equivalent_arguments_and_independent_sessions_share_one_result(engine):
         assert not second.in_transaction(), "the hit executed no SQL"
 
 
+def test_fast_scalar_booking_copies_keep_caller_mutations_out_of_shared_rows():
+    from datetime import date
+
+    from backend.models import Booking
+
+    original = Booking(id="booking-copy", account_id="account", booking_date=date(2026, 1, 1), amount=1.23)
+    cached = concurrency._copy_table("bookings", [original])
+    original.payment_text = "Caller changed original"
+    copy = concurrency._copy_table("bookings", cached)
+    copy[0].amount = 100
+    assert cached[0].payment_text is None and cached[0].amount == 1.23
+    # A future model extension with mutable contents must retain deep isolation.
+    extended = cached[0].model_copy(update={"future_values": {"items": [1]}})
+    deep = concurrency._copy_table("bookings", [extended])
+    deep[0].future_values["items"].append(2)
+    assert extended.future_values == {"items": [1]}
+
+
 def test_global_store_resolves_each_request_session_and_database(engine, cache, tmp_path, monkeypatch):
     request = ContextVar("cache_test_request", default="first")
     proxy = scoped_session(sessionmaker(bind=engine), scopefunc=request.get)
@@ -158,6 +176,78 @@ def test_portfolio_boundaries_never_share_results(cache):
         with scope_context(AccessScope("staff", "verwalter", False, ids)):
             assert report() == {"portfolios": list(ids)}
     assert len(calls) == 2
+
+
+def test_explicit_portfolio_results_share_only_equal_roles_and_current_portfolios(engine):
+    _grant_cache_row(engine)
+    calls = []
+
+    @concurrency.shared_portfolio_result
+    def report(db):
+        calls.append(1)
+        return {"value": db.scalar(select(CacheRow.value))}
+
+    boundaries = [
+        AccessScope("first", "readonly", False, ("north",)),
+        AccessScope("second", "readonly", False, ("north",)),
+        AccessScope("first", "readonly", False, ("south",)),
+        AccessScope("second", "verwalter", False, ("north",)),
+        AccessScope("first", "readonly", True, ("north",)),
+        AccessScope("second", "readonly", False, ("north",)),
+    ]
+    for boundary in boundaries:
+        with scope_context(boundary):
+            assert _fresh(engine, report) == {"value": 1}
+    assert len(calls) == 4
+
+    private_calls = []
+
+    @concurrency.one_at_a_time
+    def private_report(db):
+        private_calls.append(1)
+        scope = current_scope()
+        assert scope is not None
+        return {"owner": scope.user_id, "value": db.scalar(select(CacheRow.value))}
+
+    for actor in ("first", "second", "first"):
+        with scope_context(AccessScope(actor, "readonly", False, ("north",))):
+            assert _fresh(engine, private_report) == {"owner": actor, "value": 1}
+    assert len(private_calls) == 2
+
+
+def test_explicit_portfolio_result_keeps_private_snapshot_and_write_fences(engine):
+    _grant_cache_row(engine)
+
+    @concurrency.shared_portfolio_result
+    def report(db):
+        return {"value": db.get(CacheRow, 1).value}
+
+    with scope_context(AccessScope("first", "readonly", False, ("north",))):
+        assert _fresh(engine, report) == {"value": 1}
+        with Session(engine) as reader:
+            held = reader.get(CacheRow, 1)
+            assert held is not None
+            with scope_context(None), Session(engine) as writer:
+                writer.execute(update(CacheRow).values(value=2))
+                writer.commit()
+            with scope_context(AccessScope("second", "readonly", False, ("north",))):
+                assert _fresh(engine, report) == {"value": 2}
+            assert held.value == report(reader)["value"] == 1
+    with scope_context(AccessScope("third", "readonly", False, ("north",))):
+        assert _fresh(engine, report) == {"value": 2}
+
+
+def _grant_cache_row(engine):
+    from backend.db.access_models import ResourcePortfolioORM
+    from backend.db.orm_models import PortfolioORM
+
+    cast(Table, PortfolioORM.__table__).create(engine)
+    cast(Table, ResourcePortfolioORM.__table__).create(engine)
+    with engine.begin() as db:
+        db.execute(insert(PortfolioORM), [{"id": key, "name": key} for key in ("north", "south")])
+        db.execute(insert(ResourcePortfolioORM), [
+            {"resource_type": "cache_test_rows", "resource_id": "1", "portfolio_id": key}
+            for key in ("north", "south")])
 
 
 @pytest.mark.parametrize("kind", ["result", "table"])

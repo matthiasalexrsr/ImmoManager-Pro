@@ -9,6 +9,18 @@ const hit = { id: 'd1', title: 'Protokoll 2026', document_type: 'Protokoll', pro
   file_url: '/uploads/documents/p.pdf', snippet: '…Wartungsprotokoll Rauchwarnmelder, alle Melder geprüft…' };
 
 describe('search in document contents', () => {
+  it('makes incomplete text coverage and retryable limits visible', async () => {
+    const service = { status: vi.fn().mockResolvedValue({ documents: 2, indexed: 2, unreadable: 0,
+      partial: 2, in_progress: 1, limited: 1, details: [{ document_id: 'd1', title: 'Gescanntes Protokoll', warning: 'OCR ist erforderlich.' }] }),
+      refresh: vi.fn().mockResolvedValue({ documents: 2, indexed: 2, unreadable: 0, partial: 0 }) };
+    render(<DocumentContentSearch service={service} canWrite />);
+    expect(await screen.findByText(/Suchtreffer können fehlen/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Grenzen der Inhaltssuche anzeigen'));
+    expect(screen.getByText('OCR ist erforderlich.')).toBeInTheDocument();
+    expect(screen.getByText('Gescanntes Protokoll:')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Begrenzte Dokumente erneut lesen' }));
+    await waitFor(() => expect(service.refresh).toHaveBeenCalled());
+  });
   it('shows how much is searchable, finds documents with a highlighted snippet and opens them', async () => {
     const service = {
       status: vi.fn().mockResolvedValue({ documents: 5, indexed: 3, unreadable: 1 }),

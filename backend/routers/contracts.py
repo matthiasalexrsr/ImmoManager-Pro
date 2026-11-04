@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
-from ..concurrency import one_at_a_time
+from ..concurrency import shared_portfolio_result
 from ..dependencies import store
 from ..domain.clock import local_today
 from ..domain.lease_engine import LeaseEngine
@@ -79,7 +79,7 @@ def create_contract(payload: ContractCreate) -> Contract:
 
 
 @router.get("/current-rents")
-@one_at_a_time
+@shared_portfolio_result
 def current_rents(as_of: Optional[date] = Query(None)) -> dict[str, dict]:
     """The rent each contract owes on a day (today by default), from its rent history."""
     day = as_of or local_today()

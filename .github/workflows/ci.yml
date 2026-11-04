@@ -32,7 +32,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Audit frontend dependencies
-        run: npm audit --audit-level=low
+        run: |
+          node --test scripts/auditDependencies.checks.mjs
+          node scripts/auditDependencies.mjs
       - name: Lint frontend
         run: npm run lint
       - name: Run frontend tests
@@ -41,6 +43,12 @@ jobs:
         run: node --test scripts/productAssets.checks.mjs
       - name: Build frontend
         run: npm run build
+      - name: Preserve frontend audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-audit
+          path: frontend/artifacts/npm-audit
 
   document-tools:
     name: Native document engines and browser workflow

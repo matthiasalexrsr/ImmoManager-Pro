@@ -27,7 +27,7 @@ def commit_or_flush(db):
 
 
 @contextmanager
-def billing_write(store, period_ids=(), *, cost_item_id=None, statement_id=None):
+def billing_write(store, period_ids=(), *, cost_item_id=None, statement_id=None, before_locks=None):
     """Hold parent locks through validation and every write, with one final commit.
 
     Moved costs lock both periods in ID order. Re-read their membership after
@@ -54,6 +54,8 @@ def billing_write(store, period_ids=(), *, cost_item_id=None, statement_id=None)
     db.info[_ACTIVE] = True
     try:
         begin_writer(db)
+        if before_locks is not None:
+            before_locks(db)
         ids = {key for key in period_ids if key}
         member = None
         if cost_item_id:

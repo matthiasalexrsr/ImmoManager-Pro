@@ -340,6 +340,11 @@ def commit(store, actor_id, identifier, command: CommitImport):
         db.revision(batch, command.expected_revision)
         if batch.state != "ready":
             raise HTTPException(409, "Zuerst alle Fehler in der Vorschau beheben.")
+        from ..ownership_guard import lock_ownership
+
+        lock_ownership(unit.db)
+        from ..meter_writes import lock_meter_readings
+        lock_meter_readings(unit.db)
         from types import SimpleNamespace
         lock_target(unit, [*snapshots.entity_specs(), *[SimpleNamespace(table=model.__table__) for model in (*_active_models(), DocumentVersionORM)]])
         preview, target_sha, plan_sha, prepared, references = _preview(unit, batch, _files(unit, identifier))

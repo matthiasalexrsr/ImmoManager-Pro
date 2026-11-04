@@ -175,6 +175,10 @@ class _MemoryBackend:
             collection = {} if replace else dict(getattr(self._store, spec.key))
             collection.update((obj.id, obj) for obj in objs)
             staged[spec.key] = collection
+        errors = _write_problems(plan, {} if replace else {
+            spec.key: {obj.id: obj for obj in self.records(spec)} for spec, _ in plan}, replace=replace)
+        if errors:
+            raise SnapshotError(errors)
         for key, collection in staged.items():
             target = getattr(self._store, key)
             target.clear()
@@ -193,9 +197,18 @@ class _SQLBackend:
     def apply(self, plan: Plan, *, replace: bool, fresh_originals: list | None = None) -> None:
         session = self._session
         try:
+            from .document_versions import begin_writer
+            from .ownership_guard import lock_ownership
+
+            begin_writer(session)
+            lock_ownership(session)
+            from .meter_writes import lock_meter_readings
+            lock_meter_readings(session)
+            errors = _write_problems(plan, {} if replace else {
+                spec.key: {obj.id: obj for obj in self.records(spec)} for spec, _ in plan}, replace=replace)
+            if errors:
+                raise SnapshotError(errors)
             if replace:
-                from .document_versions import begin_writer
-                begin_writer(session)
                 _require_full_bank_backup(SimpleNamespace(db=session))
                 _tax_snapshot_guard(SimpleNamespace(db=session))
                 for spec, _ in reversed(plan):
@@ -253,9 +266,20 @@ class PreparedImport:
         """Merge with a caller's durable command receipt; never commit independently."""
         if self.replace:
             raise SnapshotError(["Wiederherstellungen benötigen den vollständigen Sicherungsweg."])
+        if unit.db is not None and (not isinstance(self.backend, _SQLBackend) or self.backend._session is not unit.db):
+            raise RuntimeError("Prepared import belongs to another transaction")
+        if unit.db is None and (not isinstance(self.backend, _MemoryBackend) or self.backend._store is not unit.store):
+            raise RuntimeError("Prepared import belongs to another store")
+        from .ownership_guard import lock_ownership
+
+        lock_ownership(unit.db)
+        from .meter_writes import lock_meter_readings
+        lock_meter_readings(unit.db)
+        errors = _write_problems(self.plan, {
+            spec.key: {obj.id: obj for obj in self.backend.records(spec)} for spec, _ in self.plan}, replace=False)
+        if errors:
+            raise SnapshotError(errors)
         if unit.db is not None:
-            if not isinstance(self.backend, _SQLBackend) or self.backend._session is not unit.db:
-                raise RuntimeError("Prepared import belongs to another transaction")
             for spec, objects in self.plan:
                 columns = set(spec.table.columns.keys())
                 values = [{key: value for key, value in obj.model_dump().items() if key in columns} for obj in objects]
@@ -348,6 +372,7 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
 
     problems += _check_references(plan, existing)
     problems += _check_unique(plan, existing)
+    problems += _business_problems(plan, existing)
     problems += _check_final_statements(plan, existing)
     from .receivable_residuals import snapshot_problems as finance_snapshot_problems
     problems += finance_snapshot_problems(plan, existing)
@@ -361,6 +386,45 @@ def prepare_import(store: Any, data: Any, *, replace: bool) -> PreparedImport:
     if problems:
         raise SnapshotError(problems)
     return PreparedImport(backend, plan, replace, skipped, fresh_originals)
+
+
+def _write_problems(plan: Plan, existing: dict, *, replace: bool) -> list[str]:
+    # A prepared merge must not overwrite a record that arrived after preview.
+    # SQL would otherwise fail on its primary key while memory replaced it.
+    collisions = [f"{spec.key} {obj.id}: Der Zielbestand wurde seit der Vorbereitung geändert; bitte erneut prüfen."
+                  for spec, objects in plan for obj in objects if obj.id in existing.get(spec.key, {})]
+    if collisions and not replace:
+        return collisions
+    return (_check_references(plan, existing) + _check_unique(plan, existing)
+            + _check_final_statements(plan, existing) + _business_problems(plan, existing))
+
+
+def _business_problems(plan: Plan, existing: dict) -> list[str]:
+    from collections import defaultdict
+
+    from ..domain.booking_reversal import reversal_problem
+    from .meter_writes import snapshot_problems
+    from .ownership_guard import problems
+
+    keys = {"ownership_shares", "contacts", "properties", "units", "standalone_meter_readings", "bookings"}
+    after = {key: dict(existing.get(key, {})) for key in keys}
+    for spec, records in plan:
+        if spec.key in keys:
+            after[spec.key].update((record.id, record) for record in records)
+    errors = (problems(list(after["ownership_shares"].values()), after["contacts"], after["properties"], after["units"])
+              + snapshot_problems(list(after["standalone_meter_readings"].values())))
+    reversals: dict[str, list] = defaultdict(list)
+    for booking in after["bookings"].values():
+        if booking.reverses_booking_id:
+            reversals[booking.reverses_booking_id].append(booking)
+    for original_id, siblings in reversals.items():
+        original = after["bookings"].get(original_id)
+        for booking in siblings:
+            problem = reversal_problem(booking, existing=None, original=original, reversals=(),
+                                       siblings=[row for row in siblings if row.id != booking.id])
+            if problem:
+                errors.append(f"Storno {booking.id}: {problem}")
+    return errors
 
 
 def import_snapshot(store: Any, data: Any, *, replace: bool) -> dict:

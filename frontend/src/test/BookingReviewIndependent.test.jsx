@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Bookings from '../pages/Bookings';
 import { api } from '../api';
+import { installBookingPageFixture } from './bookingPageFixture';
 
 const context = vi.hoisted(() => ({
   canWrite: true, categories: [], contractsError: null, contractsLoading: false,
@@ -37,7 +38,7 @@ const deferred = () => {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 };
-const mount = () => render(<MemoryRouter initialEntries={['/bookings?booking_id=target']}><Bookings /></MemoryRouter>);
+const mount = () => { installBookingPageFixture(api, { categories: context.categories }); return render(<MemoryRouter initialEntries={['/bookings?booking_id=target']}><Bookings /></MemoryRouter>); };
 const selected = () => screen.getByRole('region', { name: 'Ausgewählte Buchung' });
 
 

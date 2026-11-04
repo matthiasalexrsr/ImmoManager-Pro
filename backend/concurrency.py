@@ -248,6 +248,20 @@ def _expire_cached(now: float) -> None:
                 del cache[key]
 
 
+def _copy_table(name: str, rows: list) -> list:
+    if name == "bookings":
+        from .models import Booking
+
+        immutable = {str, int, float, bool, date, datetime, Decimal, UUID, type(None)}
+        # Booking rows normally contain only immutable scalar values. Copy each
+        # model's dictionaries, preserving mutation isolation without recursively
+        # copying hundreds of thousands of immutable values on every read.
+        if all(type(row) is Booking and not row.__pydantic_extra__ and not row.__pydantic_private__
+               and all(type(value) in immutable for value in row.__dict__.values()) for row in rows):
+            return [row.model_copy() for row in rows]
+    return deepcopy(rows)
+
+
 def whole_table(name: str, load: Callable[[], list]) -> list:
     """All rows of a table for reading, from memory while the table is unchanged."""
     reads = _Reads(_sources(load))
@@ -263,9 +277,9 @@ def whole_table(name: str, load: Callable[[], list]) -> list:
         else:
             cached = None
     if cached is not None:
-        return deepcopy(cached)
+        return _copy_table(name, cached)
     rows = load()
-    saved = deepcopy(rows)
+    saved = _copy_table(name, rows)
     share = reads.shared()
     with _cache_lock:
         # A write during the load makes these rows unsuitable for sharing.
@@ -281,6 +295,21 @@ def one_at_a_time(func: F) -> F:
     responses (files, PDFs) are computed for every request.
     """
 
+    return _one_at_a_time(func, portfolio_rows=False)
+
+
+def shared_portfolio_result(func: F) -> F:
+    """Opt in only for pure installation rows with no user-owned/personal data.
+
+    Equal roles and current portfolio assignments may reuse this result. All
+    session, database, argument and write fences remain those of one_at_a_time.
+    Private workspaces, saved reports and responses containing the actor must
+    continue to use one_at_a_time, whose key includes the individual account.
+    """
+    return _one_at_a_time(func, portfolio_rows=True)
+
+
+def _one_at_a_time(func: F, *, portfolio_rows: bool) -> F:
     signature = inspect.signature(func)
 
     @functools.wraps(func)
@@ -290,7 +319,14 @@ def one_at_a_time(func: F) -> F:
         reads = _Reads(_sources(func, bound.arguments.values()))
         try:
             arguments = tuple((name, _argument(value)) for name, value in bound.arguments.items())
-            key = (func, reads.identity, arguments, _boundary())
+            boundary = _boundary()
+            if portfolio_rows:
+                from .services.portfolio_scope import current_scope
+
+                scope = current_scope()
+                boundary = None if scope is None else (
+                    "portfolio_rows", scope.role, scope.unrestricted, scope.portfolio_ids)
+            key = (func, reads.identity, arguments, boundary)
         except _Uncacheable:
             key = None
 

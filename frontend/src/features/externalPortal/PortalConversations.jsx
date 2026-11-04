@@ -2,8 +2,8 @@ import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { saveBlob } from '../documentShare/documentShare';
-import { usePortalAdminAction, usePortalAdminPage } from './adminHooks';
-import useLookupChoices from '../../hooks/useLookupChoices';
+import { usePortalAdminAction, usePortalAdminPage, usePortalGrantChoices } from './adminHooks';
+import './PortalConversations.css';
 
 const BASE = '/portal-admin';
 const labels = { open: 'Gemeldet', in_progress: 'In Bearbeitung', completed: 'Abgeschlossen', cancelled: 'Abgebrochen' };
@@ -45,11 +45,11 @@ function InternalConversation({ identifier, onChanged }) {
 }
 
 function ShareCase({ caseRecord, onChanged }) {
-  const choices = useLookupChoices({ grants: `${BASE}/grants` });
-  const candidates = (choices.data.grants || []).filter(row => row.active && row.identity_active && row.binding.property_id === caseRecord.property_id && row.binding.unit_id === caseRecord.unit_id);
+  const choices = usePortalGrantChoices(caseRecord.id);
+  const candidates = choices.data.filter(row => row.active && row.identity_active && row.binding.property_id === caseRecord.property_id && row.binding.unit_id === caseRecord.unit_id);
   const [grantId, setGrantId] = useState(''), [title, setTitle] = useState(''), [reason, setReason] = useState(''), [notice, setNotice] = useState('');
   const action = usePortalAdminAction();
-  return <details><summary>Diese Schadenakte ausdrücklich einer Portalpartei zuordnen</summary><form className="transfer-grid" onSubmit={async event => {
+  return <details><summary>Diese Schadenakte ausdrücklich einer Portalpartei zuordnen</summary><form className="portal-share-form" onSubmit={async event => {
     event.preventDefault(); const grant = candidates.find(row => row.id === grantId); if (!grant) return;
     if (await action.perform(`${BASE}/grants/${grantId}/cases`, { grant_revision: grant.revision, case_id: caseRecord.id, case_updated_at: caseRecord.updated_at, title, reason })) { setNotice('Vorgang veröffentlicht. Interne Notizen bleiben in der internen Akte.'); onChanged(); }
   }}>

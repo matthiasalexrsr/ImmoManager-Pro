@@ -6,6 +6,7 @@ import Receivables from '../pages/Receivables';
 import Contracts from '../pages/Contracts';
 import Budgets from '../pages/Budgets';
 import { api } from '../api';
+import { installBookingPageFixture } from './bookingPageFixture';
 import { cashflowSide } from '../utils/cashflowBasis';
 import { occupancyMapOn } from '../utils/occupancy';
 
@@ -43,12 +44,14 @@ describe('Kennzahlen öffnen ihre fachlichen Quellen', () => {
       { id: 'other-month', amount: 900, tenant_id: 'party', booking_date: '2026-02-01' },
       { id: 'cost', amount: -10, booking_date: '2026-01-15' },
     ]);
+    installBookingPageFixture(api);
     mount(<Bookings />, '/bookings?date_from=2026-01-01&date_to=2026-01-31&flow=income');
     const income = await screen.findByRole('button', { name: 'Einnahmen: Quellvorgänge anzeigen' });
     expect(income).toHaveTextContent('70,00');
     expect(screen.getByRole('list')).toHaveTextContent('rentrefund');
     expect(screen.getByRole('list')).not.toHaveTextContent('cost');
     fireEvent.click(screen.getByRole('button', { name: 'Ausgaben: Quellvorgänge anzeigen' }));
+    await screen.findByText('cost');
     expect(screen.getByRole('list')).toHaveTextContent('cost');
     expect(screen.getByRole('list')).not.toHaveTextContent('refund');
   });

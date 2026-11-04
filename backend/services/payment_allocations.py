@@ -15,7 +15,7 @@ from typing import Any, Iterable, Optional
 
 from ..domain.billing_engine import allocate_cents
 from ..domain.lease_engine import LeaseEngine, PaymentLine, ReceivableLine, RentStep
-from ..domain.money import ZERO, as_number, cents, money
+from ..domain.money import ZERO, as_number, cents, from_cents, money
 from ..domain.occupancy import NON_BILLABLE_STATUSES
 from ..domain.payment_allocation import ContractCandidate, suggest_allocation
 from ..models import PaymentAllocationCreate
@@ -230,7 +230,8 @@ def allocate_unassigned(store: Any) -> dict:
 
 def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
                        bookings: list[Any] | None = None,
-                       until: date | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
+                       until: date | None = None,
+                       reserved: dict[str, Decimal] | None = None) -> dict[str, list[tuple[Any, str, Decimal]]]:
     """(booking, contract id, amount) per tenant, reading bookings and allocations once.
 
     Stored allocations count as they are; a booking without any (imported, or
@@ -260,7 +261,7 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
         from .portfolio_scope import scope_context
         with scope_context(None):
             allocations = Rows.reading(store).find("payment_allocations", booking_id=booking_ids)
-        shares = non_rent_shares(store, booking_ids)
+        shares = non_rent_shares(store, booking_ids) if reserved is None else reserved
     stored: dict[str, list[Any]] = defaultdict(list)
     for allocation in allocations:
         if allocation.booking_id in booking_ids:
@@ -291,6 +292,69 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
         pairs_of[booking.id] = pairs
         credited[booking.tenant_id] += [(booking, contract_id, amount) for contract_id, amount in pairs]
     return credited
+
+
+def accounted_by_booking(store: Any, bookings: list[Any]) -> dict[str, Decimal]:
+    """Review totals without constructing every allocation model twice.
+
+    Hidden contract shares still consume a visible booking's budget. Only IDs
+    obtained from the caller's scoped booking rows are read unscoped here, just
+    as in credited_by_tenant. Legacy/unallocated reversals retain the canonical
+    suggestion/mirroring path rather than a second implementation of its rules.
+    """
+    from .portfolio_scope import scope_context
+
+    if not bookings:
+        return {}
+    reservations = non_rent_shares(store, [booking.id for booking in bookings])
+    wanted = {booking.id for booking in bookings if booking.tenant_id}
+    allocated: dict[str, Decimal] = {}
+    if hasattr(store, "db"):
+        from ..db.orm_models import PaymentAllocationORM
+
+        # A direct calculation can see dirty ORM values that have not been
+        # flushed. A SQL aggregate cannot see them; preserve the canonical path
+        # for that caller-owned transaction instead of flushing its changes.
+        pending = [*store.db.new, *store.db.dirty, *store.db.deleted]
+        if any(isinstance(row, PaymentAllocationORM) for row in pending):
+            for rows in credited_by_tenant(store, bookings=bookings, reserved=reservations).values():
+                for booking, _, amount in rows:
+                    allocated[booking.id] = allocated.get(booking.id, ZERO) + amount
+            for key, amount in reservations.items():
+                allocated[key] = allocated.get(key, ZERO) + amount
+            return allocated
+    with scope_context(None):
+        if hasattr(store, "db"):
+            from sqlalchemy import case, func, select
+
+            from ..db.orm_models import PaymentAllocationORM
+            from .finance_ledger import _cents
+
+            keys = sorted(wanted)
+            for start in range(0, len(keys), 500):
+                legacy = func.max(case((PaymentAllocationORM.amount != func.round(PaymentAllocationORM.amount, 2), 1), else_=0))
+                query = select(PaymentAllocationORM.booking_id, func.sum(_cents(store.db, PaymentAllocationORM.amount)), legacy).where(
+                    PaymentAllocationORM.booking_id.in_(keys[start:start + 500])).group_by(PaymentAllocationORM.booking_id)
+                for key, amount, has_legacy_precision in store.db.execute(query):
+                    if not has_legacy_precision:
+                        allocated[key] = from_cents(amount)
+        else:
+            for allocation in store.list_payment_allocations():
+                if allocation.booking_id in wanted:
+                    allocated[allocation.booking_id] = allocated.get(allocation.booking_id, ZERO) + money(allocation.amount)
+    missing = wanted - allocated.keys()
+    if missing:
+        by_id = {booking.id: booking for booking in bookings}
+        needed = set(missing)
+        needed.update(by_id[key].reverses_booking_id for key in missing if by_id[key].reverses_booking_id in by_id)
+        fallback = [booking for booking in bookings if booking.id in needed]
+        for rows in credited_by_tenant(store, bookings=fallback, reserved=reservations).values():
+            for booking, _, amount in rows:
+                if booking.id in missing:
+                    allocated[booking.id] = allocated.get(booking.id, ZERO) + amount
+    for key, amount in reservations.items():
+        allocated[key] = allocated.get(key, ZERO) + amount
+    return allocated
 
 
 def _credited(store: Any, tenant_id: str) -> list[tuple[Any, str, Decimal]]:

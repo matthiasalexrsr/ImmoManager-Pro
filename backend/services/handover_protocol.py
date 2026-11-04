@@ -1025,6 +1025,8 @@ def finalize(store, protocol_id: str, payload: FinalizeRequest, actor_id: str) -
     request_hash = finalize_request_hash(protocol_id, payload.model_dump(mode="json"))
     document_id = document_id_for(actor_id, payload.idempotency_key)
     with archive.work(store, actor_id, write_areas=FINALIZE_AREAS) as unit:
+        from .meter_writes import lock_meter_readings
+        lock_meter_readings(unit.db)
         protocol = _protocol(unit, protocol_id)
         # locks first: a parallel request with the same key then finds this one's document
         _parents(unit, protocol.contract_id, lock=True, protocol_id=protocol.id)

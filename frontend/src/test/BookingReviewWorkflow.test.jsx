@@ -4,6 +4,7 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import Bookings from '../pages/Bookings';
 import ReviewList from '../pages/ReviewList';
 import { api } from '../api';
+import { installBookingPageFixture } from './bookingPageFixture';
 
 const pdfSources = vi.hoisted(() => []);
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ GlobalWorkerOptions: {}, getDocument: options => {
@@ -52,6 +53,7 @@ const deferred = () => {
 };
 
 function mount(path = '/bookings?booking_id=target') {
+  installBookingPageFixture(api, { categories: context.entities.categories });
   return render(<MemoryRouter initialEntries={[path]}>
     <Link to="/bookings?booking_id=other">Anderen Prüffall öffnen</Link>
     <Routes>

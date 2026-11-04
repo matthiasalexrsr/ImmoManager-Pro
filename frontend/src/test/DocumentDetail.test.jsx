@@ -29,7 +29,8 @@ const details = (overrides = {}) => ({
   places: { property: 'Haus am See', unit: null, contract: 'MV-2021-053', tenant: null },
   retention: { retention_class: 'booking_record', chosen: false, label: 'Buchungsbeleg', basis: '§ 147 AO', state: 'running', locked: true,
     until: '2034-12-31', years: 8, text: 'Buchungsbeleg: aufzubewahren bis 31.12.2034.' },
-  text: { source: 'pdf_text', characters: 1200, indexed_at: '2026-10-20T10:05:00', excerpt: 'Rechnung Nr. 17 Heizungswartung', source_ref: 'version:v2' },
+  text: { source: 'pdf_text', characters: 1200, indexed_at: '2026-10-20T10:05:00', excerpt: 'Rechnung Nr. 17 Heizungswartung', source_ref: 'version:v2',
+    complete: true, warning: null, stale: false, indexed_units: 2, total_units: 2, progress_unit: 'pages' },
   versions: { items: [version(2), version(1)], next_before: null },
   ...overrides,
 });
@@ -104,6 +105,39 @@ describe('the page of one document', () => {
     expect(screen.getByRole('region', { name: 'Gelesener Text' })).toHaveTextContent('aus Fassung 2');
     // documents with archived versions stay
     expect(screen.getByRole('button', { name: 'Dokument löschen' })).toBeDisabled();
+  });
+
+  it('shows unfinished text progress without claiming an empty partial index is unreadable', async () => {
+    const value = details();
+    value.text = { ...value.text, source: 'none', complete: false, characters: 0, excerpt: '', indexed_units: 1, total_units: 3 };
+    mount(makeService(value));
+    const panel = await screen.findByRole('region', { name: 'Gelesener Text' });
+    expect(panel).toHaveTextContent('Texterfassung ist noch nicht abgeschlossen');
+    expect(panel).toHaveTextContent('Fortschritt: 1 von 3 Seiten gelesen');
+    expect(panel).toHaveTextContent('Bisher wurde noch kein Text erfasst');
+    expect(panel).not.toHaveTextContent('Aus dieser Datei ließ sich kein Text lesen');
+    expect(panel).not.toHaveTextContent('Texterfassung abgeschlossen.');
+  });
+
+  it('keeps the warning visible even after all pages were processed', async () => {
+    const value = details();
+    value.text.warning = 'Bildanteile wurden nicht texterkannt.';
+    mount(makeService(value));
+    const panel = await screen.findByRole('region', { name: 'Gelesener Text' });
+    expect(within(panel).getByRole('status')).toHaveTextContent('Text nur teilweise erfasst');
+    expect(panel).toHaveTextContent('Bildanteile wurden nicht texterkannt.');
+    expect(panel).toHaveTextContent('Fortschritt: 2 von 2 Seiten gelesen');
+    expect(panel).not.toHaveTextContent('Texterfassung abgeschlossen.');
+  });
+
+  it('marks old-source text as stale instead of showing a successful current extraction', async () => {
+    const value = details();
+    value.text.stale = true;
+    mount(makeService(value));
+    const panel = await screen.findByRole('region', { name: 'Gelesener Text' });
+    expect(panel).toHaveTextContent('Der gelesene Text ist veraltet');
+    expect(panel).toHaveTextContent('Letzter Lesestand: 2 von 2 Seiten gelesen');
+    expect(panel).not.toHaveTextContent('Texterfassung abgeschlossen.');
   });
 
   it('previews the uploaded file while there is no archived version and deletes after asking', async () => {

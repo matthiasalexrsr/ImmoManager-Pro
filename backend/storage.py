@@ -631,7 +631,14 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             raise ValidationError("Mieter existiert nicht")
         if data.reverses_booking_id:
             self._check_reversal(data)
-        booking = Booking(id=_generate_id(), **data.model_dump())
+            # Serialized memory writes use the same ordering guarantee as SQL
+            # reversals, even when several requests share one system-clock tick.
+            stamp = datetime.now(timezone.utc)
+            for sibling in [self.bookings[data.reverses_booking_id], *self.list_booking_reversals(data.reverses_booking_id)]:
+                stamp = next_updated_at(sibling.created_at, stamp)
+            booking = Booking(id=_generate_id(), created_at=stamp, updated_at=stamp, **data.model_dump())
+        else:
+            booking = Booking(id=_generate_id(), **data.model_dump())
         self.bookings[booking.id] = booking
         return booking
 
@@ -1593,6 +1600,9 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
             check_final_statement_change(old, updated)
         if entity_type == "booking":
             self._check_reversal(updated, entity_id, old)
+        if entity_type == "standalone_reading":
+            from .services.meter_writes import validate_reading
+            validate_reading(self, updated, entity_id)
         collection[entity_id] = updated
         return updated
 
@@ -2044,6 +2054,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         return list(self.standalone_meter_readings.values())
 
     def create_standalone_meter_reading(self, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
+        from .services.meter_writes import validate_reading
+        validate_reading(self, data)
         reading = StandaloneMeterReading(id=_generate_id(), **data.model_dump())
         self.standalone_meter_readings[reading.id] = reading
         return reading
@@ -2059,6 +2071,8 @@ class InMemoryStore(DunningMemoryStore, ServiceContractMemoryStore, DepositMemor
         if reading_id not in self.standalone_meter_readings:
             raise NotFoundError("Ablesung nicht gefunden")
         old = self.standalone_meter_readings[reading_id]
+        from .services.meter_writes import validate_reading
+        validate_reading(self, data, reading_id)
         reading = StandaloneMeterReading(id=reading_id, created_at=old.created_at, updated_at=next_updated_at(old.updated_at, datetime.now(timezone.utc)), **data.model_dump())
         self.standalone_meter_readings[reading_id] = reading
         return reading

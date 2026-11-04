@@ -26,7 +26,7 @@ from urllib.parse import quote
 from ..domain.clock import local_date
 from ..domain.lease_engine import OCCUPYING_CONTRACT_STATUSES, charge_on
 from ..domain.money import money as _money
-from .payment_allocations import credited_by_tenant, non_rent_shares
+from .payment_allocations import accounted_by_booking
 from .read_cache import CachedReads
 from .rent_history import charge_for, rent_change_kinds, rent_steps
 from .sepa_rules import compact, mask_iban
@@ -45,8 +45,21 @@ def _day(value: date) -> str:
     return value.strftime("%d.%m.%Y")
 
 
+class _ReviewReads(CachedReads):
+    def __init__(self, store: Any):
+        super().__init__(store)
+        self._adjustments: list[Any] | None = None
+
+    def list_rent_adjustments(self) -> list[Any]:
+        # rent_change_kinds asks for the same rows per comparative increase.
+        # This snapshot lives for one read-only review calculation only.
+        if self._adjustments is None:
+            self._adjustments = self._store.list_rent_adjustments()
+        return list(self._adjustments)
+
+
 def review_items(store: Any, today: date) -> list[dict]:
-    store = CachedReads(store)
+    store = _ReviewReads(store)
     items: list[dict] = []
     units = {u.id: u for u in store.list_units()}
     contracts = store.list_contracts()
@@ -235,12 +248,7 @@ def review_items(store: Any, today: date) -> list[dict]:
                     "entity_type": "property", "entity_id": prop.id, "link": f"/properties/{prop.id}"})
 
     bookings = store.list_bookings()
-    credited: dict[str, Decimal] = {}
-    for rows in credited_by_tenant(store, bookings=bookings).values():
-        for booking, _, amount in rows:
-            credited[booking.id] = credited.get(booking.id, Decimal("0")) + amount
-    for booking_id, share in non_rent_shares(store, [b.id for b in bookings]).items():
-        credited[booking_id] = credited.get(booking_id, Decimal("0")) + share
+    credited = accounted_by_booking(store, bookings)
     # a reversal is decided with the booking it cancels: their rests and amounts add up
     reversed_amount: dict[str, Decimal] = {}
     reversed_rest: dict[str, Decimal] = {}

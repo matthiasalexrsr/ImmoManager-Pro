@@ -415,6 +415,14 @@ if __name__ == "__main__":
 
     # Native PDF subprocesses must bypass the server launcher and its live
     # runtime configuration/logfile, including in a frozen Windows bundle.
+    if sys.argv[1:2] == ["document-text-worker"]:
+        if len(sys.argv) != 3:
+            raise SystemExit(2)
+        from backend.services.document_text_worker import main as document_text_worker_main
+
+        document_text_worker_main(sys.argv[2])
+        raise SystemExit(0)
+
     if sys.argv[1:2] == ["document-pdf-worker"]:
         if len(sys.argv) != 3:
             raise SystemExit(2)

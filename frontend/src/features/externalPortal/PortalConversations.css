@@ -1,0 +1,11 @@
+.portal-share-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: .85rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+.portal-share-form label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.portal-share-form input, .portal-share-form select, .portal-share-form textarea { width: 100%; min-width: 0; max-width: 100%; padding: .55rem; }
+.portal-share-form [role="alert"], .portal-share-form [role="status"] { grid-column: 1 / -1; }
+.portal-share-form :focus-visible { outline: 3px solid var(--accent-color, #176bb4); outline-offset: 3px; }

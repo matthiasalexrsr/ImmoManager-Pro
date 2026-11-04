@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Iterable
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +21,7 @@ from ..db.orm_models import (
     TaxRateORM,
 )
 from ..domain.booking_reversal import reversal_problem
+from ..domain.revision_time import next_updated_at
 from ..models import (
     Booking,
     BookingCreate,
@@ -96,6 +98,21 @@ class FinanceRepository:
         if data.reverses_booking_id:
             self.check_reversal(data)
         result = self._bookings.create(data)
+        if data.reverses_booking_id:
+            # The HTTP booking writer holds the original row while the siblings
+            # are read and this new reversal is committed. Database clocks can
+            # tie (SQLite CURRENT_TIMESTAMP is second-resolution); a new UUID
+            # must not reorder already published owner-cent allocations.
+            siblings = [self._bookings.get(data.reverses_booking_id),
+                        *[row for row in self.list_booking_reversals(data.reverses_booking_id) if row.id != result.id]]
+            stamp = datetime.now(timezone.utc)
+            for sibling in siblings:
+                stamp = next_updated_at(sibling.created_at, stamp)
+            stamp = stamp.replace(tzinfo=None)
+            recorded = self._bookings.get_orm(result.id)
+            recorded.created_at = recorded.updated_at = stamp
+            self.db.flush()
+            result = self._bookings.get(result.id)
         self._commit()
         return result
 
@@ -362,18 +379,30 @@ class FinanceRepository:
         return self._standalone_readings.list_all()
 
     def create_standalone_meter_reading(self, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
-        result = self._standalone_readings.create(data)
-        self._commit()
-        return result
+        from ..services.meter_writes import meter_write, validate_reading
+        from .sql_store import SQLAlchemyStore
+
+        target = SQLAlchemyStore(self.db)
+        with meter_write(target):
+            validate_reading(target, data)
+            return self._standalone_readings.create(data)
 
     def get_standalone_meter_reading(self, reading_id: str) -> StandaloneMeterReading:
         return self._standalone_readings.get(reading_id)
 
     def update_standalone_meter_reading(self, reading_id: str, data: StandaloneMeterReadingCreate) -> StandaloneMeterReading:
-        result = self._standalone_readings.update(reading_id, data)
-        self._commit()
-        return result
+        from ..services.meter_writes import meter_write, validate_reading
+        from .sql_store import SQLAlchemyStore
+
+        target = SQLAlchemyStore(self.db)
+        with meter_write(target):
+            self._standalone_readings.get(reading_id)
+            validate_reading(target, data, reading_id)
+            return self._standalone_readings.update(reading_id, data)
 
     def delete_standalone_meter_reading(self, reading_id: str) -> None:
-        self._standalone_readings.delete(reading_id)
-        self._commit()
+        from ..services.meter_writes import meter_write
+        from .sql_store import SQLAlchemyStore
+
+        with meter_write(SQLAlchemyStore(self.db)):
+            self._standalone_readings.delete(reading_id)

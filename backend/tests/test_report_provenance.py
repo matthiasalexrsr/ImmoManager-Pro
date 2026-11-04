@@ -1,5 +1,5 @@
 """Evidence must name the received bytes, with stable numbers and current grants."""
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -43,7 +43,16 @@ def evidence(estate):
     return actor, doc, invoice, first, second
 
 
-def test_received_original_and_source_hash_survive_new_head_and_retrieval_clock(estate):
+@pytest.mark.parametrize("clock_step", [timedelta(0), timedelta(seconds=1)])
+def test_received_original_and_source_hash_survive_new_head_and_retrieval_clock(estate, monkeypatch, clock_step):
+    class RetrievalClock(datetime):
+        current = datetime(2026, 11, 4, 12, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current.astimezone(tz) if tz is not None else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(finance_reports, "retrieval_time", lambda: RetrievalClock.now(timezone.utc))
     actor, doc, invoice, first, second = evidence(estate)
     definition = ReportDefinition(kind="performance-period-v2", as_of=date(2026, 1, 31))
     result = finance_reports.compute(store, definition)
@@ -51,8 +60,10 @@ def test_received_original_and_source_hash_survive_new_head_and_retrieval_clock(
     assert original["version_id"] == first.id != second.id and original["sha256"] == first.sha256
     assert original["reference"] == "receipt_sha256"
     assert result["provenance"]["verified_originals"] == 1
+    RetrievalClock.current += clock_step
     again = finance_reports.compute(store, definition)
-    assert result["result_hash"] == again["result_hash"] and result["generated_at"] != again["generated_at"]
+    assert result["result_hash"] == again["result_hash"]
+    assert (result["generated_at"] == again["generated_at"]) == (clock_step == timedelta(0))
     assert result["totals"] == again["totals"]
     with TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(actor.id)}) as client:
         response = client.get("/api/v1" + original["download"])

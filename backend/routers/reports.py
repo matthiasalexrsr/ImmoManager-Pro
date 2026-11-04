@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..auth import require_auth
-from ..concurrency import one_at_a_time
+from ..concurrency import one_at_a_time, shared_portfolio_result
 from ..dependencies import store
 from ..domain.clock import local_today
 from ..domain.money import money
@@ -67,7 +67,7 @@ def _csv_response(rows: list[dict], filename: str) -> Response:
 
 
 @router.get("/summary")
-@one_at_a_time
+@shared_portfolio_result
 def get_summary(format: Format = None, date_from: DateFrom = None, date_to: DateTo = None,
                 portfolio_id: PortfolioId = None, property_id: PropertyId = None, unit_id: UnitId = None, owner_contact_id: OwnerId = None, as_of: date | None = None):
     data = report_service.compute_summary(store, _filter(date_from, date_to, portfolio_id, property_id, unit_id, owner_contact_id), today=as_of)

@@ -105,14 +105,23 @@ describe('api.list', () => {
     expect(mockFetch.mock.calls[0][0]).toBe('/api/v1/tenants?include_archived=true&limit=1000&skip=0');
   });
 
-  it('stops when an endpoint ignores skip and repeats the same rows', async () => {
+  it('reports an incomplete result when an endpoint ignores skip and repeats the same rows', async () => {
     mockFetch.mockResolvedValue(respond(rows(0, 1000)));
 
     const { api } = await import('../api.js');
-    const result = await api.list('/integrations');
-
-    expect(result).toHaveLength(1000);
+    await expect(api.list('/integrations')).rejects.toThrow('möglicherweise unvollständig');
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([500000, 500001])('distinguishes an exact full budget from an incomplete %i-row list', async count => {
+    mockFetch.mockImplementation(async url => {
+      const skip = Number(new URL(url, 'http://audit.test').searchParams.get('skip'));
+      return respond(rows(skip, Math.max(0, Math.min(1000, count - skip))));
+    });
+    const { api } = await import('../api.js');
+    if (count === 500000) expect(await api.list('/bookings')).toHaveLength(count);
+    else await expect(api.list('/bookings')).rejects.toMatchObject({ code: 'LIST_LIMIT_REACHED', nextSkip: 500000, loadedCount: 500000 });
+    expect(mockFetch).toHaveBeenCalledTimes(501);
   });
 
   it('passes non-list responses through', async () => {

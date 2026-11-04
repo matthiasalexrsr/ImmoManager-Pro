@@ -339,6 +339,21 @@ def test_case_publication_is_explicit_revision_bound_and_scoped(portal):
     assert denied.status_code in (403, 404)
 
 
+def test_case_grant_lookup_filters_before_paging_and_preserves_scope(portal):
+    first, second = portal["households"]
+    case = store.create_maintenance_case(MaintenanceCaseCreate(property_id=portal["prop"].id,
+        unit_id=first["place"].id, title="Zugeordnete Akte"))
+    response = portal["office"].get("/api/v1/portal-admin/grants", params={"case_id": case.id, "limit": 100})
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 1
+    assert [item["id"] for item in response.json()["items"]] == [first["grant_id"]]
+    assert second["grant_id"] not in response.text
+    limited = auth.register_user("no-case-scope", "no-case-scope@example.test", "Other portfolio", "Synthetic123!", "verwalter", portfolio_access="selected", portfolio_ids=[])
+    with TestClient(app, headers={"Authorization": "Bearer " + auth.create_access_token(limited.id)}) as office:
+        denied = office.get("/api/v1/portal-admin/grants", params={"case_id": case.id})
+        assert denied.status_code in (403, 404)
+
+
 def test_portal_customer_export_roundtrip_preserves_evidence_without_credentials(portal):
     import test_customer_portability as customer
 

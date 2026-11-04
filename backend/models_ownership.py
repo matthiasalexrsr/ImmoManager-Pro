@@ -19,6 +19,8 @@ class OwnershipShareCreate(BaseModel):
     @classmethod
     def four_decimals(cls, value: float) -> float:
         rounded = round(value, 4)
+        if rounded <= 0:
+            raise ValueError("Ein Anteil beträgt mindestens 0,0001 %.")
         if abs(rounded - value) > 1e-9:
             raise ValueError("Ein Anteil hat höchstens vier Nachkommastellen (z. B. 33,3333 %).")
         return rounded

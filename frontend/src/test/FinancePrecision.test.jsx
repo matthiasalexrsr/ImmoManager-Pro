@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import TenantAccount from '../pages/TenantAccount';
 import Bookings from '../pages/Bookings';
 import { api } from '../api';
+import { bookingPageReply } from './bookingPageFixture';
 
 const context = vi.hoisted(() => ({
   confirm: null, store: { invalidateRelated: vi.fn() }, toast: { error: vi.fn(), success: vi.fn() },
@@ -81,10 +82,16 @@ describe('Booking reversal', () => {
     reverses_booking_id: null };
   const mount = id => render(<MemoryRouter initialEntries={[`/bookings?booking_id=${id}`]}><Bookings /></MemoryRouter>);
   const selected = () => screen.getByRole('region', { name: 'Ausgewählte Buchung' });
+  const respondWithBooking = row => api.get.mockImplementation(async path => {
+    if (path.startsWith('/bookings/page?')) return bookingPageReply([row], path);
+    if (path === `/bookings/${row.id}/allocation-overview`) return { allocations: [], reserved_amounts: {} };
+    if (path === `/bookings/${row.id}`) return row;
+    if (path === '/aktenwerk/status') return { ready: false };
+    throw new Error('Unexpected request: ' + path);
+  });
 
   it('books a linked counter-booking after confirmation', async () => {
-    api.list.mockResolvedValue([booking]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking));
+    respondWithBooking(booking);
     api.post.mockResolvedValue({ ...booking, id: 'r1', amount: -633.33, reverses_booking_id: 'b1' });
     mount('b1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Miete Februar');
@@ -97,8 +104,7 @@ describe('Booking reversal', () => {
 
   it('does nothing without confirmation', async () => {
     context.confirm = vi.fn().mockResolvedValue(false);
-    api.list.mockResolvedValue([booking]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : booking));
+    respondWithBooking(booking);
     mount('b1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Miete Februar');
     fireEvent.click(within(selected()).getByRole('button', { name: 'Stornieren' }));
@@ -108,8 +114,7 @@ describe('Booking reversal', () => {
 
   it('shows a reversal with its original and offers no second reversal', async () => {
     const reversal = { ...booking, id: 'r1', amount: -633.33, payment_text: 'Rücklastschrift', reverses_booking_id: 'b1' };
-    api.list.mockResolvedValue([reversal]);
-    api.get.mockImplementation(path => Promise.resolve(path === '/bookings/allocations?include_reservations=true' ? { allocations: [], reserved_amounts: {} } : reversal));
+    respondWithBooking(reversal);
     mount('r1');
     await within(await screen.findByRole('region', { name: 'Ausgewählte Buchung' })).findByText('Rücklastschrift');
 
@@ -117,5 +122,6 @@ describe('Booking reversal', () => {
       .toHaveAttribute('href', '/bookings?booking_id=b1');
     expect(within(selected()).queryByRole('button', { name: 'Stornieren' })).not.toBeInTheDocument();
     expect(await screen.findByTitle('Storno: zählt mit der stornierten Buchung zusammen')).toHaveTextContent('Storno');
+    expect(api.list).not.toHaveBeenCalled();
   });
 });
