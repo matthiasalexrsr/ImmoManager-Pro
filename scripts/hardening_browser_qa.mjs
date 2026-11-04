@@ -109,13 +109,13 @@ try {
     await card.getByLabel('SMTP-Port', { exact: true }).fill(String(sink.address().port));
     await card.getByLabel('STARTTLS', { exact: true }).uncheck();
     await card.getByRole('button', { name: 'Konfiguration speichern', exact: true }).click(); configured = true;
-    await expect(card.getByRole('status')).toContainText('Konfiguration gespeichert');
+    await expect(card.getByRole('status').filter({ hasText: 'Konfiguration gespeichert' })).toContainText('Konfiguration gespeichert');
     assert.equal((await apiCall('GET', '/integrations/email')).config.smtp_host, '127.0.0.1');
   });
   await step('Connection check performs NOOP and sends zero messages', async () => {
     await card.getByLabel('Aktion', { exact: true }).selectOption('check_connection');
     await card.getByRole('button', { name: 'Aktion ausführen', exact: true }).click();
-    await expect(card.getByRole('status')).toContainText('keine Nachricht versendet');
+    await expect(card.getByRole('status').filter({ hasText: 'keine Nachricht versendet' })).toContainText('keine Nachricht versendet');
     assert.equal(messages.length, 0); assert.ok(commands.some(line => line.toUpperCase() === 'NOOP'));
     assert.ok(!commands.some(line => /^MAIL FROM:/i.test(line)));
   });
@@ -126,7 +126,7 @@ try {
     await card.getByLabel('Betreff', { exact: true }).fill('Synthetic loopback test');
     await card.getByLabel('Nachricht', { exact: true }).fill('Only retained in this test process.');
     await card.getByRole('button', { name: 'E-Mail versenden', exact: true }).click();
-    await expect(card.getByRole('status')).toContainText('E-Mail versendet');
+    await expect(card.getByRole('status').filter({ hasText: 'E-Mail versendet' })).toContainText('E-Mail versendet');
     assert.equal(messages.length, 1); assert.match(messages[0], /To: recipient@example.invalid/);
     await card.getByRole('button', { name: 'Verlauf anzeigen', exact: true }).click();
     await expect(card).toContainText(`${expectedHistoryCount} protokollierte Aktionen`);
