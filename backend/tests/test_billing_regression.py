@@ -296,8 +296,24 @@ def test_b3_reset_on_the_same_meter_is_never_a_negative_share():
     prop, first, second = _two_flats()
     _lease(prop, first, "C-1")
     _lease(prop, second, "C-2")
-    _meter(first, "cold_water", [(date(2025, 1, 1), 100), (date(2025, 6, 15), 160), (date(2025, 12, 31), 40)],
-           serial_number="KW-1")
+    meter = _meter(first, "cold_water", [(date(2025, 1, 1), 100), (date(2025, 6, 15), 160), (date(2025, 12, 31), 180)],
+                   serial_number="KW-1")
+    with pytest.raises(ValidationError, match="Zählerwechsel"):
+        store.create_standalone_meter_reading(StandaloneMeterReadingCreate(
+            meter_id=meter.id, reading_date=date(2026, 1, 1), value=40))
+    # Historical imports/database contents can predate the write guard. Seed
+    # that legacy state directly so the billing oracle still exercises it.
+    reading = next(row for row in store.list_standalone_meter_readings()
+                   if row.meter_id == meter.id and row.reading_date == date(2025, 12, 31))
+    if hasattr(store, "db"):
+        from backend.db.orm_models import StandaloneMeterReadingORM
+
+        recorded = store.db.get(StandaloneMeterReadingORM, reading.id)
+        assert recorded is not None
+        recorded.value = 40
+        store.db.commit()
+    else:
+        store.standalone_meter_readings[reading.id] = reading.model_copy(update={"value": 40})
     _meter(second, "cold_water", [(date(2025, 1, 1), 0), (date(2025, 12, 31), 100)])
     period = _period(prop, [("Wasser", 1000, _key(prop, "consumption", meter_type="cold_water"))])
 

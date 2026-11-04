@@ -144,6 +144,7 @@ def test_status_details_prioritize_concrete_warnings_after_many_continuations(ca
             document_text.now() + timedelta(minutes=1),
             complete=number == 25,
             warning="Konkrete OCR-Grenze" if number == 25 else None,
+            source_updated_at=document_text._naive(document.updated_at),
         ))
     commit_checkpoint()
     result = document_text.status(store)

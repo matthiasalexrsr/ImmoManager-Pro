@@ -370,6 +370,7 @@ class DocumentTextORM(Base):
     indexed_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     total_units: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     warning: Mapped[str | None] = mapped_column(Text)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class TaskORM(Base):

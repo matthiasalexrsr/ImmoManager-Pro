@@ -5,6 +5,7 @@ import base64
 import hashlib
 import io
 import zipfile
+from datetime import timezone
 from uuid import uuid4
 
 import pytest
@@ -680,7 +681,8 @@ def test_document_details_expose_read_progress_and_warnings_without_reading_file
     identifier = prepared["document"].id
     text = document_text.TextRow(identifier, "file:" + prepared["document"].file_url, "office", excerpt,
                                 excerpt.lower(), len(excerpt), document_text.now(), complete=complete,
-                                indexed_units=200, total_units=900, warning=warning)
+                                indexed_units=200, total_units=900, warning=warning,
+                                source_updated_at=document_text._naive(prepared["document"].updated_at))
     document_text.save(store, text)
     if hasattr(store, "db"):
         store.db.commit()
@@ -697,6 +699,7 @@ def test_document_details_expose_read_progress_and_warnings_without_reading_file
     assert row["complete"] is complete and row["warning"] == warning and row["stale"] is False
     assert row["indexed_units"] == 200 and row["total_units"] == 900 and row["progress_unit"] == "characters"
     assert row["excerpt"] == excerpt and row["characters"] == len(excerpt)
+    assert row["indexed_at"] == text.indexed_at.replace(tzinfo=timezone.utc).isoformat()
 
 
 def test_document_details_recognize_a_new_archive_head_without_parsing_it(prepared, owner, monkeypatch):
@@ -705,7 +708,8 @@ def test_document_details_recognize_a_new_archive_head_without_parsing_it(prepar
     initial, _ = archived(prepared, owner)
     identifier = prepared["document"].id
     old = document_text.TextRow(identifier, "version:" + initial["version"]["id"], "office", "Alter Text",
-                               "alter text", 10, document_text.now(), complete=True, indexed_units=10, total_units=10)
+                               "alter text", 10, document_text.now(), complete=True, indexed_units=10, total_units=10,
+                               source_updated_at=document_text._naive(store.get_document(identifier).updated_at))
     document_text.save(store, old)
     if hasattr(store, "db"):
         store.db.commit()

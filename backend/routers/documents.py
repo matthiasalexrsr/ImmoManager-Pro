@@ -1,6 +1,7 @@
 import json
 import uuid
 from dataclasses import replace
+from datetime import timezone
 from io import BytesIO
 from typing import Annotated
 from urllib.parse import quote
@@ -238,8 +239,11 @@ def document_details(document_id: str, actor: Annotated[UserRead | None, Depends
         head = document_versions.head(document_text._archive_unit(store), document.id)
         stale = document_text._stale(document, replace(text, complete=True), head)
         filename = (head.filename if head is not None else document.file_url) or ""
+        indexed_at = text.indexed_at
+        if indexed_at.tzinfo is None:
+            indexed_at = indexed_at.replace(tzinfo=timezone.utc)
         text_details = {
-            "source": text.source, "characters": text.characters, "indexed_at": text.indexed_at.isoformat(),
+            "source": text.source, "characters": text.characters, "indexed_at": indexed_at.astimezone(timezone.utc).isoformat(),
             "excerpt": text.text[:3000], "source_ref": text.source_ref,
             "complete": text.complete, "warning": text.warning, "stale": stale,
             "indexed_units": text.indexed_units, "total_units": text.total_units,

@@ -506,25 +506,28 @@ def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional
                         size: Optional[int] = None) -> list[tuple[Any, str]]:
     """Visible documents with the same file (archived original, analysed upload or stored file) or, failing that,
     the same read text (at least 200 characters, from the full-text index)."""
+    from . import document_text
+
     ids: dict[str, str] = {}
     if hasattr(store, "db"):
         from sqlalchemy import select
 
         from ..db.business_qol_models import DocumentIntakeORM
         from ..db.document_version_models import DocumentVersionORM
-        from ..db.orm_models import DocumentTextORM
+        from ..db.orm_models import DocumentORM, DocumentTextORM
         for document_id in store.db.scalars(select(DocumentVersionORM.document_id).where(DocumentVersionORM.sha256 == sha256)):
             ids.setdefault(document_id, "same_file")
         for document_id in store.db.scalars(select(DocumentIntakeORM.document_id).where(DocumentIntakeORM.sha256 == sha256)):
             ids.setdefault(document_id, "same_file")
         if len(text) >= 200:
             for row in store.db.execute(select(DocumentTextORM.document_id, DocumentTextORM.text)
+                                        .join(DocumentORM, DocumentORM.id == DocumentTextORM.document_id)
                                         .where(DocumentTextORM.complete.is_(True), DocumentTextORM.warning.is_(None),
+                                               ~document_text._stale_sql(),
                                                DocumentTextORM.characters == len(text))):
                 if row.text == text:
                     ids.setdefault(row.document_id, "same_text")
     else:
-        from . import document_text
         from .document_versions import memory_archive
         for version in memory_archive(store).versions.values():
             if version.sha256 == sha256:
@@ -533,9 +536,12 @@ def same_file_documents(store: Any, sha256: str, text: str, *, exclude: Optional
             if intake.sha256 == sha256:
                 ids.setdefault(intake.document_id, "same_file")
         if len(text) >= 200:
+            heads = document_text._memory_heads(store)
             for row in document_text.memory_rows(store).values():
                 if row.complete and row.warning is None and row.characters == len(text) and row.text == text:
-                    ids.setdefault(row.document_id, "same_text")
+                    document = _document_title(store, row.document_id)
+                    if document is not None and not document_text._stale(document, row, heads.get(row.document_id)):
+                        ids.setdefault(row.document_id, "same_text")
     _same_stored_files(store, sha256, size, ids)
     ids.pop(exclude or "", None)
     found = []

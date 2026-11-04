@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import and_, case, func, literal, or_, select
+from sqlalchemy import String, and_, case, cast, func, literal, or_, select
 
 from ..db.document_version_models import DocumentVersionORM
 from ..db.orm_models import DocumentORM, DocumentTextORM
@@ -134,6 +134,7 @@ class TextRow:
     indexed_units: int = 0
     total_units: int = 0
     warning: str | None = None
+    source_updated_at: datetime | None = None
 
 
 def memory_rows(store) -> dict[str, TextRow]:
@@ -164,10 +165,12 @@ def forget(store, document_id: str) -> None:
 def index_document(store, document, *, retry_limited: bool = False) -> TextRow:
     # An edit made while the bounded reader runs must remain pending afterwards.
     sampled_at = now()
+    source_updated_at = _naive(document.updated_at)
     found = source(store, document)
     if found is None:
         reference, text, kind = f"file:{document.file_url or ''}", "", "none"
-        row = TextRow(document.id, reference, kind, text, text, 0, sampled_at, complete=True)
+        row = TextRow(document.id, reference, kind, text, text, 0, sampled_at, complete=True,
+                      source_updated_at=source_updated_at)
     else:
         reference, content, name = found
         fingerprint = hashlib.sha256(content).hexdigest()
@@ -175,7 +178,8 @@ def index_document(store, document, *, retry_limited: bool = False) -> TextRow:
         if previous is not None and (
             previous.source_ref != reference
             or previous.source_sha256 != fingerprint
-            or (_naive(document.updated_at) or now()) > previous.indexed_at
+            or previous.source_updated_at is None
+            or _naive(previous.source_updated_at) != source_updated_at
         ):
             previous = None
         if retry_limited and previous is not None and previous.complete and previous.warning:
@@ -204,9 +208,22 @@ def index_document(store, document, *, retry_limited: bool = False) -> TextRow:
             part.indexed_units,
             part.total_units,
             warning,
+            source_updated_at,
         )
     save(store, row)
     return row
+
+
+def _revision_sql(column):
+    # SQLite CURRENT_TIMESTAMP omits fractional seconds; DateTime bindings
+    # include six digits. Right-padding their stored representation preserves
+    # every microsecond, unlike SQLite's millisecond date/time functions.
+    stamp = cast(column, String)
+    return case(
+        (func.length(stamp) == 19, stamp + literal(".000000")),
+        *((func.length(stamp) == size, stamp + literal("0" * (26 - size))) for size in range(21, 26)),
+        else_=stamp,
+    )
 
 
 def _stale_sql():
@@ -221,7 +238,8 @@ def _stale_sql():
     return or_(
         DocumentTextORM.document_id.is_(None),
         DocumentTextORM.complete.is_(False),
-        DocumentORM.updated_at > DocumentTextORM.indexed_at,
+        DocumentTextORM.source_updated_at.is_(None),
+        _revision_sql(DocumentORM.updated_at) != _revision_sql(DocumentTextORM.source_updated_at),
         and_(head.is_not(None), DocumentTextORM.source_ref != literal("version:").concat(head)),
         and_(
             head.is_(None),
@@ -245,7 +263,8 @@ def _stale(document, row: TextRow | None, head) -> bool:
     return (
         row is None
         or not row.complete
-        or (_naive(document.updated_at) or now()) > row.indexed_at
+        or row.source_updated_at is None
+        or _naive(document.updated_at) != _naive(row.source_updated_at)
         or row.source_ref != reference
     )
 
