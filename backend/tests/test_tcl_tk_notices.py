@@ -7,9 +7,10 @@ import pytest
 from tools import third_party_notices as notices
 
 
-def test_exact_tcl_tk_release_terms_are_present_and_hashed():
-    rows = notices.tcl_tk_license_sources({"Tcl": "8.6.15", "Tk": "8.6.15"})
-    assert [row[:2] for row in rows] == [("Tcl", "8.6.15"), ("Tk", "8.6.15")]
+@pytest.mark.parametrize("runtime_version", ["8.6.12", "8.6.15"])
+def test_exact_tcl_tk_release_terms_are_present_and_hashed(runtime_version):
+    rows = notices.tcl_tk_license_sources({"Tcl": runtime_version, "Tk": runtime_version})
+    assert [row[:2] for row in rows] == [("Tcl", runtime_version), ("Tk", runtime_version)]
     for name, version, expression, path, source in rows:
         text = path.read_text(encoding="utf-8")
         assert "notice is included verbatim in any distributions" in text
@@ -17,20 +18,23 @@ def test_exact_tcl_tk_release_terms_are_present_and_hashed():
         assert expression == "Unmodified upstream license.terms"
 
 
-def test_unrecognized_runtime_version_cannot_reuse_a_different_license():
+@pytest.mark.parametrize("runtime_version", ["8.6.13", "9.0.0"])
+def test_unrecognized_runtime_version_cannot_reuse_a_different_license(runtime_version):
     with pytest.raises(RuntimeError, match="Missing exact"):
-        notices.tcl_tk_license_sources({"Tcl": "9.0.0"})
+        notices.tcl_tk_license_sources({"Tcl": runtime_version})
 
 
-def test_changed_license_text_is_rejected(tmp_path, monkeypatch):
+@pytest.mark.parametrize("runtime_version", ["8.6.12", "8.6.15"])
+def test_changed_license_text_is_rejected(runtime_version, tmp_path, monkeypatch):
     folder = tmp_path / "packaging/third-party"
     folder.mkdir(parents=True)
     entries = json.loads((notices.ROOT / "packaging/third-party/tcl-tk-licenses.json").read_text(encoding="utf-8"))
     (folder / "tcl-tk-licenses.json").write_text(json.dumps(entries), encoding="utf-8")
-    (folder / entries[0]["filename"]).write_text("different text", encoding="utf-8")
+    entry = next(row for row in entries if row["name"] == "Tcl" and row["version"] == runtime_version)
+    (folder / entry["filename"]).write_text("different text", encoding="utf-8")
     monkeypatch.setattr(notices, "ROOT", tmp_path)
     with pytest.raises(RuntimeError, match="checksum mismatch"):
-        notices.tcl_tk_license_sources({"Tcl": "8.6.15"})
+        notices.tcl_tk_license_sources({"Tcl": runtime_version})
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows Tcl/Tk PE resources")
