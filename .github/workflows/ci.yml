@@ -213,8 +213,41 @@ jobs:
         run: |
           python -m pip install -r requirements-pip.txt
           python -m pip install -r backend/requirements-dev.txt -r requirements-documents-optional.txt -c constraints.txt
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
+          use_pg_tools() {
+            local bin dump restore dump_major restore_major found
+            local bins=(/usr/lib/postgresql/*/bin)
+            found=$(command -v pg_dump || true)
+            if [ -n "$found" ]; then bins+=("$(dirname "$found")"); fi
+            for bin in "${bins[@]}"; do
+              [ -x "$bin/pg_dump" ] && [ -x "$bin/pg_restore" ] || continue
+              dump=$(timeout 10s "$bin/pg_dump" --version) && restore=$(timeout 10s "$bin/pg_restore" --version) || continue
+              [[ "$dump" =~ PostgreSQL\)\ ([0-9]+)\. ]] || continue
+              dump_major=${BASH_REMATCH[1]}
+              [[ "$restore" =~ PostgreSQL\)\ ([0-9]+)\. ]] || continue
+              restore_major=${BASH_REMATCH[1]}
+              if (( dump_major >= 16 && dump_major == restore_major )); then
+                printf 'Using PostgreSQL tools: %s\n%s\n%s\n' "$bin" "$dump" "$restore"
+                printf '%s\n' "$bin" >> "$GITHUB_PATH"
+                return 0
+              fi
+            done
+            return 1
+          }
+          if ! use_pg_tools; then
+            . /etc/os-release
+            [[ "$ID" == ubuntu && "$VERSION_CODENAME" =~ ^[a-z]+$ ]] || exit 1
+            sources="$RUNNER_TEMP/immo-postgresql-ubuntu.list"
+            lists="$RUNNER_TEMP/immo-postgresql-apt-lists"
+            mkdir -p "$lists/partial"
+            printf '%s\n' \
+              "deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu $VERSION_CODENAME main universe" \
+              "deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu $VERSION_CODENAME-updates main universe" \
+              "deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://security.ubuntu.com/ubuntu $VERSION_CODENAME-security main universe" > "$sources"
+            apt_options=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o "Dir::State::lists=$lists" -o Acquire::https::Timeout=20 -o Acquire::Retries=2 -o APT::Update::Error-Mode=any)
+            sudo timeout --kill-after=10s 180s apt-get "${apt_options[@]}" update
+            sudo timeout --kill-after=10s 180s apt-get "${apt_options[@]}" install --yes postgresql-client
+            use_pg_tools || { echo '::error::Matching pg_dump/pg_restore >= 16 are required'; exit 1; }
+          fi
       - name: Verify payment allocation, deposit corrections and dunning on PostgreSQL
         run: python scripts/run_pro_matrix.py --backend native --native-port 5432 --native-user immo_test --label payment-workflow-release backend/tests/test_payment_allocation.py backend/tests/test_deposits.py backend/tests/test_dunning.py
       - name: Run all PostgreSQL checks without skips
