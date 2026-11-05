@@ -1,0 +1,53 @@
+{
+  "kind": "frontend-sbom-metadata-correction",
+  "source_commit": "b5d582182721c9fb8a0123ad86cc528f70299340",
+  "original_artifact_id": 13378265495,
+  "original_artifact_sha256": "7f16a1e024b49667a8ecbd52958974179b2430a1afebcb76627fc6597b8a22ab",
+  "original_frontend_sbom_sha256": "c73d2daade071faac4658bae16a8025fc66aefe8a046d4d9dbba996706320b6f",
+  "original_windows_zip_sha256": "580e54f1c5f8eec372da8d8ad9a634c97b315221f1f568baf761896bdfb25edb",
+  "original_python_sbom_sha256": "489f35b29fc79e17fa538f68ca633f684fc81d63f4797679f848be0c51faa3e9",
+  "source_lock_git_sha256": "d81a8abab55a7e2c195ee816c67067848d4f553023f2345b01dabc86aab5d2d5",
+  "corrected_frontend_sbom_sha256": "8d2b38693c32639ad5b39dafbbde9c6ecb0640142af5081073c2b3c461b7adec",
+  "inventory_scope": "locked-build-dependency-inventory",
+  "includes_dev_dependencies": true,
+  "includes_all_platform_optionals": true,
+  "does_not_claim_all_components_in_binary": true,
+  "generator": {
+    "file": "outputs/ImmoManager-Pro-Korrekturen/frontend/scripts/frontendSbom.mjs",
+    "sha256": "2b4de7328b8f1d260909c4cb2976b8b0a0d93c2d714647e4b7e20f5256adcae7"
+  },
+  "explanation": "Separate metadata correction for the unchanged b5 runtime and original Windows archive. npm 11.19 --omit=dev omitted React, ReactDOM and Scheduler despite declared production dependencies. The replacement is explicitly a locked build-dependency inventory, including development and all-platform optional packages, not an inventory of binaries shipped. It validates every locked component and edge plus the production-root closure; no package, lock, executable, original SBOM or original checksum is replaced.",
+  "source_repo": "matthiasalexrsr/ImmoManager-Pro",
+  "source_repo_url": "https://github.com/matthiasalexrsr/ImmoManager-Pro",
+  "workflow_run_id": 41942815399,
+  "package_version": "2.0.0-beta.1",
+  "source_lock_worktree_sha256": "baf2b9760a37a94adf5ee2e5b730003b3d060ef78dfb8ff5091c596400f5bce6",
+  "source_lock_json_semantically_equal": true,
+  "generated_utc": "2026-11-05T01:08:23.646Z",
+  "tools": {
+    "node_version": "24.21.0",
+    "npm_version": "11.19.0"
+  },
+  "generator_input_lock_file_sha256": "baf2b9760a37a94adf5ee2e5b730003b3d060ef78dfb8ff5091c596400f5bce6",
+  "generator_report": {
+    "file": "sbom-frontend.corrected.cdx.json.validation.json",
+    "sha256": "4910a11fbf1092a37c1d81dd841b57d1057f5de8f9903337aabb3d9295741099"
+  },
+  "validation": {
+    "lock_locations": 374,
+    "components": 372,
+    "root_dependencies": 21,
+    "production_direct_dependencies": [
+      "lucide-react@0.563.0",
+      "pdfjs-dist@6.4.299",
+      "pdfmake@0.2.23",
+      "react@19.2.4",
+      "react-dom@19.2.4",
+      "react-router-dom@7.18.4",
+      "recharts@3.7.0"
+    ],
+    "validated_lock_edges": 558,
+    "production_closure_components": 113
+  },
+  "provenance_finalized_utc": "2026-11-05T01:10:14.749939+00:00"
+}

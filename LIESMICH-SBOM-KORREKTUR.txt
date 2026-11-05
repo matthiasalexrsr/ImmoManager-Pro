@@ -1,0 +1,4 @@
+Metadatenkorrektur zum unveränderten GitHub-Artefakt 13378265495, Lauf 41942815399, Commit b5d58218.
+Die originale Frontend-SBOM und SHA256SUMS.txt bleiben unverändert erhalten; dort fehlen React und React DOM.
+sbom-frontend.corrected.cdx.json ist ein separat erzeugtes, vollständig gegen den Release-Lock geprüftes Build-Abhängigkeitsinventar einschließlich Entwicklungsabhängigkeiten und plattformspezifischer optionaler Pakete. Es behauptet nicht, dass jede Komponente im Windows-Binary enthalten ist.
+Windows-ZIP und Python-SBOM sind die bytegleichen Originale. SHA256SUMS-KORREKTUR.txt deckt alle gelieferten Originale und Korrekturdateien außer sich selbst ab. Die EXE ist unsigniert; sie wurde für diese statische Prüfung nicht gestartet.
