@@ -137,8 +137,6 @@ jobs:
 
       - name: SBOM and checksums
         id: sbom
-        # required for a release; a branch build only reports a failure here
-        continue-on-error: ${{ steps.version.outputs.tag == '' }}
         shell: pwsh
         run: |
           # what the package is made of (CycloneDX) and the SHA-256 of every published file
@@ -151,10 +149,12 @@ jobs:
           & "$tool/cyclonedx-py.exe" environment --of JSON -o (Join-Path $out 'sbom-python.cdx.json') $python
           if ($LASTEXITCODE -ne 0) { throw 'SBOM der Python-Pakete fehlgeschlagen' }
           Push-Location frontend
-          npm sbom --sbom-format cyclonedx --omit dev | Out-File -Encoding utf8NoBOM (Join-Path $out 'sbom-frontend.cdx.json')
+          node --test scripts/frontendSbom.checks.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend-SBOM-Pruefungen fehlgeschlagen' }
+          node scripts/frontendSbom.mjs (Join-Path $out 'sbom-frontend.cdx.json')
           if ($LASTEXITCODE -ne 0) { throw 'SBOM der Oberflaeche fehlgeschlagen' }
           Pop-Location
-          $files = @('${{ steps.package.outputs.zip }}') + (Get-ChildItem $out -Filter '*.cdx.json').FullName
+          $files = @('${{ steps.package.outputs.zip }}') + (Get-ChildItem $out -Filter '*.json').FullName
           $sums = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower(), (Split-Path $file -Leaf) }
           $sums | Out-File -Encoding ascii (Join-Path $out 'SHA256SUMS.txt')
           Get-Content (Join-Path $out 'SHA256SUMS.txt')
