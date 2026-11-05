@@ -445,8 +445,6 @@ class NativePrintTests(unittest.TestCase):
         self.content = data.getvalue()
 
     def tearDown(self):
-        profile_destroyed = []
-        self.window.profile.destroyed.connect(lambda *_: profile_destroyed.append(True))
         self.parent.deleteLater()
         self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
         self.app.processEvents()
