@@ -114,6 +114,39 @@ def windows_tcl_tk_versions():
     return versions
 
 
+def python_license_sources(dist, output):
+    """Some official Qt wheels omit texts; use their exact, verified full source."""
+    files = [dist.locate_file(file) for file in dist.files or [] if license_file(Path(str(file)))]
+    if files or canonicalize_name(dist.metadata["Name"]) not in {
+        "pyside6", "shiboken6", "pyside6-essentials", "pyside6-addons"
+    }:
+        return files, None
+
+    from tools.qt_sources import manifest
+
+    sources = manifest()
+    if dist.version != sources["version"]:
+        raise RuntimeError(f"Missing exact Qt Python license source: {dist.metadata['Name']}@{dist.version}")
+    upstream = next(row for row in sources["archives"] if row["module"] == "pyside-setup")
+    folder = Path(output) / ("qt-" + dist.version)
+    index = json.loads((folder / "index.json").read_text(encoding="utf-8"))
+    if index.get("version") != dist.version or index.get("sources") != sources["archives"]:
+        raise RuntimeError("Mismatched Qt Python license source inventory")
+    for row in index["files"]:
+        if row["archive"] != upstream["filename"]:
+            continue
+        relative = Path(row["file"])
+        if relative.is_absolute() or ".." in relative.parts or relative.parts[0] != "pyside-setup":
+            raise RuntimeError("Invalid Qt Python license source path")
+        path = folder / relative
+        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
+            raise RuntimeError("Changed Qt Python license source text")
+        files.append(path)
+    if not files:
+        raise RuntimeError("Missing Qt Python original license texts")
+    return files, upstream
+
+
 def generate(output=None):
     wizard_vendor, wizard_source = verify_wizard_assets(ROOT)
     invoice_manifest = ROOT / "packaging/e-invoice-notices/manifest.json"
@@ -124,6 +157,10 @@ def generate(output=None):
     notice_revision = hashlib.sha256(notice_inputs).hexdigest()[:12]
     output = Path(output or ROOT / ("artifacts/notices-" + notice_revision))
     output.mkdir(parents=True, exist_ok=True)
+    desktop_rows = []
+    if not hosting:
+        from tools.qt_sources import notices as desktop_notices
+        desktop_rows = desktop_notices(output)
     rows, missing, excluded = [], [], []
 
     def record(ecosystem, name, version, expression, files, upstream=None):
@@ -180,7 +217,7 @@ def generate(output=None):
         if key in seen:
             return
         seen.add(key)
-        files = [dist.locate_file(file) for file in dist.files or [] if license_file(Path(str(file)))]
+        files, upstream = python_license_sources(dist, output)
         record(
             "python",
             dist.metadata["Name"],
@@ -189,6 +226,7 @@ def generate(output=None):
             or dist.metadata.get("License")
             or "; ".join(dist.metadata.get_all("Classifier", [])),
             files,
+            upstream=upstream,
         )
         for dependency in dist.requires or []:
             visit(Requirement(dependency))
@@ -273,10 +311,6 @@ def generate(output=None):
     from tools.e_invoice_notices import catalog
     from tools.e_invoice_notices import generate as invoice_notices
     invoice_rows = invoice_notices(output)
-    desktop_rows = []
-    if not hosting:
-        from tools.qt_sources import notices as desktop_notices
-        desktop_rows = desktop_notices(output)
     system_rows = []
     if hosting:
         from tools.hosting_notices import generate as system_notices
