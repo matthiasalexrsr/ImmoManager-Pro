@@ -152,7 +152,7 @@ jobs:
         run: |
           sudo apt-get update
           if [[ '${{ matrix.runner }}' == 'ubuntu-24.04-arm' ]]; then
-            system_libs=(libasound2t64 libglib2.0-0t64 libcups2t64)
+            system_libs=(libasound2t64 libglib2.0-0t64 libcups2t64 libminizip1t64)
           else
             system_libs=(libasound2 libglib2.0-0 libcups2)
           fi
