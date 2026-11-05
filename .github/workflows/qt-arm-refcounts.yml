@@ -1,0 +1,89 @@
+name: Qt ARM Python singleton ownership diagnosis
+
+on:
+  push:
+    branches: [transfer/demo-bw-2026-11-05]
+    paths: [.github/workflows/qt-arm-refcounts.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  native-reference-counts:
+    if: github.actor == 'matthiasalexrsr' && github.repository == 'matthiasalexrsr/ImmoManager-Pro'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install exact official Qt Python wheels
+        run: python -m pip install --only-binary=':all:' PySide6==6.11.3
+      - name: Measure bounded native void-return ownership
+        run: |
+          python - qt-none-refcount.json <<'PY'
+          """Bounded native QtCore ownership probe; no GUI, application files or providers."""
+          import json
+          import platform
+          import sys
+          from importlib import metadata
+          from pathlib import Path
+
+          from PySide6.QtCore import QCoreApplication, QObject
+
+          ITERATIONS = 100
+          app = QCoreApplication([])
+          obj = QObject()
+
+
+          def python_void_control():
+              return None
+
+
+          def qt_void_call():
+              obj.setObjectName('local-reference-count-probe')
+
+
+          def event_poll():
+              QCoreApplication.processEvents()
+
+
+          def measure(label, call):
+              # Resolve imports, bound methods and argument strings before measuring.
+              call()
+              before = sys.getrefcount(None)
+              assert before > 1000, 'Insufficient safety margin for bounded reference-count diagnosis'
+              for _ in range(ITERATIONS):
+                  call()
+              after = sys.getrefcount(None)
+              return {'case': label, 'calls': ITERATIONS, 'before': before, 'after': after,
+                      'none_refcount_delta': after - before}
+
+
+          observations = [measure('python_owned_none_control', python_void_control),
+                          measure('qt_qobject_void_setObjectName', qt_void_call),
+                          measure('qt_core_event_loop_void_poll', event_poll)]
+          result = {'schema': 'immomanager-official-pyside-none-ownership-probe/1',
+                    'python': sys.version, 'platform': platform.platform(), 'machine': platform.machine(),
+                    'packages': {name: metadata.version(name) for name in ('PySide6', 'PySide6_Essentials', 'PySide6_Addons', 'shiboken6')},
+                    'observations': observations,
+                    'refcount_ownership_violation': any(row['none_refcount_delta'] < -10 for row in observations[1:]),
+                    'native_calls_bounded': True, 'uses_gui': False}
+          app.quit()
+          obj.deleteLater()
+          QCoreApplication.sendPostedEvents()
+          text = json.dumps(result, indent=2)
+          Path(sys.argv[1] if len(sys.argv) > 1 else 'qt-none-refcount.json').write_text(text + '\n', encoding='utf-8')
+          print(text, flush=True)
+          PY
+      - name: Preserve native ownership observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-none-refcount-python-${{ matrix.python }}-linux-arm64
+          path: qt-none-refcount.json
+          if-no-files-found: error
