@@ -1,4 +1,4 @@
-"""Observation only: run the unchanged R4 PDF/profile tests in three fresh Qt processes."""
+"""Observation only: original R4 auth restart/download/PDF/profile sequence in three fresh Qt processes."""
 from __future__ import annotations
 
 import argparse
@@ -17,9 +17,14 @@ from pathlib import Path
 
 COMMIT = '73f4498827978aeb3a380aafa6dbb4ad7ab46097'
 TEST_SHA256 = '73f97903e0a665663af26cf73c414675415fd6432cc6a76286bc6966da45a5cf'
-NAMES = ('test_builtin_pdf_viewer_displays_local_iframe_and_blob_object',
+PDF_NAME = 'test_builtin_pdf_viewer_displays_local_iframe_and_blob_object'
+NAMES = ('test_authentication_storage_persists_after_ordered_window_restart',
+         'test_blob_download_requires_save_choice_and_finishes', PDF_NAME,
          'test_profile_settings_native_font_and_remote_request_blocking')
 CURRENT = None
+PROFILES = {}
+OBSERVATIONS = []
+PROFILE_SEQUENCE = 0
 sys.dont_write_bytecode = True
 
 
@@ -34,6 +39,7 @@ class Observation:
         self.started = time.monotonic()
         self.events, self.samples, self.original_failures = [], [], []
         self.lock = threading.Lock()
+        OBSERVATIONS.append(self)
 
     def event(self, kind, **data):
         with self.lock:
@@ -48,9 +54,35 @@ def install_observers(subject):
     original_factory = subject.standalone.create_window
 
     def create_window(*args, **kwargs):
-        window = original_factory(*args, **kwargs)
+        global PROFILE_SEQUENCE
         context = CURRENT
+        context.event('window-factory-before', active_profiles=[dict(p) for p in PROFILES.values() if p['active']])
+        window = original_factory(*args, **kwargs)
+        PROFILE_SEQUENCE += 1
+        sequence = PROFILE_SEQUENCE
+        profile = window.profile
+        metadata = {'sequence': sequence, 'name': profile.storageName(), 'storage': profile.persistentStoragePath(),
+                    'cache': profile.cachePath(), 'test': context.name, 'active': True}
+        PROFILES[sequence] = metadata
+        context.event('window-factory-after', profile=dict(metadata))
+        def destroyed(*_):
+            metadata['active'] = False
+            context.event('profile-QObject-destroyed', profile=dict(metadata))
+        profile.destroyed.connect(destroyed)
+        window.destroyed.connect(lambda *_: context.event('window-QObject-destroyed', sequence=sequence))
         page = window.web_view.page()
+        page.destroyed.connect(lambda *_: context.event('page-QObject-destroyed', sequence=sequence))
+        window.web_view.destroyed.connect(lambda *_: context.event('view-QObject-destroyed', sequence=sequence))
+        page.renderProcessPidChanged.connect(lambda pid: context.event('renderer-pid-changed', sequence=sequence, pid=pid))
+        context.event('renderer-pid-initial', sequence=sequence, pid=page.renderProcessPid())
+        original_close = window._finish_close
+        def close_observed(*close_args, **close_kwargs):
+            context.event('finish-close-before', sequence=sequence, profile_active=metadata['active'])
+            try:
+                return original_close(*close_args, **close_kwargs)
+            finally:
+                context.event('finish-close-after', sequence=sequence, profile_active=metadata['active'])
+        window._finish_close = close_observed
         page.loadingChanged.connect(lambda info: context.event('loadingChanged', url=info.url().toString(),
             status=str(info.status()), error_code=info.errorCode(), error_domain=str(info.errorDomain()), error=info.errorString()))
         window.web_view.loadFinished.connect(lambda ok: context.event('loadFinished', ok=ok,
@@ -79,6 +111,22 @@ def install_observers(subject):
         return window
 
     subject.standalone.create_window = create_window
+    original_flush = subject.core.QCoreApplication.sendPostedEvents
+    def flush_observed(*args, **kwargs):
+        context = CURRENT
+        if context:
+            context.event('Qt-sendPostedEvents-before', event_type=str(args[1]) if len(args) > 1 else 'all',
+                          active_profiles=[dict(p) for p in PROFILES.values() if p['active']])
+        try:
+            return original_flush(*args, **kwargs)
+        finally:
+            if context:
+                context.event('Qt-sendPostedEvents-after', active_profiles=[dict(p) for p in PROFILES.values() if p['active']])
+    try:
+        subject.core.QCoreApplication.sendPostedEvents = staticmethod(flush_observed)
+    except (AttributeError, TypeError):
+        # Keep all original Qt behavior even if this binding disallows the observer.
+        subject._diagnostic_flush_hook_error = traceback.format_exc()
     handler = subject.server.RequestHandlerClass
     original_parse, original_response, original_header = handler.parse_request, handler.send_response, handler.send_header
 
@@ -115,7 +163,10 @@ def sample(test, label, screenshot=True):
     context = test.observation
     item = {'label': label, 'elapsed': round(time.monotonic() - context.started, 6),
             'qt_url': test.window.web_view.url().toString(), 'foreign_requests': list(test.foreign_requests),
-            'dialog_external': list(test.dialogs.external), 'dialog_errors': list(test.dialogs.errors)}
+            'dialog_external': list(test.dialogs.external), 'dialog_errors': list(test.dialogs.errors),
+            'renderer_pid': test.window.web_view.page().renderProcessPid(),
+            'profile_name': test.window.profile.storageName(), 'profile_storage': test.window.profile.persistentStoragePath(),
+            'profiles': [dict(p) for p in PROFILES.values()]}
     response = []
     test.window.web_view.page().runJavaScript(SNAPSHOT, lambda value: response.append(value))
     end = time.monotonic() + 3
@@ -188,7 +239,7 @@ def run_child(options):
         def tearDown(self):
             try:
                 sample(self, 'after-original-test')
-                if self.observation.original_failures and self._testMethodName == NAMES[0]:
+                if self.observation.original_failures and self._testMethodName == PDF_NAME:
                     # The original 30-second failure has ALREADY been recorded.
                     # These observations never change its result or retry navigation.
                     until = time.monotonic() + (0 if options.local_single else 90)
@@ -224,13 +275,17 @@ def run_child(options):
 
     suite = unittest.TestSuite(Observed(name) for name in NAMES)
     result = unittest.TextTestRunner(verbosity=2, resultclass=Result).run(suite)
+    for context in OBSERVATIONS:
+        context.save()
     receipt = {'subject_commit': COMMIT, 'original_test_sha256': TEST_SHA256, 'tests_run': result.testsRun,
         'failures': len(result.failures), 'errors': len(result.errors), 'skips': len(result.skipped),
-        'original_tests_successful': result.wasSuccessful(), 'python': sys.version, 'platform': sys.platform,
+        'original_tests_successful': result.wasSuccessful(), 'original_case_order': list(NAMES),
+        'flush_hook_error': getattr(Observed, '_diagnostic_flush_hook_error', None),
+        'final_profiles': [dict(profile) for profile in PROFILES.values()], 'python': sys.version, 'platform': sys.platform,
         'machine': platform.machine(), 'loaded_crypto_modules': sorted(name for name in sys.modules if name.startswith(('cryptography', '_ssl'))),
         'postfailure_observation_changes_result': False, 'additional_observation_seconds': 0 if options.local_single else 90}
     write_json(output / 'process-result.json', receipt)
-    return 0 if result.wasSuccessful() and result.testsRun == 2 and not result.skipped else 1
+    return 0 if result.wasSuccessful() and result.testsRun == len(NAMES) and not result.skipped else 1
 
 
 def main():
@@ -258,7 +313,8 @@ def main():
                 code, timed_out = None, True
         rounds.append({'process': number, 'actual_exit_code': code, 'timed_out': timed_out, 'command': command})
         write_json(output / 'diagnosis-summary.json', {'subject_commit': COMMIT, 'fixed_process_count': 1 if options.local_single else 3,
-            'rounds': rounds, 'any_original_failure_is_a_diagnostic_failure': True, 'acceptance_gate': False})
+            'rounds': rounds, 'original_case_order': list(NAMES), 'original_tests_per_process': len(NAMES),
+            'any_original_failure_is_a_diagnostic_failure': True, 'acceptance_gate': False})
     return 0 if all(item['actual_exit_code'] == 0 for item in rounds) else 1
 
 
