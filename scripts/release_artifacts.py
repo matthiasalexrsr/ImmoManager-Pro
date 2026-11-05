@@ -78,7 +78,20 @@ def stamp_windows(folder: Path, *, version: str, commit: str, signature: str) ->
     return path
 
 
+def report_base(report: Path) -> Path:
+    # Multiple upload-artifact paths use their repository-root common ancestor.
+    # Support that exact documented artifact layout as well as flat fixtures;
+    # never pick an arbitrary recursively found report or follow an outside link.
+    nested = report / "artifacts/desktop-reports"
+    if nested.exists():
+        if not nested.is_dir() or nested.is_symlink() or not nested.resolve().is_relative_to(report.resolve()):
+            raise ValueError("The canonical native reports directory is invalid")
+        return nested
+    return report
+
+
 def acceptance(report: Path, target: str, commit: str) -> dict:
+    report = report_base(report)
     platform, arch, _ = TARGETS[target]
     environment = read_json(report / "native-environment.json")
     if (environment.get("source_commit"), environment.get("platform"), environment.get("architecture")) != (commit, platform, arch):
@@ -152,7 +165,8 @@ def stage_native(packages: Path, reports: Path, sources: Path, output: Path, *, 
             for entry in receipt["files"]:
                 if row(folder / entry["file"]) != entry:
                     raise ValueError("Changed Windows native package")
-            installer_proofs = [read_json(path) for path in (reports / f"Desktop-{target}-reports/installer").glob("*/verification.json")]
+            installer_folder = report_base(reports / f"Desktop-{target}-reports") / "installer"
+            installer_proofs = [read_json(path) for path in installer_folder.glob("*/verification.json")]
             if not any(item.get("status") == "passed" and item.get("installer_sha256") == digest(package) for item in installer_proofs):
                 raise ValueError("The exact native Windows setup has no passed installer lifecycle")
             proof["installer_lifecycle"] = next(item for item in installer_proofs if item.get("status") == "passed" and item.get("installer_sha256") == digest(package))
