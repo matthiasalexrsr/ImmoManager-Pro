@@ -11,6 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .document_text_reader import Budget, ExtractionPart
+from .runtime_process import frozen_cli_executable
 
 TEXT_TIMEOUT_SECONDS = 30
 TEXT_WORK_BYTES = 128 * 1024 * 1024
@@ -19,8 +20,8 @@ MAX_JSON = 4 * 1024 * 1024
 
 def worker_command(folder: Path) -> list[str]:
     if getattr(sys, "frozen", False):
-        return [sys.executable, "document-text-worker", str(folder)]
-    return [sys.executable, "-m", "backend.services.document_text_worker", str(folder)]
+        return [frozen_cli_executable(), "document-text-worker", str(folder)]
+    return [frozen_cli_executable(), "-m", "backend.services.document_text_worker", str(folder)]
 
 
 def read_isolated(content: bytes, name: str, cursor: dict, budget: Budget) -> ExtractionPart:

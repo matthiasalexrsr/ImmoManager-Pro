@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getRegistrationStatus, login, register } from '../api';
 import { useTranslation } from '../i18n';
 import BrandMark from '../components/BrandMark';
+import { DemoLoginCard } from '../components/DemoMode';
+import useRuntimeInfo from '../hooks/useRuntimeInfo';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -16,6 +18,8 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [registration, setRegistration] = useState({ open: false, initial_setup: false });
+  const runtime = useRuntimeInfo();
+  const registering = isRegister && !runtime.demo;
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export default function Login() {
     setLoading(true);
     setError(null);
     try {
-      if (isRegister) {
+      if (registering) {
         await register(username, email, fullName, password);
       }
       if (totpRequired) await login(username, password, totpCode);
@@ -55,17 +59,19 @@ export default function Login() {
           <div className="login-logo"><BrandMark /></div>
           <h1>ImmoManager <span className="pro">Pro</span></h1>
         </div>
+        {runtime.demo && <DemoLoginCard credentials={runtime.credentials} disabled={loading || totpRequired}
+          onUse={(credentials) => { setUsername(credentials.username); setPassword(credentials.password); setIsRegister(false); setError(null); }} />}
         <form onSubmit={handleSubmit}>
           {error && <div className="alert-error" role="alert">{error}</div>}
-          {isRegister && registration.initial_setup && (
+          {registering && registration.initial_setup && (
             <div className="alert-info">{t('auth.register.initialSetup')}</div>
           )}
           <div className="form-group">
-            <label htmlFor="login-username">{isRegister ? t('auth.login.username') : t('auth.login.userOrEmail')}</label>
+            <label htmlFor="login-username">{registering ? t('auth.login.username') : t('auth.login.userOrEmail')}</label>
             <input id="login-username" type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus disabled={totpRequired || loading}
               autoComplete="username" />
           </div>
-          {isRegister && (
+          {registering && (
             <>
               <div className="form-group">
                 <label htmlFor="login-email">{t('auth.register.email')}</label>
@@ -80,7 +86,7 @@ export default function Login() {
           <div className="form-group">
             <label htmlFor="login-password">{t('auth.login.password')}</label>
             {/* password managers fill a sign-in and offer a generated password when registering */}
-            <input id="login-password" type="password" autoComplete={isRegister ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} disabled={totpRequired || loading} placeholder={t('auth.password.placeholder') || 'Mindestens 8 Zeichen'} />
+            <input id="login-password" type="password" autoComplete={registering ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} disabled={totpRequired || loading} placeholder={t('auth.password.placeholder') || 'Mindestens 8 Zeichen'} />
             <small className="form-hint">{t('auth.password.requirements') || 'Mindestens 8 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Zahl'}</small>
           </div>
           {totpRequired && <div className="form-group">
@@ -92,11 +98,11 @@ export default function Login() {
               onClick={() => { setTotpRequired(false); setTotpCode(''); setPassword(''); setError(null); }}>Zurück zur Passworteingabe</button>
           </div>}
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? `${t('ui.table.loading')}` : (isRegister ? t('auth.register.submit') : t('auth.login.submit'))}
+            {loading ? `${t('ui.table.loading')}` : (registering ? t('auth.register.submit') : t('auth.login.submit'))}
           </button>
         </form>
         <p className="login-toggle"><a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzen und Quellarchive</a></p>
-        {registration.open && !registration.initial_setup && (
+        {registration.open && !registration.initial_setup && !runtime.demo && (
           <p className="login-toggle">
             <button disabled={loading} onClick={() => { setIsRegister(!isRegister); setError(null); setTotpRequired(false); setTotpCode(''); }} className="link-btn">
               {isRegister ? t('auth.login.submit') : t('auth.register.title')}

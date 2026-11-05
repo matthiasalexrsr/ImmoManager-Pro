@@ -1,9 +1,13 @@
 param(
     [int]$Port = 8000,
     [string]$DataDir = "",
+    [switch]$Demo,
     [switch]$Seed,
     [switch]$NoBrowser,
-    [switch]$SkipFrontendBuild
+    [switch]$SkipFrontendBuild,
+    [ValidateSet("standalone", "browser")]
+    [string]$Mode = "standalone",
+    [switch]$Console
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,19 +49,48 @@ function Test-PortOpen([int]$PortToCheck) {
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($DataDir)) {
-    $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
-    $DataDir = Join-Path $localAppData "ImmoManagerPro"
+function Test-DesktopDependenciesRequired([switch]$Console, [string]$Mode = "standalone") {
+    return (-not $Console) -and ($Mode -eq "standalone")
 }
 
-$DataDir = [IO.Path]::GetFullPath($DataDir)
-$UploadsDir = Join-Path $DataDir "uploads"
-$BackupsDir = Join-Path $DataDir "backups"
-$LogsDir = Join-Path $DataDir "logs"
-New-Item -ItemType Directory -Force -Path $DataDir, $UploadsDir, $BackupsDir, $LogsDir | Out-Null
+function Test-DependencyInstallNeeded([string]$Stamp, [string[]]$Files) {
+    if (-not (Test-Path -LiteralPath $Stamp -PathType Leaf)) { return $true }
+    $stampTime = (Get-Item -LiteralPath $Stamp).LastWriteTimeUtc
+    foreach ($file in $Files) {
+        if ((Get-Item -LiteralPath $file).LastWriteTimeUtc -gt $stampTime) { return $true }
+    }
+    return $false
+}
 
-if (Test-PortOpen $Port) {
-    Write-Host "Port $Port ist bereits belegt. Oeffnen Sie http://127.0.0.1:$Port oder starten Sie mit: start.bat -Port 9000" -ForegroundColor Yellow
+function Get-BackendArguments([int]$Port, [string]$DataDir, [switch]$Console, [switch]$Demo,
+                              [string]$Mode = "standalone", [switch]$Seed, [switch]$NoBrowser) {
+    $entryModule = if ($Console) { "backend" } else { "backend.desktop_entry" }
+    $arguments = @("-m", $entryModule, "--host", "127.0.0.1", "--port", "$Port", "--data-dir", "$DataDir")
+    if (-not $Console) { $arguments += @("--mode", $Mode.ToLowerInvariant()) }
+    if ($Demo) { $arguments += "--demo" }
+    if ($Seed) { $arguments += "--seed" }
+    if ($NoBrowser) { $arguments += "--no-browser" }
+    return $arguments
+}
+
+$Demo = $Demo -or (([string]$env:IMMO_DEMO).Trim().ToLowerInvariant() -in @("1", "true", "yes", "ja"))
+if ($Demo -and $Seed) { throw "-Demo und -Seed können nicht kombiniert werden." }
+if ($Demo -and -not $PSBoundParameters.ContainsKey("Port")) { $Port = 8766 }
+
+if (-not $Demo) {
+    if ([string]::IsNullOrWhiteSpace($DataDir)) {
+        $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
+        $DataDir = Join-Path $localAppData "ImmoManagerPro"
+    }
+    $DataDir = [IO.Path]::GetFullPath($DataDir)
+    $UploadsDir = Join-Path $DataDir "uploads"
+    $BackupsDir = Join-Path $DataDir "backups"
+    $LogsDir = Join-Path $DataDir "logs"
+    New-Item -ItemType Directory -Force -Path $DataDir, $UploadsDir, $BackupsDir, $LogsDir | Out-Null
+}
+
+if ($Console -and (Test-PortOpen $Port)) {
+    Write-Host "Port $Port ist bereits belegt. Starten Sie mit einem freien Port, zum Beispiel: start.bat -Console -Port 9000" -ForegroundColor Yellow
     exit 1
 }
 
@@ -81,7 +114,7 @@ $stamp = Join-Path $Root ".venv\.immomanager-install-ok"
 $needsInstall = -not (Test-Path $stamp)
 if (-not $needsInstall) {
     $stampTime = (Get-Item $stamp).LastWriteTimeUtc
-    foreach ($file in @("pyproject.toml", "requirements.txt", "constraints.txt")) {
+    foreach ($file in @("pyproject.toml", "requirements.txt", "requirements-runtime.txt", "requirements-pip.txt", "constraints.txt")) {
         if ((Get-Item (Join-Path $Root $file)).LastWriteTimeUtc -gt $stampTime) {
             $needsInstall = $true
         }
@@ -89,7 +122,8 @@ if (-not $needsInstall) {
 }
 
 if ($needsInstall) {
-    & $VenvPython -m pip install --upgrade pip setuptools wheel
+    & $VenvPython -m pip install -r requirements-pip.txt
+    if ($LASTEXITCODE -ne 0) { throw "Vorbereitung der Python-Installation fehlgeschlagen." }
     # exact versions of the whole dependency tree, then the project itself without resolving again
     & $VenvPython -m pip install -r requirements.txt -c constraints.txt
     if ($LASTEXITCODE -eq 0) {
@@ -99,6 +133,35 @@ if ($needsInstall) {
         throw "Backend-Installation fehlgeschlagen."
     }
     Set-Content -Path $stamp -Value (Get-Date).ToString("o") -Encoding UTF8
+}
+
+if ($Demo) {
+    Write-Step "Demoverwaltung vorbereiten"
+    # Validate the separate location before creating any data/upload folders.
+    $demoDirectory = & $VenvPython -c "import sys; from backend.demo import configure_environment; print(configure_environment(sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None))" $DataDir
+    if ($LASTEXITCODE -ne 0) { throw "Der Datenordner der Demoverwaltung konnte nicht vorbereitet werden." }
+    $DataDir = [IO.Path]::GetFullPath([string]($demoDirectory | Select-Object -Last 1))
+    $UploadsDir = Join-Path $DataDir "uploads"
+    $BackupsDir = Join-Path $DataDir "backups"
+    $LogsDir = Join-Path $DataDir "logs"
+    New-Item -ItemType Directory -Force -Path $DataDir, $UploadsDir, $BackupsDir, $LogsDir | Out-Null
+}
+
+if (Test-DesktopDependenciesRequired -Console:$Console -Mode $Mode) {
+    Write-Step "Desktop-Abhaengigkeiten pruefen"
+    $desktopStamp = Join-Path $Root ".venv\.immomanager-desktop-install-ok"
+    $desktopInputs = @("requirements-desktop.txt", "requirements-pip.txt", "pyproject.toml", "constraints.txt", "scripts\install_desktop_dependencies.py") |
+        ForEach-Object { Join-Path $Root $_ }
+    $needsDesktopInstall = Test-DependencyInstallNeeded -Stamp $desktopStamp -Files $desktopInputs
+    if (-not $needsDesktopInstall) {
+        & $VenvPython scripts/install_desktop_dependencies.py --check
+        $needsDesktopInstall = $LASTEXITCODE -ne 0
+    }
+    if ($needsDesktopInstall) {
+        & $VenvPython scripts/install_desktop_dependencies.py
+        if ($LASTEXITCODE -ne 0) { throw "Desktop-Installation fehlgeschlagen." }
+        Set-Content -LiteralPath $desktopStamp -Value (Get-Date).ToString("o") -Encoding UTF8
+    }
 }
 
 if (-not $SkipFrontendBuild) {
@@ -140,13 +203,28 @@ Write-Host "URL:     http://127.0.0.1:$Port"
 # program, a verified full backup (backups\full) is made and the migrations run; otherwise
 # nothing changes. If that step fails, the program does not start.
 
-$backendArgs = @("-m", "backend", "--host", "127.0.0.1", "--port", "$Port", "--data-dir", "$DataDir")
-if ($Seed) {
-    $backendArgs += "--seed"
-}
-if ($NoBrowser) {
-    $backendArgs += "--no-browser"
+$backendArgs = @(Get-BackendArguments -Port $Port -DataDir $DataDir -Console:$Console -Demo:$Demo -Mode $Mode -Seed:$Seed -NoBrowser:$NoBrowser)
+
+if ($Console) {
+    & $VenvPython @backendArgs
+    exit $LASTEXITCODE
 }
 
-& $VenvPython @backendArgs
-exit $LASTEXITCODE
+$VenvPythonw = Join-Path $Root ".venv\Scripts\pythonw.exe"
+if (-not (Test-Path -LiteralPath $VenvPythonw -PathType Leaf)) {
+    throw "Der fensterlose Python-Starter pythonw.exe fehlt. Reparieren Sie die Python-Installation oder verwenden Sie fuer bewussten Administrationsbetrieb start.bat -Console."
+}
+
+# Start-Process in Windows PowerShell joins ArgumentList before passing it to
+# CreateProcess. Quote each Windows argument, including quotes/backslashes, so
+# paths containing spaces/Unicode (or a trailing backslash) arrive unchanged.
+function Quote-ProcessArgument([string]$Value) {
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+$desktopCommandLine = ($backendArgs | ForEach-Object { Quote-ProcessArgument $_ }) -join ' '
+# pythonw is a GUI-subsystem host: the manager remains visible and this setup
+# terminal returns immediately. Startup errors are shown by the manager.
+Start-Process -FilePath $VenvPythonw -ArgumentList $desktopCommandLine -WorkingDirectory $Root -WindowStyle Normal
+exit 0

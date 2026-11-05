@@ -1,0 +1,50 @@
+ImmoManager Pro für Windows
+
+Öffnen
+  Im Startmenü nach „ImmoManager Pro“ suchen. Wenn bei der Installation gewählt,
+  können Sie auch die Verknüpfung auf dem Desktop verwenden.
+  Bei der Installation wählen Sie zwischen der eigenständigen Desktop-Anwendung
+  mit eigenem Programmfenster und der Verwendung in Ihrem Standard-Webbrowser.
+  Beide Möglichkeiten sind enthalten. Unter „ImmoManager Pro → Startmöglichkeiten“
+  im Startmenü können Sie jederzeit den anderen Modus öffnen.
+  Ein Terminal ist in beiden Fällen nicht nötig.
+
+Demo Baden-Württemberg
+  Unter „ImmoManager Pro → Demo“ im Startmenü die Desktop- oder Browservariante
+  öffnen. Die vorbereitete Verwaltung hat eigene Objekte, Mieter und Dokumente.
+  Der Datenordner ist %LOCALAPPDATA%\ImmoManagerProDemoBW; der Standardport 8766.
+  Benutzername: demo.bw
+  Passwort: Immo-Demo-BW-2026!
+  Der Demozugang wird auch auf der Anmeldeseite angezeigt. „Demozugang übernehmen“
+  füllt die Eingabefelder; danach wie gewohnt anmelden. Die normale Hauptverknüpfung
+  öffnet weiterhin Ihre eigene Verwaltung. Vor einem Moduswechsel die Anwendung
+  geordnet beenden.
+
+Ihre Daten
+  %LOCALAPPDATA%\ImmoManagerPro
+
+  Dort liegen Immobilien, Datenbank, Dokumente, Einstellungen, Sicherungen und
+  Schlüssel. Programmdateien liegen davon getrennt unter „Programs“ oder in dem
+  von Ihnen gewählten Installationsordner. Die Datei installation.json beschreibt
+  die installierte Version und ihre Programmdateien.
+
+Aktualisieren
+  ImmoManager Pro geordnet beenden. Danach den neuen Installer öffnen.
+  Die neue Version erhält einen eigenen Programmordner; alte Programmdateien
+  werden nicht in die neue Version gemischt. Verknüpfungen zeigen anschließend
+  auf die neue Version. Der gewählte Startmodus bleibt bei Updates erhalten.
+  Beim Start erstellt die Anwendung vor einem erforderlichen
+  Datenbank-Upgrade ein geprüftes Vollbackup.
+
+Entfernen
+  Windows-Einstellungen → Apps → Installierte Apps → ImmoManager Pro → Deinstallieren.
+  Die Anwendung vorher beenden. Die Datenordner der eigenen Verwaltung und der Demo sowie
+  die dort gespeicherten Sicherungen bleiben erhalten. Dateien, die nicht von der
+  Installation angelegt wurden, werden nicht pauschal aus dem Programmordner gelöscht.
+
+Fehler beim Start
+  Die Anwendung zeigt eine verständliche Meldung und den Zugriff auf das
+  Startprotokoll. Weitere Protokolle liegen im Unterordner „logs“ des Datenordners.
+
+Weitere Informationen
+  https://github.com/matthiasalexrsr/ImmoManager-Pro

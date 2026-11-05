@@ -1,0 +1,6 @@
+# Self-contained desktop renderer. No installed browser or WebView2 is used.
+# Maintenance release retains macOS 13 support (6.12 requires macOS 14).
+PySide6==6.11.3
+PySide6_Addons==6.11.3
+PySide6_Essentials==6.11.3
+shiboken6==6.11.3

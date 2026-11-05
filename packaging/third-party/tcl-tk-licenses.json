@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Tcl",
+    "version": "8.6.15",
+    "filename": "tcl-8.6.15-license.terms",
+    "url": "https://raw.githubusercontent.com/tcltk/tcl/1a98213e55128c8a2136379fedfaef0c8e15320b/license.terms",
+    "sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+    "license": "Unmodified upstream license.terms"
+  },
+  {
+    "name": "Tk",
+    "version": "8.6.15",
+    "filename": "tk-8.6.15-license.terms",
+    "url": "https://raw.githubusercontent.com/tcltk/tk/3c4a7176319e29a790ff82c80e3c3ff74f523ffb/license.terms",
+    "sha256": "2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198",
+    "license": "Unmodified upstream license.terms"
+  }
+]

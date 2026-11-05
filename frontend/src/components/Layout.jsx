@@ -22,6 +22,8 @@ import { useNavFavorites } from '../utils/navFavorites';
 import { useNavGroups } from '../utils/navGroups';
 import { dropNewEntry, holdNewEntry, requestNewEntry } from '../utils/newEntry';
 import useNavigationState from '../hooks/useNavigationState';
+import useRuntimeInfo from '../hooks/useRuntimeInfo';
+import { DemoIndicator } from './DemoMode';
 
 // An entry with an entry of its own beneath it (/statements and /statements/assistant) is active only on its own page.
 const NAV_PATHS = NAV_SECTIONS.flatMap(section => (section.items || []).map(item => item.to));
@@ -45,11 +47,7 @@ function findActiveNavItem(pathname) {
 const findSubPage = pathname => SUB_PAGES.find(page => pathname === page.to || pathname.startsWith(`${page.to}/`));
 
 /** "Testversion" in the top bar when the server runs the test package (fictitious data). */
-function TestVersionBadge() {
-  const [testversion, setTestversion] = useState(false);
-  useEffect(() => {
-    fetch('/health').then(r => (r.ok ? r.json() : null)).then(h => setTestversion(!!h?.testversion)).catch(() => {});
-  }, []);
+function TestVersionBadge({ testversion }) {
   if (!testversion) return null;
   return (
     <span className="testversion-badge" title="Testversion: alle Daten sind frei erfunden">Testversion</span>
@@ -94,6 +92,7 @@ const SHELL_TEXT = {
 
 function LayoutFrame() {
   useNavigationState();
+  const runtime = useRuntimeInfo();
   const navigate = useNavigate();
   const location = useLocation();
   const { t, locale, setLocale } = useTranslation();
@@ -298,10 +297,11 @@ function LayoutFrame() {
             </div>
           </div>
           <SearchBar />
-          <div className="top-bar-utilities"><QuickAccess /><TestVersionBadge />
+          <div className="top-bar-utilities"><QuickAccess /><TestVersionBadge testversion={runtime.testversion} />
             <button type="button" className="top-bar-icon-btn top-bar-shortcuts" onClick={() => setShowShortcuts(true)} title={`${words.shortcuts} (?)`} aria-label={words.shortcuts}><Keyboard size={18} aria-hidden="true" /></button>
             <TutorialButton /><NotificationBell /></div>
         </div>
+        {runtime.demo && <DemoIndicator />}
         <div className="main-content-body">
           <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />

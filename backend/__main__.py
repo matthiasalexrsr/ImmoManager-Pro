@@ -21,6 +21,7 @@ import os
 import secrets
 import socket
 import sys
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Frozen-bundle detection (used throughout)
@@ -48,10 +49,16 @@ def _exe_dir():
 
 
 def _default_windows_data_dir():
-    base = os.environ.get("LOCALAPPDATA")
-    if base:
-        return os.path.join(base, "ImmoManagerPro")
-    return os.path.join(os.path.expanduser("~"), "AppData", "Local", "ImmoManagerPro")
+    """Compatibility helper for existing Windows callers."""
+    from backend.platform_paths import default_user_data_dir
+
+    return str(default_user_data_dir(platform="win32"))
+
+
+def _default_data_dir(testversion=False):
+    from backend.platform_paths import default_user_data_dir
+
+    return str(default_user_data_dir(testversion=testversion))
 
 
 def _sqlite_url(db_path):
@@ -76,10 +83,10 @@ def _load_env_file(path):
         print(f"WARNUNG: Runtime-Konfiguration konnte nicht gelesen werden: {path}")
 
 
-def _persist_env_default(config_file, key, value):
+def _persist_env_default(config_file, key, value, *, force=False):
     """Set an env default and persist it for future frozen/source launches."""
     current = os.environ.get(key)
-    if current and current != "dev-secret-key-change-in-production":
+    if not force and current and current != "dev-secret-key-change-in-production":
         return current
 
     os.environ[key] = value
@@ -90,7 +97,10 @@ def _persist_env_default(config_file, key, value):
                 existing = fh.read()
         lines = [line for line in existing.splitlines() if not line.startswith(f"{key}=")]
         lines.append(f"{key}={value}")
-        with open(config_file, "w", encoding="utf-8") as fh:
+        def private_config_opener(path, flags):
+            return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+
+        with open(config_file, "w", encoding="utf-8", opener=private_config_opener) as fh:
             fh.write("\n".join(lines) + "\n")
     except OSError:
         print(f"WARNUNG: Runtime-Konfiguration konnte nicht geschrieben werden: {config_file}")
@@ -101,35 +111,35 @@ def _is_testversion():
     return os.environ.get("IMMO_TESTVERSION", "").strip().lower() in ("1", "true", "yes", "ja")
 
 
-def _configure_runtime_environment(data_dir_arg=None, testversion=False):
+def _configure_runtime_environment(data_dir_arg=None, testversion=False, demo=False):
     """Prepare safe local runtime defaults before importing backend.app."""
+    from backend.demo import configure_environment, enabled
+    if demo or enabled():
+        if testversion:
+            raise RuntimeError("Demo und Testversion können nicht gemeinsam gestartet werden.")
+        return str(configure_environment(data_dir_arg))
     project_env = os.path.join(_exe_dir(), ".env")
     _load_env_file(project_env)
     if testversion:
         os.environ["IMMO_TESTVERSION"] = "true"
 
     data_dir = data_dir_arg or os.environ.get("DATA_DIR")
-    if not data_dir and (IS_FROZEN or os.name == "nt"):
-        data_dir = _default_windows_data_dir()
-        if _is_testversion():
-            data_dir += "-Testversion"      # never mixed with real data of an installed version
-    if not data_dir and _is_testversion():
-        data_dir = os.path.join(os.path.expanduser("~"), ".immomanager-testversion")
-
     if not data_dir:
-        return None
+        data_dir = _default_data_dir(testversion=_is_testversion())
 
     data_dir = os.path.abspath(os.path.expanduser(data_dir))
     uploads_dir = os.path.join(data_dir, "uploads")
     backups_dir = os.path.join(data_dir, "backups")
     logs_dir = os.path.join(data_dir, "logs")
     for path in (data_dir, uploads_dir, backups_dir, logs_dir):
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(path, mode=0o700, exist_ok=True)
 
     runtime_env = os.path.join(data_dir, ".env")
     _load_env_file(runtime_env)
 
-    _persist_env_default(runtime_env, "DATA_DIR", data_dir)
+    # The selected folder (CLI > environment > native default) must also be the
+    # folder backend.paths sees. A copied runtime .env must not redirect it.
+    _persist_env_default(runtime_env, "DATA_DIR", data_dir, force=True)
     _persist_env_default(runtime_env, "UPLOADS_DIR", uploads_dir)
     _persist_env_default(runtime_env, "BACKUP_DIR", backups_dir)
     _persist_env_default(runtime_env, "DATABASE_URL", _sqlite_url(os.path.join(data_dir, "immo_manager.db")))
@@ -159,20 +169,65 @@ def _port_available(host, port):
 
 
 def _setup_logging_to_file():
-    """Write a startup log next to the .exe so errors survive a closed console."""
+    """Keep startup diagnostics in writable user data, never the program folder."""
     if not IS_FROZEN:
         return None
-    log_path = os.path.join(_exe_dir(), "immo_startup.log")
+    if "--desktop-token" in sys.argv:
+        # The GUI owns an already rotating desktop.log for this child's stdout.
+        return None
+    explicit, _ = _pop_data_dir(sys.argv[1:])
+    from backend.demo import configure_environment, enabled
+    if "--demo" in sys.argv or enabled():
+        directory = str(configure_environment(explicit))
+        log_path = os.path.join(directory, "logs", f"immo_startup-{os.getpid()}.log")
+        return _StartupLog(log_path)
     try:
-        fh = open(log_path, "w", encoding="utf-8")
-        return fh
+        _load_env_file(os.path.join(_exe_dir(), ".env"))
+    except (OSError, UnicodeError):
+        # Let main() report malformed configuration through its normal error path.
+        return None
+    directory = explicit or os.environ.get("DATA_DIR") or _default_data_dir(
+        testversion=_is_testversion() or "--testversion" in sys.argv)
+    log_path = os.path.join(os.path.abspath(os.path.expanduser(directory)), "logs", f"immo_startup-{os.getpid()}.log")
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        return _StartupLog(log_path)
     except OSError:
         return None
 
 
+class _StartupLog:
+    """A bounded UTF-8 stream, with separate files for concurrent CLI processes."""
+
+    def __init__(self, path):
+        import logging
+        from logging.handlers import RotatingFileHandler
+
+        class QuietFileHandler(RotatingFileHandler):
+            def handleError(self, record):
+                # A full/read-only disk must not recursively log through the Tee.
+                pass
+
+        self.handler = QuietFileHandler(path, mode="a", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+        self.handler.terminator = ""
+        self.handler.setFormatter(logging.Formatter("%(message)s"))
+
+    def write(self, text):
+        import logging
+
+        self.handler.handle(logging.LogRecord("startup", logging.INFO, "", 0, text, (), None))
+        return len(text)
+
+    def flush(self):
+        self.handler.flush()
+
+    def close(self):
+        self.handler.close()
+
+
 def _pause_console():
     """Keep the console window open so the user can read output."""
-    if IS_FROZEN:
+    if IS_FROZEN and sys.stdin is not None and sys.stdin.isatty():
         print()
         try:
             input("Druecke Enter zum Beenden...")
@@ -189,7 +244,8 @@ class _TeeWriter:
 
     def write(self, text):
         try:
-            self.original.write(text)
+            if self.original is not None:
+                self.original.write(text)
         except UnicodeEncodeError as exc:
             # Legacy Windows consoles cannot represent every request/log label.
             # Escape only their copy; the UTF-8 startup log keeps the full text.
@@ -203,7 +259,8 @@ class _TeeWriter:
                 pass
 
     def flush(self):
-        self.original.flush()
+        if self.original is not None:
+            self.original.flush()
         if self.log_file:
             try:
                 self.log_file.flush()
@@ -279,20 +336,47 @@ def main():
         description="ImmoManager Pro – Immobilienverwaltung",
     )
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
-    parser.add_argument("--seed", action="store_true", help="Load demo data on startup")
-    parser.add_argument("--testversion", action="store_true",
+    parser.add_argument("--port", type=int, default=None, help="Port (default: 8000; Demo: 8766)")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--demo", action="store_true", help="Open the isolated Baden-Württemberg presentation workspace")
+    modes.add_argument("--seed", action="store_true", help="Load legacy seed data on startup")
+    modes.add_argument("--testversion", action="store_true",
                         help="Test version: realistic data set and master logins on the first start")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--data-dir", default=None, help="Persistent data directory for SQLite, uploads, backups, and logs")
     parser.add_argument("--no-upgrade", action="store_true",
                         help="Skip the explicit upgrade step; an outdated database then refuses to start")
+    parser.add_argument("--desktop-token", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    from backend.demo import enabled as demo_enabled
+    if demo_enabled() and (args.seed or args.testversion):
+        parser.error("Demo kann nicht mit --seed oder --testversion kombiniert werden.")
+    args.demo = args.demo or demo_enabled()
+    args.port = args.port if args.port is not None else (8766 if args.demo else 8000)
+    if not 1 <= args.port <= 65535:
+        parser.error("Der Port muss zwischen 1 und 65535 liegen.")
+    if args.demo and args.host not in {"127.0.0.1", "localhost", "::1"}:
+        parser.error("Der Demobestand ist nur auf diesem Computer erreichbar.")
+
+    # A private inherited pipe is the only desktop control channel. In
+    # particular, no unauthenticated HTTP stop endpoint is added to the app.
+    desktop_control = None
+    if args.desktop_token is not None:
+        from backend.desktop_control import DesktopControl
+
+        desktop_control = DesktopControl(args.desktop_token, sys.stdin, sys.stdout)
+        desktop_control.start()
 
     # When running as frozen .exe, set working directory and sys.path
     base_dir = _prepare_frozen_paths()
 
-    data_dir = _configure_runtime_environment(args.data_dir, testversion=args.testversion)
+    data_dir = _configure_runtime_environment(args.data_dir, testversion=args.testversion, demo=args.demo)
+    if args.demo:
+        os.environ["CORS_ORIGINS"] = f"http://127.0.0.1:{args.port},http://localhost:{args.port}"
+    if desktop_control is not None:
+        from backend.desktop_control import adopt_instance_guard
+
+        adopt_instance_guard(Path(data_dir))
     testversion = _is_testversion()
 
     from backend.config import _get_version
@@ -319,6 +403,12 @@ def main():
         if code:
             sys.exit(code)
         print()
+
+    if desktop_control is not None and desktop_control.stop_requested.is_set():
+        return
+    if args.demo:
+        from backend.demo import install_backend_guards
+        install_backend_guards()
 
     # Import the app early so import errors are visible before uvicorn starts
     print("Lade Anwendung...")
@@ -385,7 +475,12 @@ def main():
         # Use the imported app object directly instead of string-based import.
         # String-based import ("backend.app:app") can fail in PyInstaller bundles
         # because uvicorn's module loader doesn't find frozen modules.
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level="info"))
+        if desktop_control is not None:
+            desktop_control.attach(server, url)
+            if desktop_control.stop_requested.is_set():
+                return
+        server.run()
     except KeyboardInterrupt:
         print("\nServer beendet.")
     except Exception as exc:
@@ -400,6 +495,16 @@ if __name__ == "__main__":
     # On Windows frozen bundles, child processes re-execute the script and
     # freeze_support() ensures they exit cleanly instead of re-spawning.
     multiprocessing.freeze_support()
+
+    from backend.desktop_control import ensure_standard_streams, hold_installation_mutex
+
+    ensure_standard_streams()
+    from backend.demo import enabled as demo_enabled
+    from backend.demo import install_backend_guards
+    if demo_enabled() and sys.argv[1:2] in (["document-text-worker"], ["document-pdf-worker"], ["e-invoice-read-worker"], ["e-invoice-limit-worker"]):
+        install_backend_guards()
+    # Keep the install/update guard while any CLI/worker is using bundled code.
+    _installation_mutex = hold_installation_mutex()
 
     if sys.argv[1:2] == ['e-invoice-limit-worker']:
         from backend.services.e_invoice.posix_worker import main as e_invoice_limit_main

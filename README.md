@@ -10,7 +10,7 @@ Full-stack property management application for German real estate portfolios.
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2 |
-| Frontend | React 18, Vite, custom i18n (de-DE / en-US / es-ES) |
+| Frontend | React 19, Vite, custom i18n (de-DE / en-US / es-ES) |
 | Database | SQLite (dev/test), PostgreSQL (production) |
 | Auth | JWT (access + refresh tokens), role-based access control |
 | CI | GitHub Actions (lint, type-check, security audit, tests, build) |
@@ -18,6 +18,21 @@ Full-stack property management application for German real estate portfolios.
 ## Quick Start
 
 ### Windows 11
+
+For a packaged installation, run `ImmoManager-Pro-<version>-Setup-x64.exe`.
+The German installer installs for the current user and offers a choice between
+the **standalone desktop application** and **using the app in a web browser**.
+It remembers that selection for updates and adds direct Start menu entries for
+both modes, plus an optional desktop shortcut. No Python, Node.js, installed
+browser or WebView2 is needed for the standalone mode: its Qt/Chromium renderer
+is included. The application owns and orderly stops its local server. Its
+background processes do not leave terminal windows open.
+
+Program files and `%LOCALAPPDATA%\ImmoManagerPro` are separate. Installing a new
+version updates the shortcuts to its own payload directory; uninstalling retains
+the user's data and backups. See [installer build instructions](packaging/installer/README.md).
+
+For a source checkout, the starter prepares the local development prerequisites:
 
 Double-click `start.bat` or run:
 
@@ -38,7 +53,16 @@ Useful variants:
 .\start.bat -Port 9000
 .\start.bat -Seed
 .\start.bat -DataDir D:\ImmoManagerProData
+.\start.bat -Mode browser  # use the external browser explicitly
+.\start.bat -Console  # explicit maintenance/development console
 ```
+
+Native macOS and Linux builds use the same desktop window and the explicit
+`--mode standalone|browser` choice. Platform requirements, native build targets,
+personal data paths and the difference between prepared targets and actual
+tested packages are documented in [Desktop platforms](docs/DESKTOP_PLATFORMS.md).
+The native workflow is [Desktop packages](.github/workflows/desktop.yml). A
+Windows build is not presented as an already tested macOS or Linux application.
 
 While the program runs it makes a verified full backup every day (01:30 Europe/Berlin, or
 right after the start when that slot was missed) and a monthly restore probe; see Settings →
@@ -168,7 +192,7 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 - External portal integrations are modeled through adapter interfaces/placeholders until real credentials are provided.
 - Production mode (`ENVIRONMENT=production`) fails startup for unsafe defaults such as wildcard CORS, demo seeding, in-memory fallback, or default JWT secrets.
 - Security: see [SECURITY.md](SECURITY.md) (reporting a vulnerability, supported versions, what the application protects and what the operator configures) and [docs/AI_READING_SECURITY_20261025.md](docs/AI_READING_SECURITY_20261025.md).
-- Schema updates are explicit: `python -m backend.upgrade` (Windows package: `ImmoManager-Pro.exe upgrade`) takes a verified full backup first, then runs the migrations. The normal start never changes an existing schema: it initialises an empty database and refuses one that is behind the Alembic head. The desktop launcher (`python -m backend`, the `.exe`, `start.bat`), the Docker entrypoint, `scripts/update.sh` and the in-app updater run the explicit step for you. Databases created by older desktop versions without Alembic are adopted by that step.
+- Schema updates are explicit: `python -m backend.upgrade` (Windows package: `ImmoManager-Pro-CLI.exe upgrade`) takes a verified full backup first, then runs the migrations. The normal start never changes an existing schema: it initialises an empty database and refuses one that is behind the Alembic head. The desktop launcher (`python -m backend`, the `.exe`, `start.bat`), the Docker entrypoint, `scripts/update.sh` and the in-app updater run the explicit step for you. Databases created by older desktop versions without Alembic are adopted by that step.
 - Full backups (database, uploads, configuration, keys), the monthly restore probe, the second backup target and key handling: [docs/OPERATIONS_BACKUP_SECRETS_20261008.md](docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 - Reproducible installs: `pip install -r requirements.txt -c constraints.txt`, `npm ci`; Docker base images are pinned by digest.
 

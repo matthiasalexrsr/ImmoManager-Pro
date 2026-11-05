@@ -1,0 +1,73 @@
+{
+  "schema": "immomanager-qt-sources/1",
+  "version": "6.11.3",
+  "checksum_provenance": "Official download.qt.io .sha256 sidecars verified 2026-11-05",
+  "archives": [
+    {
+      "module": "qtbase",
+      "filename": "qtbase-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtbase-everywhere-src-6.11.3.tar.xz",
+      "sha256": "46de0710b594945a5d446ae44354daa386141c6903c53781b2ca547bc62f8f8f"
+    },
+    {
+      "module": "qtdeclarative",
+      "filename": "qtdeclarative-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtdeclarative-everywhere-src-6.11.3.tar.xz",
+      "sha256": "6d6db328a02ae3bb0b1e6944aeef8dfe44cd6b55ab59b1708bbf0400f5759cb5"
+    },
+    {
+      "module": "qtwebengine",
+      "filename": "qtwebengine-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtwebengine-everywhere-src-6.11.3.tar.xz",
+      "sha256": "4f4701b4976d90571e67557f2c12cbfee8c64ecc8295430236921cae2f9f43ca"
+    },
+    {
+      "module": "qtwebchannel",
+      "filename": "qtwebchannel-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtwebchannel-everywhere-src-6.11.3.tar.xz",
+      "sha256": "1df120c2904ca0a0dd4fd4fb5e9459fe15cbc50477c08c65d20070eafffaf01a"
+    },
+    {
+      "module": "qtpositioning",
+      "filename": "qtpositioning-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtpositioning-everywhere-src-6.11.3.tar.xz",
+      "sha256": "a38695bc412b7261476e8e96178460ec9319e61c34ecc6a14eb2e76e5c73eca1"
+    },
+    {
+      "module": "qtsvg",
+      "filename": "qtsvg-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtsvg-everywhere-src-6.11.3.tar.xz",
+      "sha256": "9bdf6fa4b5a2d91c3eaa2edd12263fdff0ae19d0ac25d3c99946cd4189a07123"
+    },
+    {
+      "module": "qtshadertools",
+      "filename": "qtshadertools-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtshadertools-everywhere-src-6.11.3.tar.xz",
+      "sha256": "d86079425ec71eecbb05f4d20623b0a403a7d21a5cfa7efb9734ea3d538d801b"
+    },
+    {
+      "module": "qtimageformats",
+      "filename": "qtimageformats-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtimageformats-everywhere-src-6.11.3.tar.xz",
+      "sha256": "2759929c7abbc5376120394d1ccac1abbb816bc2791b34ece6c1412d323e6213"
+    },
+    {
+      "module": "qttranslations",
+      "filename": "qttranslations-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qttranslations-everywhere-src-6.11.3.tar.xz",
+      "sha256": "499e3067b91e53675eead7a54a3cd771c30939d04d03b4e67f12167484e290f2"
+    },
+    {
+      "module": "qtwayland",
+      "filename": "qtwayland-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/qt/6.11/6.11.3/submodules/qtwayland-everywhere-src-6.11.3.tar.xz",
+      "sha256": "7f6185eb6e7d75202c42dfaf18dc54ae96f2d9a7a265358d061a6f85366f6c97"
+    },
+    {
+      "module": "pyside-setup",
+      "filename": "pyside-setup-everywhere-src-6.11.3.tar.xz",
+      "url": "https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.11.3-src/pyside-setup-everywhere-src-6.11.3.tar.xz",
+      "sha256": "050819cb05e14d6689f42b56e4fa9c8ff63be2bb339e0c094c45b990b7cabde1"
+    }
+  ]
+}

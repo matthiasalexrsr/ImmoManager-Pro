@@ -5,7 +5,7 @@ import json
 import shutil
 from pathlib import Path
 
-from backend.services.e_invoice.asset_bundle import file_sha, safe_name, verify
+from backend.services.e_invoice.asset_bundle import file_sha, runtime_legal_files, safe_name, verify
 from backend.services.filesystem_paths import filesystem_path
 from tools.prepare_e_invoice import fetch
 
@@ -41,13 +41,11 @@ def generate(output: Path) -> list[dict]:
     bundle = filesystem_path(ROOT / 'artifacts/e-invoice')
     runtime, _ = verify(bundle)
     runtime_files = []
-    for name, checksum in runtime['files'].items():
-        if not name.startswith('runtime/') or '/legal/' not in name:
-            continue
-        published = 'runtime-legal/' + name.removeprefix('runtime/')
+    for name, content, checksum in runtime_legal_files(bundle, runtime):
+        published = 'runtime-legal/' + name
         destination = target / published
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(bundle / name, destination)
+        destination.write_bytes(content)
         if file_sha(destination) != checksum:
             raise RuntimeError('Runtime notice checksum mismatch')
         expected.add(published)

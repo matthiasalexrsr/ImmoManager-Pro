@@ -1,0 +1,344 @@
+name: Native desktop packages
+
+# Native acceptance builds only. Publishing/signing remains in release.yml.
+# Runner labels: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+on:
+  push:
+    branches: [main, 'claude/**', 'codex/**', 'pro/**']
+    paths:
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/release.yml'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - 'packaging/**'
+      - 'assets/**'
+      - 'requirements*.txt'
+      - 'constraints.txt'
+      - 'pyproject.toml'
+      - 'immomanager.spec'
+      - 'docs/DESKTOP_PLATFORMS.md'
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/release.yml'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - 'packaging/**'
+      - 'assets/**'
+      - 'requirements*.txt'
+      - 'constraints.txt'
+      - 'pyproject.toml'
+      - 'immomanager.spec'
+      - 'docs/DESKTOP_PLATFORMS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qt-sources:
+    name: Verify complete pinned Qt source sidecars
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned pip
+        run: python -m pip install -r requirements-pip.txt
+      - name: Restore platform-independent upstream sources
+        uses: actions/cache@v4
+        with:
+          path: artifacts/qt-sources
+          key: qt-sources-v1-${{ hashFiles('packaging/third-party/qt-sources.json') }}
+          enableCrossOsArchive: true
+      - name: Download or reverify every complete source archive
+        run: |
+          python tools/qt_sources.py
+          cp packaging/third-party/qt-sources.json artifacts/qt-sources/manifest.json
+      - name: Preserve complete upstream sources accompanying these builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qt-Quellen-6.11.3
+          path: artifacts/qt-sources/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  native:
+    name: ${{ matrix.id }} native Qt, lifecycle and package
+    needs: qt-sources
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: windows-x64
+            runner: windows-2022
+            os: win32
+            arch: x64
+          - id: macos-x64
+            runner: macos-15-intel
+            os: darwin
+            arch: x64
+          - id: macos-arm64
+            runner: macos-15
+            os: darwin
+            arch: arm64
+          - id: linux-x64
+            runner: ubuntu-22.04
+            os: linux
+            arch: x64
+          - id: linux-arm64
+            runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      QT_QPA_PLATFORM: offscreen
+      QT_OPENGL: software
+      QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
+      IMMO_BUILD_PURPOSE: core
+      IMMO_BUILD_DOCUMENT_TOOLS: '0'
+      JOB_SCHEDULER_ENABLED: 'false'
+      BACKUP_SCHEDULE_ENABLED: 'false'
+      EXPECTED_PLATFORM: ${{ matrix.os }}
+      EXPECTED_ARCHITECTURE: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.arch }}
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Assert actual native platform and architecture
+        shell: python
+        run: |
+          import json, os, platform, sys
+          from pathlib import Path
+          machine = platform.machine().lower()
+          arch = {'amd64': 'x64', 'x86_64': 'x64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(machine)
+          assert sys.platform == os.environ['EXPECTED_PLATFORM'], (sys.platform, os.environ['EXPECTED_PLATFORM'])
+          assert arch == os.environ['EXPECTED_ARCHITECTURE'], (machine, os.environ['EXPECTED_ARCHITECTURE'])
+          folder = Path('artifacts/desktop-reports')
+          folder.mkdir(parents=True)
+          (folder / 'native-environment.json').write_text(json.dumps({'platform': sys.platform, 'machine': machine,
+              'architecture': arch, 'python': sys.version, 'runner': os.environ.get('RUNNER_NAME'),
+              'source_commit': os.environ['GITHUB_SHA'], 'signing_or_notarization_performed': False}, indent=2) + '\n')
+      - name: Install Linux desktop runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          if [[ '${{ matrix.runner }}' == 'ubuntu-24.04-arm' ]]; then
+            system_libs=(libasound2t64 libglib2.0-0t64 libcups2t64)
+          else
+            system_libs=(libasound2 libglib2.0-0 libcups2)
+          fi
+          sudo apt-get install --yes "${system_libs[@]}" apparmor-utils \
+            libnss3 libnspr4 libfontconfig1 fonts-dejavu-core libdbus-1-3 \
+            libegl1 libgl1 libglx-mesa0 libopengl0 libgbm1 libxkbcommon0 libxkbcommon-x11-0 \
+            libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxss1 libxi6 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 python3-tk tcl tk
+          echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
+      - name: Install pinned backend, desktop and build dependencies
+        run: |
+          python -m pip install -r requirements-pip.txt
+          python -m pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+          python -m pip check
+          python -m pip freeze > artifacts/desktop-reports/installed-python.txt
+      - name: Restore verified upstream sources
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/qt-sources
+          key: qt-sources-v1-${{ hashFiles('packaging/third-party/qt-sources.json') }}
+          enableCrossOsArchive: true
+      - name: Reverify source archive digests on this native host
+        run: python tools/qt_sources.py
+      - name: Allow this job's exact executables to use Linux user namespaces
+        if: matrix.runner == 'ubuntu-24.04-arm'
+        shell: bash
+        run: |
+          # Chromium keeps its namespace/seccomp sandbox. No global sysctl change,
+          # --no-sandbox, root runtime, or wildcard application attachment is used.
+          # Ubuntu's documented application-scoped userns exception:
+          # https://discourse.ubuntu.com/t/ubuntu-24-04-lts-noble-numbat-release-notes/39890
+          python - <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          import PySide6
+          result = subprocess.run(['sysctl', '-n', 'kernel.apparmor_restrict_unprivileged_userns'], capture_output=True, text=True)
+          evidence = {'restriction': result.stdout.strip(), 'profiles': []}
+          if result.returncode == 0 and result.stdout.strip() == '1':
+              candidates = [Path(sys.executable).resolve()]
+              candidates += list(Path(PySide6.__file__).parent.rglob('QtWebEngineProcess'))
+              assert len(candidates) >= 2, 'Cannot identify the native Qt helper'
+              lines = ['abi <abi/4.0>,', 'include <tunables/global>']
+              for index, path in enumerate(dict.fromkeys(str(p) for p in candidates)):
+                  assert not any(ch in path for ch in '\n\r"*?[]{}'), 'Unsafe AppArmor attachment path'
+                  lines += [f'profile immomanager-desktop-ci-{index} "{path}" flags=(unconfined) {{', '  userns,', '}']
+                  evidence['profiles'].append(path)
+              profile = Path('artifacts/desktop-reports/immomanager-desktop-ci.apparmor')
+              profile.write_text('\n'.join(lines) + '\n')
+              subprocess.run(['sudo', 'apparmor_parser', '-r', str(profile.resolve())], check=True)
+          Path('artifacts/desktop-reports/linux-userns.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          PY
+      - name: Build actual frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Test desktop policy, real process lifecycle, locks and bundle boundaries
+        run: |
+          python -m pytest -q --tb=short --junitxml=artifacts/desktop-reports/pytest.xml \
+            backend/tests/test_standalone_policy.py backend/tests/test_standalone_runtime.py \
+            backend/tests/test_desktop_launcher.py backend/tests/test_platform_desktop_runtime.py \
+            backend/tests/test_posix_instance_guard.py \
+            backend/tests/test_desktop_bundle.py backend/tests/test_runtime_process_windows.py \
+            backend/tests/test_windows_installer.py backend/tests/test_dependency_manifests.py \
+            backend/tests/test_windows_launcher.py backend/tests/test_e_invoice_runtime_cache.py \
+            backend/tests/test_desktop_startup_failure.py backend/tests/test_frozen_desktop_smoke.py \
+            backend/tests/test_demo_runtime_smoke.py backend/tests/test_release_artifacts.py
+      - name: Smoke-test source Qt renderer and local server
+        run: python scripts/check_desktop_runtime.py --output artifacts/desktop-reports/source-runtime
+      - name: Build actual native GUI and companion CLI
+        timeout-minutes: 40
+        run: python -m PyInstaller immomanager.spec --noconfirm 2>&1 | tee artifacts/desktop-reports/pyinstaller.log
+      - name: Allow the actual frozen Linux renderer to use user namespaces
+        if: matrix.runner == 'ubuntu-24.04-arm'
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          check = subprocess.run(['sysctl', '-n', 'kernel.apparmor_restrict_unprivileged_userns'], capture_output=True, text=True)
+          if check.returncode == 0 and check.stdout.strip() == '1':
+              bundle = Path('dist/ImmoManager-Pro').resolve(strict=True)
+              marker = json.loads((bundle / '_internal/desktop-runtime.json').read_text())
+              paths = [bundle / 'ImmoManager-Pro']
+              paths += [bundle / entry['file'] for entry in marker['files'] if Path(entry['file']).name == 'QtWebEngineProcess']
+              assert len(paths) >= 2, 'No packaged Chromium helper was proved'
+              lines = ['abi <abi/4.0>,', 'include <tunables/global>']
+              for index, candidate in enumerate(paths):
+                  path = str(candidate.resolve(strict=True))
+                  assert Path(path).is_relative_to(bundle), 'Renderer path escapes this build'
+                  assert not any(ch in path for ch in '\n\r"*?[]{}'), 'Unsafe AppArmor attachment path'
+                  lines += [f'profile immomanager-desktop-frozen-ci-{index} "{path}" flags=(unconfined) {{', '  userns,', '}']
+              profile = Path('artifacts/desktop-reports/immomanager-desktop-frozen-ci.apparmor')
+              profile.write_text('\n'.join(lines) + '\n')
+              subprocess.run(['sudo', 'apparmor_parser', '-r', str(profile.resolve())], check=True)
+          PY
+      - name: Smoke-test packaged Qt resources and actual frozen companion CLI
+        if: runner.os != 'macOS'
+        run: python scripts/check_desktop_runtime.py --dist dist/ImmoManager-Pro --output artifacts/desktop-reports/frozen-runtime
+      - name: Start actual packaged GUI and verify server EOF recovery
+        if: runner.os != 'macOS'
+        run: python scripts/check_frozen_desktop.py --dist dist/ImmoManager-Pro --output artifacts/desktop-reports/real-gui-runtime
+      - name: Start actual macOS GUI and verify server EOF recovery
+        if: runner.os == 'macOS'
+        run: python scripts/check_frozen_desktop.py --dist 'dist/ImmoManager Pro.app' --output artifacts/desktop-reports/real-gui-runtime
+      - name: Smoke-test actual macOS application bundle and frozen companion CLI
+        if: runner.os == 'macOS'
+        run: python scripts/check_desktop_runtime.py --dist 'dist/ImmoManager Pro.app' --output artifacts/desktop-reports/frozen-runtime
+      - name: Exercise the real packaged demo window entry and EOF recovery
+        if: runner.os != 'macOS'
+        run: python scripts/check_frozen_desktop.py --dist dist/ImmoManager-Pro --demo --output artifacts/desktop-reports/frozen-gui-demo
+      - name: Exercise the real macOS demo window entry and EOF recovery
+        if: runner.os == 'macOS'
+        run: python scripts/check_frozen_desktop.py --dist 'dist/ImmoManager Pro.app' --demo --output artifacts/desktop-reports/frozen-gui-demo
+      - name: Exercise seeded demo login and PDF through the packaged Qt renderer
+        if: runner.os != 'macOS'
+        run: python scripts/check_desktop_runtime.py --dist dist/ImmoManager-Pro --demo --output artifacts/desktop-reports/qt-demo-ui
+      - name: Exercise seeded demo login and PDF through the macOS Qt renderer
+        if: runner.os == 'macOS'
+        run: python scripts/check_desktop_runtime.py --dist 'dist/ImmoManager Pro.app' --demo --output artifacts/desktop-reports/qt-demo-ui
+      - name: Exercise complete demo seed, login, document, persistence and isolation with the actual native CLI
+        if: runner.os != 'macOS'
+        run: python scripts/check_demo_runtime.py --dist dist/ImmoManager-Pro --output artifacts/desktop-reports/demo-runtime
+      - name: Exercise complete demo with the actual macOS companion CLI
+        if: runner.os == 'macOS'
+        run: python scripts/check_demo_runtime.py --dist 'dist/ImmoManager Pro.app' --output artifacts/desktop-reports/demo-runtime
+      - name: Package native macOS or Linux build
+        if: runner.os != 'Windows'
+        run: python scripts/package_native_desktop.py --dist dist --output artifacts/native-packages
+      - name: Prepare verified portable Windows installer compiler
+        id: inno
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/prepare_inno_setup.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'immo-desktop-inno')
+      - name: Build unsigned Windows CI installer and verify its lifecycle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/build_installer.py --iscc '${{ steps.inno.outputs.iscc }}' --dist dist/ImmoManager-Pro --output artifacts/native-packages
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop CI installer build failed' }
+          $setups = @(Get-ChildItem -LiteralPath artifacts/native-packages -Filter '*-Setup-x64.exe')
+          if ($setups.Count -ne 1) { throw 'Expected exactly one native Windows installer' }
+          python scripts/check_windows_installer.py --installer $setups[0].FullName --dist dist/ImmoManager-Pro --work $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop CI installer lifecycle failed' }
+          $version = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          $zip = Join-Path (Resolve-Path artifacts/native-packages) "ImmoManager-Pro-$version-Windows.zip"
+          Push-Location dist
+          try {
+            7z a -tzip -mx=7 $zip 'ImmoManager-Pro' | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Native Windows portable archive failed' }
+          } finally { Pop-Location }
+          $signature = [string](Get-AuthenticodeSignature -LiteralPath $setups[0].FullName).Status
+          python scripts/release_artifacts.py stamp-windows artifacts/native-packages --version $version --commit $env:GITHUB_SHA --signature $signature
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows package provenance failed' }
+      - name: Collect Windows installer verification reports
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $out = 'artifacts/desktop-reports/installer'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Get-ChildItem -Path (Join-Path $env:RUNNER_TEMP 'immoqa-*') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $destination = Join-Path $out $_.Name
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Get-ChildItem -LiteralPath $_.FullName -File | Where-Object { $_.Extension -eq '.log' -or $_.Name -eq 'verification.json' } | Copy-Item -Destination $destination
+          }
+          $proof = Join-Path $env:RUNNER_TEMP 'immo-desktop-inno/compiler-provenance.json'
+          if (Test-Path -LiteralPath $proof) { Copy-Item -LiteralPath $proof -Destination $out }
+      - name: Preserve native acceptance reports, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Desktop-${{ matrix.id }}-reports
+          path: |
+            artifacts/desktop-reports/
+            dist/ImmoManager-Pro/_internal/desktop-runtime.json
+            dist/ImmoManager Pro.app/Contents/Resources/desktop-runtime.json
+            artifacts/native-packages/*.compiler.log
+            artifacts/native-packages/*.build.json
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 30
+      - name: Preserve tested native package and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: Desktop-${{ matrix.id }}-native-package
+          path: artifacts/native-packages/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

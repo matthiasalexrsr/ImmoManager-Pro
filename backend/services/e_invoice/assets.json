@@ -140,6 +140,42 @@
       "sha256": "a535a1df9c6284d9618872984e026ae0352d1f7e9e0605425c0e6114f47351dd",
       "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
       "extract": "runtime"
+    },
+    {
+      "name": "temurin-linux-arm64",
+      "platform": "linux-arm64",
+      "version": "21.0.13+9",
+      "filename": "OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz",
+      "sha256": "b1734db7ade49c3f6acc6ae06233b8c2dd90e3e2f00f67000ae1c972aaa64d8c",
+      "bytes": 51266660,
+      "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
+      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13%2B9",
+      "extract": "runtime"
+    },
+    {
+      "name": "temurin-darwin-arm64",
+      "platform": "darwin-arm64",
+      "version": "21.0.13+9",
+      "filename": "OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13_9.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.13_9.tar.gz",
+      "sha256": "225bab0a09491ef06835488cd942f5d2befa9a0410a2484f0c8bbcf7506ec09a",
+      "bytes": 47935740,
+      "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
+      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13%2B9",
+      "extract": "runtime"
+    },
+    {
+      "name": "temurin-darwin-x64",
+      "platform": "darwin-x64",
+      "version": "21.0.13+9",
+      "filename": "OpenJDK21U-jre_x64_mac_hotspot_21.0.13_9.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_mac_hotspot_21.0.13_9.tar.gz",
+      "sha256": "c909674b1c10c261b9a3fb7e9c0efebd303e33f88a4fe84be7135b5e2d711f89",
+      "bytes": 41902098,
+      "license": "GPL-2.0-with-classpath-exception; runtime legal directory retained",
+      "source": "https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13%2B9",
+      "extract": "runtime"
     }
   ]
 }

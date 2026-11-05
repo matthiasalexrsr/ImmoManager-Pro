@@ -126,7 +126,7 @@ export const TOUR_STEPS = [
   {
     route: '/',
     title: 'Fertig!',
-    body: 'Das war der Überblick. Alle Daten der Testversion sind frei erfunden; Sie können also gefahrlos '
-      + 'anlegen, ändern und löschen. Die Tour starten Sie jederzeit über das Fragezeichen oben rechts neu.',
+    body: 'Das war der Überblick. Öffnen Sie jetzt Ihre Objekte und lernen Sie die einzelnen Verwaltungsbereiche kennen. '
+      + 'Die Tour starten Sie jederzeit über das Fragezeichen oben rechts neu.',
   },
 ];

@@ -14,8 +14,16 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from .demo import enabled as _demo_enabled
+from .demo import validate_environment as _validate_demo_environment
+
 SETTING_ORIGINS: dict[str, str] = {}
 SETTING_ORIGIN_FILES: dict[str, str] = {}
+
+# Direct ASGI starts must fail before a database engine can be constructed if
+# somebody sets only IMMO_DEMO while leaving live deployment paths selected.
+if _demo_enabled():
+    _validate_demo_environment()
 
 
 def _packaged_invoice_bundle() -> str:
@@ -79,7 +87,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=(".env", str(Path(os.environ["DATA_DIR"]) / ".env")) if os.environ.get("DATA_DIR") else ".env",
+        env_file=() if os.environ.get("IMMO_DEMO", "").lower() in {"true", "1", "yes", "ja"} else
+            ((".env", str(Path(os.environ["DATA_DIR"]) / ".env")) if os.environ.get("DATA_DIR") else ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -247,6 +256,7 @@ class Settings(BaseSettings):
     # Package sent to testers: realistic data set (15 properties) and master logins on
     # the first start (backend.testversion); the UI shows a "Testversion" badge.
     immo_testversion: bool = False
+    immo_demo: bool = False
 
     # --- Accounts ---
     # The very first account is always created as owner (initial setup).

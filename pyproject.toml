@@ -25,9 +25,13 @@ ai = [
     "torch>=2.2.0",
 ]
 build = ["pyinstaller==6.22.3", "pyinstaller-hooks-contrib==2026.8"]
+desktop = ["PySide6==6.11.3"]
 
 [project.scripts]
 immomanager = "backend.__main__:main"
+
+[project.gui-scripts]
+immomanager-desktop = "backend.desktop:main"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements-runtime.txt"]}

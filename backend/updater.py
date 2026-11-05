@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -31,6 +32,7 @@ from typing import Any
 import httpx
 
 from .config import settings
+from .services.runtime_process import frozen_cli_executable
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,10 @@ def _run_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess
         cwd=cwd or _PROJECT_ROOT,
         capture_output=True,
         text=True,
+        errors="replace",
+        stdin=subprocess.DEVNULL,
         timeout=120,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
 
@@ -307,8 +312,9 @@ def check_for_updates() -> dict:
             result["download_hint"] = mismatch
         elif result["update_available"] and not result["can_apply"]:
             result["download_hint"] = (
-                "Neue Version von der Release-Seite herunterladen, das ZIP entpacken und das Programm der neuen "
-                "Version starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
+                "Neue Version von der Release-Seite herunterladen und ImmoManager Pro schließen. Unter Windows "
+                "den Installer ausführen; bei einer portablen Installation das ZIP in einen neuen Ordner entpacken "
+                "und das Programm dort starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
                 "zuerst ein geprüftes Vollbackup an und aktualisiert dann die Datenbank.")
 
     except httpx.TimeoutException:
@@ -423,12 +429,13 @@ def _create_db_snapshot() -> str | None:
 
 def _install_dependencies() -> tuple[bool, str]:
     """The exact dependency tree of the checked-out code (requirements.txt with constraints.txt)."""
-    command = [sys.executable, "-m", "pip", "install", "-q", "-r", str(_PROJECT_ROOT / "requirements.txt")]
+    command = [frozen_cli_executable(), "-m", "pip", "install", "-q", "-r", str(_PROJECT_ROOT / "requirements.txt")]
     constraints = _PROJECT_ROOT / "constraints.txt"
     if constraints.exists():
         command += ["-c", str(constraints)]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(command, capture_output=True, text=True, errors="replace", stdin=subprocess.DEVNULL, timeout=600,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as exc:
         logger.exception("pip could not be started during update")
         return False, f"pip fehlgeschlagen: {type(exc).__name__}"
@@ -443,8 +450,9 @@ def _install_dependencies() -> tuple[bool, str]:
 def _run_migrations() -> tuple[bool, str]:
     """Explicit upgrade with the updated code, in its own process (full backup first)."""
     try:
-        result = subprocess.run([sys.executable, "-m", "backend.upgrade"], cwd=str(_PROJECT_ROOT),
-                                capture_output=True, text=True, timeout=6 * 3600)
+        result = subprocess.run([frozen_cli_executable(), "-m", "backend.upgrade"], cwd=str(_PROJECT_ROOT),
+                                capture_output=True, text=True, errors="replace", stdin=subprocess.DEVNULL, timeout=6 * 3600,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as exc:
         logger.exception("Upgrade could not be started during update")
         return False, f"Upgrade fehlgeschlagen: {type(exc).__name__}"
@@ -457,6 +465,19 @@ def _run_migrations() -> tuple[bool, str]:
 
 # ─── Frontend Rebuild ─────────────────────────────────────────────────────────
 
+def _npm_command() -> list[str]:
+    """Run npm's JavaScript entry directly on Windows, without a cmd window."""
+    if sys.platform != "win32":
+        return ["npm"]
+    command = shutil.which("npm.cmd")
+    if not command:
+        raise FileNotFoundError("npm.cmd nicht gefunden")
+    cli = Path(command).parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+    if not cli.is_file():
+        raise FileNotFoundError("Der npm-Einstiegspunkt fehlt; Node.js bitte erneut installieren")
+    return ["node", str(cli)]
+
+
 def _rebuild_frontend() -> tuple[bool, str]:
     """Rebuild the frontend if npm/node is available.
 
@@ -468,30 +489,38 @@ def _rebuild_frontend() -> tuple[bool, str]:
 
     # Check if node/npm is available
     try:
-        subprocess.run(["node", "--version"], capture_output=True, timeout=10)
+        subprocess.run(["node", "--version"], capture_output=True, stdin=subprocess.DEVNULL, timeout=10,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return True, "Node.js nicht installiert, Frontend-Build übersprungen"
 
     try:
+        npm = _npm_command()
         # Exactly the locked packages, as CI and the release build use them; npm install
         # would rewrite package-lock.json and leave the checkout changed
         result = subprocess.run(
-            ["npm", "ci", "--include=dev"],
+            [*npm, "ci", "--include=dev"],
             cwd=frontend_dir,
             capture_output=True,
             text=True,
+            errors="replace",
+            stdin=subprocess.DEVNULL,
             timeout=600,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.returncode != 0:
             return False, f"npm ci fehlgeschlagen: {result.stderr[:500]}"
 
         # Build
         result = subprocess.run(
-            ["npm", "run", "build"],
+            [*npm, "run", "build"],
             cwd=frontend_dir,
             capture_output=True,
             text=True,
+            errors="replace",
+            stdin=subprocess.DEVNULL,
             timeout=300,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.returncode != 0:
             return False, f"Frontend-Build fehlgeschlagen: {result.stderr[:500]}"

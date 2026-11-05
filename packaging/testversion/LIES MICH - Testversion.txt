@@ -16,11 +16,11 @@ Starten
    die bereitgestellten Prüfsummen. Bei einer Windows-Warnung oder unklarer Herkunft
    das Paket vom Anbieter bestätigen lassen; eine Warnung nicht pauschal übergehen.
 4. Beim allerersten Start werden die Testdaten angelegt. Das dauert ein bis zwei Minuten;
-   im schwarzen Fenster ist der Fortschritt zu sehen.
+   das Statusfenster zeigt den Programmstart an.
 5. Danach öffnet sich der Browser mit http://127.0.0.1:8000 (sonst diese Adresse selbst öffnen).
 
-Das schwarze Fenster ist der Server: solange Sie testen, bitte offen lassen.
-Zum Beenden das Fenster schließen oder Strg+C drücken.
+Die Testversion läuft ohne offenes Terminalfenster. Zum vollständigen Beenden im
+Statusfenster "Beenden" wählen. Das Schließen des Browserreiters beendet sie nicht.
 
 
 Anmelden

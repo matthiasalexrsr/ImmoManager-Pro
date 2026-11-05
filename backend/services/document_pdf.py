@@ -21,6 +21,7 @@ from ..config import settings
 from ..document_work_models import Annotation
 from .document_formats import decode
 from .filesystem_paths import filesystem_path
+from .runtime_process import frozen_cli_executable
 
 
 def available():
@@ -40,8 +41,8 @@ def _tessdata():
 
 def worker_command(folder: Path) -> list[str]:
     if getattr(sys, "frozen", False):
-        return [sys.executable, "document-pdf-worker", str(folder)]
-    return [sys.executable, "-m", "backend.services.document_pdf_worker", str(folder)]
+        return [frozen_cli_executable(), "document-pdf-worker", str(folder)]
+    return [frozen_cli_executable(), "-m", "backend.services.document_pdf_worker", str(folder)]
 
 
 def isolated(content, action, options=None, extra_contents=(), annotations=()):

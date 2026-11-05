@@ -18,6 +18,8 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # Project root
 ROOT = os.path.abspath('.')
+from tools.desktop_bundle import IMPORTS as DESKTOP_IMPORTS, isolated_native_analysis, mac_bundle_versions, verify_versions, write_runtime_manifest
+verify_versions()
 WIZARD_ROOT = os.path.join(ROOT, 'mietvertrag_wizard_fastapi_reportlab_pro')
 
 if os.path.isdir(WIZARD_ROOT) and WIZARD_ROOT not in sys.path:
@@ -96,13 +98,16 @@ from tools.build_profile import selected_optional_packages, excluded_optional_pa
 _THIRD_PARTY_PACKAGES += selected_optional_packages()
 verify_frontend_profile(ROOT)
 
-collected_hiddenimports = []
+collected_hiddenimports = list(DESKTOP_IMPORTS)
 # All backend modules (services, routers, the test version …): imports inside functions are
 # easy to miss, and a module missing from the bundle fails only when it is first used.
 collected_hiddenimports += collect_submodules('backend', filter=lambda name: '.tests' not in name)
 for pkg in _THIRD_PARTY_PACKAGES:
     try:
-        mods = collect_submodules(pkg)
+        # Third-party test suites discover ambient development tools (pytest,
+        # plugins and syntax highlighters). They are not application features.
+        mods = collect_submodules(pkg, filter=lambda name: not any(part in {'tests', 'testing'} for part in name.split('.'))
+                                  and not name.endswith('pytest_plugin'))
         collected_hiddenimports += mods
         print(f"  collect_submodules('{pkg}'): {len(mods)} modules")
     except Exception as exc:
@@ -239,6 +244,7 @@ notices = generate_notices()
 from backend.services.filesystem_paths import filesystem_path
 backend_data.append((str(filesystem_path(notices)), 'THIRD_PARTY_NOTICES'))
 backend_data.append((os.path.join(ROOT, 'LICENSE'), '.'))
+backend_data.append((os.path.join(ROOT, 'assets', 'immomanager.ico'), 'assets'))
 
 # Public, pinned DE/EN model data; the local PDF worker needs no separate Tesseract installation.
 tessdata_dir = os.path.join(ROOT, 'backend', 'resources', 'tessdata')
@@ -308,8 +314,8 @@ seed_file = os.path.join(ROOT, 'seed_data.py')
 if os.path.isfile(seed_file):
     backend_data.append((seed_file, '.'))
 
-a = Analysis(
-    ['backend/__main__.py'],
+a = isolated_native_analysis(Analysis,
+    ['backend/__main__.py', 'backend/desktop_entry.py'],
     pathex=[ROOT, WIZARD_ROOT],
     binaries=[],
     datas=backend_data,
@@ -428,15 +434,47 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # not needed by the desktop program (SQLite; images without AVIF): keeps the package small enough to e-mail
-    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif'] + excluded_optional_packages(),
+    excludes=['psycopg2', 'psycopg2_binary', 'PIL.AvifImagePlugin', 'PIL._avif',
+              'pytest', '_pytest', 'pluggy', 'iniconfig', 'pygments',
+              'sqlalchemy.testing', 'alembic.testing', 'anyio.pytest_plugin'] + excluded_optional_packages(),
     noarchive=False,
 )
 
+# The signed/pinned Java runtime is an independent program, not a Python shared
+# library. PyInstaller's ELF/Mach-O auto-detection must not patch its rpaths,
+# strip it, or rewrite upstream signatures. macOS ships only its archive.
+runtime_data = [(dest, source, 'DATA') for dest, source, kind in a.binaries
+                if dest.replace('\\', '/').startswith('e-invoice/runtime/')]
+a.binaries = [item for item in a.binaries if not item[0].replace('\\', '/').startswith('e-invoice/runtime/')]
+a.datas += runtime_data
+
 pyz = PYZ(a.pure, a.zipped_data)
+
+# One analysis and one PYZ, with separate entry scripts and a shared _internal
+# directory. The normal shortcut never creates a console; maintenance and
+# bounded document workers retain a real console-subsystem executable/streams.
+cli_scripts = [item for item in a.scripts if os.path.basename(item[1]) != 'desktop_entry.py']
+gui_scripts = [item for item in a.scripts if os.path.abspath(item[1]) != os.path.join(ROOT, 'backend', '__main__.py')]
+from tools.windows_version import version_resource
+
+cli = EXE(
+    pyz,
+    cli_scripts,
+    [],
+    exclude_binaries=True,
+    name='ImmoManager-Pro-CLI',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
+    version=version_resource(Path(ROOT), 'ImmoManager-Pro-CLI.exe', 'ImmoManager Pro – Wartung') if sys.platform == 'win32' else None,
+)
 
 exe = EXE(
     pyz,
-    a.scripts,
+    gui_scripts,
     [],
     exclude_binaries=True,
     name='ImmoManager-Pro',
@@ -444,12 +482,14 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
+    version=version_resource(Path(ROOT), 'ImmoManager-Pro.exe', 'ImmoManager Pro') if sys.platform == 'win32' else None,
 )
 
 coll = COLLECT(
     exe,
+    cli,
     a.binaries,
     a.zipfiles,
     a.datas,
@@ -461,3 +501,38 @@ coll = COLLECT(
 
 from tools.e_invoice_notices import verify_catalog
 verify_catalog(Path(coll.name) / '_internal' / 'THIRD_PARTY_NOTICES')
+if os.name != 'nt':
+    # DATA copies do not retain executable mode. Restore only executable bits
+    # from the exact verified source files, never arbitrary directory contents.
+    import stat
+    for dest, source, kind in a.datas:
+        if dest.replace('\\', '/').startswith('e-invoice/runtime/') and os.stat(source).st_mode & stat.S_IXUSR:
+            copied = Path(coll.name) / '_internal' / dest
+            copied.chmod(copied.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+from backend.services.e_invoice.asset_bundle import verify as verify_invoice_bundle
+verify_invoice_bundle(Path(coll.name) / '_internal' / 'e-invoice')
+write_runtime_manifest(Path(coll.name))
+
+if sys.platform == 'darwin':
+    # The manifest is generated after COLLECT, so add it explicitly to BUNDLE's TOC.
+    coll.toc.append(('desktop-runtime.json', str(Path(coll.name) / '_internal' / 'desktop-runtime.json'), 'DATA'))
+    app = BUNDLE(
+        coll,
+        name='ImmoManager Pro.app',
+        icon=os.path.join(ROOT, 'assets', 'immomanager.icns'),
+        bundle_identifier='de.immomanagerpro.desktop',
+        info_plist={
+            'CFBundleDisplayName': 'ImmoManager Pro',
+            'NSHighResolutionCapable': True,
+            'NSSupportsAutomaticGraphicsSwitching': True,
+            'LSMinimumSystemVersion': '13.0',
+            **mac_bundle_versions(ROOT),
+        },
+    )
+    # Relocation and ad-hoc signing can change native Qt bytes. Inventory the
+    # actual .app, then reseal only its outer resource envelope, leaving nested
+    # binaries' signatures/bytes intact. Native CI must verify this final layout.
+    write_runtime_manifest(Path(app.name) / 'Contents', target='darwin', layout='macos-app')
+    import subprocess
+    subprocess.run(['codesign', '--force', '--sign', '-', app.name], check=True)
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', app.name], check=True)

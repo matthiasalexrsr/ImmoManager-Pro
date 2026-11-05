@@ -2,6 +2,15 @@
 
 ## Unterstützte Produktprofile
 
+Die Desktop-Pakete enthalten die eigenständige Qt-WebEngine-Oberfläche und den
+alternativen Browserstart. Die festgelegte Desktop-Laufzeit steht in
+`requirements-desktop.txt`. Originale Qt-/PySide-/Chromium-Lizenztexte und
+Quellarchiv-Nachweise werden zusätzlich gesammelt; vollständige gepinnte Quellen
+gehören als `Qt-Quellen` zur Auslieferung. Plattformgrenzen und tatsächlich
+ausgeführte Prüfungen sind getrennt in `docs/DESKTOP_PLATFORMS.md` und im jeweiligen
+Paket-Abnahmeprotokoll beschrieben. Die Desktop-Erweiterung ist kein optionales
+Dokumentwerkzeug-Profil und benötigt keine erfundene Vertragsfreigabe.
+
 Die Standardauslieferung enthält den Kern der Anwendung. Die installierte Umgebung entscheidet nicht mehr darüber, welche optionalen Komponenten mitgeliefert werden. Alle Build-Einstiege verwenden die festgelegten Laufzeitversionen in `requirements-runtime.txt` und die transitiven Versionen in `constraints.txt`; `pyproject.toml` liest dieselbe Laufzeitliste.
 
 - Kern: `python scripts/build_exe.py --clean`.
@@ -32,7 +41,21 @@ Bei zusätzlich gewählten Copyleft-Komponenten, insbesondere der optionalen Ban
 
 ## Veröffentlichung und Herkunft
 
-Ein Versionstag darf nur nach erfolgreicher CI auf genau diesem Commit veröffentlicht werden. Zusätzlich erzwingt der Windows-Release-Workflow eine gültige, mit Zeitstempel versehene Authenticode-Signatur. Er benötigt `WINDOWS_SIGNING_PFX_BASE64`, `WINDOWS_SIGNING_PASSWORD` und `WINDOWS_TIMESTAMP_URL` als geschützte CI-Konfiguration. Der Herausgeber muss zum Produktanbieter passen. Ohne Zertifikat bricht eine Veröffentlichung ab; interne Branch-Builds bleiben als unsignierte Testartefakte erkennbar.
+Ein Versionstag darf nur nach erfolgreicher CI und nativer Desktop-Abnahme auf
+genau diesem Commit veröffentlicht werden. Reguläre signierte Windows-Releases
+benötigen eine gültige, mit Zeitstempel versehene Authenticode-Signatur sowie
+`WINDOWS_SIGNING_PFX_BASE64`, `WINDOWS_SIGNING_PASSWORD` und
+`WINDOWS_TIMESTAMP_URL` als geschützte CI-Konfiguration. Ohne das passende
+Herausgeberzertifikat bricht dieser Veröffentlichungsweg ab.
+
+Für die Weitergabe einer Beta zum gemeinsamen Testen gibt es einen ausdrücklich
+auszuwählenden manuellen Weg: `publish=true`, `release_tag=v<Projektversion>` und
+`allow_unsigned_prerelease=true`. Er ist ausschließlich für Versionen der Form
+`X.Y.Z-beta.N` verfügbar. Er übernimmt die bereits auf demselben Commit nativ
+gebauten und geprüften fünf Plattformpakete einschließlich Windows-Installer,
+Demo-Prüfungen und vollständiger Qt-Quellen. Das Release wird als Vorabversion
+und unsigniert ausgewiesen; vorhandene Tags oder Releases werden nicht ersetzt.
+Diese Auswahl aktiviert keine unsignierte Veröffentlichung einer stabilen Version.
 
 Der Workflow attestiert die ZIP-Datei und die SHA256-Datei über GitHub Actions. Kundenseitig lässt sich die Herkunft mit `gh attestation verify <Datei> --repo matthiasalexrsr/ImmoManager-Pro` überprüfen. Eine Prüfsumme ohne unabhängig geprüfte Herkunft reicht dafür nicht aus. Die Durchführung dieser CI-Schritte, Zertifikatsgültigkeit und reale Upgrade-Proben gehören zur Freigabe jedes Releases.
 

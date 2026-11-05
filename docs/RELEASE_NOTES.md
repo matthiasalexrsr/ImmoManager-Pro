@@ -1,6 +1,6 @@
 # ImmoManager Pro 2.0.0-beta.1
 
-**Erste Beta von 2.0.0.** Der Funktionsumfang von 2.0.0 ist vollständig; die Beta dient der Erprobung mit echten Daten vor dem endgültigen Release. Vorher bitte ein Vollbackup anlegen (Einstellungen → System → Betrieb). Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.
+**Beta mit eigenständiger Desktop-Anwendung und Demo Baden-Württemberg.** Die Verwaltung öffnet sich im eigenen Programmfenster oder im Standardbrowser. Der Installer bietet beide Startarten an. Für den Desktopbetrieb ist kein installierter Browser und kein WebView2 erforderlich. Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.
 
 Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal unter Windows oder als Server. Daten werden im Datenordner gespeichert. Verbundene externe Dienste erhalten die für sie ausgewählten Daten, etwa Dokumente und Kontext für Claude oder ChatGPT, E-Mails oder externe Sicherungen. Geplante Aufträge können diese Übertragungen automatisch ausführen.
 
@@ -12,9 +12,11 @@ Die Hausverwaltung für private Vermieter und kleine Verwaltungen läuft lokal u
 
 **Mietvertragsassistent:** Vorschau und beide PDF-Exporte verwenden denselben Vertragstext. Dezimalbeträge bleiben erhalten; eingegebene HTML-Zeichen erscheinen als Text. Bereits erzeugte Vertragsdateien werden nicht verändert. Die rechtliche Prüfung der verwendeten Klauseln bleibt erforderlich.
 
-**Installieren:** ZIP entpacken und `ImmoManager-Pro.exe` starten. Beim ersten Start führt „Erste Schritte“ durch die Einrichtung. Einzelheiten stehen in der Datei „LIES MICH.txt“ im Paket.
+**Installieren:** Den Windows-Installer `ImmoManager-Pro-<Version>-Setup-x64.exe` öffnen und Desktop oder Webbrowser auswählen. Zusätzlich lässt sich für den ersten Start die eigene Verwaltung oder die Demo wählen. Im Startmenü bleiben beide normalen Startarten und beide Demo-Startarten erreichbar. Im normalen Betrieb bleiben keine Terminalfenster geöffnet. Das portable Windows-ZIP wird weiterhin unterstützt; macOS wird als DMG und Linux als TAR-Archiv paketiert. Beim ersten Start einer eigenen Verwaltung führt „Erste Schritte“ durch die Einrichtung.
 
-**Aktualisieren:** Die neue Version in einen neuen Ordner entpacken, die alte beenden und die neue starten. Die Daten bleiben im Datenordner (`%LOCALAPPDATA%\ImmoManagerPro`). Vor jeder Änderung an der Datenbank legt das Programm ein geprüftes Vollbackup an.
+**Demo starten:** Im Startmenü „Demo Baden-Württemberg“ öffnen oder im Installer den Demostart wählen. Auf der Anmeldeseite „Demozugang übernehmen“ und anschließend „Anmelden“ wählen. Der Zugang lautet `demo.bw` / `Immo-Demo-BW-2026!`. Vorbereitet sind acht Immobilien, 46 Einheiten, 42 Mietverträge und mehr als 1.000 Buchungen sowie Dokumente, Abrechnungen, Kautionen, Mahnungen, Wartungen und Vermietungsfälle. Der Demobestand liegt in einem eigenen Datenordner; Änderungen bleiben beim nächsten Start erhalten. Auf Windows verwendet die Demo standardmäßig Port 8766 und die eigene Verwaltung Port 8000.
+
+**Aktualisieren:** Die Anwendung im Statusfenster beenden und den neuen Installer ausführen. Programmversionen werden getrennt abgelegt und die Verknüpfungen aktualisiert. Die Daten bleiben im Datenordner (`%LOCALAPPDATA%\ImmoManagerPro`), auch bei einer Deinstallation. Vor einer erforderlichen Änderung an der Datenbank legt das Programm ein geprüftes Vollbackup an.
 
 ## Was neu ist
 

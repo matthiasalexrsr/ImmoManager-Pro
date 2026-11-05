@@ -7,13 +7,13 @@ per-user location so SQLite data, uploads, logs, and backups survive restarts.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 from .config import settings
+from .platform_paths import APP_DIR_NAME as APP_DIR_NAME
+from .platform_paths import default_user_data_dir
 
-APP_DIR_NAME = "ImmoManagerPro"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -22,19 +22,7 @@ def _is_frozen() -> bool:
 
 
 def _default_user_data_dir() -> Path:
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA")
-        if base:
-            return Path(base) / APP_DIR_NAME
-        return Path.home() / "AppData" / "Local" / APP_DIR_NAME
-
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / APP_DIR_NAME
-
-    base = os.environ.get("XDG_DATA_HOME")
-    if base:
-        return Path(base) / APP_DIR_NAME
-    return Path.home() / ".local" / "share" / APP_DIR_NAME
+    return default_user_data_dir()
 
 
 def _resolve_configured_path(value: str) -> Path | None:

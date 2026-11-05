@@ -18,7 +18,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.services.e_invoice.asset_bundle import configuration, extracted, file_sha, safe_name, verify  # noqa: E402
+from backend.services.e_invoice.asset_bundle import (  # noqa: E402
+    SUPPORTED_PLATFORMS,
+    configuration,
+    extracted,
+    file_sha,
+    safe_name,
+    verify,
+)
 from backend.services.filesystem_paths import filesystem_path  # noqa: E402
 from tools.repackage_e_invoice import derive, kosit_cli  # noqa: E402
 
@@ -30,7 +37,7 @@ def fetch(entry: dict, cache: Path) -> Path:
         raise ValueError('Download filename must be a basename')
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / filename
-    if path.is_file() and file_sha(path) == entry['sha256']:
+    if path.is_file() and file_sha(path) == entry['sha256'] and ('bytes' not in entry or path.stat().st_size == entry['bytes']):
         return path
     request = urllib.request.Request(entry['url'], headers={'User-Agent': 'ImmoManager-reviewed-release-preparation'})
     with tempfile.NamedTemporaryFile(dir=cache, delete=False, suffix='.part') as temporary:
@@ -44,6 +51,8 @@ def fetch(entry: dict, cache: Path) -> Path:
                         raise RuntimeError('Release input too large')
                     temporary.write(chunk)
             temporary.close()
+            if 'bytes' in entry and count != entry['bytes']:
+                raise RuntimeError('Release size mismatch: ' + filename)
             if file_sha(partial) != entry['sha256']:
                 raise RuntimeError('Release checksum mismatch: ' + filename)
             partial.replace(path)
@@ -80,7 +89,8 @@ def prepare(target: Path, *, target_platform: str | None = None, cache: Path | N
         if file_sha(destination) != asset['sha256']:
             raise RuntimeError('Reproducible output mismatch: ' + asset['name'])
         files[asset['filename']] = asset['sha256']
-        for relative, content, executable in extracted(asset, destination):
+        members = () if config.get('runtime_mode') == 'archive-cache' and asset.get('extract') == 'runtime' else extracted(asset, destination)
+        for relative, content, executable in members:
             out = target / relative
             if out.is_symlink() or not out.resolve().is_relative_to(target):
                 raise RuntimeError('Unsafe output path')
@@ -99,7 +109,7 @@ def prepare(target: Path, *, target_platform: str | None = None, cache: Path | N
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('target', type=Path)
-    parser.add_argument('--platform', choices=('windows-x64', 'linux-x64'))
+    parser.add_argument('--platform', choices=SUPPORTED_PLATFORMS)
     parser.add_argument('--cache', type=Path)
     args = parser.parse_args()
     prepare(args.target, target_platform=args.platform, cache=args.cache)

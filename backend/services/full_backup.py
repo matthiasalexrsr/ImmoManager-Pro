@@ -353,7 +353,8 @@ def _libpq(database_url: str) -> tuple[str, dict[str, str]]:
 
 
 def _run(command: list[str], env: dict[str, str] | None = None, timeout: float = 6 * 3600) -> str:
-    result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=timeout)
+    result = subprocess.run(command, capture_output=True, text=True, errors="replace", stdin=subprocess.DEVNULL, env=env, timeout=timeout,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip()[-800:]
         raise BackupError(f"{Path(command[0]).name} fehlgeschlagen: {tail}")

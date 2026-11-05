@@ -188,8 +188,9 @@ def bundle() -> tuple[Path, dict, str]:
         raise ValidatorUnavailable("Das lokale E-Rechnung-Prüfpaket ist nicht eingerichtet.")
     root = Path(settings.e_invoice_bundle).resolve()
     try:
-        manifest, digest = verify_bundle(root)
-        return root, manifest, digest
+        from .runtime_cache import materialize_runtime_bundle
+
+        return materialize_runtime_bundle(root)
     except (OSError, ValueError, KeyError, TypeError):
         raise ValidatorUnavailable("Das Prüfpaket fehlt, ist unvollständig oder seine Prüfsummen stimmen nicht.") from None
 
@@ -230,8 +231,9 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
         # A child exec wrapper avoids unsafe preexec_fn in the multithreaded
         # API process. CPU, address space, output files and open FDs are bounded.
         mode = resource_mode or ('java' if Path(argv[0]).name == 'java' else 'extract')
-        wrapper = ([sys.executable, 'e-invoice-limit-worker'] if getattr(sys, 'frozen', False) else
-                   [sys.executable, '-m', 'backend.services.e_invoice.posix_worker'])
+        from ..runtime_process import frozen_cli_executable
+        wrapper = ([frozen_cli_executable(), 'e-invoice-limit-worker'] if getattr(sys, 'frozen', False) else
+                   [frozen_cli_executable(), '-m', 'backend.services.e_invoice.posix_worker'])
         env.update(E_INVOICE_LIMIT_DIR=str(profile), PYTHONPATH=str(Path(__file__).resolve().parents[3]))
         argv = [*wrapper, str(profile), mode, str(seconds), *argv]
     outputs: dict[str, list[str]] = {"stdout": [], "stderr": []}

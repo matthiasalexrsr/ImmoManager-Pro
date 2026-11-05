@@ -4,6 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ..runtime_process import frozen_cli_executable
 from . import parser
 from .validator import MAX_REPORT, ValidatorUnavailable, _run
 
@@ -12,8 +13,8 @@ def read_isolated(content: bytes) -> tuple[str, bytes, dict]:
     with tempfile.TemporaryDirectory(prefix="immo-e-invoice-read-") as directory:
         folder = Path(directory)
         (folder / "source.bin").write_bytes(content)
-        argv = ([sys.executable, "e-invoice-read-worker", str(folder)] if getattr(sys, "frozen", False) else
-                [sys.executable, "-m", "backend.services.e_invoice.worker", str(folder)])
+        argv = ([frozen_cli_executable(), "e-invoice-read-worker", str(folder)] if getattr(sys, "frozen", False) else
+                [frozen_cli_executable(), "-m", "backend.services.e_invoice.worker", str(folder)])
         code, _stdout, _stderr = _run(argv, folder, environment={"E_INVOICE_READ_DIR": str(folder),
             "PYTHONPATH": str(Path(__file__).resolve().parents[3]), "PYTHONUTF8": "1"})
         result_path = folder / "result.json"

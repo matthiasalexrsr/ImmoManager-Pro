@@ -3,37 +3,70 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import posixpath
 import stat
+import sysconfig
 import tarfile
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
 from ..filesystem_paths import filesystem_path
 
+SUPPORTED_PLATFORMS = ("windows-x64", "linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64")
+
 
 def platform_id() -> str:
     system, machine = platform.system().lower(), platform.machine().lower()
-    if system not in ('windows', 'linux') or machine not in ('amd64', 'x86_64'):
-        raise ValueError('The reviewed invoice runtime supports Windows/Linux x64 only')
-    return system + '-x64'
+    architecture = {"amd64": "x64", "x86_64": "x64", "x64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
+    if system == "windows":
+        # On Windows ARM the x64 application may run under OS emulation. Select
+        # the application's Python architecture, never pretend a native ARM JRE
+        # exists in the pinned Temurin release (it does not).
+        compiled = sysconfig.get_platform().lower()
+        if compiled == "win-amd64":
+            architecture = "x64"
+        elif compiled in ("win-arm64", "win32"):
+            raise ValueError("The reviewed Windows invoice runtime requires the x64 application; no native ARM64 JRE is published for this pin")
+    selected = system + "-" + str(architecture)
+    if selected not in SUPPORTED_PLATFORMS:
+        raise ValueError("No reviewed invoice runtime is available for this operating system and architecture")
+    return selected
 
 
 def configuration(path: Path | None = None, target_platform: str | None = None) -> dict:
     value = json.loads((path or Path(__file__).with_name('assets.json')).read_text(encoding='utf-8'))
     selected = target_platform or platform_id()
-    if selected not in ('windows-x64', 'linux-x64'):
+    if selected not in SUPPORTED_PLATFORMS:
         raise ValueError('Unsupported invoice runtime platform')
     assets = [asset for asset in value['assets'] if asset.get('platform', selected) == selected]
     if sum(asset.get('extract') == 'runtime' for asset in assets) != 1:
         raise ValueError('Exactly one reviewed runtime is required')
-    return {'format': value['format'], 'platform': selected, 'assets': assets}
+    result = {'format': value['format'], 'platform': selected, 'assets': assets}
+    if selected.startswith("darwin-"):
+        # Keep original Mach-O bytes inside a pinned archive while the outer
+        # application is signed. Materialize and verify privately before use.
+        result['runtime_mode'] = 'archive-cache'
+    return result
 
 
 def file_sha(path: Path) -> str:
     with filesystem_path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def runtime_legal_files(root: Path, manifest: dict):
+    """Publish the actual pinned runtime legal bytes, even for deferred macOS JREs."""
+    for asset in manifest['assets']:
+        if asset.get('extract') != 'runtime':
+            continue
+        archive = root / safe_name(asset['filename'])
+        if file_sha(archive) != asset['sha256']:
+            raise ValueError('Runtime archive checksum mismatch')
+        for name, content, _ in extracted(asset, archive):
+            if name.startswith('runtime/') and '/legal/' in name:
+                yield name.removeprefix('runtime/'), content, hashlib.sha256(content).hexdigest()
 
 
 def safe_name(name: str) -> str:
@@ -111,13 +144,20 @@ def extracted(asset: dict, archive_path: Path):
         raise ValueError('Unreviewed archive format')
 
 
-def verify(root: Path, expected: dict | None = None) -> tuple[dict, str]:
+def verify(root: Path, expected: dict | None = None, *, materialized: bool = False) -> tuple[dict, str]:
     root = filesystem_path(root.resolve())
     expected = expected or configuration()
     raw = (root / 'manifest.json').read_bytes()
     manifest = json.loads(raw)
     if any(manifest.get(key) != expected[key] for key in ('format', 'platform', 'assets')):
         raise ValueError('Unreviewed invoice assets or platform')
+    if manifest.get('runtime_mode', 'bundled') != expected.get('runtime_mode', 'bundled'):
+        raise ValueError('Unreviewed invoice runtime transport mode')
+    if bool(manifest.get('runtime_materialized', False)) != materialized:
+        raise ValueError('Unreviewed materialized runtime state')
+    deferred = expected.get('runtime_mode') == 'archive-cache'
+    if materialized and not deferred:
+        raise ValueError('Only archive-cache runtimes have a materialized state')
     files = {}
     for asset in expected['assets']:
         name = safe_name(asset['filename'])
@@ -125,10 +165,14 @@ def verify(root: Path, expected: dict | None = None) -> tuple[dict, str]:
         if file_sha(path) != asset['sha256']:
             raise ValueError('Release checksum mismatch')
         files[name] = asset['sha256']
+        if deferred and not materialized and asset.get('extract') == 'runtime':
+            continue
         for member, content, _executable in extracted(asset, path):
             if member in files:
                 raise ValueError('Duplicate extracted file')
             files[member] = hashlib.sha256(content).hexdigest()
+            if materialized and _executable and os.name != 'nt' and not (root / member).stat().st_mode & 0o111:
+                raise ValueError('A materialized runtime executable is not executable')
     present = set()
     for path in root.rglob('*'):
         if path.is_symlink() or getattr(path, 'is_junction', lambda: False)() or not path.resolve().is_relative_to(root.resolve()):

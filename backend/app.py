@@ -126,6 +126,10 @@ async def lifespan(app: FastAPI):
 
     # --- Production safety checks ---
     _validate_startup_config()
+    if settings.immo_demo:
+        from .demo import install_backend_guards, seed_demo
+        install_backend_guards()
+        seed_demo(app)
 
     # Auto-seed demo data only when explicitly enabled
     if settings.auto_seed_demo_data:
@@ -219,6 +223,16 @@ app.add_middleware(AuditMiddleware)
 app.add_middleware(RBACWriteGuardMiddleware)
 # outermost: every layer below, the endpoints and the upload mount run inside the request's portfolio scope
 app.add_middleware(PortfolioScopeMiddleware)
+
+if settings.immo_demo:
+    @app.middleware("http")
+    async def demo_outbound_actions(request, call_next):
+        from fastapi.responses import JSONResponse
+
+        from .demo import blocked_action
+        if blocked_action(request.method, request.url.path):
+            return JSONResponse(status_code=409, content={"detail": "Diese Aktion überträgt Daten an einen externen Dienst und steht im Demobestand nicht zur Verfügung.", "code": "DEMO_EXTERNAL_ACTION_DISABLED"})
+        return await call_next(request)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────
@@ -367,7 +381,7 @@ def health() -> dict:
             logger.warning("Health check: database connectivity failed", exc_info=True)
             db_ok = False
 
-    return {
+    result = {
         "status": "ok" if db_ok else "degraded",
         "version": settings.app_version,
         "environment": settings.environment.value,
@@ -378,6 +392,9 @@ def health() -> dict:
         "developer_tools_enabled": settings.developer_tools_enabled,
         "testversion": settings.immo_testversion,
     }
+    from .demo import health_fields
+    result.update(health_fields())
+    return result
 
 
 # ─── Serve built frontend (SPA) ─────────────────────────────────────────────

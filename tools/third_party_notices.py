@@ -73,17 +73,61 @@ def covered_sources(output):
     return copied + ["sources.json"]
 
 
+def tcl_tk_license_sources(versions):
+    """Exact release texts; never guess a license when the bundled runtime changes."""
+    folder = ROOT / "packaging/third-party"
+    entries = json.loads((folder / "tcl-tk-licenses.json").read_text(encoding="utf-8"))
+    result = []
+    for name, version in versions.items():
+        matches = [item for item in entries if item["name"] == name and item["version"] == version]
+        if len(matches) != 1:
+            raise RuntimeError(f"Missing exact Tcl/Tk license source: {name}@{version}")
+        entry = matches[0]
+        if Path(entry["filename"]).name != entry["filename"]:
+            raise RuntimeError("Tcl/Tk license source must be a plain filename")
+        path = folder / entry["filename"]
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+            raise RuntimeError("Tcl/Tk license source checksum mismatch")
+        result.append((name, version, entry["license"], path, entry))
+    return result
+
+
+def windows_tcl_tk_versions():
+    """Read PE product versions without creating a Tk window or loading DLL code."""
+    import tkinter
+
+    from PyInstaller.utils.win32.versioninfo import read_version_info_from_executable
+
+    versions = {}
+    for name, major_minor in (("Tcl", tkinter.TclVersion), ("Tk", tkinter.TkVersion)):
+        stem = name.lower() + str(major_minor).replace(".", "")
+        candidates = [Path(sys.base_prefix) / "DLLs" / (stem + suffix) for suffix in ("t.dll", ".dll")]
+        paths = [path for path in candidates if path.is_file()]
+        if len(paths) != 1:
+            raise RuntimeError(f"Cannot identify bundled {name} runtime DLL")
+        info = read_version_info_from_executable(str(paths[0]))
+        declared = {value.val for child in getattr(info, "kids", []) for table in getattr(child, "kids", [])
+                    for value in getattr(table, "kids", []) if getattr(value, "name", None) == "ProductVersion"}
+        if len(declared) != 1 or not re.fullmatch(r"\d+\.\d+\.\d+", next(iter(declared))):
+            raise RuntimeError(f"Cannot determine exact {name} runtime version")
+        versions[name] = declared.pop()
+    return versions
+
+
 def generate(output=None):
     wizard_vendor, wizard_source = verify_wizard_assets(ROOT)
     invoice_manifest = ROOT / "packaging/e-invoice-notices/manifest.json"
-    notice_revision = hashlib.sha256(invoice_manifest.read_bytes()).hexdigest()[:12]
+    hosting = os.environ.get('IMMO_PACKAGE_TARGET') == 'hosting'
+    notice_inputs = invoice_manifest.read_bytes()
+    if not hosting:
+        notice_inputs += (ROOT / "packaging/third-party/qt-sources.json").read_bytes()
+    notice_revision = hashlib.sha256(notice_inputs).hexdigest()[:12]
     output = Path(output or ROOT / ("artifacts/notices-" + notice_revision))
     output.mkdir(parents=True, exist_ok=True)
     rows, missing, excluded = [], [], []
 
-    def record(ecosystem, name, version, expression, files):
+    def record(ecosystem, name, version, expression, files, upstream=None):
         files = sorted({Path(file).resolve() for file in files if Path(file).is_file()})
-        upstream = None
         if not files and ecosystem == "npm":
             fallback = bundled_license(name, version)
             if fallback:
@@ -114,7 +158,6 @@ def generate(output=None):
         )
 
     roots = list(requirements(ROOT / "requirements-runtime.txt"))
-    hosting = os.environ.get('IMMO_PACKAGE_TARGET') == 'hosting'
     # The desktop spec excludes PostgreSQL; the hosting image actually ships it.
     if not hosting:
         roots = [req for req in roots if canonicalize_name(req.name) != "psycopg2-binary"]
@@ -124,6 +167,7 @@ def generate(output=None):
         roots += list(requirements(ROOT / "requirements-documents-optional.txt"))
     if not hosting:
         roots += [Requirement("PyInstaller")]
+        roots += list(requirements(ROOT / "requirements-desktop.txt"))
     seen = set()
 
     def visit(req):
@@ -186,6 +230,9 @@ def generate(output=None):
     python_licenses = [Path(sys.base_prefix) / 'LICENSE.txt', Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt',
                        Path(sys.base_prefix) / 'LICENSE']
     record("runtime", "Python", sys.version.split()[0], "PSF-2.0", python_licenses)
+    if not hosting and sys.platform == "win32":
+        for name, version, expression, source, upstream in tcl_tk_license_sources(windows_tcl_tk_versions()):
+            record("runtime", name, version, expression, [source], upstream=upstream)
     record("asset", "Roboto-wizard", wizard_source["font_version"], "OFL-1.1",
            [wizard_vendor / "Roboto-OFL.txt", wizard_vendor / "SOURCES.json"])
     record("asset", "NotoSans", "bundled", "OFL-1.1", [ROOT / "backend/assets/fonts/OFL-Noto.txt"])
@@ -226,12 +273,16 @@ def generate(output=None):
     from tools.e_invoice_notices import catalog
     from tools.e_invoice_notices import generate as invoice_notices
     invoice_rows = invoice_notices(output)
+    desktop_rows = []
+    if not hosting:
+        from tools.qt_sources import notices as desktop_notices
+        desktop_rows = desktop_notices(output)
     system_rows = []
     if hosting:
         from tools.hosting_notices import generate as system_notices
         system_rows = system_notices(output)
-    catalog(output, [*rows, *invoice_rows, *system_rows])
-    print(f"{len(rows) + len(invoice_rows) + len(system_rows)} components with license texts: {output}")
+    catalog(output, [*rows, *invoice_rows, *desktop_rows, *system_rows])
+    print(f"{len(rows) + len(invoice_rows) + len(desktop_rows) + len(system_rows)} components with license texts: {output}")
     return output
 
 

@@ -54,6 +54,7 @@ def checkout(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "_HISTORY_FILE", tmp_path / ".updates" / "history.json")
     monkeypatch.setattr(updater, "_run_git", fake.git)
     monkeypatch.setattr(updater.subprocess, "run", fake.run)
+    monkeypatch.setattr(updater, "_npm_command", lambda: ["npm"])
     monkeypatch.setattr(updater, "_is_git_repo", lambda: True)
     monkeypatch.setattr(updater, "_has_uncommitted_changes", lambda: False)
     monkeypatch.setattr(updater, "_create_pre_update_backup", lambda: "pre_update.json")
