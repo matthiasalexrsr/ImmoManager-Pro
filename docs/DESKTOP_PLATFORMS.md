@@ -92,7 +92,7 @@ ihn einmal und erhält spätere Änderungen. Reguläre Datenordner und deren
 Verbindungseinstellungen werden dafür nicht übernommen. Standardport ist 8766.
 
 Im Quellbetrieb: `python -m backend --demo`, unter Windows auch
-`start.bat -Demo`. Unter Linux stehen `Demo-Desktop` und `Demo-Browser` bereit;
+`start.bat -Demo`. Unter Linux stehen `Start-Demo-Desktop` und `Start-Demo-Browser` bereit;
 unter macOS startet `open -a "ImmoManager Pro" --args --demo` die eigene Oberfläche
 und `open -a "ImmoManager Pro" --args --demo --mode browser` die Browservariante.
 
