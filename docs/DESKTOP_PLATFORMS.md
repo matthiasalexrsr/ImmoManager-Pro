@@ -38,7 +38,17 @@ eigenständiges Bereitstellungsmodell und keine native Desktop-Freigabe.
 Qt 6.11.3 wurde gezielt als aktueller Wartungsstand gewählt: Die offiziellen
 Wheels unterstützen noch macOS 13; Qt/PySide 6.12 benötigt dort macOS 14.
 Die Python-Quellinstallation benötigt Python 3.11 bis 3.14 und für Desktopbetrieb
-`pip install -e ".[desktop]"`. Eine reine Serverinstallation benötigt Qt nicht.
+`pip install -e ".[desktop]"`. Für das eigenständige Fenster unter Linux ARM64
+ist Python 3.12 bis 3.14 erforderlich; die nativen ARM64-Pakete enthalten eine
+passende Laufzeit. Die offiziellen PySide6/Shiboken6-6.11.3-ARM64-Wheels verlieren
+unter Python 3.11 bei gewöhnlichen Qt-Aufrufen Referenzen auf `None`. Ein
+[nativer Vergleich auf demselben ARM64-Runner](https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/runs/42073185182)
+belegt den Verlust unter Python 3.11.18 und stabile Referenzen unter Python 3.12.16.
+Die Anwendung lehnt die betroffene Kombination vor dem Qt-Import ab; der native
+Build prüft die tatsächliche Referenzzählung zusätzlich mit
+`python scripts/check_qt_ownership.py --output qt-ownership.json`.
+Browser- und Serverbetrieb bleiben ab Python 3.11 verfügbar. Eine reine
+Serverinstallation benötigt Qt nicht.
 
 ## Öffnen und Moduswahl
 
