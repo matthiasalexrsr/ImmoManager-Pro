@@ -87,22 +87,27 @@ jobs:
             runner: windows-2022
             os: win32
             arch: x64
+            python: '3.11'
           - id: macos-x64
             runner: macos-15-intel
             os: darwin
             arch: x64
+            python: '3.11'
           - id: macos-arm64
             runner: macos-15
             os: darwin
             arch: arm64
+            python: '3.11'
           - id: linux-x64
             runner: ubuntu-22.04
             os: linux
             arch: x64
+            python: '3.11'
           - id: linux-arm64
             runner: ubuntu-24.04-arm
             os: linux
             arch: arm64
+            python: '3.12'
     defaults:
       run:
         shell: bash
@@ -122,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python }}
           architecture: ${{ matrix.arch }}
           cache: pip
           cache-dependency-path: |
@@ -163,12 +168,35 @@ jobs:
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
             libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 python3-tk tcl tk
           echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
+      - name: Build pinned macOS 13 compatible independent OpenSSL for Intel cryptography
+        if: matrix.id == 'macos-x64'
+        run: |
+          python scripts/build_macos_openssl.py --output artifacts/native-build/openssl-3.5.9
+          prefix="$GITHUB_WORKSPACE/artifacts/native-build/openssl-3.5.9/install"
+          echo "OPENSSL_DIR=$prefix" >> "$GITHUB_ENV"
+          echo "IMMO_STATIC_OPENSSL_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo 'OPENSSL_STATIC=1' >> "$GITHUB_ENV"
+          echo 'MACOSX_DEPLOYMENT_TARGET=13.0' >> "$GITHUB_ENV"
       - name: Install pinned backend, desktop and build dependencies
         run: |
           python -m pip install -r requirements-pip.txt
-          python -m pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+          if [[ '${{ matrix.id }}' == 'macos-x64' ]]; then
+            # Cryptography 50 has no upstream Intel macOS wheel. Its documented
+            # static build avoids flattening Homebrew's libssl over Python's.
+            # Discard the prior dynamically built pip wheel cache explicitly.
+            test -f "$OPENSSL_DIR/lib/libssl.a"
+            test -f "$OPENSSL_DIR/lib/libcrypto.a"
+            python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
+          else
+            python -m pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+          fi
           python -m pip check
           python -m pip freeze > artifacts/desktop-reports/installed-python.txt
+      - name: Verify actual macOS OpenSSL linkage and both cryptographic consumers
+        if: runner.os == 'macOS'
+        run: python scripts/check_macos_crypto.py --output artifacts/desktop-reports/macos-openssl-abi.json
+      - name: Verify actual Qt Python ownership before Qt runtime tests
+        run: python scripts/check_qt_ownership.py --output artifacts/desktop-reports/qt-ownership.json
       - name: Verify native Linux Qt shared-library dependencies before runtime tests
         if: runner.os == 'Linux'
         run: |
@@ -245,7 +273,7 @@ jobs:
             backend/tests/test_standalone_policy.py backend/tests/test_standalone_runtime.py \
             backend/tests/test_desktop_launcher.py backend/tests/test_platform_desktop_runtime.py \
             backend/tests/test_posix_instance_guard.py \
-            backend/tests/test_desktop_bundle.py backend/tests/test_runtime_process_windows.py \
+            backend/tests/test_desktop_bundle.py backend/tests/test_macos_crypto_build.py backend/tests/test_runtime_process_windows.py \
             backend/tests/test_windows_installer.py backend/tests/test_dependency_manifests.py \
             backend/tests/test_windows_launcher.py backend/tests/test_e_invoice_runtime_cache.py \
             backend/tests/test_desktop_startup_failure.py backend/tests/test_frozen_desktop_smoke.py \
@@ -360,6 +388,10 @@ jobs:
             dist/ImmoManager Pro.app/Contents/Resources/desktop-runtime.json
             artifacts/native-packages/*.compiler.log
             artifacts/native-packages/*.build.json
+            artifacts/native-build/openssl-3.5.9/compiler.log
+            artifacts/native-build/openssl-3.5.9/install/build-receipt.json
+            artifacts/native-build/openssl-3.5.9/install/LICENSE.txt
+            artifacts/native-build/openssl-3.5.9/install/NOTICE*
           if-no-files-found: warn
           compression-level: 6
           retention-days: 30
