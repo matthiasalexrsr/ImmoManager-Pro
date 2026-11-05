@@ -1,0 +1,55 @@
+name: Diagnose macOS Intel PDF viewer (unchanged R4)
+on:
+  push:
+    branches: [transfer/demo-bw-2026-11-05]
+    paths: [.github/workflows/macos-pdf-diagnosis.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe-original-macos-intel-tests:
+    if: github.repository == 'matthiasalexrsr/ImmoManager-Pro' && github.actor == 'matthiasalexrsr'
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_OPENGL: software
+      QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --enable-logging=stderr
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Read this diagnostic helper at the dispatched commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: diagnostic-helpers
+          persist-credentials: false
+      - name: Read the exact unchanged R4 subject
+        uses: actions/checkout@v4
+        with:
+          ref: 73f4498827978aeb3a380aafa6dbb4ad7ab46097
+          path: subject
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install only pinned Qt and PDF fixture dependencies
+        run: |
+          python -m pip install -r subject/requirements-pip.txt
+          python -m pip install -c subject/constraints.txt -r subject/requirements-desktop.txt reportlab pypdf pillow packaging
+          python -m pip freeze > installed-python.txt
+      - name: Observe all three independent original test processes
+        run: |
+          test "$(git -C subject rev-parse HEAD)" = '73f4498827978aeb3a380aafa6dbb4ad7ab46097'
+          python diagnostic-helpers/scripts/diagnose_macos_pdf.py --subject subject --output diagnostic-results
+      - name: Upload every result, including original failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-original-r4-pdf-diagnosis
+          path: |
+            diagnostic-results/
+            installed-python.txt
+          if-no-files-found: error
+          retention-days: 14
