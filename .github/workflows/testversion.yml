@@ -74,7 +74,7 @@ jobs:
           # unpack the ZIP as a tester would, and start the program from there
           $try = Join-Path $env:RUNNER_TEMP 'probestart'
           7z x '${{ steps.package.outputs.zip }}' "-o$try" | Out-Null
-          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro.exe'
+          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro-CLI.exe'
           $log = Join-Path $env:RUNNER_TEMP 'probestart.log'
           $proc = Start-Process -FilePath $exe -ArgumentList '--no-browser', '--port', '8765' `
             -WindowStyle Hidden -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru

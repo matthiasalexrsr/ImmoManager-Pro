@@ -1,63 +1,198 @@
-name: Release (Windows)
+name: Release (native desktop platforms)
 
-# A version tag (v2.0.0, v2.1.0-rc1 …) builds the Windows package of the app, tries it like a user
-# would (first start, sign-in page, explicit upgrade check, verified backup, restore probe, and the
-# update from the previous release's package), and publishes it as a GitHub release. The app's
-# update check (Einstellungen → System → Updates) reads these releases.
-# The tag must match the version in pyproject.toml. Without a tag nothing is published: a manual
-# run, or a push that changes the packaging, builds and tries the package and keeps it as a workflow
-# artifact only. (A manual run needs this file on the repository's default branch.)
-# Only a commit the full CI (ci.yml: frontend, backend, PostgreSQL, document tools, E2E) passed is packaged.
+# Only the exact commit accepted by CI and all five native desktop jobs can be
+# promoted. Ordinary manual runs remain artifacts-only. An unsigned beta is an
+# explicit input, never an automatic exception for stable/customer releases.
 on:
   push:
     tags:
       - 'v*'
-    branches:
-      - '**'
-    # paths apply to branch pushes only; a tag always builds
-    paths:
-      - '.github/workflows/release.yml'
-      - 'immomanager.spec'
-      - 'packaging/**'
-      - 'requirements-build.txt'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a new release after all exact-commit gates pass'
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Exact version tag, for example v2.0.0-beta.1 (publish only)'
+        type: string
+        default: ''
+      allow_unsigned_prerelease:
+        description: 'Explicit unsigned beta.N test release; never a stable signing bypass'
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   ci-gate:
-    name: CI auf diesem Commit erfolgreich
+    name: CI und native Desktop-Abnahme auf diesem Commit erfolgreich
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     permissions:
       actions: read
+      contents: read
+    outputs:
+      desktop_run: ${{ steps.gate.outputs.desktop_run }}
+      ci_run: ${{ steps.gate.outputs.ci_run }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Wait for a successful CI run of this commit
+      - name: Wait for successful CI and five-target desktop acceptance of this exact commit
+        id: gate
         run: |
-          # a run still in progress is waited for; a failed or cancelled one alone stops the release
-          for attempt in $(seq 1 110); do
-            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=50" \
-              --jq '[.workflow_runs[] | {status, conclusion}]')
-            if jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<< "$runs" > /dev/null; then
-              echo "CI ist auf $GITHUB_SHA erfolgreich."; exit 0
+          # One shared deadline, not two independent 110-minute waits. Select
+          # an actual successful run ID so artifact provenance stays exact.
+          deadline=$((SECONDS + 10500))
+          attempt=0
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1)); complete=true
+            for workflow in ci.yml desktop.yml; do
+              runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$GITHUB_SHA&per_page=50" \
+                --jq '[.workflow_runs[] | {id, head_sha, status, conclusion}]')
+              passed=$(jq -r --arg sha "$GITHUB_SHA" '[.[] | select(.head_sha == $sha and .status == "completed" and .conclusion == "success")] | sort_by(.id) | last | .id // empty' <<< "$runs")
+              if [ -n "$passed" ]; then
+                if [ "$workflow" = desktop.yml ]; then desktop_run=$passed; else ci_run=$passed; fi
+                continue
+              fi
+              complete=false
+              if [ "$attempt" -gt 10 ] && ! jq -e 'any(.[]; .status != "completed")' <<< "$runs" > /dev/null; then
+                echo "::error::Kein erfolgreicher $workflow-Lauf auf $GITHUB_SHA: $runs"; exit 1
+              fi
+              echo "$workflow wartet/läuft auf $GITHUB_SHA (Abfrage $attempt) …"
+            done
+            if [ "$complete" = true ]; then
+              echo "desktop_run=$desktop_run" >> "$GITHUB_OUTPUT"
+              echo "ci_run=$ci_run" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            if ! jq -e 'any(.[]; .status != "completed")' <<< "$runs" > /dev/null; then
-              echo "::error::Kein erfolgreicher CI-Lauf auf $GITHUB_SHA: $runs"; exit 1
-            fi
-            echo "CI läuft noch auf $GITHUB_SHA (Abfrage $attempt) …"; sleep 60
+            sleep 30
           done
-          echo "::error::CI auf $GITHUB_SHA ist nicht rechtzeitig fertig geworden."; exit 1
+          echo '::error::Exact-commit CI/native acceptance did not finish before the release deadline.'; exit 1
+
+  native-assets:
+    name: Bind all five accepted native packages, sources and checksums
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.policy.outputs.version }}
+      tag: ${{ steps.policy.outputs.tag }}
+      unsigned_beta: ${{ steps.policy.outputs.unsigned_beta }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned pip
+        run: python -m pip install -r requirements-pip.txt
+      - name: Validate explicit publication policy
+        id: policy
+        env:
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          INPUT_UNSIGNED: ${{ inputs.allow_unsigned_prerelease }}
+        run: |
+          python - <<'PY'
+          import os, tomllib
+          from pathlib import Path
+          from scripts.release_artifacts import check_policy
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          publish = os.environ['GITHUB_REF_TYPE'] == 'tag' or os.environ['INPUT_PUBLISH'] == 'true'
+          requested = os.environ['INPUT_TAG']
+          tag = (os.environ['GITHUB_REF_NAME'] if os.environ['GITHUB_REF_TYPE'] == 'tag' else requested or 'v' + version) if publish else ''
+          if requested and not publish:
+              raise ValueError('A release_tag requires explicit publish=true')
+          unsigned = os.environ['INPUT_UNSIGNED'] == 'true'
+          check_policy(version, publish=publish, tag=tag, allow_unsigned=unsigned)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\ntag={tag}\nunsigned_beta={str(unsigned).lower()}\n')
+          PY
+      - name: Download all five immutable native package artifacts from the accepted run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.ci-gate.outputs.desktop_run }}
+          pattern: Desktop-*-native-package
+          path: artifacts/accepted-native-packages
+      - name: Download matching native acceptance reports
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.ci-gate.outputs.desktop_run }}
+          pattern: Desktop-*-reports
+          path: artifacts/accepted-native-reports
+      - name: Download complete pinned Qt source sidecars from the same run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.ci-gate.outputs.desktop_run }}
+          name: Qt-Quellen-6.11.3
+          path: artifacts/accepted-qt-sources
+      - name: Verify exact commit, native acceptance, package bytes and complete sources
+        env:
+          RELEASE_VERSION: ${{ steps.policy.outputs.version }}
+          DESKTOP_RUN: ${{ needs.ci-gate.outputs.desktop_run }}
+          CI_RUN: ${{ needs.ci-gate.outputs.ci_run }}
+        run: |
+          python scripts/release_artifacts.py stage --version "$RELEASE_VERSION" --commit "$GITHUB_SHA" \
+            --desktop-run "$DESKTOP_RUN" --ci-run "$CI_RUN" --packages artifacts/accepted-native-packages \
+            --reports artifacts/accepted-native-reports --sources artifacts/accepted-qt-sources --output artifacts/verified-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Verified-native-release-${{ github.sha }}
+          path: artifacts/verified-release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish-beta:
+    name: Publish the explicitly selected unsigned beta from accepted native packages
+    needs: native-assets
+    if: needs.native-assets.outputs.unsigned_beta == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned pip
+        run: python -m pip install -r requirements-pip.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: Verified-native-release-${{ github.sha }}
+          path: artifacts/verified-release
+      - name: Attest the exact native release inventory
+        uses: actions/attest@v4
+        with:
+          subject-path: artifacts/verified-release/SHA256SUMS.txt
+      - name: Create a new exact-commit beta release without replacing a tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.native-assets.outputs.version }}
+          RELEASE_TAG: ${{ needs.native-assets.outputs.tag }}
+        run: |
+          python scripts/release_artifacts.py publish artifacts/verified-release --version "$RELEASE_VERSION" \
+            --commit "$GITHUB_SHA" --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" --allow-unsigned
 
   windows:
     name: Windows-Paket bauen, prüfen und veröffentlichen
-    needs: ci-gate
+    needs: [ci-gate, native-assets]
+    if: needs.native-assets.outputs.unsigned_beta != 'true'
     permissions:
       contents: write
       id-token: write
@@ -72,10 +207,12 @@ jobs:
       - name: Version from pyproject.toml and tag
         id: version
         shell: pwsh
+        env:
+          VALIDATED_RELEASE_TAG: ${{ needs.native-assets.outputs.tag }}
         run: |
           $line = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1
           $version = $line.Matches[0].Groups[1].Value
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { '' }
+          $tag = $env:VALIDATED_RELEASE_TAG
           if ($tag -and $tag.TrimStart('v','V') -ne $version) {
             throw "Tag $tag passt nicht zur Version $version in pyproject.toml"
           }
@@ -102,13 +239,30 @@ jobs:
           python-version: '3.11'
           cache: pip
 
+      - name: Retrieve already verified native assets and source snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: Verified-native-release-${{ github.sha }}
+          path: artifacts/verified-release
+
       - name: Install backend and PyInstaller
         run: |
           python -m pip install -r requirements-pip.txt
           pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
 
+      - uses: actions/cache@v4
+        with:
+          path: artifacts/qt-sources
+          key: qt-sources-v1-${{ hashFiles('packaging/third-party/qt-sources.json') }}
+          enableCrossOsArchive: true
+
       - name: Build ImmoManager-Pro.exe
         run: python -m PyInstaller immomanager.spec --noconfirm
+
+      - name: Exercise actual standalone renderer and packaged backend
+        run: python scripts/check_desktop_runtime.py --dist dist/ImmoManager-Pro --output artifacts/release-desktop-smoke
+      - name: Start actual packaged GUI and verify server EOF recovery
+        run: python scripts/check_frozen_desktop.py --dist dist/ImmoManager-Pro --output artifacts/release-real-gui-smoke
 
       - name: Sign and verify customer executable
         shell: pwsh
@@ -118,7 +272,47 @@ jobs:
           WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
         run: |
           $required = '${{ steps.version.outputs.tag }}' -ne ''
-          ./scripts/sign_release.ps1 -Executable 'dist/ImmoManager-Pro/ImmoManager-Pro.exe' -Required:$required
+          foreach ($program in @('ImmoManager-Pro.exe', 'ImmoManager-Pro-CLI.exe')) {
+            ./scripts/sign_release.ps1 -Executable (Join-Path 'dist/ImmoManager-Pro' $program) -Required:$required
+            if ($LASTEXITCODE -ne 0) { throw "Program signing failed: $program" }
+          }
+
+      - name: Prepare verified portable installer compiler
+        id: inno
+        shell: pwsh
+        run: ./scripts/prepare_inno_setup.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'immo-inno-build-tool')
+
+      - name: Build and verify Windows installer
+        id: installer
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'installer'
+          python scripts/build_installer.py --iscc '${{ steps.inno.outputs.iscc }}' --dist dist/ImmoManager-Pro --output $out
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          $installers = @(Get-ChildItem -LiteralPath $out -Filter '*-Setup-x64.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one built installer' }
+          $setup = $installers[0].FullName
+          $required = '${{ steps.version.outputs.tag }}' -ne ''
+          ./scripts/sign_release.ps1 -Executable $setup -Required:$required
+          if ($LASTEXITCODE -ne 0) { throw 'Installer signing failed' }
+          # Signing changes the file bytes: preserve the build digest and publish
+          # the actual signed artifact digest rather than a stale pre-sign hash.
+          $receiptPath = [IO.Path]::ChangeExtension($setup, 'build.json')
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+          $receipt | Add-Member -NotePropertyName pre_sign_installer_sha256 -NotePropertyValue $receipt.installer_sha256
+          $receipt.installer_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
+          $receipt.installer_bytes = (Get-Item -LiteralPath $setup).Length
+          $receipt | Add-Member -NotePropertyName signature_status -NotePropertyValue ([string](Get-AuthenticodeSignature -LiteralPath $setup).Status)
+          $receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+          ($receipt.installer_sha256 + '  ' + (Split-Path $setup -Leaf)) | Set-Content -LiteralPath ([IO.Path]::ChangeExtension($setup, 'sha256')) -Encoding ascii
+          python scripts/check_windows_installer.py --installer $setup --dist dist/ImmoManager-Pro --work $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Installer lifecycle verification failed' }
+          "exe=$setup" >> $env:GITHUB_OUTPUT
+          "dir=$out" >> $env:GITHUB_OUTPUT
 
       - name: Assemble package
         id: package
@@ -154,7 +348,7 @@ jobs:
           node scripts/frontendSbom.mjs (Join-Path $out 'sbom-frontend.cdx.json')
           if ($LASTEXITCODE -ne 0) { throw 'SBOM der Oberflaeche fehlgeschlagen' }
           Pop-Location
-          $files = @('${{ steps.package.outputs.zip }}') + (Get-ChildItem $out -Filter '*.json').FullName
+          $files = @('${{ steps.package.outputs.zip }}', '${{ steps.installer.outputs.exe }}') + (Get-ChildItem $out -Filter '*.json').FullName + (Get-ChildItem 'artifacts/qt-sources' -Filter '*.tar.xz').FullName
           $sums = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower(), (Split-Path $file -Leaf) }
           $sums | Out-File -Encoding ascii (Join-Path $out 'SHA256SUMS.txt')
           Get-Content (Join-Path $out 'SHA256SUMS.txt')
@@ -166,7 +360,19 @@ jobs:
         with:
           subject-path: |
             ${{ steps.package.outputs.zip }}
+            ${{ steps.installer.outputs.exe }}
             ${{ steps.sbom.outputs.dir }}/SHA256SUMS.txt
+            artifacts/qt-sources/*.tar.xz
+
+      - name: Bind signed Windows output to the accepted native packages and complete source snapshot
+        if: steps.version.outputs.tag != ''
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_INSTALLER: ${{ steps.installer.outputs.exe }}
+          RELEASE_PORTABLE: ${{ steps.package.outputs.zip }}
+          RELEASE_METADATA: ${{ steps.sbom.outputs.dir }}
+        run: |
+          python scripts/release_artifacts.py finalize-signed --staged artifacts/verified-release --installer "$env:RELEASE_INSTALLER" --portable "$env:RELEASE_PORTABLE" --metadata "$env:RELEASE_METADATA" --output artifacts/signed-release --version "$env:RELEASE_VERSION" --commit "$env:GITHUB_SHA"
 
       - name: Try the package and the update from the previous release
         shell: pwsh
@@ -189,7 +395,7 @@ jobs:
           }
           $try = Join-Path $env:RUNNER_TEMP 'probestart'
           7z x '${{ steps.package.outputs.zip }}' "-o$try" | Out-Null
-          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro.exe'
+          $exe = Join-Path $try 'ImmoManager-Pro/ImmoManager-Pro-CLI.exe'
 
           # 1. a new installation: empty data folder, first start, sign-in page, version
           $fresh = Join-Path $env:RUNNER_TEMP 'daten-neu'
@@ -214,7 +420,8 @@ jobs:
           gh release download $previous --repo $env:GITHUB_REPOSITORY --pattern '*-Windows.zip' --dir $old
           if ($LASTEXITCODE -ne 0) { Write-Host "Release $previous hat kein Windows-Paket: Update-Probe entfaellt."; exit 0 }
           7z x (Get-ChildItem $old -Filter '*.zip')[0].FullName "-o$old" | Out-Null
-          $oldExe = (Get-ChildItem $old -Recurse -Filter 'ImmoManager-Pro.exe')[0].FullName
+          $oldCli = @(Get-ChildItem $old -Recurse -Filter 'ImmoManager-Pro-CLI.exe')
+          $oldExe = if ($oldCli.Count) { $oldCli[0].FullName } else { (Get-ChildItem $old -Recurse -Filter 'ImmoManager-Pro.exe')[0].FullName }
           $kept = Join-Path $env:RUNNER_TEMP 'daten-update'
           $before = Start-App $oldExe $kept 8766
           Stop-Process -Id $before.proc.Id -Force
@@ -233,18 +440,22 @@ jobs:
           path: |
             ${{ steps.package.outputs.zip }}
             ${{ steps.sbom.outputs.dir }}
+            ${{ steps.installer.outputs.dir }}
+            artifacts/release-desktop-smoke/verification.json
+            artifacts/release-desktop-smoke/*.png
+            artifacts/release-real-gui-smoke/verification.json
+            artifacts/qt-sources/*.tar.xz
+            packaging/third-party/qt-sources.json
+            artifacts/signed-release/
           retention-days: 30
           compression-level: 0
 
       - name: Publish the release
         if: steps.version.outputs.tag != ''
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          $meta = @((Get-ChildItem '${{ steps.sbom.outputs.dir }}' -File).FullName)
-          if ($meta.Count -lt 3) { throw 'SBOM oder Pruefsummen fehlen.' }
-          $releaseArgs = @('${{ steps.version.outputs.tag }}', '${{ steps.package.outputs.zip }}') + $meta + @(
-                    '--repo', $env:GITHUB_REPOSITORY, '--title', 'ImmoManager Pro ${{ steps.version.outputs.version }}',
-                    '--notes-file', 'docs/RELEASE_NOTES.md')
-          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $releaseArgs += '--prerelease' }
-          gh release create @releaseArgs
+          python scripts/release_artifacts.py publish artifacts/signed-release --version "$env:RELEASE_VERSION" --commit "$env:GITHUB_SHA" --tag "$env:RELEASE_TAG" --repository "$env:GITHUB_REPOSITORY"
           if ($LASTEXITCODE -ne 0) { throw 'Release konnte nicht angelegt werden.' }
