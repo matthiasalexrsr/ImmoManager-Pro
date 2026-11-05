@@ -1,4 +1,4 @@
-name: Diagnose macOS Intel PDF viewer (unchanged R4)
+name: Diagnose macOS Intel auth-restart prefix before PDF (unchanged R4)
 on:
   push:
     branches: [transfer/demo-bw-2026-11-05]
@@ -39,7 +39,7 @@ jobs:
           python -m pip install -r subject/requirements-pip.txt
           python -m pip install -c subject/constraints.txt -r subject/requirements-desktop.txt reportlab pypdf pillow packaging
           python -m pip freeze > installed-python.txt
-      - name: Observe all three independent original test processes
+      - name: Observe auth restart, download, PDF and profile in three independent processes
         run: |
           test "$(git -C subject rev-parse HEAD)" = '73f4498827978aeb3a380aafa6dbb4ad7ab46097'
           python diagnostic-helpers/scripts/diagnose_macos_pdf.py --subject subject --output diagnostic-results
@@ -47,7 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-intel-original-r4-pdf-diagnosis
+          name: macos-intel-original-r4-auth-prefix-pdf-diagnosis
           path: |
             diagnostic-results/
             installed-python.txt
