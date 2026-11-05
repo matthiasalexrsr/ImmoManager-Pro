@@ -506,6 +506,14 @@ if __name__ == "__main__":
     # Keep the install/update guard while any CLI/worker is using bundled code.
     _installation_mutex = hold_installation_mutex()
 
+    # A fixed, isolated native UI acceptance entry point. It runs in this
+    # executable's frozen interpreter so Qt and its helper use one bundle.
+    # Dispatch before loading any live runtime configuration or logfile.
+    if sys.argv[1:2] == ["desktop-runtime-check"]:
+        from scripts.check_desktop_runtime import main as desktop_runtime_check_main
+
+        raise SystemExit(desktop_runtime_check_main(sys.argv[2:]))
+
     if sys.argv[1:2] == ['e-invoice-limit-worker']:
         from backend.services.e_invoice.posix_worker import main as e_invoice_limit_main
         e_invoice_limit_main(sys.argv[2:])

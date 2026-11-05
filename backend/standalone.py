@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import queue
 import sys
 from pathlib import Path
@@ -28,6 +29,18 @@ class StandaloneUnavailable(RuntimeError):
     pass
 
 
+def _validate_python_runtime(platform_name: str, architecture: str, version: tuple[int, ...]) -> None:
+    # The official 6.11.3 aarch64 wheels return borrowed None references on
+    # CPython 3.11. Reject this combination before importing any Qt bindings.
+    # Native comparison: https://github.com/matthiasalexrsr/ImmoManager-Pro/actions/runs/42073185182
+    if platform_name.startswith("linux") and architecture.lower() in {"aarch64", "arm64"} and version < (3, 12):
+        raise StandaloneUnavailable(
+            "Die eigenständige Desktop-Anwendung benötigt auf Linux ARM64 Python 3.12 oder neuer. "
+            "Bitte eine passende Python-Umgebung oder das bereitgestellte Linux-ARM64-Paket verwenden. "
+            "Der Browsermodus kann mit Python 3.11 weiterhin ausdrücklich gewählt werden."
+        )
+
+
 def configure_runtime(args):
     """Apply an explicit graphics choice before importing Qt/creating QApplication."""
     validate_engine_environment(os.environ)
@@ -40,6 +53,7 @@ def configure_runtime(args):
 
 def qt_api():
     """Load the packaged engine without changing sandbox or certificate policy."""
+    _validate_python_runtime(sys.platform, platform.machine(), sys.version_info[:2])
     validate_engine_environment(os.environ)
     if getattr(sys, "frozen", False):
         marker = ROOT / "desktop-runtime.json"
