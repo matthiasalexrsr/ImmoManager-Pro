@@ -40,6 +40,8 @@ def inventory(folder):
 
 
 def registered():
+    if sys.platform != 'win32':
+        raise OSError('Uninstall registration can only be inspected on native Windows.')
     import winreg
     for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
         try:
@@ -52,7 +54,25 @@ def registered():
     return False
 
 
+def require_application_stopped():
+    """Do not mistake a running-app rejection for a negative-path test pass."""
+    kernel = getattr(ctypes, 'WinDLL')('kernel32', use_last_error=True)
+    kernel.OpenMutexW.argtypes = [ctypes.c_uint32, ctypes.c_bool, ctypes.c_wchar_p]
+    kernel.OpenMutexW.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    getattr(ctypes, 'set_last_error')(0)
+    handle = kernel.OpenMutexW(0x00100000, False, MUTEX)  # SYNCHRONIZE, never create a mutex.
+    if handle:
+        kernel.CloseHandle(handle)
+        raise SystemExit('ImmoManager Pro is running; no installation started. Stop its owned session before retrying.')
+    error = getattr(ctypes, 'get_last_error')()
+    if error != 2:  # ERROR_FILE_NOT_FOUND is the only confirmed absent state.
+        raise SystemExit(f'Cannot verify that ImmoManager Pro is stopped (Windows error {error}); no changes made.')
+
+
 def owns_registration(target):
+    if sys.platform != 'win32':
+        raise OSError('Uninstall registration can only be inspected on native Windows.')
     import winreg
     for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
         try:
@@ -77,7 +97,7 @@ def owned_path(root, relative):
 def execute(command, log, *, required=True):
     result = subprocess.run([str(part) for part in command], stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            creationflags=subprocess.CREATE_NO_WINDOW, timeout=600)
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW'), timeout=600)
     log.write_bytes(result.stdout)
     if required and result.returncode != 0:
         raise AssertionError(f'Installer operation failed ({result.returncode}); see {log}')
@@ -117,6 +137,8 @@ def shortcut_info(path):
 
 
 def stored_launch_mode(target):
+    if sys.platform != 'win32':
+        raise OSError('Installer preferences can only be inspected on native Windows.')
     import winreg
     for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
         try:
@@ -165,6 +187,7 @@ def main():
         raise SystemExit('This is a native Windows installer test.')
     if registered():
         raise SystemExit('An existing ImmoManager Pro installation is registered; no changes made.')
+    require_application_stopped()
     installer = args.installer.resolve(strict=True)
     source = args.dist.resolve(strict=True)
     work = args.work.resolve(strict=True)
@@ -185,7 +208,7 @@ def main():
     desktop_owned = desktop.parent.is_dir() and not desktop.exists()
     desktop_before = digest(desktop) if desktop.is_file() else None
     result = {'status': 'failed', 'installer_sha256': digest(installer), 'run': str(run),
-              'registered_installation_present_before': False, 'checks': {},
+              'registered_installation_present_before': False, 'application_mutex_absent_before': True, 'checks': {},
               'shortcut_group': str(group), 'desktop_shortcut_tested': desktop_owned,
               'desktop_shortcut_skipped_reason': None if desktop_owned else 'An existing user shortcut or an absent desktop folder is preserved'}
     base = [installer, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
@@ -258,13 +281,13 @@ def main():
         assert digest(unknown) == unknown_hash and inventory(data) == before
         assert inventory(gui.parent) == expected, 'Repair changed the payload'
         result['checks']['repair_preserves_data_and_unknown_files'] = True
-        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel = getattr(ctypes, 'WinDLL')('kernel32', use_last_error=True)
         kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
         kernel.CreateMutexW.restype = ctypes.c_void_p
         kernel.CloseHandle.argtypes = [ctypes.c_void_p]
-        ctypes.set_last_error(0)
+        getattr(ctypes, 'set_last_error')(0)
         handle = kernel.CreateMutexW(None, False, MUTEX)
-        if not handle or ctypes.get_last_error() == 183:
+        if not handle or getattr(ctypes, 'get_last_error')() == 183:
             if handle:
                 kernel.CloseHandle(handle)
             raise AssertionError('A real desktop app is active; the test will not stop it')
