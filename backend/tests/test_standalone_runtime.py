@@ -177,13 +177,21 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.dialogs = DialogRecorder(self.root)
         self.args = SimpleNamespace(host="127.0.0.1", port=self.server.server_port, no_browser=True,
             mode="standalone", software_rendering=True, seed=False, testversion=False, no_upgrade=True)
+        self.open_fixture_window()
+
+    def open_fixture_window(self):
         self.window = self.standalone.create_window(self.args, self.root, dialogs=self.dialogs, start_session=False)
         self.window.show()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
+        loaded = []
+        self.window.web_view.loadFinished.connect(lambda ok: loaded.append(ok))
         self.window.web_view.setUrl(self.core.QUrl(self.url))
-        self.spin(lambda: self.javascript("Boolean(document.querySelector('#ready'))"))
+        self.spin(lambda: bool(loaded) and loaded[-1] and self.javascript(
+            "location.href === " + json.dumps(self.url + "/")
+            + " && document.readyState === 'complete' && Boolean(document.querySelector('#ready'))"))
         self.window._ready = True
         self.window.page_loaded(self.window.web_view, True)
+        self.assertIs(self.window._stack.currentWidget(), self.window.tabs)
         self.window.activateWindow()
         self.window.web_view.setFocus()
         # Chromium receives the new viewport only after the stack switches.
@@ -192,7 +200,7 @@ class StandaloneRuntimeTests(unittest.TestCase):
         QTest.qWait(350)
         self.spin(lambda: self.javascript("document.fonts.status === 'loaded'"))
 
-    def tearDown(self):
+    def close_fixture_window(self):
         profile_destroyed = []
         self.window.profile.destroyed.connect(lambda *_: profile_destroyed.append(True))
         self.window._finish_close()
@@ -202,6 +210,9 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
         self.app.processEvents()
         self.spin(lambda: bool(profile_destroyed), timeout=10)
+
+    def tearDown(self):
+        self.close_fixture_window()
         # Chromium flushes persistent preferences asynchronously after profile
         # destruction; confirm the real files unlock instead of ignoring them.
         end = time.monotonic() + 10
@@ -255,10 +266,27 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.javascript("window.blocked=false;fetch(" + json.dumps(foreign) + ").then(()=>window.blocked='bad').catch(()=>window.blocked=true);true")
         self.spin(lambda: self.javascript("window.blocked === true"))
         self.assertEqual(len(self.foreign_requests), before)
-        self.window.web_view.setUrl(self.core.QUrl("https://example.invalid/blocked"))
-        self.spin(lambda: bool(self.dialogs.external))
-        self.assertEqual(self.dialogs.external, ["https://example.invalid/blocked"])
-        self.assertTrue(self.window.policy.local(self.window.web_view.url().toString()))
+        sentinel = self.root.name
+        committed = self.javascript("(() => {document.querySelector('#ready').dataset.navigationSentinel="
+                                    + json.dumps(sentinel) + ";return location.href;})()")
+        denied = []
+        statuses = self.engine.QWebEngineLoadingInfo.LoadStatus
+        def navigation_finished(info):
+            if info.url().toString() == foreign and info.status() != statuses.LoadStartedStatus:
+                denied.append({"status": info.status(), "error": info.errorCode()})
+        self.window.web_view.page().loadingChanged.connect(navigation_finished)
+        self.window.web_view.setUrl(self.core.QUrl(foreign))
+        self.spin(lambda: bool(denied) and bool(self.dialogs.external))
+        self.assertEqual(self.dialogs.external, [foreign])
+        self.assertEqual(denied[-1]["status"], statuses.LoadStoppedStatus, denied)
+        retained = json.loads(self.javascript("""JSON.stringify({href:location.href,ready:Boolean(document.querySelector('#ready')),
+            sentinel:document.querySelector('#ready')?.dataset.navigationSentinel})"""))
+        diagnostic = {"qt_url": self.window.web_view.url().toString(), "committed": retained, "loading": denied}
+        self.assertEqual(retained["href"], committed, diagnostic)
+        self.assertTrue(self.window.policy.local(retained["href"]), diagnostic)
+        self.assertTrue(retained["ready"], diagnostic)
+        self.assertEqual(retained["sentinel"], sentinel, diagnostic)
+        self.assertEqual(len(self.foreign_requests), before)
 
     def test_explicit_file_selection_populates_real_html_input(self):
         self.click("#file")
@@ -300,15 +328,8 @@ class StandaloneRuntimeTests(unittest.TestCase):
 
     def test_authentication_storage_persists_after_ordered_window_restart(self):
         self.javascript("localStorage.setItem('desktop-test-session','own-profile');true")
-        self.window._finish_close()
-        self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
-        self.window.deleteLater()
-        self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
-        self.app.processEvents()
-        self.window = self.standalone.create_window(self.args, self.root, dialogs=self.dialogs, start_session=False)
-        self.window.show()
-        self.window.web_view.setUrl(self.core.QUrl(self.url))
-        self.spin(lambda: self.javascript("Boolean(document.querySelector('#ready'))"))
+        self.close_fixture_window()
+        self.open_fixture_window()
         self.assertEqual(self.javascript("localStorage.getItem('desktop-test-session')"), "own-profile")
 
     def test_subframe_print_uses_frame_pdf_not_application_page(self):
