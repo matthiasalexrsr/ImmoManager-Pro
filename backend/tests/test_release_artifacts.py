@@ -89,6 +89,40 @@ def test_complete_five_target_release_has_bound_sources_and_every_final_checksum
         assert release.digest(folder / name) == checksum
 
 
+def test_real_nested_upload_artifact_reports_layout_keeps_commit_and_installer_binding(inputs):
+    for target in release.TARGETS:
+        root = inputs["reports"] / f"Desktop-{target}-reports"
+        original = list(root.iterdir())
+        nested = root / "artifacts/desktop-reports"
+        nested.mkdir(parents=True)
+        for path in original:
+            path.rename(nested / path.name)
+    release.stage_native(**inputs)
+    evidence = release.read_json(inputs["output"] / "native-acceptance.json")
+    assert set(evidence["targets"]) == set(release.TARGETS)
+    windows = evidence["targets"]["windows-x64"]
+    assert windows["environment"]["source_commit"] == COMMIT
+    assert windows["installer_lifecycle"]["installer_sha256"] == windows["package"]["files"][0]["sha256"]
+
+
+def test_report_layout_never_searches_an_arbitrary_subdirectory(inputs):
+    root = inputs["reports"] / "Desktop-macos-arm64-reports"
+    source = root / "native-environment.json"
+    other = root / "unapproved/deep"
+    other.mkdir(parents=True)
+    source.rename(other / source.name)
+    with pytest.raises(ValueError, match="Missing or linked release evidence"):
+        release.stage_native(**inputs)
+
+
+def test_malformed_canonical_directory_cannot_fall_back_to_flat_evidence(inputs):
+    root = inputs["reports"] / "Desktop-macos-arm64-reports"
+    (root / "artifacts").mkdir()
+    (root / "artifacts/desktop-reports").write_text("not a report directory")
+    with pytest.raises(ValueError, match="canonical native reports directory"):
+        release.stage_native(**inputs)
+
+
 @pytest.mark.parametrize("fault", ["wrong-commit", "changed-package", "failed-gui", "missing-platform", "missing-source", "wrong-installer", "demo-gui", "demo-ui"])
 def test_incomplete_or_other_commit_artifacts_never_pass_staging(inputs, fault):
     target = "macos-arm64"
