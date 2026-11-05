@@ -74,9 +74,25 @@ program is closed:
 .\.venv\Scripts\python.exe scripts\backup_scheduler.py schedule
 ```
 
-### Test version (data set and tutorial)
+### Prepared Baden-Württemberg demo
 
-A version for testers with a realistic, fictitious data set: 15 properties, 93 units and
+The installer also offers the prepared Baden-Württemberg workspace for the first
+start. The two Demo Start menu entries reopen it later in the desktop or browser
+mode. It contains eight properties, 46 units, 42 tenancy contracts, 1,068 bookings
+and 74 PDF documents, together with invoices, meters, maintenance, billing and
+other linked workspaces. The login is **`demo.bw` / `Immo-Demo-BW-2026!`**; the
+demo login page can fill it with **Demozugang übernehmen**.
+
+The demo uses its own persistent data folder and port 8766. Changes survive
+restarts. The regular workspace uses its own data folder and port 8000. A source
+checkout can open the demo with `start.bat -Demo`; native launch options and
+platform-specific source requirements are in
+[Desktop platforms](docs/DESKTOP_PLATFORMS.md). Linux ARM64 desktop source runs
+require Python 3.12 or newer; its native package includes the matching runtime.
+
+### Legacy test version (data set and tutorial)
+
+A separate tester workspace with 15 properties, 93 units and
 three years of history, built through the app's API on the first start
 (`backend/testversion`). Master logins: `linda_reiser@web.de` and `mat.thias@online.de`,
 plus four staff users for the roles; start password `Immo-Test-2026`. A guided tour
@@ -198,8 +214,8 @@ All endpoints are under `/api/v1`. Full interactive docs at `/docs`.
 
 ## Releases and updates
 
-- **Making a release:** set the version in `pyproject.toml`, update `docs/RELEASE_NOTES.md` (German, shown on the release page and in the app's update check) and push a tag `v<version>` (for example `v2.0.0`; `v2.1.0-rc1` becomes a pre-release). The workflow "Release (Windows)" first waits for the CI run of the same commit and stops unless it passed; then it builds the package `ImmoManager-Pro-<version>-Windows.zip` with `packaging/release/LIES MICH.txt`. It tries a first start, the upgrade check, a full backup and a restore probe, and an update from the previous release's package on the same data. Then it publishes the GitHub release. A tag that does not match `pyproject.toml` is refused. Run by hand without a tag (this needs the workflow on the default branch), or pushed with a change to the packaging (`release.yml`, `immomanager.spec`, `packaging/`, `requirements-build.txt`), it only builds and tries the package and keeps it as an artifact.
-- **Updating an installation:** Settings → System → Updates → "Jetzt prüfen" reads the releases of `UPDATE_REPO_URL` (this repository by default) and only on that click. The Windows package shows the download link: unpack the new version into a new folder and start it; the data stays in `%LOCALAPPDATA%\ImmoManagerPro`, and the first start takes a verified full backup before it upgrades the database. Git checkouts can install the update themselves (outside production, or with `UPDATE_ALLOW_IN_PRODUCTION=true`).
+- **Making a release:** set the version in `pyproject.toml` and update the German [release notes](docs/RELEASE_NOTES.md). CI and **Native desktop packages** must pass on exactly that commit. The native workflow tests and packages Windows x64, macOS Intel/ARM64 and Linux x64/ARM64, including the prepared demo. Manually run **Release (native desktop platforms)** on the accepted branch, select publication and the exact `v<version>` tag. The release workflow verifies the matching run IDs, package bytes, acceptance reports, complete Qt source sidecars and checksums before publishing. Existing releases and tags are not overwritten. A normal manual run defaults to artifacts only; an unsigned `beta.N` publication requires its explicit beta option. Signing requirements and the full process are documented in [Commercial release](docs/COMMERCIAL_RELEASE.md).
+- **Updating an installation:** Settings → System → Updates → **Jetzt prüfen** reads this repository's releases on request. On Windows, run the new setup to update the program and its shortcuts while retaining the regular and demo workspaces. For a portable package, unpack into a new folder and start the new executable. Personal data remains outside the program directory; an explicit database upgrade takes a verified backup first. Git checkouts can install the update themselves outside production, or with `UPDATE_ALLOW_IN_PRODUCTION=true`. See [backup and operations](docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 
 ## License
 

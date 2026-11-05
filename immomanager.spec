@@ -98,7 +98,7 @@ from tools.build_profile import selected_optional_packages, excluded_optional_pa
 _THIRD_PARTY_PACKAGES += selected_optional_packages()
 verify_frontend_profile(ROOT)
 
-collected_hiddenimports = list(DESKTOP_IMPORTS)
+collected_hiddenimports = list(DESKTOP_IMPORTS) + ['scripts.check_desktop_runtime']
 # All backend modules (services, routers, the test version …): imports inside functions are
 # easy to miss, and a module missing from the bundle fails only when it is first used.
 collected_hiddenimports += collect_submodules('backend', filter=lambda name: '.tests' not in name)
