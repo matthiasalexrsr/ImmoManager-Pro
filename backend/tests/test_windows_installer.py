@@ -210,7 +210,10 @@ def test_silent_directory_rejection_exits_without_a_modal_dialog(tmp_path):
     compiler = os.environ.get("IMMO_TEST_ISCC")
     if not compiler:
         pytest.skip("Supply an explicitly verified Inno compiler through IMMO_TEST_ISCC")
-    from ctypes import WinDLL, c_void_p
+    import ctypes
+    from ctypes import c_void_p
+
+    WinDLL = getattr(ctypes, "WinDLL")
 
     from backend.services.assistant_provider_process import _windows_job
 
@@ -226,13 +229,13 @@ def test_silent_directory_rejection_exits_without_a_modal_dialog(tmp_path):
                       "[Code]\nfunction ValidateDirectory(const Value: String): String;\nbegin\n"
                       "Result := 'synthetic silent guard probe';\nend;\n" + event, encoding="utf-8")
     compiled = subprocess.run([compiler, "/O" + str(tmp_path), str(script)], capture_output=True,
-                              stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, timeout=30)
+                              stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW"), timeout=30)
     assert compiled.returncode == 0, (compiled.stdout + compiled.stderr).decode(errors="replace")
     log, target = tmp_path / "silent.log", tmp_path / "rejected-target"
     command = [str(tmp_path / "ONLY-SILENT-VALIDATION-QA.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES",
                "/NORESTART", "/SP-", "/DIR=" + str(target), "/LOG=" + str(log)]
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               creationflags=subprocess.CREATE_NO_WINDOW | 0x4)  # CREATE_SUSPENDED
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW") | 0x4)  # CREATE_SUSPENDED
     job = None
     try:
         # A broken future guard must not leave a modal installer child behind.
