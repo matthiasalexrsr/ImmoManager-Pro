@@ -5,6 +5,7 @@ QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu. No native dialog/external app is opene
 Uses unittest so it also runs in the lean packaging environment without pytest.
 """
 
+import errno
 import io
 import json
 import mimetypes
@@ -192,12 +193,15 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.spin(lambda: self.javascript("document.fonts.status === 'loaded'"))
 
     def tearDown(self):
+        profile_destroyed = []
+        self.window.profile.destroyed.connect(lambda *_: profile_destroyed.append(True))
         self.window._finish_close()
         self.app.processEvents()
         self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
         self.window.deleteLater()
         self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
         self.app.processEvents()
+        self.spin(lambda: bool(profile_destroyed), timeout=10)
         # Chromium flushes persistent preferences asynchronously after profile
         # destruction; confirm the real files unlock instead of ignoring them.
         end = time.monotonic() + 10
@@ -206,8 +210,11 @@ class StandaloneRuntimeTests(unittest.TestCase):
                 self.temp.cleanup()
                 break
             except OSError as error:
-                if (not isinstance(error, PermissionError) and getattr(error, "winerror", None) != 145) or time.monotonic() >= end:
+                transient = (isinstance(error, PermissionError) or getattr(error, "winerror", None) == 145
+                             or error.errno == errno.ENOTEMPTY)
+                if not transient or time.monotonic() >= end:
                     raise
+                self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
                 self.app.processEvents()
                 time.sleep(0.05)
 
@@ -239,7 +246,7 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.assertIn("Noto", self.app.font().family())
         self.assertIn("Noto", self.window.profile.settings().fontFamily(self.engine.QWebEngineSettings.FontFamily.SansSerifFont))
         self.assertFalse(self.window.profile.isOffTheRecord())
-        self.assertTrue(Path(self.window.profile.persistentStoragePath()).is_relative_to(self.root))
+        self.assertTrue(Path(self.window.profile.persistentStoragePath()).resolve().is_relative_to(self.root.resolve()))
         attributes = self.engine.QWebEngineSettings.WebAttribute
         self.assertTrue(self.window.profile.settings().testAttribute(attributes.PdfViewerEnabled))
         self.assertFalse(self.window.profile.settings().testAttribute(attributes.LocalContentCanAccessFileUrls))
@@ -346,20 +353,37 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.javascript("""document.body.innerHTML='<iframe id="localpdf" style="width:350px;height:500px" src="/fixture.pdf"></iframe><object id="blobpdf" type="application/pdf" style="width:350px;height:500px"></object>';
             window.nativePdfReady=false;fetch('/fixture.pdf').then(r=>r.blob()).then(b=>{window.previewBlob=window.URL.createObjectURL(b);document.querySelector('#blobpdf').data=window.previewBlob;window.nativePdfReady=true});true""")
         self.spin(lambda: self.javascript("window.nativePdfReady === true"))
+        last_geometry = {}
         def teal_pixels(view=None):
             image = (view or self.window.web_view).grab().toImage()
-            counts = [0, 0]
-            for y in range(0, image.height(), 4):
-                for x in range(0, image.width(), 4):
-                    color = image.pixelColor(x, y)
-                    if color.red() < 40 and 90 < color.green() < 125 and 80 < color.blue() < 115:
-                        counts[0 if x < image.width() / 2 else 1] += 1
+            regions = [(0, 0, image.width(), image.height())]
+            if view is None:
+                geometry = json.loads(self.javascript("JSON.stringify({width:innerWidth,height:innerHeight,frames:['localpdf','blobpdf'].map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})})"))
+                last_geometry.update(geometry)
+                sx, sy = image.width() / geometry["width"], image.height() / geometry["height"]
+                # Check each actual document rectangle. Splitting the entire
+                # window in half misses both fixed-width PDFs on wide screens.
+                regions = [(max(0, round(r["left"] * sx)), max(0, round(r["top"] * sy)),
+                            min(image.width(), round(r["right"] * sx)), min(image.height(), round(r["bottom"] * sy)))
+                           for r in geometry["frames"]]
+                self.assertEqual(len(regions), 2)
+            counts = []
+            for left, top, right, bottom in regions:
+                count = 0
+                for y in range(top, bottom, 4):
+                    for x in range(left, right, 4):
+                        color = image.pixelColor(x, y)
+                        if color.red() < 40 and 90 < color.green() < 125 and 80 < color.blue() < 115:
+                            count += 1
+                counts.append(count)
             return counts
         try:
             self.spin(lambda: min(teal_pixels()) > 50, timeout=30)
         except AssertionError:
+            print("QT_PDF_PLUGIN_GEOMETRY " + json.dumps(last_geometry), flush=True)
             self.save_artifact("qt-pdf-plugin-timeout.png")
             raise
+        print("QT_PDF_PLUGIN_GEOMETRY " + json.dumps(last_geometry), flush=True)
         print("QT_PDF_PLUGIN_PIXELS_VERIFIED " + json.dumps(teal_pixels()), flush=True)
         self.save_artifact("qt-pdf-local-iframe-blob-object.png")
         self.javascript("""let button=document.createElement('button');button.id='pdfpopup';button.textContent='PDF öffnen';button.style='position:fixed;left:8px;top:8px;z-index:9999';button.onclick=()=>{window.popupClicked=true;window.open(window.previewBlob,'_blank')};document.body.append(button);true""")
@@ -421,6 +445,8 @@ class NativePrintTests(unittest.TestCase):
         self.content = data.getvalue()
 
     def tearDown(self):
+        profile_destroyed = []
+        self.window.profile.destroyed.connect(lambda *_: profile_destroyed.append(True))
         self.parent.deleteLater()
         self.core.QCoreApplication.sendPostedEvents(None, self.core.QEvent.Type.DeferredDelete)
         self.app.processEvents()
