@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import re
 import sys
 import sysconfig
@@ -90,6 +91,46 @@ def tcl_tk_license_sources(versions):
             raise RuntimeError("Tcl/Tk license source checksum mismatch")
         result.append((name, version, entry["license"], path, entry))
     return result
+
+
+def static_openssl_license_sources():
+    """Bind the private macOS Intel static build to its exact original notices."""
+    declared = os.environ.get("IMMO_STATIC_OPENSSL_PREFIX")
+    if declared is None:
+        return []
+    if not declared or sys.platform != "darwin" or platform.machine().lower() not in {"x86_64", "amd64"}:
+        raise RuntimeError("The static OpenSSL source is only reviewed for native Intel macOS")
+    prefix = Path(declared).resolve(strict=True)
+    pinned = json.loads((ROOT / "packaging/third-party/openssl-static-macos.json").read_text(encoding="utf-8"))
+    receipt_path = prefix / "build-receipt.json"
+    if not receipt_path.resolve(strict=True).is_relative_to(prefix):
+        raise RuntimeError("The static OpenSSL build receipt is outside its private prefix")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if (pinned.get("schema") != "immomanager-static-openssl-source/1"
+            or receipt.get("schema") != "immomanager-static-openssl-build/1"
+            or any(receipt.get(key) != value for key, value in pinned.items() if key != "schema")
+            or receipt.get("native_platform") != "darwin"
+            or receipt.get("native_machine", "").lower() not in {"x86_64", "amd64"}
+            or not receipt.get("openssl_version", "").startswith("OpenSSL " + pinned["version"] + " ")
+            or receipt.get("compiler_environment", {}).get("MACOSX_DEPLOYMENT_TARGET") != pinned["deployment_target"]
+            or "no-shared" not in receipt.get("configure_argv", [])
+            or pinned["configure_target"] not in receipt.get("configure_argv", [])):
+        raise RuntimeError("The static OpenSSL build differs from its exact reviewed source")
+    files = receipt["files"]
+    required = {"lib/libssl.a", "lib/libcrypto.a", "bin/openssl", "LICENSE.txt"}
+    notices = {name for name in ("NOTICE", "NOTICE.txt") if (prefix / name).exists()}
+    if set(files) != required | notices:
+        raise RuntimeError("The static OpenSSL receipt omits or changes original notice files")
+    for name, identity in files.items():
+        path = (prefix / name).resolve(strict=True)
+        if not path.is_relative_to(prefix) or path.stat().st_size != identity["bytes"]:
+            raise RuntimeError("Changed static OpenSSL build or original notice")
+        with path.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != identity["sha256"]:
+                raise RuntimeError("Changed static OpenSSL build or original notice")
+    originals = [prefix / name for name in sorted({"LICENSE.txt"} | notices)]
+    return [("OpenSSL (static cryptography linkage)", pinned["version"], "Apache-2.0",
+             [*originals, receipt_path], {"url": pinned["source_url"], "sha256": pinned["source_sha256"]})]
 
 
 def windows_tcl_tk_versions():
@@ -271,6 +312,8 @@ def generate(output=None):
     if not hosting and sys.platform == "win32":
         for name, version, expression, source, upstream in tcl_tk_license_sources(windows_tcl_tk_versions()):
             record("runtime", name, version, expression, [source], upstream=upstream)
+    for name, version, expression, originals, upstream in static_openssl_license_sources():
+        record("runtime", name, version, expression, originals, upstream=upstream)
     record("asset", "Roboto-wizard", wizard_source["font_version"], "OFL-1.1",
            [wizard_vendor / "Roboto-OFL.txt", wizard_vendor / "SOURCES.json"])
     record("asset", "NotoSans", "bundled", "OFL-1.1", [ROOT / "backend/assets/fonts/OFL-Noto.txt"])

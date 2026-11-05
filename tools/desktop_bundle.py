@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
+import subprocess
 import sys
 import tomllib
 from contextlib import contextmanager
@@ -48,6 +50,8 @@ def windows_build_search_path():
 
 
 def isolated_native_analysis(factory, *args, **kwargs):
+    if sys.platform == "darwin":
+        macos_crypto_abi_report()
     with windows_build_search_path():
         result = factory(*args, **kwargs)
     if sys.platform == "win32":
@@ -55,6 +59,72 @@ def isolated_native_analysis(factory, *args, **kwargs):
             if destination.replace("\\", "/").casefold() in {"icuuc.dll", "icudt78.dll"}:
                 raise RuntimeError("A foreign global ICU runtime would shadow Windows ICU: " + str(source))
     return result
+
+
+def macos_crypto_linkage(extension: Path) -> dict:
+    """Reject the source-wheel OpenSSL collision before creating a broken app.
+
+    Cryptography 50 no longer publishes an Intel macOS wheel. Its default
+    source build links Homebrew OpenSSL dynamically, which PyInstaller can
+    flatten over the differently versioned libssl used by the Python runtime.
+    The upstream-supported static build keeps that independent OpenSSL inside
+    the extension instead. Inspect the actual Mach-O rather than its wheel tag.
+    """
+    command = ["/usr/bin/otool", "-L", str(extension)]
+    dependencies = subprocess.run(command, capture_output=True, text=True, check=True, timeout=30).stdout
+    libraries = [line.strip().split(" (", 1)[0] for line in dependencies.splitlines()[1:]
+                 if " (compatibility version " in line]
+    if not libraries:
+        raise RuntimeError("otool did not identify the actual cryptography Mach-O dependencies")
+    external_openssl = [name for name in libraries
+                        if re.fullmatch(r"lib(?:ssl|crypto)(?:\.[0-9]+)*\.dylib", name.rsplit("/", 1)[-1])]
+    if external_openssl:
+        raise RuntimeError("macOS cryptography must use its own statically linked OpenSSL; external dependencies: "
+                           + ", ".join(external_openssl))
+    load_commands = subprocess.run(["/usr/bin/otool", "-l", str(extension)], capture_output=True,
+                                   text=True, check=True, timeout=30).stdout
+    minimum_versions = []
+    for block in re.split(r"(?m)^Load command [0-9]+\s*$", load_commands):
+        if not re.search(r"(?m)^\s*cmd LC_(?:BUILD_VERSION|VERSION_MIN_MACOSX)\s*$", block):
+            continue
+        match = re.search(r"(?m)^\s*(?:minos|version) ([0-9]+(?:\.[0-9]+){0,2})\s*$", block)
+        if not match:
+            raise RuntimeError("Cannot determine the cryptography Mach-O minimum macOS version")
+        version = match.group(1)
+        parts = tuple(int(part) for part in version.split("."))
+        if (*parts, *(0 for _ in range(3 - len(parts)))) > (13, 0, 0):
+            raise RuntimeError("cryptography requires macOS " + version + "; the desktop package promises macOS 13")
+        minimum_versions.append(version)
+    if not minimum_versions:
+        raise RuntimeError("The cryptography extension has no recognizable minimum macOS load command")
+    return {"extension": str(extension), "sha256": hashlib.sha256(extension.read_bytes()).hexdigest(),
+            "dynamic_dependencies": libraries, "external_openssl_dependencies": external_openssl,
+            "minimum_macos_versions": minimum_versions, "otool_dependencies": dependencies,
+            "otool_load_commands": load_commands}
+
+
+def macos_crypto_abi_report() -> dict:
+    """Exercise both actual OpenSSL consumers and require independent linkage."""
+    if sys.platform != "darwin":
+        raise RuntimeError("The macOS OpenSSL ABI preflight requires a native macOS host")
+    import ssl
+
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.backends.openssl.backend import backend as openssl_backend
+    from cryptography.hazmat.bindings import _rust
+
+    report = macos_crypto_linkage(Path(_rust.__file__))
+    cipher = Fernet(Fernet.generate_key())
+    plaintext = b"Synthetic native OpenSSL ABI preflight; contains no application data."
+    if cipher.decrypt(cipher.encrypt(plaintext)) != plaintext:
+        raise RuntimeError("The native cryptography encryption roundtrip failed")
+    context = ssl.create_default_context()
+    if context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname:
+        raise RuntimeError("The native Python TLS context lost certificate verification")
+    return {"schema": "immomanager-native-macos-openssl-abi/1", "status": "passed", "python": sys.version,
+            "machine": platform.machine(), "cryptography": metadata.version("cryptography"),
+            "python_openssl": ssl.OPENSSL_VERSION, "cryptography_openssl": openssl_backend.openssl_version_text(),
+            "fernet_roundtrip": True, "python_tls_context": True, **report}
 
 
 def mac_bundle_versions(root):
