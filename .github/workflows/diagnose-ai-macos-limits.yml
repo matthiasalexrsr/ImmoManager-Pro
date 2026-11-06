@@ -1,0 +1,185 @@
+name: Diagnose reviewed macOS worker limits
+
+on:
+  push:
+    branches: ['transfer/ai-image-worker-diagnostics-2026-11-06']
+    paths: ['.github/workflows/diagnose-ai-macos-limits.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-macos-limits-diagnostics-2026-11-06
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'matthiasalexrsr/ImmoManager-Pro' &&
+      github.ref == 'refs/heads/transfer/ai-image-worker-diagnostics-2026-11-06' &&
+      github.actor == 'matthiasalexrsr' &&
+      github.triggering_actor == 'matthiasalexrsr' &&
+      github.run_attempt == 1 && github.event.deleted == false
+    name: macos-x64 unchanged-limit startup diagnosis
+    runs-on: macos-15-intel
+    timeout-minutes: 6
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Read only the exact reviewed product commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 verified public tag
+        with:
+          ref: '49a82e4d62281a9cee7800c45fff4c6c467fe5c9'
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Select the original macOS Intel Python patch
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5 verified public tag
+        with:
+          python-version: '3.11.9'
+          architecture: x64
+      - name: Capture actual unmodified wrapper limit calls and exec
+        env:
+          DIAGNOSTIC_OUTPUT: ${{ runner.temp }}/ai-macos-limits-diagnostics
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          import signal
+          import subprocess
+          import sys
+          import tempfile
+          import threading
+          from pathlib import Path
+
+          EXPECTED = '49a82e4d62281a9cee7800c45fff4c6c467fe5c9'
+          CAPTURE_BYTES = 65536
+          PARENT_TIMEOUT = 10
+          CHILD_CPU_SECONDS = 30
+          repo = Path.cwd().resolve()
+          assert subprocess.check_output(['git', '--no-optional-locks', 'rev-parse', 'HEAD'], text=True).strip() == EXPECTED
+          assert sys.platform == 'darwin' and platform.machine().lower() in ('x86_64', 'amd64')
+          assert sys.version_info[:3] == (3, 11, 9), sys.version
+          os.umask(0o077)
+          output = Path(os.environ['DIAGNOSTIC_OUTPUT']).resolve()
+          assert not output.is_relative_to(repo)
+          output.mkdir(mode=0o700, parents=True, exist_ok=False)
+          source = repo / 'backend/services/e_invoice/posix_worker.py'
+          record = {'schema': 'immomanager-macos-limit-diagnostics/1', 'source_commit': EXPECTED,
+              'source_file_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+              'platform': sys.platform, 'machine': platform.machine(), 'python': sys.version,
+              'status': 'started', 'product_limits_changed': False,
+              'parent_timeout_seconds': PARENT_TIMEOUT, 'wrapper_mode': 'text',
+              'wrapper_cpu_seconds': CHILD_CPU_SECONDS, 'capture_bytes_per_stream': CAPTURE_BYTES,
+              'interpretation': 'Diagnostic collection only; success does not prove Qt or ARM rendering.'}
+          harness = r'''
+          import json,resource,sys
+          from backend.services.e_invoice import posix_worker
+          original = resource.setrlimit
+          def emit(value):
+              print(json.dumps(value, sort_keys=True), flush=True)
+          def traced(limit, proposed):
+              aliases = sorted(name for name in dir(resource) if name.startswith('RLIMIT_') and getattr(resource, name) == limit)
+              entry = {'event':'setrlimit_before','limit':limit,'aliases':aliases,
+                       'current':list(resource.getrlimit(limit)),'proposed':list(proposed)}
+              emit(entry)
+              try:
+                  original(limit, proposed)
+              except BaseException as error:
+                  emit({'event':'setrlimit_error','limit':limit,'aliases':aliases,
+                        'exception_type':type(error).__name__,'message':str(error),
+                        'errno':getattr(error,'errno',None),'after':list(resource.getrlimit(limit))})
+                  raise
+              emit({'event':'setrlimit_after','limit':limit,'aliases':aliases,
+                    'after':list(resource.getrlimit(limit))})
+          resource.setrlimit = traced
+          emit({'event':'wrapper_entered','executable':sys.executable})
+          try:
+              posix_worker.main([sys.argv[1], 'text', '30', sys.executable, '-c', "print('entered',flush=True)"])
+          except BaseException as error:
+              emit({'event':'wrapper_exception','exception_type':type(error).__name__,
+                    'message':str(error),'errno':getattr(error,'errno',None)})
+              raise
+          '''
+          with tempfile.TemporaryDirectory(prefix='immo-e-invoice-text-', dir=output) as directory:
+              folder = Path(directory)
+              os.chmod(folder, 0o700)
+              env = {'TEMP':str(folder), 'TMP':str(folder), 'HOME':str(folder), 'USERPROFILE':str(folder),
+                  'LANG':'C.UTF-8', 'DOCUMENT_TEXT_READ_DIR':str(folder), 'PATH':'', 'PYTHONPATH':str(repo),
+                  'PYTHONUTF8':'1', 'DATA_DIR':str(folder), 'DATABASE_URL':'sqlite:///:memory:',
+                  'SECRET_KEY_FILE':str(folder/'keyring.json'), 'INTEGRATION_STATE_FILE':str(folder/'integrations.json'),
+                  'JOB_SCHEDULER_ENABLED':'false', 'BACKUP_SCHEDULE_ENABLED':'false', 'ENVIRONMENT':'development',
+                  'E_INVOICE_LIMIT_DIR':str(folder)}
+              record['environment_contract'] = {'names':sorted(env), 'path_empty':env['PATH']=='',
+                  'provider_secret_names_absent':not any(name in env for name in
+                      ('OPENAI_API_KEY','ANTHROPIC_API_KEY','GH_TOKEN','GITHUB_TOKEN','ACTIONS_RUNTIME_TOKEN')),
+                  'owned_directory_mode':oct(folder.stat().st_mode & 0o777)}
+              record['command_after_limits'] = [sys.executable, '-c', "print('entered',flush=True)"]
+              child = subprocess.Popen([sys.executable, '-c', harness, str(folder)], cwd=folder, env=env,
+                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+              streams = {name:{'data':bytearray(), 'bytes_total':0} for name in ('stdout','stderr')}
+              oversized = threading.Event()
+              def terminate_owned():
+                  try:
+                      os.killpg(child.pid, signal.SIGKILL)
+                  except ProcessLookupError:
+                      pass
+              def consume(name, pipe):
+                  with pipe:
+                      while chunk := pipe.read(4096):
+                          item = streams[name]
+                          item['bytes_total'] += len(chunk)
+                          item['data'].extend(chunk[:max(0, CAPTURE_BYTES-len(item['data']))])
+                          if item['bytes_total'] > CAPTURE_BYTES:
+                              oversized.set()
+                              terminate_owned()
+              readers = [threading.Thread(target=consume, args=(name,getattr(child,name)), daemon=True)
+                  for name in streams]
+              for reader in readers:
+                  reader.start()
+              try:
+                  record['exit_code'] = child.wait(timeout=PARENT_TIMEOUT)
+                  record['parent_timeout'] = False
+              except subprocess.TimeoutExpired:
+                  record['parent_timeout'] = True
+                  terminate_owned()
+                  record['exit_code'] = child.wait(timeout=5)
+              finally:
+                  if child.poll() is None:
+                      terminate_owned()
+                      child.wait(timeout=5)
+                  for reader in readers:
+                      reader.join(timeout=5)
+              record['streams'] = {name:{'text':item['data'].decode('utf-8','replace'),
+                  'bytes_total':item['bytes_total'], 'truncated':item['bytes_total']>CAPTURE_BYTES}
+                  for name,item in streams.items()}
+              record['capture_limit_exceeded'] = oversized.is_set()
+              record['entered_after_exec'] = 'entered' in record['streams']['stdout']['text'].splitlines()
+              record['events'] = []
+              for line in record['streams']['stdout']['text'].splitlines():
+                  if line.startswith('{'):
+                      try:
+                          record['events'].append(json.loads(line))
+                      except json.JSONDecodeError:
+                          pass
+          record['status'] = 'diagnostic_complete'
+          (output/'diagnostics.json').write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps({'status':record['status'],'source_commit':EXPECTED,'exit_code':record['exit_code'],
+              'entered_after_exec':record['entered_after_exec'],'parent_timeout':record['parent_timeout'],
+              'events':len(record['events'])}))
+          PY
+      - name: Preserve bounded macOS limit diagnosis
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 verified public tag
+        with:
+          name: AI-macos-limit-diagnostics-x64
+          path: ${{ runner.temp }}/ai-macos-limits-diagnostics/diagnostics.json
+          if-no-files-found: error
+          retention-days: 7
