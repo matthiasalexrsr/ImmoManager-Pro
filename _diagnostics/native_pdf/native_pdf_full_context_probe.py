@@ -1,7 +1,9 @@
-"""Observe both cf35 PDF gates in the original full 16-module pytest context.
+"""Compare original versus Qt-aware waiting in the cf35 PDF method only.
 
 No Qt/application import for --validate. No on-disk product modification.
-The original 30-second result remains authoritative even if a later PDF appears.
+Source gatecalls/thresholds remain exact. qt-aware intentionally changes waiting;
+its outcome is NOT an execution of the fully unchanged original test.
+Each first 30-second outcome remains authoritative even if a later PDF appears.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import re
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 HEAD = "cf35d8d7a3e978c13fe75b5b3026cdb64950dac5"
@@ -138,10 +141,53 @@ def instrument_original(source):
         "round_trip_original_ast_equal": True,
         "original_gates": {name: ast.unparse(row["gate"]) for name, row in wrapped.items()},
         "original_capture_unchanged": True, "added_pre_gate_qt_js_eventpump_calls": 0,
+        "proof_scope": "AST measurement hooks only; separately selected qt-aware spin intentionally changes Qt event waiting",
         "between_gates_additions": "Python references, counts and monotonic times only; no I/O or Qt operation",
         "post_method_only": "Outer wrapper runs after the ENTIRE original PDF method exits, before unittest teardown",
         "original_save_artifact_unchanged": True,
     }
+
+
+def instrument_wait(source):
+    """Compile exactly the original spin except sleep(.01) -> QTest.qWait(10)."""
+    tree = ast.parse(source, filename=TEST_SOURCE)
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "StandaloneRuntimeTests")
+    original = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "spin")
+    candidate = copy.deepcopy(original)
+    sleeps = [node for node in ast.walk(candidate) if isinstance(node, ast.Call)
+              and ast.unparse(node) == "time.sleep(0.01)"]
+    if len(sleeps) != 1 or ast.unparse(original.args) != "self, predicate, timeout=20":
+        raise ValueError("Original spin sleep/default signature changed")
+    sleep = sleeps[0]
+    replacement = ast.Call(func=ast.Attribute(value=ast.Name(id="__pdf_wait_qtest", ctx=ast.Load()),
+                                             attr="qWait", ctx=ast.Load()),
+                           args=[ast.Constant(value=10)], keywords=[])
+
+    class Replace(ast.NodeTransformer):
+        def visit_Call(self, node):
+            if ast.dump(node, include_attributes=False) == ast.dump(sleep, include_attributes=False):
+                return copy.deepcopy(replacement)
+            return self.generic_visit(node)
+
+    candidate = Replace().visit(candidate)
+
+    class Restore(ast.NodeTransformer):
+        def visit_Call(self, node):
+            if ast.dump(node, include_attributes=False) == ast.dump(replacement, include_attributes=False):
+                return copy.deepcopy(sleep)
+            return self.generic_visit(node)
+
+    restored = Restore().visit(copy.deepcopy(candidate))
+    if ast.dump(restored, include_attributes=False) != ast.dump(original, include_attributes=False):
+        raise ValueError("Wait replacement does not round-trip to the exact original spin")
+    compiled = compile(ast.fix_missing_locations(ast.Module(body=[candidate], type_ignores=[])), TEST_SOURCE, "exec")
+    return compiled, {"original_spin_ast_sha256": digest(ast.dump(original, include_attributes=False).encode()),
+                      "candidate_spin_ast_sha256": digest(ast.dump(candidate, include_attributes=False).encode()),
+                      "round_trip_original_spin_ast_equal": True,
+                      "sole_replacement": "time.sleep(0.01) -> already-loaded QtTest.QTest.qWait(10)",
+                      "signature": ast.unparse(original.args), "default_timeout_seconds": 20,
+                      "passed_timeouts_predicates_process_events_fail_message_unchanged": True,
+                      "scope": "Bound instance spin during PDF method and its post-method diagnosis only"}
 
 
 def requested_scene_graph(selection, environ):
@@ -402,6 +448,8 @@ class PdfState:
     def write(self):
         try:
             payload = {"original_entire_method_result": self.method_result, "gates": self.public_gates(),
+                       "wait_implementation_comparison": True, "selected_wait_pump": self.plugin.wait_pump,
+                       "original_fields_mean": "Source gate outcome under selected wait; qt-aware intentionally modifies PDF-only waiting",
                        "observation_target_seconds_from_each_original_gate_start": 90,
                        "diagnostics_start_only_after_entire_original_method": True,
                        "original_save_artifact_calls_unchanged": True,
@@ -415,8 +463,10 @@ class PdfState:
 
 
 class FullContextPlugin:
-    def __init__(self, repo, output, compiled, qpa):
+    def __init__(self, repo, output, compiled, qpa, wait_pump="original", wait_compiled=None):
         self.repo, self.output, self.compiled, self.qpa = repo, output, compiled, qpa
+        self.wait_pump, self.wait_compiled = wait_pump, wait_compiled
+        self.wait_comparisons = []
         self.states, self.errors, self.reports = [], [], []
         self.collection = []
         self.hook_installed = False
@@ -449,17 +499,50 @@ class FullContextPlugin:
         instrumented = namespace[PDF_TEST]
 
         def after_entire_original_method(owner):
+            # unittest setUp/open_fixture_window has already completed here.
+            # Never assign the class method or change another test's waiting.
+            missing = object()
+            previous_instance_spin = vars(owner).get("spin", missing)
+            previous_bound_spin = owner.spin
+            overridden = False
             try:
+                if self.wait_pump == "qt-aware":
+                    qt_test = sys.modules.get("PySide6.QtTest")
+                    if qt_test is None or not hasattr(qt_test, "QTest") or self.wait_compiled is None:
+                        raise ValueError("The completed fixture must already have imported QtTest.QTest")
+                    wait_namespace = dict(previous_bound_spin.__func__.__globals__, __pdf_wait_qtest=qt_test.QTest)
+                    exec(self.wait_compiled, wait_namespace)
+                    owner.spin = types.MethodType(wait_namespace["spin"], owner)
+                    overridden = True
                 return instrumented(owner)
             finally:
-                state = getattr(owner, "_pdf90", None)
-                if state is not None:
+                try:
+                    state = getattr(owner, "_pdf90", None)
+                    if state is not None:
+                        try:
+                            state.finish_after_method(sys.exc_info())
+                        except BaseException as error:
+                            self.errors.append(f"Post-method diagnostic wrapper: {error!r}")
+                finally:
+                    # Keep the selected bound method until after diagnosis so
+                    # traceback classification uses the function that actually ran.
                     try:
-                        state.finish_after_method(sys.exc_info())
+                        if overridden:
+                            if previous_instance_spin is missing:
+                                del owner.spin
+                            else:
+                                owner.spin = previous_instance_spin
+                        restored = (vars(owner).get("spin", missing) is previous_instance_spin
+                                    and owner.spin == previous_bound_spin)
+                        self.wait_comparisons.append({"selected_wait_pump": self.wait_pump,
+                            "instance_override_installed": overridden,
+                            "override_restored_before_unittest_teardown": restored,
+                            "fixture_setup_not_overridden": True, "other_test_methods_not_overridden": True,
+                            "candidate_is_intentionally_modified_waiting": self.wait_pump == "qt-aware"})
+                        if not restored:
+                            self.errors.append("PDF-only spin was not restored")
                     except BaseException as error:
-                        # Even an unexpected diagnostic failure cannot replace the
-                        # ORIGINAL exception or make an original pass a test failure.
-                        self.errors.append(f"Post-method diagnostic wrapper: {error!r}")
+                        self.errors.append(f"Cannot restore PDF-only spin: {error!r}")
 
         after_entire_original_method.__name__ = original.__name__
         after_entire_original_method.__qualname__ = original.__qualname__
@@ -491,10 +574,13 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--qpa", choices=("offscreen", "cocoa"), required=True)
     parser.add_argument("--scene-graph", choices=("default", "software"), required=True)
+    parser.add_argument("--wait-pump", choices=("original", "qt-aware"), required=True)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--validate", action="store_true")
     mode.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
+    if args.qpa != "cocoa" or args.scene_graph != "default":
+        parser.error("This controlled wait comparison is restricted to cocoa/default scene graph")
     repo, output = args.product.resolve(), args.output.resolve()
     if output.is_relative_to(repo) or Path(__file__).resolve().is_relative_to(repo):
         parser.error("Helper and output must be outside the product checkout")
@@ -506,19 +592,24 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     compiled, ast_proof = instrument_original((repo / TEST_SOURCE).read_text(encoding="utf-8"))
+    wait_compiled, wait_proof = instrument_wait((repo / TEST_SOURCE).read_text(encoding="utf-8"))
     pytest_args = ["-q", "--tb=short", f"--junitxml={output / 'pytest.xml'}", *MODULES]
     github_context = {key: os.environ.get(key) for key in ("GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT")}
-    plan = {"schema": "immomanager-native-pdf-full-context-plan/2", "product_source": source,
+    plan = {"schema": "immomanager-native-pdf-wait-context-plan/1", "product_source": source,
             "helper_github_context_unmodified": github_context,
             "github_metadata_scope": "GitHub SHA/ref identify the helper branch, not the separate product checkout",
             "qpa": args.qpa, "scene_graph_request": scene_graph, "pytest_args": pytest_args, "module_count": len(MODULES),
+            "wait_pump": args.wait_pump, "wait_ast_proof": wait_proof,
+            "comparison_scope": "Wait implementation comparison; qt-aware intentionally replaces PDF-only spin sleep with QtTest.qWait",
+            "original_fields_mean": "Source gate outcome under selected wait implementation; qt-aware is not the fully unchanged original test",
             "ast_proof": ast_proof, "validate_only": args.validate,
             "original_gate_seconds": 30, "post_failure_observation_target_seconds": 90,
             "diagnostics_only_after_entire_original_method": True,
             "late_observation_reasons": ["original_pixel_timeout_original_failure_retained",
                                          "supplementary_zero_right_half_teal_original_pass_retained"],
-            "comparison_primary_axis": "default versus software within the same QPA",
-            "original_call_order_preserved_no_added_qt_io_between_gates": True,
+            "comparison_primary_axis": "original versus qt-aware PDF-method waiting with fixed cocoa/default scenegraph",
+            "measurement_hooks_add_no_qt_io_between_source_gates": True,
+            "selected_wait_may_pump_additional_qt_events_between_source_gates": args.wait_pump == "qt-aware",
             "cocoa_scope": "Only StandaloneRuntimeTests class skip lifted before collection; other original skips retained",
             "running_sampler_call_limit": "No new sampler call starts after 90s; an in-flight original Qt/JS call may finish later",
             "github_consumer_review": "No GITHUB_SHA/REF consumer found in the 16 modules/conftest. release_artifacts uses GITHUB_API_URL; its tests use explicit dummy commit inputs. Independent failures remain separately reported."}
@@ -549,7 +640,7 @@ def main(argv=None):
     os.chdir(repo)
     sys.path.insert(0, str(repo))
     import pytest
-    plugin = FullContextPlugin(repo, output, compiled, args.qpa)
+    plugin = FullContextPlugin(repo, output, compiled, args.qpa, args.wait_pump, wait_compiled)
     FullContextPlugin.pytest_pycollect_makeitem = pytest.hookimpl(tryfirst=True)(FullContextPlugin.pytest_pycollect_makeitem)
     # Mirror the normal -m pytest argument context without changing GitHub metadata.
     sys.argv = [str(Path(pytest.__file__).with_name("__main__.py")), *pytest_args]
@@ -564,7 +655,11 @@ def main(argv=None):
                 and state.gates["main"]["original"] is not None
                 and not state.diagnostic_errors and not plugin.errors)
     failures = [report for report in plugin.reports if report["outcome"] == "failed"]
-    summary = {"schema": "immomanager-native-pdf-full-context-result/2", "original_pytest_exit_code": original_exit,
+    summary = {"schema": "immomanager-native-pdf-wait-context-result/1", "original_pytest_exit_code": original_exit,
+               "wait_pump": args.wait_pump, "wait_implementation_comparison": True,
+               "candidate_is_intentionally_modified_waiting": args.wait_pump == "qt-aware",
+               "original_fields_mean": "Source gate outcome under selected wait implementation; qt-aware is not the fully unchanged original test",
+               "wait_comparisons": plugin.wait_comparisons,
                "product_source_after": after, "helper_github_context_unmodified": github_context,
                "effective_pytest_options": plugin.effective_options, "collected_nodeids": plugin.collection,
                "cocoa_standalone_class_skip_only_override": plugin.cocoa_skip_override,
