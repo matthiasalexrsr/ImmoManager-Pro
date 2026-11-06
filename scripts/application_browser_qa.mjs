@@ -271,7 +271,7 @@ try {
   let financialInvoice;
   await step('Invoice list and payment file agree; an older payment beyond the first page can be linked', async () => {
     financialInvoice = await call('POST', '/invoices', { supplier: 'QA Restbetragsprüfung', invoice_number: 'QA-RE-REST',
-      property_id: north.id, invoice_date: '2026-01-01', due_date: '2026-12-31', net_amount: 123.45, gross_amount: 123.45 });
+      property_id: north.id, invoice_date: '2026-01-01', due_date: '2026-12-31', net_amount: 123.45, vat_rate: 0, gross_amount: 123.45 });
     const paid = await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
       booking_date: '2026-01-01', amount: -40, status: 'open', payment_text: 'QA Bereits bezahlt' });
     await call('POST', `/invoices/${financialInvoice.id}/payments`, { booking_id: paid.id, amount: 40 });
@@ -280,7 +280,7 @@ try {
     const older = await call('POST', '/bookings', { account_id: account.id, property_id: north.id,
       booking_date: '2025-01-01', amount: -100, payment_text: 'QA RE-REST Auswahl älter' });
     await call('POST', '/invoices', { supplier: 'QA Zahlungsnachweis fehlt', invoice_number: 'QA-RE-UNGEKLAERT',
-      property_id: north.id, invoice_date: '2026-01-01', net_amount: 90, gross_amount: 90, status: 'paid' });
+      property_id: north.id, invoice_date: '2026-01-01', net_amount: 90, vat_rate: 0, gross_amount: 90, status: 'paid' });
     await page.goto(base.origin + '/invoices');
     await expect(row('QA-RE-UNGEKLAERT')).toContainText('Ungeklärt');
     await expect(row('QA-RE-UNGEKLAERT')).toContainText('ohne zugeordnete Zahlung');

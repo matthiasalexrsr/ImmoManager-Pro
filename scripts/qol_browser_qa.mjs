@@ -438,7 +438,10 @@ try {
     await opener.click();
     await confirmation.getByRole('button', { name: /(?:Einen Hinweis|\d+ Hinweise) jetzt archivieren/ }).click();
     await expect.poll(async () => (await call('GET', '/notifications/inbox?status=archived')).items.some(n => n.id === notice.id)).toBe(true);
-    assert.equal((await call('GET', '/notifications/' + notice.id)).status, 'unread');
+    const personalNotice = await call('GET', '/notifications/' + notice.id);
+    assert.equal(personalNotice.status, 'archived');
+    assert.equal(personalNotice.legacy_status, 'unread');
+    assert.equal(personalNotice.legacy_read_at, null);
     assert.equal((await call('GET', '/tasks/' + task2.id)).status, 'completed');
     await inbox.getByLabel('Ansicht', { exact: true }).selectOption('archived');
     await expect(inbox.getByRole('link', { name: 'QA Sammelhinweis ' + suffix, exact: true })).toBeVisible();

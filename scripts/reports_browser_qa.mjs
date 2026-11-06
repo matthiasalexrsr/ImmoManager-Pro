@@ -54,7 +54,7 @@ try {
   await call('POST', '/bookings', { account_id: account.id, property_id: property.id, unit_id: unit.id, tenant_id: tenant.id,
     booking_date: '2026-02-01', amount: 300, payment_text: 'QA Vorauszahlung drei Monate' });
   await call('POST', '/invoices', { property_id: property.id, supplier: 'QA stornierte Rechnung',
-    invoice_date: '2026-01-01', net_amount: 400, gross_amount: 400, status: 'cancelled' });
+    invoice_date: '2026-01-01', net_amount: 400, vat_rate: 0, gross_amount: 400, status: 'cancelled' });
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', acceptDownloads: true });
   await context.addInitScript(id => { localStorage.setItem('locale', 'de-DE'); localStorage.setItem('immo.tutorial.' + id, JSON.stringify({ offered: true })); }, owner.id);
   page = await context.newPage(); page.setDefaultTimeout(30000);
