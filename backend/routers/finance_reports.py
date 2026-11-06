@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError as ModelValidationError
 
 from ..auth import require_auth
@@ -29,7 +29,7 @@ def output(data, format):
     recheck_originals(store, data)
     if format == "json":
         refresh_scope(captured)
-        return data
+        return JSONResponse(data)
     if format == "csv":
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter=";")
