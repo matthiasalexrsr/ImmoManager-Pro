@@ -7,17 +7,19 @@ import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from .document_text_reader import Budget, read_part
 
 MAX_JSON = 4 * 1024 * 1024
 
 
-def main(folder_argument=None):
+def _main(folder_argument=None, *, progress: dict[str, Any]):
     folder = Path(folder_argument or sys.argv[1]).resolve(strict=True)
     owned = os.environ.get("DOCUMENT_TEXT_READ_DIR")
     if not owned or folder != Path(owned).resolve(strict=True) or not folder.name.startswith("immo-e-invoice-text-"):
         raise RuntimeError("Owned text work directory required")
+    progress.update(folder=folder, stage="worker_request")
     request_file = folder / "input.json"
     if request_file.stat().st_size > 16 * 1024:
         raise RuntimeError("Text worker request too large")
@@ -36,6 +38,7 @@ def main(folder_argument=None):
         if set(request) != {"action", "extension", "source_limit", "upload_limit"}:
             raise RuntimeError("Invalid attachment worker request")
         _limits(request["extension"], request["source_limit"], request["upload_limit"])
+        progress["stage"] = "attachment_" + request["extension"]
         source = folder / "source.bin"
         if source.is_symlink() or source.stat().st_size > request["source_limit"]:
             raise RuntimeError("Attachment worker input too large")
@@ -44,14 +47,20 @@ def main(folder_argument=None):
                                       request["source_limit"], request["upload_limit"])
         except InspectionError as error:
             value = {"error": error.code}
+            if error.code == "inspection_unavailable":
+                from .document_worker_diagnostics import write_worker_failure
+                write_worker_failure(folder, progress["stage"], error)
+        progress["stage"] = "worker_serialize"
         raw = json.dumps(value, ensure_ascii=False).encode("utf-8")
         if len(raw) > MAX_RESPONSE_BYTES:
             raise RuntimeError("Attachment worker response too large")
         temporary = folder / "result.tmp"
+        progress["stage"] = "worker_result_write"
         temporary.write_bytes(raw)
         os.replace(temporary, folder / "result.json")
         return
     if action == "render_images":
+        progress["stage"] = "render_images"
         from .ai_document_images import MAX_RESPONSE_BYTES, MAX_SOURCE_BYTES, ImageRenderError, render_in_worker
 
         if set(request) != {"action", "media_type", "filename", "max_pages"}:
@@ -72,6 +81,7 @@ def main(folder_argument=None):
         return
     if action != "read_text":
         raise RuntimeError("Unknown document worker action")
+    progress["stage"] = "read_text"
     limits = request["limits"]
     maximum = asdict(Budget())
     if set(limits) != set(maximum) or any(
@@ -89,6 +99,18 @@ def main(folder_argument=None):
     temporary = folder / "result.tmp"
     temporary.write_bytes(raw)
     os.replace(temporary, folder / "result.json")
+
+
+def main(folder_argument=None):
+    progress: dict[str, Any] = {}
+    try:
+        return _main(folder_argument, progress=progress)
+    except Exception as error:
+        folder = progress.get("folder")
+        if isinstance(folder, Path):
+            from .document_worker_diagnostics import write_worker_failure
+            write_worker_failure(folder, progress.get("stage", "unknown"), error)
+        raise
 
 
 if __name__ == "__main__":

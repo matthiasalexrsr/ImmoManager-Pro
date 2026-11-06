@@ -155,14 +155,21 @@ def validate_source_currencies(store, definition, currency):
 CASH_KEYS = ("income", "expense", "net", "withdrawal", "contribution")
 
 
-def cash(store, d):
+def _remember(known_records, table, records):
+    if known_records is not None:
+        known_records.remember(table, records)
+    return records
+
+
+def cash(store, d, known_records=None):
     """The canonical cash calculation, with the exact bookings behind its rows."""
     from .report_service import compute_cashflow
     applied = _filter(d).with_period(d.date_from, d.date_to or d.as_of)
     calculated = compute_cashflow(store, applied, decimal_strings=True)
     view = OwnerView(store, applied)
-    parts = {booking.id: view.booking(booking) for booking in booking_sources(store, applied)}
-    selected = [booking for booking in booking_sources(store, applied) if parts[booking.id]]
+    bookings = _remember(known_records, "bookings", booking_sources(store, applied))
+    parts = {booking.id: view.booking(booking) for booking in bookings}
+    selected = [booking for booking in bookings if parts[booking.id]]
     categories = {category.id: category.category_type for category in store.list_categories()}
     sources = [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
                 "month": month_key(booking.booking_date), "amount": str(parts[booking.id]),
@@ -178,7 +185,7 @@ def cash(store, d):
             "sources": sorted(sources, key=lambda source: (source["day"], source["identity"])), "warnings": []}
 
 
-def performance(store, d):
+def performance(store, d, known_records=None):
     from .invoice_review import flows
     from .report_service import rent_due_by_month
     flt = _filter(d)
@@ -195,8 +202,9 @@ def performance(store, d):
     from .final_statements import FINAL_STATUSES
     periods = {p.id: p for p in store.list_billing_periods() if p.status in FINAL_STATUSES}
     superseded = {p.corrects_period_id for p in periods.values() if p.corrects_period_id}
-    contracts = {c.id: c for c in store.list_contracts()}
-    for statement in store.list_utility_statements():
+    contracts = {c.id: c for c in _remember(known_records, "contracts", store.list_contracts())}
+    statements = _remember(known_records, "utility_statements", store.list_utility_statements())
+    for statement in statements:
         period = periods.get(statement.billing_period_id)
         contract = contracts.get(statement.contract_id)
         if not period or period.id in superseded or not contract or not dims.contract_matches(contract):
@@ -226,6 +234,7 @@ def performance(store, d):
                                 "month": month_key(line.period_start), "amount": str(due), "contribution": "rent_due",
                                 "url": "/contracts?contract_id=" + contract.id, "basis": "Sollwarmmiete einschließlich Vorauszahlungen"})
     invoices = [invoice for invoice in store.list_invoices() if invoice.status != "cancelled"]
+    _remember(known_records, "invoices", invoices)
     scopes = InvoiceScopes(store, flt, invoices)
     reviewed = flows(rows, invoices)
     links = {link.invoice_id: link for link in rows.find("service_contract_invoices", invoice_id=[i.id for i in invoices])}
@@ -233,7 +242,8 @@ def performance(store, d):
     # Reserve each linked cash share only once, regardless of project/contract paths.
     allocations = [("invoice_payments", p) for p in rows.find("invoice_payments")]
     allocations += [("service_contract_payments", p) for p in rows.find("service_contract_payments")]
-    bookings_by_id = {b.id: b for b in store.list_bookings()}
+    bookings = _remember(known_records, "bookings", store.list_bookings())
+    bookings_by_id = {b.id: b for b in bookings}
     for table, p in allocations:
         booking = bookings_by_id.get(p.booking_id)
         if booking:
@@ -271,7 +281,8 @@ def performance(store, d):
                 sources.append({"identity": "invoice:" + invoice.id, "month": key, "amount": str(owned[key]), "contribution": "costs",
                                 "url": "/invoice-review/" + invoice.id, "basis": "Leistung"})
     from .report_service import _receivables
-    for receivable in _receivables(store, applied):
+    receivables = _remember(known_records, "receivables", _receivables(store, applied))
+    for receivable in receivables:
         key = month_key(receivable.due_date)
         claim = view.contract(contracts[receivable.contract_id], receivable.amount_due, receivable.due_date)
         if receivable.kind == "other" and key in values and (claim or not view.active):  # R12-15, as in the period result
@@ -282,7 +293,6 @@ def performance(store, d):
                             "basis": "Sonstige Forderung (Fälligkeit)"})
     categories = {c.id: c.category_type for c in store.list_categories()}
     # Unlinked cash remains an explicitly labelled fallback. Never add invoice-paid cash twice.
-    bookings = store.list_bookings()
     reverses = {b.id: b for b in bookings}
     booking_dimensions = Dimensions(store, applied)
     for b in bookings:
@@ -316,7 +326,7 @@ def performance(store, d):
                        for key in ("rent_due", "other_income", "costs", "result")}}
 
 
-def forecast(store, d):
+def forecast(store, d, known_records=None):
     from .invoice_review import settlements
     from .report_service import current_balance
     flt, rows = _filter(d), Rows.reading(store)
@@ -335,10 +345,11 @@ def forecast(store, d):
                                 "label": label, "url": url, "priority": priority}
 
     contracts = [c for c in store.list_contracts() if dims.contract_matches(c) and c.status not in NON_BILLABLE_STATUSES]
+    _remember(known_records, "contracts", contracts)
     adjustments = store.list_rent_adjustments()
     from .payment_allocations import contract_ledger, credited_by_tenant
     # every tenant's payments and every rent history read once, not once per contract
-    bookings = store.list_bookings()
+    bookings = _remember(known_records, "bookings", store.list_bookings())
     # Future booked cash is a known reservation, not another expectation. Use the
     # same FIFO account as the tenant dossier (including advances and returns).
     # Only future cash included in this report may replace an expected receipt.
@@ -375,11 +386,12 @@ def forecast(store, d):
                   view.contract(c, money(arrears * d.arrears_collection_percent / 100), add_months(d.as_of, 1)),
                   "Erwarteter Eingang Mietrückstand " + c.contract_number, "/contracts?contract_id=" + c.id)
     # Future bookings have higher priority than an expectation of the same identified event.
-    bills = store.list_invoices()
+    bills = _remember(known_records, "invoices", store.list_invoices())
     service_bills = rows.find("service_contract_invoices")
     from ..domain.service_contract_finance import planned_instalments
     from ..domain.service_contract_terms import Terms
-    for contract in store.list_service_contracts():
+    service_contracts = _remember(known_records, "service_contracts", store.list_service_contracts())
+    for contract in service_contracts:
         tariffs = store.list_service_contract_tariffs(contract.id)
         for instalment in planned_instalments(tariffs, contract.start_date, Terms.of(contract).effective_end,
                                               d.as_of + timedelta(days=1), last):
@@ -434,7 +446,8 @@ def forecast(store, d):
         identity = "booking:" + b.id
         event(identity, b.booking_date, view.booking(b), b.payment_text or "Geplante Buchung", "/bookings?booking_id=" + b.id, 2)
     residual_reader = ResidualReader(store)
-    for r in store.list_receivables():
+    receivables = _remember(known_records, "receivables", store.list_receivables())
+    for r in receivables:
         c = next((c for c in contracts if c.id == r.contract_id), None)
         if not c or r.due_date > last:
             continue
@@ -461,14 +474,20 @@ def forecast(store, d):
         expense = -sum((min(money(e["amount"]), ZERO) for e in selected), ZERO)
         balance += income - expense
         monthly.append({"month": month_key(m), "income": str(income), "expense": str(expense), "balance": str(balance)})
+    opening_accounts = _remember(known_records, "accounts", flt.opening_accounts(store))
+    if flt.portfolio_id or flt.property_id or flt.unit_id:
+        opening_bookings = booking_sources(store, flt.with_period(None, d.as_of))
+    else:
+        opening_bookings = sorted((booking for booking in bookings if booking.booking_date <= d.as_of),
+            key=lambda booking: (booking.booking_date, booking.id))
     opening_sources = [{"identity": "account-opening:" + account.id, "amount": str(money(account.opening_balance)),
                         "label": "Eröffnungssaldo " + account.name, "basis": "Erfasster Kontovortrag",
                         "url": "/accounts?focus_id=" + account.id}
-                       for account in flt.opening_accounts(store) if money(account.opening_balance)]
+                       for account in opening_accounts if money(account.opening_balance)]
     opening_sources += [{"identity": "booking:" + booking.id, "day": booking.booking_date.isoformat(),
                          "amount": str(view.booking(booking)), "label": booking.payment_text or "Buchung " + booking.booking_date.isoformat(),
                          "basis": "Buchung bis einschließlich Stichtag", "url": "/bookings?booking_id=" + booking.id}
-                        for booking in booking_sources(store, flt.with_period(None, d.as_of)) if view.booking(booking)]
+                        for booking in opening_bookings if view.booking(booking)]
     return {"opening_balance": str(opening), "opening_sources": opening_sources,
             "closing_balance": str(balance), "monthly": monthly,
             "sources": sorted(events.values(), key=lambda e: (e["day"], e["identity"])), "warnings": warnings}
@@ -486,8 +505,9 @@ def compute(store, definition):
     captured = current_scope()
     with report_provenance.snapshot(store) as (source, mode):
         sampled_at = retrieval_time().isoformat()
-        result = _compute(source, definition)
-        report_provenance.enrich(source, result, mode)
+        known_records = report_provenance.SourceRecords(source)
+        result = _compute(source, definition, known_records)
+        report_provenance.enrich(source, result, mode, known_records=known_records)
         result["result_hash"] = digest(result)
     # The changing retrieval clock is not part of the reproducible result hash.
     result["generated_at"] = sampled_at
@@ -496,7 +516,7 @@ def compute(store, definition):
     return result
 
 
-def _compute(store, definition):
+def _compute(store, definition, known_records=None):
     validate_scope(store, definition)
     dims = Dimensions(store, _filter(definition))
     currencies = {p.currency for p in store.list_portfolios() if
@@ -507,16 +527,16 @@ def _compute(store, definition):
         raise HTTPException(422, "Mehrere Währungen: bitte ein Portfolio wählen. Eine Währungsumrechnung wird nicht angenommen.")
     validate_source_currencies(store, definition, next(iter(currencies), "EUR"))
     if definition.kind == "cash-v2":
-        data = cash(store, definition)
+        data = cash(store, definition, known_records)
     elif definition.kind == "performance-period-v2":
-        data = performance(store, definition)
+        data = performance(store, definition, known_records)
     else:
-        data = forecast(store, definition)
+        data = forecast(store, definition, known_records)
     if definition.kind == "liquidity-v2":
         baseline = definition.model_copy(update={"rent_collection_percent": Decimal(100), "arrears_collection_percent": Decimal(0),
                                                   "vacant_unit_ids": [], "planned_flows": []})
         # without assumptions the baseline is this very forecast
-        baseline_data = data if baseline == definition else forecast(store, baseline)
+        baseline_data = data if baseline == definition else forecast(store, baseline, known_records)
         data["baseline_monthly"] = [dict(month) for month in baseline_data["monthly"]]
         data["baseline_sources"] = [dict(source) for source in baseline_data["sources"]]
     if definition.kind == "cash-v2":

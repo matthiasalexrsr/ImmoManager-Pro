@@ -165,14 +165,17 @@ def _checked_result(value, content, extension):
 
 def inspect_binary(content: bytes, extension: str, *, source_limit: int, upload_limit: int) -> dict:
     from .document_text_process import worker_command
+    from .document_worker_diagnostics import FAILURE_FILE, observation, stage
     from .e_invoice.validator import _protect_windows_directory, _run
 
     try:
         _limits(extension, source_limit, upload_limit)
         if not isinstance(content, bytes) or not content or len(content) > source_limit:
             raise ValueError("Invalid attachment input")
-        with tempfile.TemporaryDirectory(prefix="immo-e-invoice-text-") as directory:
+        with tempfile.TemporaryDirectory(prefix="immo-e-invoice-text-") as directory, observation(
+                "attachment", folder=Path(directory), ignore=(HTTPException,)) as diagnostic:
             folder = Path(directory)
+            stage("attachment_input")
             if os.name == "nt":
                 _protect_windows_directory(folder)
             (folder / "source.bin").write_bytes(content)
@@ -186,13 +189,19 @@ def inspect_binary(content: bytes, extension: str, *, source_limit: int, upload_
                 "INTEGRATION_STATE_FILE": str(folder / "integrations.json"),
                 "MAX_UPLOAD_SIZE_BYTES": str(upload_limit), "JOB_SCHEDULER_ENABLED": "false",
                 "BACKUP_SCHEDULE_ENABLED": "false", "ENVIRONMENT": "development"}
+            stage("attachment_process")
             code, _, _ = _run(worker_command(folder), folder, environment=environment,
                 timeout_seconds=TIMEOUT_SECONDS, max_processes=2, file_limit_bytes=WORK_BYTES, resource_mode="image")
+            diagnostic.exit_code = code
+            stage("attachment_result")
             result = folder / "result.json"
-            if code or not result.is_file() or result.stat().st_size > MAX_RESPONSE_BYTES:
+            failure = folder / FAILURE_FILE
+            if (code or not result.is_file() or result.stat().st_size > MAX_RESPONSE_BYTES
+                    or failure.exists() or failure.is_symlink()):
                 raise ValueError("Attachment worker did not finish")
             value = json.loads(result.read_text(encoding="utf-8"))
             if isinstance(value, dict) and set(value) == {"error"}:
+                stage("attachment_worker_error")
                 errors = {
                     "invalid_pdf": (422, "PDF konnte nicht gelesen werden."),
                     "encrypted_pdf": (422, "Passwortgeschützte PDFs können nicht analysiert werden."),
@@ -203,6 +212,7 @@ def inspect_binary(content: bytes, extension: str, *, source_limit: int, upload_
                     status, message = errors[value["error"]]
                     raise HTTPException(status, message)
                 raise ValueError("Invalid attachment worker error")
+            stage("attachment_schema")
             return _checked_result(value, content, extension)
     except HTTPException:
         raise

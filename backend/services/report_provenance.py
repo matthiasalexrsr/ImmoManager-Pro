@@ -1,7 +1,9 @@
 """Report evidence from the calculation's own snapshot; no independent money math."""
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import timezone
+from copy import deepcopy
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -19,6 +21,57 @@ TABLES = {"booking": "bookings", "invoice": "invoices", "rent": "contracts", "re
           "receivable": "receivables", "service-instalment": "service_contracts",
           "utility-statement": "utility_statements", "account-opening": "accounts"}
 SECTIONS = ("sources", "opening_sources", "baseline_sources")
+IMMUTABLE_FIELDS = (str, int, float, bool, bytes, date, datetime, Decimal, type(None))
+
+
+class SourceRecords:
+    """Already read DTOs of one calculation's store and unchanged access scope.
+
+    This collector is local to the report's snapshot. Unexpected or changed
+    entries are misses, so enrichment retains its ordinary scoped read path.
+    """
+
+    def __init__(self, store):
+        from ..models import Account, UtilityStatement
+        from .maintenance_rows import registry
+        from .portfolio_scope import current_scope
+
+        self._store, self._scope = store, current_scope()
+        self._models = {table: pair[1] for table, pair in registry().items()}
+        self._models.update(accounts=Account, utility_statements=UtilityStatement)
+        self._records: dict[str, dict[str, tuple[Any, dict]]] = defaultdict(dict)
+
+    def remember(self, table, records):
+        from .portfolio_scope import current_scope
+
+        if current_scope() != self._scope:
+            return
+        model = self._models.get(table)
+        for record in records:
+            identifier = getattr(record, "id", None)
+            if (type(record) is model and isinstance(identifier, str)
+                    and set(model.model_fields) <= record.__dict__.keys()):
+                fields = {key: value if type(value) in IMMUTABLE_FIELDS else deepcopy(value)
+                          for key, value in record.__dict__.items()}
+                self._records[table][identifier] = (record, fields)
+
+    def selected(self, store, table, identifiers):
+        from .portfolio_scope import current_scope
+
+        if store is not self._store or current_scope() != self._scope:
+            return {}
+        found = {}
+        for identifier in identifiers:
+            entry = self._records.get(table, {}).get(identifier)
+            if not isinstance(entry, tuple) or len(entry) != 2:
+                continue
+            record, fields = entry
+            model = self._models.get(table)
+            if (type(record) is model and getattr(record, "id", None) == identifier
+                    and set(model.model_fields) <= record.__dict__.keys()
+                    and isinstance(fields, dict) and record.__dict__ == fields):
+                found[identifier] = record
+        return found
 
 
 @contextmanager
@@ -65,7 +118,7 @@ def _original(store, document_id, expected_sha):
         return {"status": "unavailable", "message": "Originalbeleg nicht zugänglich oder Integrität nicht bestätigt."}
 
 
-def enrich(store, result, mode):
+def enrich(store, result, mode, *, known_records=None):
     rows = Rows.reading(store)
     wanted = defaultdict(set)
     for section in SECTIONS:
@@ -82,6 +135,11 @@ def enrich(store, result, mode):
     for table, identifiers in wanted.items():
         if not identifiers:
             continue
+        known = known_records.selected(store, table, identifiers) if type(known_records) is SourceRecords else {}
+        identifiers = identifiers - known.keys()
+        if not identifiers:
+            records[table] = known
+            continue
         if table in registry():
             found = rows.find(table, id=identifiers)
         elif rows.db is None:
@@ -93,7 +151,7 @@ def enrich(store, result, mode):
             found = [model.model_validate({column.key: getattr(item, column.key) for column in orm.__table__.columns})
                      for start in range(0, len(keys), 500)
                      for item in rows.db.scalars(select(orm).where(orm.id.in_(keys[start:start + 500])))]
-        records[table] = {item.id: item for item in found}
+        records[table] = {**known, **{item.id: item for item in found}}
     resolved, originals, changes = {}, {}, []
     for section in SECTIONS:
         for source in result.get(section, []):
