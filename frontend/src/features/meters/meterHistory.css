@@ -11,6 +11,10 @@
 .meter-history-portal { margin-top: var(--space-2); }
 .meter-history-warning { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-warning-text, var(--color-text)); }
 .meter-history-note { font-size: var(--text-xs); margin: var(--space-2) 0; }
+.meter-history-selected-reading { margin-bottom: var(--space-4); padding: var(--space-3); border: 2px solid var(--color-primary); border-radius: var(--radius-md, 8px); }
+.meter-history-selected-reading h4 { margin: 0 0 var(--space-2); }
+.meter-history-selected-reading:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.meter-history-focused-row { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 
 /* single-series columns: the bars carry the colour, text keeps the text tokens */
 .meter-history-chart { position: relative; max-width: 100%; overflow-x: auto; margin-bottom: var(--space-2); }

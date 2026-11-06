@@ -31,6 +31,7 @@ from ..services import notification_inbox as personal
 from ..services.notification_email import Preview as EmailPreview
 from ..services.notifier import OPEN_WORK_STATUSES, Notifier, day, eur, receivable_debtor
 from ..storage import NotFoundError, ValidationError
+from .reminders import router as reminders_router
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def private_response(response: Response):
 
 
 router = APIRouter(dependencies=[Depends(private_response)], prefix="/notifications", tags=["Benachrichtigungen"])
+router.include_router(reminders_router)
 
 
 class ReceiptCommand(BaseModel):
@@ -303,12 +305,12 @@ def create_notification(payload: NotificationCreate) -> Notification:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get("/{notification_id}", response_model=Notification)
-def get_notification(notification_id: str) -> Notification:
+@router.get("/{notification_id}")
+def get_notification(notification_id: str, actor: UserRead = Depends(require_auth)) -> dict[str, Any]:
     try:
-        return store.get_notification(notification_id)
+        return personal.detail(store, actor.id, notification_id)
     except NotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hinweis oder Quelle nicht zugänglich.") from exc
 
 
 @router.put("/{notification_id}", response_model=Notification)

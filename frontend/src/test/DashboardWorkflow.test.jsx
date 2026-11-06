@@ -14,7 +14,7 @@ describe('DashboardWorkflow', () => {
       'open-receivables': '/receivables?status=unpaid', 'billing-preflight-blockers': '/statements?filter=preflight_blockers',
       'maintenance-escalations': '/maintenance?filter=escalation', 'expiring-contracts': '/contracts?filter=expiring90',
       'missing-contract-documents': '/contracts?filter=missing_documents', 'open-maintenance': '/maintenance?status=open',
-      'open-tasks': '/tasks?status=open', 'unread-notifications': '/messages?status=unread',
+      'open-tasks': '/tasks?status=open', 'unread-notifications': '/notifications?status=unread',
     });
     const operations = workflows.find(item => item.id === 'operations');
     expect(operations.steps.find(item => item.labelKey.endsWith('maintenanceClear')).to).toBe('/maintenance?filter=overdue');

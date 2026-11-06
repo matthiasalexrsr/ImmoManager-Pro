@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any, Callable, Optional
 
 from ..domain.clock import local_today
-from ..domain.money import money
+from ..domain.money import input_money, money
 from ..models import PAYMENT_METHODS, normalize_payment_method
 from ..storage import NotFoundError, ValidationError
 from .record_revisions import ExpectedRevision, collection_table
@@ -216,24 +216,43 @@ def rent_adjustment(data: dict, store: Any) -> None:
 
 
 def invoice(data: Record, store: Any) -> None:
-    _number(data, {"net_amount": "Der Nettobetrag", "gross_amount": "Der Bruttobetrag"})
-    rate = data.get("vat_rate")
-    if _touched(data, "vat_rate") and isinstance(rate, (int, float)) and not 0 <= rate <= 100:
+    _number(data, {"net_amount": "Der Nettobetrag", "gross_amount": "Der Bruttobetrag",
+                   "vat_amount": "Die MwSt", "vat_rate": "Der MwSt-Satz"})
+    # This dependency runs before the request DTO. Interpret numeric strings
+    # exactly as the DTO will and reject invalid/unstorable input before doing
+    # arithmetic; neither skipped checks nor Decimal errors may reach a write.
+    amounts = {}
+    for key in ("net_amount", "gross_amount", "vat_amount"):
+        if data.get(key) is not None:
+            try:
+                amounts[key] = input_money(data[key])
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+    # On create/replace this is the DTO's default. PATCH has already been
+    # merged with the stored invoice by check(), so it keeps that invoice's rate.
+    rate = data.get("vat_rate", 19.0)
+    if isinstance(rate, str):
+        try:
+            rate = float(rate)
+        except ValueError:
+            pass     # the request DTO reports a nonnumeric VAT rate
+    changed_money = {"net_amount", "gross_amount", "vat_amount", "vat_rate"} & data.touched
+    if changed_money and isinstance(rate, (int, float)) and not 0 <= rate <= 100:
         raise ValidationError(f"MwSt-Satz {rate} % ist nicht plausibel")
-    if not {"net_amount", "gross_amount", "vat_amount", "vat_rate"} & data.touched:
+    if not changed_money:
         return
-    net, gross, vat = data.get("net_amount"), data.get("gross_amount"), data.get("vat_amount")
-    if isinstance(net, (int, float)) and isinstance(gross, (int, float)):
-        if isinstance(vat, (int, float)) and vat:
-            expected = float(money(net) + money(vat))
+    net, gross, vat = (amounts.get(key) for key in ("net_amount", "gross_amount", "vat_amount"))
+    if net is not None and gross is not None:
+        if vat:
+            expected = net + vat
         elif isinstance(rate, (int, float)):
             # VAT rounded half up to the cent, as the invoice states it
-            expected = float(money(net) + money(money(net) * Decimal(repr(rate)) / 100))
+            expected = net + money(net * Decimal(repr(rate)) / 100)
         else:
             return
-        if abs(expected - gross) > 0.05:
-            raise ValidationError(f"Brutto {_eur(gross)} passt nicht zu Netto {_eur(net)} und MwSt "
-                                  f"(erwartet {_eur(expected)})")
+        if abs(expected - gross) > Decimal("0.05"):
+            raise ValidationError(f"Brutto {_eur(float(gross))} passt nicht zu Netto {_eur(float(net))} und MwSt "
+                                  f"(erwartet {_eur(float(expected))})")
 
 
 def _eur(value: float) -> str:

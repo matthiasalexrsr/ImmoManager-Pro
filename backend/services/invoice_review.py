@@ -212,12 +212,12 @@ def _settle(invoice: Any, review: Any, payments: list[rules.Payment], credits: D
 
 
 def settlements(rows: Rows, invoices: Iterable[Any], today: date | None = None) -> dict[str, rules.Settlement]:
+    today = today or local_today()
     invoices = list(invoices)
     ids = [i.id for i in invoices]
     reviews = {r.invoice_id: r for r in rows.find("invoice_reviews", invoice_id=ids)}
     payments = _effective_payments(rows, ids, as_of=today)
     credits = _credit_totals(rows, ids, as_of=today)
-    today = today or local_today()
     return {i.id: _settle(i, reviews.get(i.id), payments.get(i.id, []), credits.get(i.id, ZERO), today)
             for i in invoices}
 
@@ -737,8 +737,9 @@ def resolve_dispute(store: Any, invoice_id: str, payload: DisputeResolution, act
     with _reviewed(store, actor_id, invoice_id, f"/invoices/{invoice_id}/review/dispute") as r:
         if r.review.dispute_status != "open":
             raise conflict("Zu dieser Rechnung ist kein Widerspruch offen.")
-        credits = _credit_totals(r.rows, [invoice_id]).get(invoice_id, ZERO)
-        settlement = _settle(r.invoice, r.review, [], credits, local_today())
+        today = local_today()
+        credits = _credit_totals(r.rows, [invoice_id], as_of=today).get(invoice_id, ZERO)
+        settlement = _settle(r.invoice, r.review, [], credits, today)
         remaining = settlement.dispute_open
         settled = ZERO
         if payload.outcome == "credit" and credits == 0:

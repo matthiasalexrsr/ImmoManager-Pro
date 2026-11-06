@@ -305,19 +305,22 @@ def _list_deposits(**kw):
     )
 
 
-def _list_notifications(**kw):
-    from backend import auth
+def _notification_reader():
     actor = auth.get_user_by_username('crud-notice-owner')
     if actor is None:
         auth.register_user('crud-notice-owner', 'crud-notice@example.test', 'Hinweise', 'Secret123', 'eigentuemer')
         actor = auth.get_user_by_username('crud-notice-owner')
     assert actor is not None
+    return auth._to_user_read(actor)
+
+
+def _list_notifications(**kw):
     return notifications.list_notifications(
         skip=kw.get("skip", S), limit=kw.get("limit", L),
         status_filter=kw.get("status_filter"),
         notification_type=kw.get("notification_type"),
         severity=kw.get("severity"),
-        actor=auth._to_user_read(actor),
+        actor=_notification_reader(),
     )
 
 
@@ -2818,12 +2821,13 @@ class TestNotifications:
 
     def test_get_notification(self) -> None:
         n = notifications.create_notification(self._make())
-        fetched = notifications.get_notification(n.id)
-        assert fetched.id == n.id
+        fetched = notifications.get_notification(n.id, actor=_notification_reader())
+        assert fetched['id'] == n.id
+        assert fetched['status'] == 'unread' and fetched['revision'] == 0
 
     def test_get_notification_404(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
-            notifications.get_notification("nonexistent")
+            notifications.get_notification("nonexistent", actor=_notification_reader())
         assert exc_info.value.status_code == 404
 
     def test_mark_read(self) -> None:

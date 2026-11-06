@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Check, CircleStop, RotateCcw } from 'lucide-react';
+import { Check, CircleStop, Eye, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -8,7 +8,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toast';
-import { useCanWrite } from '../contexts/AuthContext';
+import { useAuth, useCanWrite } from '../contexts/AuthContext';
 import { formatDate } from '../utils/format';
 import { bulkDelete } from '../utils/bulkActions';
 import { Copy as CopyIcon } from 'lucide-react';
@@ -17,6 +17,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import ObjectScope from '../components/ObjectScope';
 import { scopeDefaults } from '../utils/objectScope';
 import RelatedPageLinks from '../components/RelatedPageLinks';
+import NotificationArrival from '../components/NotificationArrival';
 import useAssistantHandoff from '../hooks/useAssistantHandoff';
 import AssistantHandoffNotice from '../components/AssistantHandoffNotice';
 import KpiAction from '../components/KpiAction';
@@ -24,7 +25,10 @@ import InlineFieldEditor from '../features/workCenter/InlineFieldEditor';
 import UndoNotice from '../features/workCenter/UndoNotice';
 import TaskRecurrenceField from '../features/tasks/TaskRecurrenceField';
 import { recurrenceError, recurrenceSummary } from '../features/tasks/taskRecurrence';
+import QuickMessageComposer from '../features/communication/QuickMessageComposer';
+import ReminderPlanner from '../features/communication/ReminderPlanner';
 import '../features/workCenter/workCenter.css';
+import '../features/tasks/taskOverview.css';
 
 const isFinished = status => ['completed', 'cancelled', 'canceled', 'closed', 'done', 'archived'].includes(status);
 
@@ -60,6 +64,7 @@ function isWithinWeek(dueDate) {
 export default function Tasks() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const focusedId = params.get('focus_id');
   const readFilter = () => {
     const value = params.get('status') || params.get('filter');
     return ['all', 'open', 'in_progress', 'completed', 'cancelled', 'today', 'week', 'overdue', 'recurring'].includes(value) ? value : 'all';
@@ -68,6 +73,7 @@ export default function Tasks() {
   const confirm = useConfirm();
   const toast = useToast();
   const canWrite = useCanWrite('/tasks');
+  const actorId = useAuth()?.user?.id ?? null;
   const store = useDataStore();
   const propertyState = useEntities('properties', '/properties');
   const unitState = useEntities('units', '/units');
@@ -76,7 +82,14 @@ export default function Tasks() {
   const choicesReady = !propertyState.loading && !unitState.loading && !propertyState.error && !unitState.error;
 
   const [tasks, setTasks] = useState([]);
+  const [taskOwner, setTaskOwner] = useState(actorId);
+  const currentTasks = taskOwner === actorId ? tasks : [];
   const [loading, setLoading] = useState(true);
+  const [focused, setFocused] = useState(null);
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const [taskAction, setTaskAction] = useState(null);
+  const overviewRef = useRef(null);
+  const detailRequestRef = useRef(null);
   const [modal, setModal] = useState(null);
   // values of a duplicated task for the New form (null: an empty form)
   const [prefill, setPrefill] = useState(null);
@@ -88,7 +101,7 @@ export default function Tasks() {
   const [drilldown, setDrilldown] = useState(0);
   const openSources = key => {
     setFilter(key); setDrilldown(value => value + 1);
-    setParams(current => { const next = new URLSearchParams(current); ['filter', 'status', 'focus_id', 'suche'].forEach(name => next.delete(name));
+    setParams(current => { const next = new URLSearchParams(current); ['filter', 'status', 'focus_id', 'source_id', 'notice_id', 'suche'].forEach(name => next.delete(name));
       if (key !== 'all') next.set(['open', 'in_progress', 'completed', 'cancelled'].includes(key) ? 'status' : 'filter', key);
       return next; });
   };
@@ -114,6 +127,7 @@ export default function Tasks() {
       if (!Array.isArray(data)) throw new Error('Der Server hat keine gültige Aufgabenliste geliefert');
       if (!request.signal.aborted) {
         setTasks(data);
+        setTaskOwner(actorId);
         return true;
       }
     } catch (err) {
@@ -122,12 +136,54 @@ export default function Tasks() {
       if (!request.signal.aborted) setLoading(false);
     }
     return false;
-  }, []);
+  }, [actorId]);
 
   useEffect(() => {
     refreshData();
     return () => loadRef.current?.abort();
   }, [refreshData]);
+
+  // A deep link is an individual, authorized read. List filters, saved views,
+  // pagination and a failed list request must not hide the requested overview.
+  useEffect(() => {
+    if (!focusedId) return undefined;
+    const request = new AbortController();
+    detailRequestRef.current = request;
+    setFocused({ id: focusedId, actorId, status: 'loading' });
+    api.get(`/tasks/${encodeURIComponent(focusedId)}`, { signal: request.signal }).then(task => {
+      if (!task || task.id !== focusedId || typeof task.title !== 'string' || !task.title.trim()
+          || typeof task.status !== 'string' || typeof task.priority !== 'string') {
+        throw new Error('Die Aufgabe konnte nicht vollständig geladen werden. Bitte erneut laden.');
+      }
+      if (!request.signal.aborted) setFocused({ id: focusedId, actorId, status: 'success', task });
+    }).catch(error => {
+      if (!request.signal.aborted) setFocused({ id: focusedId, actorId, status: 'error', error:
+        [403, 404].includes(error?.statusCode || error?.status)
+          ? 'Diese Aufgabe wurde gelöscht oder ist für Sie nicht zugänglich.'
+          : error?.message || 'Die Aufgabe konnte nicht geladen werden.' });
+    });
+    return () => request.abort();
+  }, [focusedId, detailAttempt, actorId]);
+
+  const detailState = focused?.id === focusedId && focused?.actorId === actorId ? focused : null;
+  const detailRecordId = detailState?.status === 'success' ? detailState.task.id : null;
+  useEffect(() => {
+    if (!detailRecordId) return;
+    overviewRef.current?.focus({ preventScroll: true });
+    overviewRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [detailRecordId]);
+  useEffect(() => { setTaskAction(null); }, [focusedId, actorId]);
+  const closeDetails = () => setParams(current => {
+    const next = new URLSearchParams(current);
+    ['focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key));
+    return next;
+  }, { replace: true });
+  const updateFocusedTask = task => {
+    if (task?.id === focusedId) {
+      detailRequestRef.current?.abort();
+      setFocused({ id: focusedId, actorId, status: 'success', task });
+    }
+  };
 
   // Lookup maps
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
@@ -136,7 +192,7 @@ export default function Tasks() {
 
   // Enriched data
   const effectiveProperty = task => task.property_id || unitProperties[task.unit_id];
-  const enriched = tasks.filter(task => (!params.get('property_id') || effectiveProperty(task) === params.get('property_id'))
+  const enriched = currentTasks.filter(task => (!params.get('property_id') || effectiveProperty(task) === params.get('property_id'))
     && (!params.get('unit_id') || task.unit_id === params.get('unit_id'))
     && (!params.get('parent_task_id') || task.parent_task_id === params.get('parent_task_id'))).map(task => ({
     ...task,
@@ -170,6 +226,7 @@ export default function Tasks() {
   const applyQuickChange = result => {
     if (!result?.record?.id) return;
     setTasks(current => current.map(task => task.id === result.record.id ? result.record : task));
+    updateFocusedTask(result.record);
     setQuickChange(result.undo_id ? result : null);
     store?.invalidateRelated('tasks');
   };
@@ -177,7 +234,7 @@ export default function Tasks() {
     options={options} type={type} canEdit={canWrite && !busy.has(row.id)} onSaved={applyQuickChange}>{content}</InlineFieldEditor>;
   const columns = [
     { key: 'title', label: t('pages.tasks.columns.title') || 'Titel', filterType: 'text', render: (value, row) =>
-      <Link to={{ search: (() => { const next = new URLSearchParams(params); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> },
+      <Link to={{ search: (() => { const next = new URLSearchParams(params); ['source_id', 'notice_id'].forEach(key => next.delete(key)); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> },
     { key: 'property_name', hidden: true, label: t('portfolio.properties.form.name') || 'Immobilie', filterType: 'text' },
     { key: 'unit_label', subKey: 'property_name', label: t('units.list.columns.label') || 'Einheit', filterType: 'text', link: 'unit', subLink: 'property' },
     { key: 'assignee', label: t('pages.tasks.columns.assignee') || 'Zuständig', filterType: 'text',
@@ -251,6 +308,7 @@ export default function Tasks() {
       setTasks(current => current.map(row => row.id === saved.id ? saved : row));
     }
     setActionError(null);
+    updateFocusedTask(saved);
     toast.success('Aufgabe gespeichert');
     refreshData();
     if (store) store.invalidateRelated('tasks', 'properties', 'units');
@@ -261,6 +319,7 @@ export default function Tasks() {
     try {
       await api.del(`/tasks/${row.id}`);
       setTasks(current => current.filter(task => task.id !== row.id));
+      if (row.id === focusedId) closeDetails();
       setActionError(null);
       toast.success('Aufgabe gelöscht');
     } catch (err) {
@@ -292,6 +351,7 @@ export default function Tasks() {
     const status = isFinished(row.status) ? 'open' : 'completed';
     const saved = await api.patch(`/tasks/${row.id}`, { status, updated_at: row.updated_at });
     setTasks(current => current.map(task => task.id === row.id ? saved : task));
+    updateFocusedTask(saved);
     toast.success(status === 'completed' ? 'Aufgabe erledigt' : 'Aufgabe wieder geöffnet');
     refreshData();
     store?.invalidateRelated('tasks');
@@ -308,18 +368,28 @@ export default function Tasks() {
   });
 
   const lookupErrors = [propertyState.error, unitState.error].filter(Boolean);
-  const selectedTask = enriched.find(row => row.id === params.get('focus_id'));
+  const detailTask = detailState?.status === 'success' ? detailState.task : null;
+  const selectedTask = detailTask ? { ...detailTask,
+    property_id: effectiveProperty(detailTask),
+    property_name: propertyMap[effectiveProperty(detailTask)] || 'Immobilie öffnen',
+    unit_label: unitMap[detailTask.unit_id] || 'Einheit öffnen',
+    recurrence_label: detailTask.recurrence_rule ? recurrenceSummary(detailTask.recurrence_rule, t) : '—',
+  } : null;
   const reloadAfterConflict = async () => {
     const conflict = actionError;
     // Refresh only the list; an open form keeps its draft and captured revision.
-    if (await refreshData()) setActionError(current => current === conflict ? null : current);
+    if (await refreshData()) {
+      setActionError(current => current === conflict ? null : current);
+      setDetailAttempt(value => value + 1);
+    }
   };
   const retry = () => {
     refreshData();
+    setDetailAttempt(value => value + 1);
     if (propertyState.error) propertyState.reload();
     if (unitState.error) unitState.reload();
   };
-  if (loading && tasks.length === 0 && !loadError && !modal) return <div className="page-loading">Lade Aufgaben...</div>;
+  if (loading && currentTasks.length === 0 && !loadError && !modal && !focusedId) return <div className="page-loading">Lade Aufgaben...</div>;
 
   return (
     <div className="page">
@@ -331,13 +401,26 @@ export default function Tasks() {
       {params.get('parent_task_id') && <p className="filter-chips">Folgeaufgaben einer Serie{' '}
         <Link to={`/tasks?focus_id=${encodeURIComponent(params.get('parent_task_id'))}`}>Ausgangsaufgabe öffnen</Link>{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setParams(current => {
-          const next = new URLSearchParams(current); next.delete('parent_task_id'); next.delete('focus_id'); return next;
+          const next = new URLSearchParams(current); ['parent_task_id', 'focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key)); return next;
         })}>Serienfilter aufheben</button></p>}
-      {selectedTask && <section className="card" aria-label="Aufgabendetails" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      {focusedId && !selectedTask && <section className="card task-overview" aria-label="Aufgabendetails" aria-busy={detailState?.status !== 'error'}>
+        <div className="task-overview-heading"><h2>Aufgabenübersicht</h2><button type="button" className="btn btn-ghost btn-sm" onClick={closeDetails}>Detailansicht schließen</button></div>
+        {detailState?.status === 'error' ? <div className="alert-error" role="alert">{detailState.error}{' '}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDetailAttempt(value => value + 1)}>Aufgabe erneut laden</button>
+        </div> : <p role="status">Die ausgewählte Aufgabe wird geladen…</p>}
+      </section>}
+      {selectedTask && <section className="card task-overview" aria-label="Aufgabendetails" tabIndex={-1} ref={overviewRef}>
+        <NotificationArrival record={detailTask} />
+        <p className="task-overview-eyebrow">Aufgabenübersicht</p>
         <div className="page-header"><h2>{selectedTask.title}</h2>
-          {canWrite && choicesReady && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModal(selectedTask)}>Aufgabe bearbeiten</button>}</div>
-        <p><StatusBadge status={selectedTask.status} /> · Fällig: {formatDate(selectedTask.due_date)} · Zuständig: {selectedTask.assignee || 'Nicht zugewiesen'}</p>
-        {selectedTask.description && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selectedTask.description}</p>}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetails}>Detailansicht schließen</button></div>
+        <dl className="task-overview-facts">
+          <div><dt>Status</dt><dd><StatusBadge status={selectedTask.status} /></dd></div>
+          <div><dt>Priorität</dt><dd><StatusBadge status={selectedTask.priority} /></dd></div>
+          <div><dt>Fällig am</dt><dd>{selectedTask.due_date ? formatDate(selectedTask.due_date) : 'Ohne Fälligkeitsdatum'}</dd></div>
+          <div><dt>Zuständig</dt><dd>{selectedTask.assignee || 'Nicht zugewiesen'}</dd></div>
+        </dl>
+        <div className="task-overview-description"><h3>Beschreibung</h3><p>{selectedTask.description || 'Keine Beschreibung hinterlegt.'}</p></div>
         {selectedTask.recurrence_rule && <p>{selectedTask.recurrence_label}{' '}
           {['cancelled', 'canceled', 'archived'].includes(selectedTask.status) && '– Serie beendet; bestehende Folgeaufgaben bleiben erhalten.'}</p>}
         <RelatedPageLinks items={[
@@ -346,7 +429,14 @@ export default function Tasks() {
           ...(selectedTask.parent_task_id ? [{ to: `/tasks?focus_id=${encodeURIComponent(selectedTask.parent_task_id)}`, label: 'Ausgangsaufgabe' }] : []),
           ...(selectedTask.recurrence_rule && !selectedTask.parent_task_id ? [{ to: `/tasks?parent_task_id=${encodeURIComponent(selectedTask.id)}`, label: 'Alle Folgeaufgaben' }] : []),
         ]} />
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); return next; })}>Detailansicht schließen</button>
+        <div className="task-overview-actions">
+          {canWrite && <button type="button" className="btn btn-primary btn-sm" onClick={() => toggleCompleted(selectedTask)} disabled={busy.has(selectedTask.id)}>
+            {isFinished(selectedTask.status) ? 'Aufgabe wieder öffnen' : 'Aufgabe erledigen'}</button>
+          }
+          {canWrite && choicesReady && <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModal(selectedTask)} disabled={busy.has(selectedTask.id)}>Aufgabe bearbeiten</button>}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTaskAction({ id: selectedTask.id, actorId, kind: 'message' })}>Nachricht vorbereiten</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTaskAction({ id: selectedTask.id, actorId, kind: 'reminder' })}>Erinnerung planen</button>
+        </div>
       </section>}
       <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
       {quickChange && <UndoNotice key={quickChange.undo_id} change={quickChange} onDismiss={() => setQuickChange(null)} onUndone={applyQuickChange} />}
@@ -362,15 +452,15 @@ export default function Tasks() {
         <p>Diese Serien konnten nicht fortgesetzt werden:</p>
         <ul>{recurrenceErrors.map(error => <li key={error.task_id}>{error.title}: {error.error}</li>)}</ul>
       </div>}
-      {loading && tasks.length > 0 && <p role="status">Aufgaben werden aktualisiert…</p>}
+      {loading && currentTasks.length > 0 && <p role="status">Aufgaben werden aktualisiert…</p>}
 
       {/* Summary cards */}
       <div className="kpi-row">
-        <KpiAction label="Gesamt" value={loadError && !tasks.length ? '—' : totalCount} onClick={() => openSources('all')} />
-        <KpiAction label="Offen" value={loadError && !tasks.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
-        <KpiAction label="Überfällig" value={loadError && !tasks.length ? '—' : overdueCount} color={overdueCount ? 'var(--danger)' : undefined} onClick={() => openSources('overdue')} />
-        <KpiAction label="In Bearbeitung" value={loadError && !tasks.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
-        <KpiAction label="Wiederkehrend" value={loadError && !tasks.length ? '—' : recurringCount} onClick={() => openSources('recurring')} />
+        <KpiAction label="Gesamt" value={(loading || loadError) && !currentTasks.length ? '—' : totalCount} onClick={() => openSources('all')} />
+        <KpiAction label="Offen" value={(loading || loadError) && !currentTasks.length ? '—' : openCount} color="var(--info)" onClick={() => openSources('open')} />
+        <KpiAction label="Überfällig" value={(loading || loadError) && !currentTasks.length ? '—' : overdueCount} color={overdueCount ? 'var(--danger)' : undefined} onClick={() => openSources('overdue')} />
+        <KpiAction label="In Bearbeitung" value={(loading || loadError) && !currentTasks.length ? '—' : inProgressCount} color="var(--warning)" onClick={() => openSources('in_progress')} />
+        <KpiAction label="Wiederkehrend" value={(loading || loadError) && !currentTasks.length ? '—' : recurringCount} onClick={() => openSources('recurring')} />
       </div>
 
       {/* Filter tabs */}
@@ -395,14 +485,15 @@ export default function Tasks() {
       </div>
 
       <DataTable
+        acknowledgeNotifications={!focusedId}
         title={t('pages.tasks.title') || 'Aufgaben'}
         columns={columns}
         data={filtered}
-        clearFocusedRow={() => setParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); return next; })}
+        clearFocusedRow={() => setParams(current => { const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key)); return next; })}
         drilldownKey={drilldown}
         viewConfig={{ column_filters: { workflow_filter: filter, property_id: params.get('property_id') || '', unit_id: params.get('unit_id') || '' } }}
         onApplyView={config => { const saved = config.column_filters || {}; setFilter(['all', 'open', 'in_progress', 'completed', 'cancelled', 'today', 'week', 'overdue', 'recurring'].includes(saved.workflow_filter) ? saved.workflow_filter : 'all');
-          setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'suche'].forEach(key => next.delete(key));
+          setParams(current => { const next = new URLSearchParams(current); ['status', 'filter', 'focus_id', 'source_id', 'notice_id', 'suche'].forEach(key => next.delete(key));
             if (saved.workflow_filter && saved.workflow_filter !== 'all') next.set('filter', saved.workflow_filter);
             ['property_id', 'unit_id'].forEach(key => { if (saved[key]) next.set(key, saved[key]); else next.delete(key); }); return next; }); }}
         onAdd={choicesReady ? values => { setPrefill({ ...scopeDefaults(params, units), ...values }); setModal('create'); } : undefined}
@@ -421,6 +512,10 @@ export default function Tasks() {
             finished: () => { refreshData(); store?.invalidateRelated('tasks', 'properties', 'units'); } }),
         ]}
         rowActions={row => busy.has(row.id) ? [] : [{
+          label: 'Aufgabe ansehen', icon: <Eye size={15} />, onClick: () => setParams(current => {
+            const next = new URLSearchParams(current); ['source_id', 'notice_id'].forEach(key => next.delete(key)); next.set('focus_id', row.id); return next;
+          }),
+        }, {
           label: 'Duplizieren', write: true, icon: <CopyIcon size={15} />,
           onClick: () => { setPrefill(duplicateOf(row, ['status', 'completed_at', 'generated_from_task_id', 'occurrence_date'])); setModal('create'); },
         }, {
@@ -432,6 +527,7 @@ export default function Tasks() {
             if (!await confirm('Die Serie beenden? Es werden keine neuen Folgeaufgaben erzeugt. Bereits angelegte Aufgaben bleiben erhalten.')) return;
             const saved = await api.patch(`/tasks/${row.id}`, { status: 'cancelled', updated_at: row.updated_at });
             setTasks(current => current.map(task => task.id === row.id ? saved : task));
+            updateFocusedTask(saved);
             refreshData(); store?.invalidateRelated('tasks'); toast.success('Aufgabenserie beendet');
           }),
         }] : [])]}
@@ -449,6 +545,11 @@ export default function Tasks() {
             else if (assistantHandoff.identifier) assistantHandoff.clear(); }}
         />
       )}
+      {selectedTask && taskAction?.id === selectedTask.id && taskAction.actorId === actorId && (taskAction.kind === 'message'
+        ? <QuickMessageComposer key={`message:${selectedTask.id}`} sourceKind="task" sourceId={selectedTask.id} subject={selectedTask.title}
+          message={[selectedTask.title, selectedTask.description].filter(Boolean).join('\n\n')} dueDate={selectedTask.due_date} onClose={() => setTaskAction(null)} />
+        : <ReminderPlanner key={`reminder:${selectedTask.id}`} sourceKind="task" sourceId={selectedTask.id} sourceTitle={selectedTask.title}
+          dueDate={selectedTask.due_date} onClose={() => setTaskAction(null)} />)}
     </div>
   );
 }

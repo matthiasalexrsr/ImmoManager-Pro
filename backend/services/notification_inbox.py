@@ -193,6 +193,20 @@ def inbox(store, actor_id, status=None, offset=0, limit=50, expected_snapshot=No
                 'next_cursor': next_cursor, 'next_offset': offset + limit if more else None}
 
 
+def detail(store, actor_id, identifier):
+    """One personal notice, independent of inbox windows and filters.
+
+    Recheck its source before projecting even the notice text: public() keeps
+    inaccessible legacy rows visible in existing lists, but a direct ID must
+    never turn into a way to retrieve another portfolio's notice.
+    """
+    with archive.work(store, actor_id) as unit, contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
+        notice = unit.store.get_notification(identifier)
+        if notice.entity_type and notice.entity_id:
+            target(unit.store, notice, actor_id)
+        return public(unit, notice)
+
+
 def open_source(store, actor_id, identifier):
     with archive.work(store, actor_id) as unit, contexts.bound_actor(unit.user), scope_context(scope_from_user(unit.user)):
         notice = unit.store.get_notification(identifier)

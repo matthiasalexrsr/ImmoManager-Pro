@@ -447,7 +447,7 @@ export function buildDashboardWorkflow({ stats = {}, expiring = null } = {}) {
       titleKey: 'pages.dashboard.attention.unreadNotifications',
       titleFallback: 'Ungelesene Hinweise',
       value: unreadNotifications,
-      to: '/messages?status=unread',
+      to: '/notifications?status=unread',
     },
   ].filter(Boolean);
 

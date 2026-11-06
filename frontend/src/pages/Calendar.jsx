@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useDataStore, useEntities } from '../contexts/DataStoreContext';
@@ -14,6 +14,8 @@ import ObjectScope from '../components/ObjectScope';
 import { scopeDefaults } from '../utils/objectScope';
 import RelatedPageLinks from '../components/RelatedPageLinks';
 import { formatDate } from '../utils/format';
+import { useAuth } from '../contexts/AuthContext';
+import NotificationArrival from '../components/NotificationArrival';
 
 const dayString = value => `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
@@ -40,6 +42,8 @@ const COLUMNS = [
 
 export default function Calendar() {
   const [params, setParams] = useSearchParams();
+  const actorId = useAuth()?.user?.id;
+  const focusedId = params.get('focus_id');
   const store = useDataStore();
   const { t } = useTranslation();
   const confirm = useConfirm();
@@ -56,6 +60,12 @@ export default function Calendar() {
   const [propertyError, setPropertyError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [detailResult, setDetailResult] = useState(null);
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const detailRef = useRef(null);
+  const detailKey = JSON.stringify([actorId, focusedId, revision, detailAttempt]);
+  const detail = detailResult?.key === detailKey ? detailResult : null;
+  const selected = detail?.record;
   const projectId = params.get('maintenance_case_id');
   const filters = new URLSearchParams();
   ['property_id', 'unit_id', 'maintenance_case_id', 'date_from', 'date_to'].forEach(key => {
@@ -63,7 +73,30 @@ export default function Calendar() {
   });
   const calendarPath = `/calendar${filters.size ? `?${filters}` : ''}`;
 
-  const refreshData = useCallback(() => setRevision(value => value + 1), []);
+  const refreshData = useCallback(() => setRevision(value => value + 1), [setRevision]);
+  useEffect(() => {
+    if (!focusedId) return;
+    const request = new AbortController();
+    const invalidate = () => { request.abort(); setDetailResult({ key: detailKey, error: 'Die Sitzung wurde geändert. Bitte erneut anmelden.' }); };
+    window.addEventListener('workspace-owner', invalidate); window.addEventListener('workspace-logout', invalidate);
+    (async () => {
+      const same = api.captureSession?.() || (() => {});
+      const record = await api.get(`/calendar/${encodeURIComponent(focusedId)}`, { signal: request.signal });
+      same(); if (request.signal.aborted) return;
+      if (record?.id !== focusedId || typeof record.title !== 'string' || !record.title.trim() || typeof record.event_date !== 'string') {
+        throw new Error('Der Termin konnte nicht vollständig und eindeutig geladen werden.');
+      }
+      setDetailResult({ key: detailKey, record });
+    })().catch(failure => {
+      if (request.signal.aborted) return;
+      setDetailResult({ key: detailKey, error: [403, 404].includes(failure.statusCode || failure.status)
+        ? 'Dieser Termin wurde gelöscht oder ist für Sie nicht zugänglich.' : failure.message || 'Der Termin konnte nicht geladen werden.' });
+    });
+    return () => { request.abort(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); };
+  }, [focusedId, detailKey]);
+  useEffect(() => {
+    if (selected) { detailRef.current?.focus(); detailRef.current?.scrollIntoView?.({ block: 'nearest' }); }
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const request = new AbortController();
     setLoading(true);
@@ -90,18 +123,23 @@ export default function Calendar() {
     && (!projectId || event.maintenance_case_id === projectId)
     && (!params.get('date_from') || event.event_date >= params.get('date_from'))
     && (!params.get('date_to') || event.event_date <= params.get('date_to')));
-  const selected = visibleEvents.find(event => event.id === params.get('focus_id'));
   const changeFilter = (key, value) => setParams(current => {
-    const next = new URLSearchParams(current); next.delete('focus_id');
+    const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id'].forEach(name => next.delete(name));
     if (value) next.set(key, value); else next.delete(key);
     return next;
   });
   const setPeriod = days => setParams(current => {
-    const next = new URLSearchParams(current); ['date_from', 'date_to', 'focus_id'].forEach(key => next.delete(key));
+    const next = new URLSearchParams(current); ['date_from', 'date_to', 'focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key));
     if (days != null) { const end = new Date(); end.setDate(end.getDate() + days); next.set('date_from', dayString(new Date())); next.set('date_to', dayString(end)); }
     return next;
   });
   const invalidate = () => store?.invalidateRelated('calendar', 'maintenance', 'properties', 'units');
+  const closeDetail = () => setParams(current => {
+    const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key)); return next;
+  }, { replace: true });
+  const setScopeParams = update => setParams(current => {
+    const next = update(current); ['source_id', 'notice_id'].forEach(key => next.delete(key)); return next;
+  });
 
   const fields = [
     { key: 'title', label: 'Titel', required: true },
@@ -143,14 +181,14 @@ export default function Calendar() {
     }
   };
 
-  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+  if (loading && !loaded && !modal && !focusedId) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal && !focusedId) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
     <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
     <div className="page">
       <h1 className="page-title">Kalender</h1>
-      <ObjectScope params={params} setParams={setParams} properties={properties} units={units} />
+      <ObjectScope params={params} setParams={setScopeParams} properties={properties} units={units} />
       {projectId && <p className="filter-chips">Termine einer Projektakte{' '}
         <Link to={`/maintenance/${encodeURIComponent(projectId)}?tab=appointments`}>Projektakte öffnen</Link>{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => changeFilter('maintenance_case_id', '')}>Projektfilter aufheben</button></p>}
@@ -161,7 +199,13 @@ export default function Calendar() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPeriod(29)}>Nächste 30 Tage</button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPeriod(null)}>Alle Termine</button>
       </div>
-      {selected && <section className="card" aria-label="Termindetails" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      {focusedId && !selected && <section className="card" aria-label="Termindetails" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        {detail?.error ? <><p role="alert">{detail.error}</p><button type="button" className="btn btn-secondary btn-sm" onClick={() => setDetailAttempt(value => value + 1)}>Termin erneut laden</button></>
+          : <p role="status">Termin wird geladen …</p>}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetail}>Detailansicht schließen</button>
+      </section>}
+      {selected && <section ref={detailRef} tabIndex={-1} className="card" aria-label="Termindetails" style={{ padding: '1rem', marginBottom: '1rem', scrollMarginTop: 'var(--workspace-focus-offset, 96px)' }}>
+        <NotificationArrival record={selected} />
         <h2>{selected.title}</h2><p>{formatDate(selected.event_date)}{selected.event_time ? ` · ${selected.event_time}` : ''}</p>
         {selected.location && <p>Ort: {selected.location}</p>}{selected.participants && <p>Teilnehmer: {selected.participants}</p>}
         {selected.description && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selected.description}</p>}
@@ -170,7 +214,7 @@ export default function Calendar() {
           ...(selected.property_id ? [{ to: `/properties/${encodeURIComponent(selected.property_id)}`, label: propertyNames.get(selected.property_id) || 'Immobilie öffnen' }] : []),
           ...(selected.unit_id ? [{ to: `/units/${encodeURIComponent(selected.unit_id)}`, label: unitNames.get(selected.unit_id) || 'Einheit öffnen' }] : []),
         ]} />
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => changeFilter('focus_id', '')}>Detailansicht schließen</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetail}>Detailansicht schließen</button>
       </section>}
       {loadError && <p className="alert-error" role="alert">Termine konnten nicht aktualisiert werden. {loadError} Angezeigt wird der zuletzt geladene Stand.{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
@@ -188,8 +232,9 @@ export default function Calendar() {
         title={t('navigation.main.calendar') || 'Kalender'}
         columns={COLUMNS.map(column => column.key === 'title' ? { ...column, render: (value, row) =>
           <Link to={row.maintenance_case_id ? `/maintenance/${encodeURIComponent(row.maintenance_case_id)}?tab=appointments`
-            : { search: (() => { const next = new URLSearchParams(params); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> } : column)}
+            : { search: (() => { const next = new URLSearchParams(params); ['notice_id', 'source_id'].forEach(key => next.delete(key)); next.set('focus_id', row.id); return `?${next}`; })() }}>{value}</Link> } : column)}
         data={visibleEvents.map(event => ({ ...event, property_name: propertyNames.get(event.property_id) || '—', unit_label: unitNames.get(event.unit_id) || '—' }))}
+        acknowledgeNotifications={!focusedId}
         rowName={row => row.title || row.id}
         clearFocusedRow={() => changeFilter('focus_id', '')}
         bulkActions={[bulkDelete({ one: 'Termin', many: 'Termine', remove: row => api.del(`/calendar/${row.id}`),

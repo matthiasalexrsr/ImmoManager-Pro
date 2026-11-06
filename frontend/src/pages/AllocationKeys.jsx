@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -40,6 +41,9 @@ const COLUMNS = [
 ];
 
 export default function AllocationKeys() {
+  const [params, setParams] = useSearchParams();
+  const propertyId = params.get('property_id') || '';
+  const focusedId = params.get('focus_id') || '';
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -67,7 +71,8 @@ export default function AllocationKeys() {
   }, [revision]);
 
   const propertyMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
-  const enriched = keys.map(k => ({ ...k, property_label: propertyMap[k.property_id] || '—' }));
+  const enriched = keys.filter(key => focusedId ? key.id === focusedId : !propertyId || key.property_id === propertyId)
+    .map(k => ({ ...k, property_label: propertyMap[k.property_id] || '—' }));
 
   const fields = [
     { key: 'name', label: 'Bezeichnung', required: true, placeholder: 'z.B. Fläche Heizung' },
@@ -110,6 +115,14 @@ export default function AllocationKeys() {
 
   return (
     <div className="page">
+      {propertyId && !focusedId && <p role="status">Verteilerschlüssel für {propertyMap[propertyId] || 'die ausgewählte Immobilie'}.{' '}
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
+          const next = new URLSearchParams(current); next.delete('property_id'); return next;
+        })}>Alle Immobilien anzeigen</button>
+      </p>}
+      {focusedId && !loading && !error && !keys.some(key => key.id === focusedId) && <p role="alert">
+        Der ausgewählte Verteilerschlüssel ist nicht mehr vorhanden oder für Sie nicht zugänglich.
+      </p>}
       {error && <p className="alert-error" role="alert">Verteilerschlüssel konnten nicht aktualisiert werden. {error} Angezeigt wird der zuletzt geladene Stand.{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
       {propertyState.error && <p className="alert-error" role="alert">Die Immobilienauswahl ist nicht verfügbar. {propertyState.error}{' '}
@@ -132,7 +145,7 @@ export default function AllocationKeys() {
         <FormModal
           title={modal === 'create' ? 'Verteilerschlüssel erstellen' : 'Verteilerschlüssel bearbeiten'}
           fields={fields}
-          initial={modal === 'create' ? null : modal}
+          initial={modal === 'create' ? (propertyId ? { property_id: propertyId } : null) : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
         />

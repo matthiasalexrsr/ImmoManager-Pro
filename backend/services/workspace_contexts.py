@@ -399,6 +399,8 @@ def resolve_context(store, entity_type: str, entity_id: str, actor_id: str, *, l
         href = f"/{paths[kind]}/{identifier}" if kind in paths else f"/{list_paths.get(kind, context)}?focus_id={identifier}"
         if kind == "booking":
             href = f"/bookings?booking_id={identifier}"
+        if kind == "utility_statement":
+            href = f"/statements?statement_id={identifier}"
         if kind == 'standalone_reading':
             href = f"/meters?focus_id={quote(str(values['meter_id']), safe='')}&source_id={identifier}"
         if kind == 'meter_reading':

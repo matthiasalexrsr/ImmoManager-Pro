@@ -187,3 +187,12 @@
 @media (max-width: 480px) {
   .shortcut-row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* Keep record headings visible when direct links move keyboard focus below the
+   sticky application header and the optional demo context bar. */
+.workspace-shell { --workspace-focus-offset: 96px; }
+.workspace-shell:has(.demo-context-bar) { --workspace-focus-offset: 140px; }
+@media (max-width: 768px) {
+  .workspace-shell { --workspace-focus-offset: 84px; }
+  .workspace-shell:has(.demo-context-bar) { --workspace-focus-offset: 128px; }
+}

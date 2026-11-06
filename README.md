@@ -191,6 +191,16 @@ bash scripts/e2e_smoke.sh
 python -m py_compile immomanager.spec
 ```
 
+## Messages and personal reminders
+
+Dashboard task, contract-deadline and notice entries open their individual records. Direct links keep the selected record visible even when the surrounding list has different filters. Missing or inaccessible records show an explicit error and retry action.
+
+Under **Einstellungen → Nachrichten / Erinnerungen**, each user can choose the default message channel, reminder channel, lead time, reminder time and quiet hours. The task and contract overviews offer **Nachricht vorbereiten** and **Erinnerung planen**; the personal inbox also offers reminder planning. Plans are private to the user and survive restarts. Their times use **Europe/Berlin**, including daylight-saving changes. ImmoManager must be running to show a due reminder; missed reminders are available when it starts again.
+
+**WhatsApp Web** opens the actual browser login or the chosen chat with an encoded message. **E-Mail-Programm** opens an email draft. The user sends the prepared message in that application. These personal reminder channels do not send unattended messages. Configured SMTP and WhatsApp Business connections retain their existing message-outbox and approval flow under **Verbindungen und Vorgänge**.
+
+The authenticated personal API supports `GET /api/v1/notifications/reminders`, `POST /api/v1/notifications/reminders`, and `POST /api/v1/notifications/reminders/{id}/command` for completion, cancellation and rescheduling. Commands use revisions and idempotency keys. `GET /api/v1/notifications/{id}` returns the current user's notice projection and freshly checks source access; another user's read or archive state is not reused.
+
 ## API Overview
 
 All endpoints are under `/api/v1`. Full interactive docs at `/docs`.

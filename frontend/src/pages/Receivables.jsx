@@ -36,18 +36,20 @@ export default function Receivables() {
   const [deleteError, setDeleteError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const statementId = params.get('statement_id') || '';
+  const focusedId = params.get('focus_id') || '';
+  const listStatementId = focusedId ? '' : statementId;
 
   const refreshData = () => setAttempt(value => value + 1);
 
   useEffect(() => {
     const controller = new AbortController();
     setError(null); setLoading(true);
-    api.list(`/receivables${statementId ? `?${new URLSearchParams({ statement_id: statementId })}` : ''}`, { signal: controller.signal })
+    api.list(`/receivables${listStatementId ? `?${new URLSearchParams({ statement_id: listStatementId })}` : ''}`, { signal: controller.signal })
       .then(data => { if (!Array.isArray(data)) throw new Error('Forderungen konnten nicht gelesen werden.'); if (!controller.signal.aborted) setReceivables(data); })
       .catch(e => { if (!controller.signal.aborted) setError(e.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [attempt, statementId]);
+  }, [attempt, listStatementId, focusedId]);
 
   const contractMap = Object.fromEntries(contracts.map(c => [c.id, c]));
   const tenantMap = Object.fromEntries(tenants.map(tn => [tn.id, tn.full_name]));
@@ -58,9 +60,10 @@ export default function Receivables() {
     tenant_id: contractMap[r.contract_id]?.tenant_id || null,
     tenant_name: tenantMap[contractMap[r.contract_id]?.tenant_id] || '—',
   }));
-  const selectedStatus = params.get('status') || '';
+  const selectedStatus = focusedId ? '' : params.get('status') || '';
   const unpaid = row => ['open', 'overdue', 'partial'].includes(row.status);
   const filtered = enriched.filter(row => {
+    if (focusedId) return row.id === focusedId;
     const contract = contractMap[row.contract_id];
     if (selectedStatus === 'unpaid' && (!unpaid(row) || Number(row.amount_due) <= 0)) return false;
     if (selectedStatus === 'credits' && (!unpaid(row) || Number(row.amount_due) >= 0)) return false;
@@ -148,17 +151,20 @@ export default function Receivables() {
 
   return (
     <div className="page">
-      {statementId && <p role="status">Forderungen und Guthaben dieser Einzelabrechnung.{' '}
+      {statementId && !focusedId && <p role="status">Forderungen und Guthaben dieser Einzelabrechnung.{' '}
         <Link to={`/statements?${new URLSearchParams({ statement_id: statementId })}`}>Zur Abrechnung</Link>{' '}
         <button className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
           const next = new URLSearchParams(current); next.delete('statement_id'); return next;
         })}>Abrechnungsfilter entfernen</button></p>}
+      {focusedId && !loading && !enriched.some(row => row.id === focusedId) && <p role="alert">
+        Die ausgewählte Forderung wurde entfernt oder ist für dieses Konto nicht zugänglich.
+      </p>}
       {canDebit && <div className="toolbar receivables-toolbar">
         <button type="button" className="btn btn-secondary" onClick={() => setSepaOpen(true)}>SEPA-Lastschriftdatei erstellen</button>
         <span className="text-muted">Datei für das Online-Banking mit den offenen Mieten der Lastschriftzahler.</span>
       </div>}
       {sepaOpen && <SepaDebitDialog onClose={() => setSepaOpen(false)} />}
-      <div className="filter-chips">{[['', 'Alle Vorgänge'], ['unpaid', 'Offene Forderungen'], ['credits', 'Offene Guthaben']].map(([value, label]) => <button type="button" key={value} className={`btn btn-sm ${selectedStatus === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setParams(current => { const next = new URLSearchParams(current); if (value) next.set('status', value); else next.delete('status'); return next; })}>{label}</button>)}</div>
+      <div className="filter-chips">{[['', 'Alle Vorgänge'], ['unpaid', 'Offene Forderungen'], ['credits', 'Offene Guthaben']].map(([value, label]) => <button type="button" key={value} className={`btn btn-sm ${selectedStatus === value ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setParams(current => { const next = new URLSearchParams(current); ['focus_id', 'notice_id', 'source_id', 'suche'].forEach(key => next.delete(key)); if (value) next.set('status', value); else next.delete('status'); return next; })}>{label}</button>)}</div>
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
           {deleteError}

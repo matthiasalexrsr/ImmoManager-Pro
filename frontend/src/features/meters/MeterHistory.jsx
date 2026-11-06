@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
+import { useAuth } from '../../contexts/AuthContext';
+import NotificationArrival from '../../components/NotificationArrival';
 import { codeLabel } from '../../utils/codeLabels';
 import { formatDate, getFormatLocale } from '../../utils/format';
 import './meterHistory.css';
@@ -15,28 +17,39 @@ const number = (value, digits = 3) => {
 
 /** One meter over time: its readings, the consumption between them and per year, and who supplies it. */
 export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyName, propertyId, revision = 0, covered = false,
-  onClose, onRecord, onEdit, canWrite = true }) {
-  const [data, setData] = useState(null);
+  onClose, onRecord, onEdit, canWrite = true, focusedReadingId = null }) {
+  const actorId = useAuth()?.user?.id;
+  const [response, setResponse] = useState(null);
+  const data = response?.actorId === actorId && response?.meterId === meterId ? response.data : null;
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
   const pressStartedOnOverlay = useRef(false);
+  const readingRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    setError(null); setData(null);
-    api.get(`/meters/${encodeURIComponent(meterId)}/history`, { signal: controller.signal })
-      .then(result => {
+    setError(null); setResponse(null);
+    const invalidate = () => { controller.abort(); setResponse(null); setError('Die Sitzung wurde geändert. Bitte erneut anmelden.'); };
+    window.addEventListener('workspace-owner', invalidate); window.addEventListener('workspace-logout', invalidate);
+    (async () => {
+        const same = api.captureSession?.() || (() => {});
+        const result = await api.get(`/meters/${encodeURIComponent(meterId)}/history`, { signal: controller.signal });
+        same();
         if (controller.signal.aborted) return;
-        if (result?.meter?.id !== meterId || !['readings', 'years', 'contracts'].every(key => Array.isArray(result[key]))) {
+        if (result?.meter?.id !== meterId || !['readings', 'years', 'contracts'].every(key => Array.isArray(result[key]))
+          || result.readings.some(row => !row || typeof row.id !== 'string' || !row.id || typeof row.reading_date !== 'string'
+            || row.value == null || row.value === '' || !Number.isFinite(Number(row.value)) || (row.meter_id && row.meter_id !== meterId))
+          || new Set(result.readings.map(row => row.id)).size !== result.readings.length) {
           throw new Error('Der Zählerverlauf wurde nicht vollständig geladen. Bitte erneut versuchen.');
         }
-        setData(result);
-      })
-      .catch(failure => { if (!controller.signal.aborted) setError(failure.message || 'Verlauf konnte nicht geladen werden.'); });
-    return () => controller.abort();
-  }, [meterId, revision, attempt]);
+        setResponse({ actorId, meterId, data: result });
+      })()
+      .catch(failure => { if (!controller.signal.aborted) setError([403, 404].includes(failure.statusCode || failure.status)
+        ? 'Der verlinkte Zählerverlauf ist nicht verfügbar.' : failure.message || 'Verlauf konnte nicht geladen werden.'); });
+    return () => { controller.abort(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); };
+  }, [meterId, revision, attempt, actorId]);
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -68,6 +81,12 @@ export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyN
   const meter = data?.meter?.id === meterId ? data.meter : null;
   const unit = meter?.measure_unit || USUAL_UNIT[meter?.meter_type] || '';
   const readings = [...(data?.readings || [])].reverse();          // newest first
+  // The authorized parent's history is the authority for membership. Never
+  // fetch a supplied child ID from another meter and display it in this one.
+  const selectedReading = focusedReadingId ? readings.find(row => row.id === focusedReadingId) : null;
+  useEffect(() => {
+    if (selectedReading && !covered) { readingRef.current?.focus(); readingRef.current?.scrollIntoView?.({ block: 'nearest' }); }
+  }, [selectedReading?.id, covered]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="modal-overlay" role="presentation"
       onMouseDown={event => { pressStartedOnOverlay.current = event.target === event.currentTarget; }}
@@ -94,6 +113,16 @@ export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyN
           </div>}
           {!data && !error && <p role="status">Verlauf wird geladen …</p>}
           {meter && <>
+            <NotificationArrival record={focusedReadingId ? selectedReading : meter} ready={!error && !covered && (!focusedReadingId || Boolean(selectedReading))} />
+            {focusedReadingId && !selectedReading && <p role="alert">Die verlinkte Ablesung ist für diesen Zähler nicht verfügbar. Bitte den Quellenlink prüfen.</p>}
+            {selectedReading && <section ref={readingRef} tabIndex={-1} className="meter-history-selected-reading" aria-label="Verlinkte Ablesung">
+              <h4>Ablesung vom {formatDate(selectedReading.reading_date)}</h4>
+              <dl className="overview-dl"><dt>Zählerstand</dt><dd>{number(selectedReading.value)} {unit}</dd>
+                {selectedReading.recorded_by && <><dt>Erfasst von</dt><dd>{selectedReading.recorded_by}</dd></>}
+                {selectedReading.notes && <><dt>Notiz</dt><dd>{selectedReading.notes}</dd></>}
+              </dl>
+              {selectedReading.warning && <p className="meter-history-warning">{selectedReading.warning}</p>}
+            </section>}
             <div className="meter-history-actions">
               {canWrite && <button type="button" className="btn btn-sm btn-primary" disabled={covered} onClick={onRecord}>+ Ablesung erfassen</button>}
               {canWrite && <button type="button" className="btn btn-sm btn-secondary" disabled={covered} onClick={onEdit}>Zähler bearbeiten</button>}
@@ -117,7 +146,7 @@ export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyN
                   <thead><tr><th>Datum</th><th className="text-right">Stand ({unit})</th><th className="text-right">Verbrauch</th>
                     <th className="text-right">Tage</th><th className="text-right">je Tag</th><th>Erfasst / Notiz</th></tr></thead>
                   <tbody>{readings.map(row => (
-                    <tr key={row.id}>
+                    <tr key={row.id} className={row.id === focusedReadingId ? 'meter-history-focused-row' : undefined} aria-current={row.id === focusedReadingId ? 'true' : undefined}>
                       <td>{formatDate(row.reading_date)}</td>
                       <td className="text-right td-num">{number(row.value)}</td>
                       <td className="text-right td-num">{row.consumption == null ? '—' : number(row.consumption)}</td>

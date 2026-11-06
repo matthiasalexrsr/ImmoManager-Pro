@@ -7,7 +7,7 @@ import Tenants from '../pages/Tenants';
 import Meters from '../pages/Meters';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), history: vi.fn(), sources: {}, reload: vi.fn() }));
-vi.mock('../api', () => ({ api: { list: mocks.list, get: mocks.get } }));
+vi.mock('../api', () => ({ api: { list: mocks.list, get: mocks.get, captureSession: () => () => {} } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: 'de-DE' }) }));
 vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true, useAuth: () => null }));
 vi.mock('../contexts/DataStoreContext', () => ({
@@ -77,7 +77,10 @@ beforeEach(() => {
   const source = items => ({ items, loading: false, error: null, reload: mocks.reload });
   mocks.sources = { properties: source(properties), units: source(units), contracts: source(contracts),
     tenants: source(tenants), tenants_all: source(tenants), documents: source([]), empty: source([]) };
-  mocks.get.mockImplementation((path, options) => /^\/meters\/[^/]+\/history$/.test(path) ? mocks.history(path, options) : Promise.resolve({}));
+  mocks.get.mockImplementation((path, options) => {
+    const contract = contracts.find(row => path === `/contracts/${row.id}`);
+    return contract ? Promise.resolve(contract) : /^\/meters\/[^/]+\/history$/.test(path) ? mocks.history(path, options) : Promise.resolve({});
+  });
   mocks.list.mockImplementation(path => {
     if (path === '/units') return Promise.resolve(units);
     if (path === '/contracts') return Promise.resolve(contracts);
@@ -98,20 +101,21 @@ describe('list pages follow route sources and browser history', () => {
     await screen.findByText('MV-AKTIV');
     expect(screen.queryByText('MV-BEENDET')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Beendete Verträge öffnen' }));
-    await screen.findByText('MV-BEENDET');
+    await screen.findByRole('link', { name: 'MV-BEENDET', exact: true });
     expect(screen.queryByText('MV-AKTIV')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Browser zurück' }));
     await screen.findByText('MV-AKTIV');
     expect(screen.queryByText('MV-BEENDET')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Historischen Vertrag öffnen' }));
-    await screen.findByText('MV-BEENDET');
+    await screen.findByRole('heading', { name: 'MV-BEENDET', exact: true });
+    expect(screen.getByRole('link', { name: 'MV-BEENDET', exact: true })).toBeVisible();
     expect(screen.queryByText('MV-AKTIV')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Aktiv', exact: true }));
     await screen.findByText('MV-AKTIV');
     expect(screen.getByLabelText('Aktuelle Route')).toHaveTextContent(/^\/contracts\?filter=active$/);
     fireEvent.click(screen.getByRole('button', { name: 'Browser zurück' }));
-    await screen.findByText('MV-BEENDET');
+    await screen.findByRole('link', { name: 'MV-BEENDET', exact: true });
   });
 
   it('writes unit workflow tabs to the URL, restores them on Back, and reveals an exact vacant target', async () => {

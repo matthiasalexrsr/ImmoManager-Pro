@@ -17,9 +17,8 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
   const reload = useCallback(() => setAttempt(n => n + 1), []);
   useEffect(() => {
     let live = true;
-    const same = api.captureSession();
     setPage(null); setError(null);
-    const clear = () => { live = false; setPage(null); pending.current = null; };
+    const clear = () => { live = false; setPage(null); setError('Die Sitzung wurde geändert. Bitte erneut anmelden.'); pending.current = null; };
     window.addEventListener('workspace-owner', clear);
     window.addEventListener('workspace-logout', clear);
     const query = new URLSearchParams({ limit });
@@ -28,7 +27,9 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
     if (snapshot) query.set('expected_snapshot', snapshot);
     if (severity) query.set('severity', severity);
     if (kind) query.set('kind', kind);
-    api.get(`/notifications/inbox?${query}`).then(data => {
+    (async () => {
+      const same = api.captureSession();
+      const data = await api.get(`/notifications/inbox?${query}`);
       same();
       if (!live) return;
       // Fail closed on an incomplete response. Treating a missing list,
@@ -43,7 +44,7 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
         throw new Error('Benachrichtigungen konnten nicht vollständig geladen werden. Bitte erneut laden.');
       }
       setPage(data);
-    }).catch(failure => {
+    })().catch(failure => {
       if (live) setError(failure?.message || 'Benachrichtigungen konnten nicht geladen werden.');
     });
     return () => { live = false; window.removeEventListener('workspace-owner', clear); window.removeEventListener('workspace-logout', clear); };
@@ -63,8 +64,8 @@ export default function useNotificationInbox(status = 'unread', cursor = null, l
     setBusy(true); setError(null);
     const identity = JSON.stringify([id, values]);
     if (pending.current?.identity !== identity) pending.current = { identity, body: receiptCommand(values) };
-    const same = api.captureSession();
     try {
+      const same = api.captureSession();
       await api.post(`/notifications/${encodeURIComponent(id)}/receipt`, pending.current.body);
       same(); pending.current = null; reload();
       window.dispatchEvent(new Event('notification-receipt'));

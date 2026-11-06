@@ -15,7 +15,7 @@ Rules (see docs/FINANCE_PRECISION_20261008.md):
 from __future__ import annotations
 
 from collections.abc import Iterable
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Any
 
 CENT = Decimal("0.01")
@@ -26,13 +26,28 @@ def money(value: Any) -> Decimal:
     """A stored amount as exact cents (``None`` is zero); a float by its shortest repr, 0.1 is 0.10."""
     if value is None:
         return ZERO
-    if isinstance(value, Decimal):
-        exact = value
-    elif isinstance(value, float):
-        exact = Decimal(repr(value))
-    else:
-        exact = Decimal(str(value))
-    return exact.quantize(CENT, rounding=ROUND_HALF_UP)
+    try:
+        if isinstance(value, Decimal):
+            exact = value
+        elif isinstance(value, float):
+            exact = Decimal(repr(value))
+        else:
+            exact = Decimal(str(value))
+        if not exact.is_finite():
+            raise ValueError("Ein Geldbetrag muss eine endliche Zahl sein.")
+        return exact.quantize(CENT, rounding=ROUND_HALF_UP)
+    except DecimalException as exc:
+        # Pydantic converts ValueError into a field error. Decimal exceptions
+        # escaped its validators and turned invalid requests into server errors.
+        raise ValueError("Der Geldbetrag ist ungültig oder zu groß.") from exc
+
+
+def input_money(value: Any) -> Decimal:
+    """One persisted amount; aggregate totals deliberately have no column limit."""
+    amount = money(value)
+    if abs(amount) > Decimal("9999999999.99"):
+        raise ValueError("Der Geldbetrag darf höchstens 9.999.999.999,99 betragen.")
+    return amount
 
 
 def cents(value: Decimal) -> Decimal:

@@ -63,8 +63,13 @@ function IntegrationCard({ integration, canWrite, update }) {
   const running = useRef(false);
   const mounted = useRef(true);
   const historyRequest = useRef(0);
+  const previousIntegration = useRef(integration);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; historyRequest.current += 1; }; }, []);
   useEffect(() => {
+    // Initial state already uses this catalogue entry. A delayed mount effect
+    // must not restore fields cleared by a session failure or a user edit.
+    if (previousIntegration.current === integration) return;
+    previousIntegration.current = integration;
     if (!dirty.current) setConfig(initialConfig(integration));
   }, [integration]);
   const fields = integration.config_fields || [];

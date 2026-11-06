@@ -12,7 +12,8 @@ from typing import Annotated, Any, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, PlainSerializer, field_validator, model_validator
 
-from .domain.money import money
+from .domain.money import input_money, money
+from .financial_inputs import FinancialRequest
 
 
 def _naive_utc(value: datetime) -> datetime:
@@ -32,7 +33,7 @@ def utcnow() -> datetime:
 def _cents(value: Optional[float], *, allow_negative: bool = False, label: str = "Betrag") -> Optional[float]:
     if value is None:
         return None
-    amount = money(value)
+    amount = input_money(value)
     if amount == 0 or (amount < 0 and not allow_negative):
         raise ValueError(f"{label} muss {'ungleich' if allow_negative else 'größer als'} 0 sein")
     return float(amount)
@@ -197,7 +198,7 @@ class MaintenanceCaseDocument(_Record):
 
 # ─── Requests ───────────────────────────────────────────────────────────────
 
-class _Request(BaseModel):
+class _Request(FinancialRequest):
     model_config = ConfigDict(extra="forbid")
 
 

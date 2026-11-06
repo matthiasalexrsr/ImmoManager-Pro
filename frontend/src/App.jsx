@@ -1,5 +1,5 @@
 import { useState, useEffect, Suspense, Fragment } from 'react';
-import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate, useLocation } from 'react-router-dom';
 import { isLoggedIn, api } from './api';
 // pages load on demand; after an update an outdated page loads the current version
 import { lazyWithRecovery as lazy } from './buildRecovery';
@@ -93,6 +93,7 @@ function ProtectedRoute({ children }) {
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const auth = useAuth();
+  const location = useLocation();
 
   useEffect(() => {
     const synchronize = () => {
@@ -142,7 +143,7 @@ function ProtectedRoute({ children }) {
     );
   }
   if (status === 'unauthenticated') {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />;
   }
   return <Fragment key={auth?.user?.id || 'session'}>{children}</Fragment>;
 }

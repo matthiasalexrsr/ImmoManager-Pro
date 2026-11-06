@@ -6,9 +6,17 @@ import useNotificationInbox from '../hooks/useNotificationInbox';
 import { formatDateTime } from '../utils/format';
 import { Bell, Inbox, Archive, ArrowUpRight } from 'lucide-react';
 import './notificationInbox.css';
+import ReminderPlanner from '../features/communication/ReminderPlanner';
+import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import useWorkspaceLocation from '../hooks/useWorkspaceLocation';
+import { safeInternalHref } from '../utils/internalLinks';
 
 export default function NotificationInbox({ compact = false }) {
   const [params, setParams] = useSearchParams();
+  const location = useWorkspaceLocation();
+  const owner = useAuth()?.user?.id;
+  const focusId = !compact && location.pathname === '/notifications' ? params.get('focus_id') : null;
   const status = compact ? 'unread' : params.get('status') ?? (params.has('severity') || params.has('focus_id') ? '' : 'unread');
   const severity = compact ? '' : params.get('severity') || '';
   const kind = compact ? '' : params.get('kind') || '';
@@ -19,11 +27,61 @@ export default function NotificationInbox({ compact = false }) {
   });
   // A changed filter owns a fresh cursor/snapshot. Back/forward navigation
   // therefore restores the visible filter without reusing another page's fence.
-  return <PersonalInbox key={JSON.stringify([compact, status, severity, kind])}
-    compact={compact} status={status} severity={severity} kind={kind} updateFilter={updateFilter} />;
+  return <PersonalInbox key={JSON.stringify([owner, compact, status, severity, kind])}
+    compact={compact} focusId={focusId} status={status} severity={severity} kind={kind} updateFilter={updateFilter} />;
 }
 
-function PersonalInbox({ compact, status, severity, kind, updateFilter }) {
+function NoticeContents({ notice: n, compact, busy, mutate, onReminder }) {
+  const href = safeInternalHref(n.open_href);
+  return <>
+    <strong>{n.target && href ? <Link to={href}>{n.title}<ArrowUpRight size={16} aria-hidden="true" /></Link> : n.title}</strong>
+    <p>{n.content}</p>
+    <small>{n.email_eligible ? 'E-Mail-Kanal zugelassen · ' : 'E-Mail für diesen Hinweis nicht vorgesehen · '}{n.target ? `Quelle: ${n.target.title}` : n.target_error} · {formatDateTime(n.created_at)}</small>
+    {!compact && n.email_eligible && n.target && <NotificationEmailPreview notice={n} />}
+    {!compact && n.target && <button type="button" className="btn btn-sm btn-secondary" onClick={() => onReminder(n)}>Erinnerung planen</button>}
+    {n.archived_at && <><p className="inbox-read-at">Persönlich gelesen: {formatDateTime(n.read_at)}</p><button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={() => mutate(n.id, { action: 'reopen', base_revision: n.revision })}>Wieder in den Eingang</button></>}
+  </>;
+}
+
+function FocusedNotice({ identifier, busy, mutate, onReminder }) {
+  const owner = useAuth()?.user?.id;
+  const [result, setResult] = useState(null); const [error, setError] = useState(null); const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true; const request = new AbortController();
+    setError(null);
+    const invalidate = () => { live = false; request.abort(); setResult(null); setError({ owner, identifier, text: 'Die Sitzung wurde geändert. Bitte erneut anmelden.' }); };
+    const refresh = () => setAttempt(value => value + 1);
+    window.addEventListener('workspace-owner', invalidate); window.addEventListener('workspace-logout', invalidate);
+    window.addEventListener('notification-receipt', refresh);
+    (async () => {
+      const same = api.captureSession();
+      const notice = await api.get(`/notifications/${encodeURIComponent(identifier)}`, { signal: request.signal });
+      same(); if (!live) return;
+      if (notice?.id !== identifier || typeof notice.title !== 'string' || typeof notice.content !== 'string' || !Number.isSafeInteger(notice.revision)) throw new Error('Der ausgewählte Hinweis wurde nicht vollständig und eindeutig geladen.');
+      setResult({ owner, identifier, notice });
+    })().catch(failure => {
+      if (!live || failure.name === 'AbortError') return;
+      if (failure.code === 'SESSION_CHANGED') { invalidate(); return; }
+      const code = failure.statusCode || failure.status;
+      setResult(null);
+      setError({ owner, identifier, text: code === 403 ? 'Für diesen Hinweis oder seine Quelle fehlt die aktuelle Berechtigung.' : code === 404 ? 'Der ausgewählte Hinweis oder seine Quelle wurde gelöscht oder ist nicht zugänglich.' : failure.message || 'Der ausgewählte Hinweis konnte nicht geladen werden.' });
+    });
+    return () => { live = false; request.abort(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('notification-receipt', refresh); };
+  }, [owner, identifier, attempt]);
+  const current = result?.owner === owner && result?.identifier === identifier ? result.notice : null;
+  const problem = error?.owner === owner && error?.identifier === identifier ? error.text : null;
+  return <section className="inbox-focused" aria-label="Ausgewählter Hinweis">
+    <h3>Ausgewählter Hinweis</h3><p className="text-muted">Dieser Eintrag wird unabhängig von Listenfiltern und Hinweisseiten angezeigt.</p>
+    {problem ? <div className="inbox-error" role="alert">{problem} <button type="button" className="btn btn-sm btn-secondary" onClick={() => setAttempt(value => value + 1)}>Hinweis erneut laden</button></div> : !current ? <p role="status">Ausgewählter Hinweis wird geladen …</p> : <article className={current.archived_at ? 'inbox-item is-archived' : 'inbox-item'}>
+      <NoticeContents notice={current} compact={false} busy={busy} mutate={mutate} onReminder={onReminder} />
+      <NotificationArrival record={current} />
+    </article>}
+  </section>;
+}
+
+function PersonalInbox({ compact, focusId, status, severity, kind, updateFilter }) {
+  const [reminderNotice, setReminderNotice] = useState(null);
+  useEffect(() => { setReminderNotice(null); }, [focusId]);
   const setStatus = value => updateFilter('status', value);
   const setSeverity = value => updateFilter('severity', value);
   const setKind = value => updateFilter('kind', value);
@@ -66,6 +124,7 @@ function PersonalInbox({ compact, status, severity, kind, updateFilter }) {
       <label>Quelle <select aria-label="Quelle" value={kind} onChange={e => { setKind(e.target.value); setCursor(null); setHistory([]); setSnapshot(null); }}><option value="">Alle Quellen</option>
         {Object.entries({ task: 'Aufgaben', receivable: 'Forderungen', invoice: 'Rechnungen', contract: 'Mietverträge', property: 'Immobilien', unit: 'Einheiten', tenant: 'Parteien', document: 'Dokumente', maintenance: 'Schäden und Projekte', message_thread: 'Konversationen', message: 'Nachrichten', service_contract: 'Objektverträge', billing_period: 'Abrechnungszeiträume', utility_statement: 'Einzelabrechnungen' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></label></div></>}
+    {focusId && <FocusedNotice key={focusId} identifier={focusId} busy={busy} mutate={mutate} onReminder={setReminderNotice} />}
     {error && <div className="inbox-error" role="alert"><span>{error}</span> <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setCursor(null); setHistory([]); setSnapshot(null); reload(); }}>Neu laden</button></div>}
     {!page && !error && <p className="inbox-loading" role="status">Hinweise werden geladen …</p>}
     {page && <>
@@ -98,13 +157,9 @@ function PersonalInbox({ compact, status, severity, kind, updateFilter }) {
         <p>Keine Hinweise in dieser Ansicht.</p>
         {!compact && <span>{status === 'unread' ? 'Ihr Eingang ist aufgeräumt. Bereits gelesene Hinweise finden Sie im Archiv.' : 'Ändern Sie bei Bedarf die Ansicht oder die Filter.'}</span>}
       </div>}
-      <NotificationArrival rows={page.items} />
-      <ul className="personal-inbox-list">{page.items.map(n => <li key={n.id} className={n.archived_at ? 'inbox-item is-archived' : 'inbox-item'}>
-        <strong>{n.target ? <Link to={n.open_href}>{n.title}<ArrowUpRight size={16} aria-hidden="true" /></Link> : n.title}</strong>
-        <p>{n.content}</p>
-        <small>{n.email_eligible ? 'E-Mail-Kanal zugelassen · ' : 'E-Mail für diesen Hinweis nicht vorgesehen · '}{n.target ? `Quelle: ${n.target.title}` : n.target_error} · {formatDateTime(n.created_at)}</small>
-        {!compact && n.email_eligible && n.target && <NotificationEmailPreview notice={n} />}
-        {n.archived_at && <><p className="inbox-read-at">Persönlich gelesen: {formatDateTime(n.read_at)}</p><button type="button" className="btn btn-sm btn-secondary" disabled={busy} onClick={() => mutate(n.id, { action: 'reopen', base_revision: n.revision })}>Wieder in den Eingang</button></>}
+      {!focusId && <NotificationArrival rows={page.items} />}
+      <ul className="personal-inbox-list">{page.items.filter(n => n.id !== focusId).map(n => <li key={n.id} className={n.archived_at ? 'inbox-item is-archived' : 'inbox-item'}>
+        <NoticeContents notice={n} compact={compact} busy={busy} mutate={mutate} onReminder={setReminderNotice} />
       </li>)}</ul>
       {(history.length > 0 || page.next_cursor) && <nav className="inbox-pagination" aria-label="Hinweisseiten">
         {history.length > 0 && <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setCursor(history[history.length - 1]); setHistory(history.slice(0, -1)); }}>Zurück</button>}
@@ -112,5 +167,6 @@ function PersonalInbox({ compact, status, severity, kind, updateFilter }) {
       </nav>}
     </>}
     {compact && <Link className="inbox-full-link" to="/notifications">Vollständiger Eingang und Archiv <ArrowUpRight size={16} aria-hidden="true" /></Link>}
+    {reminderNotice && <ReminderPlanner key={reminderNotice.id} sourceKind="notification" sourceId={reminderNotice.id} sourceTitle={reminderNotice.title} onClose={() => setReminderNotice(null)} />}
   </section>;
 }

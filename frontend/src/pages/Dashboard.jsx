@@ -17,6 +17,7 @@ import TileSettings from '../features/dashboard/TileSettings';
 import { DEFAULT_LAYOUT, arrange, tileOf } from '../features/dashboard/dashboardTiles';
 import useWorkspaceViewState from '../hooks/useWorkspaceViewState';
 import { useEntities } from '../contexts/DataStoreContext';
+import { safeInternalHref } from '../utils/internalLinks';
 import './dashboard.css';
 
 const PIE_COLORS = ['var(--color-primary)', 'var(--color-warning)', 'var(--color-border)'];
@@ -45,18 +46,33 @@ const numeric = value => (typeof value === 'number' || (typeof value === 'string
 const validStats = value => record(value) && ['property_count', 'unit_count', 'occupied_units', 'active_contracts'].every(key => numeric(value[key]) && Number(value[key]) >= 0);
 const validCashflow = value => record(value) && ['incomeTotal', 'expenseTotal', 'netTotal'].every(key => numeric(value[key]));
 const validAging = value => record(value) && numeric(value.openTotal) && record(value.buckets) && ['current', 'days1to30', 'days31to60', 'days61to90', 'days90plus'].every(key => numeric(value.buckets[key]));
-const validContracts = value => record(value) && Array.isArray(value.contracts);
+const validTasks = value => Array.isArray(value) && value.every(item => record(item)
+  && typeof item.id === 'string' && item.id.length > 0 && typeof item.title === 'string');
+const validContracts = value => record(value) && Array.isArray(value.contracts) && value.contracts.every(item => record(item)
+  && typeof item.contractId === 'string' && item.contractId.length > 0 && typeof item.contractNumber === 'string');
 const validMaintenance = value => record(value) && Array.isArray(value.categories);
 const validForecast = value => record(value) && Array.isArray(value.forecast);
 const validFinance = value => record(value) && Array.isArray(value.totalsByCategory);
 const validAudit = value => Array.isArray(value) || (record(value) && Array.isArray(value.items));
+const validInbox = value => record(value) && Array.isArray(value.items)
+  && Number.isSafeInteger(value.unread_count) && value.unread_count >= 0
+  && Number.isSafeInteger(value.total) && value.total >= 0
+  && typeof value.snapshot === 'string' && value.snapshot.length > 0
+  && value.unread_count >= value.items.length
+  && new Set(value.items.map(item => item?.id)).size === value.items.length
+  && value.items.every(item => record(item) && typeof item.id === 'string' && item.id.length > 0 && typeof item.title === 'string' && item.status === 'unread');
 const asArray = value => Array.isArray(value) ? value : [];
 const fmt = value => formatMoney(value);
 
-function useDashboardSource(path, validate, enabled = true) {
+function useDashboardSource(path, validate, enabled = true, refreshEvent) {
   const [state, setState] = useState({ status: 'idle', data: null });
   const [revision, setRevision] = useState(0);
   const retry = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    if (!refreshEvent) return undefined;
+    window.addEventListener(refreshEvent, retry);
+    return () => window.removeEventListener(refreshEvent, retry);
+  }, [refreshEvent, retry]);
   useEffect(() => {
     if (!enabled) return undefined;
     const request = new AbortController();
@@ -207,8 +223,8 @@ export default function Dashboard() {
   const tiles = useMemo(() => arrange(layout), [layout]);
   useWorkspaceViewState('dashboard', tiles, saved => setLayout(arrange(saved)));
   const inventory = useDashboardSource('/dashboard/stats', validStats);
-  const taskSource = useDashboardSource('/tasks?status=open&limit=5', Array.isArray);
-  const notificationSource = useDashboardSource('/notifications?status=unread&limit=5', Array.isArray);
+  const taskSource = useDashboardSource('/tasks?status=open&limit=5', validTasks);
+  const notificationSource = useDashboardSource('/notifications/inbox?status=unread&limit=5', validInbox, true, 'notification-receipt');
   // money tiles for one owner's part (reports by owner); counts and tasks stay for the whole inventory
   const { items: owners } = useEntities('owners', '/ownership-shares/owners');
   const [owner, setOwner] = useState('');
@@ -220,9 +236,11 @@ export default function Dashboard() {
   const maintenanceSource = useDashboardSource(withOwner('/reports/maintenance-costs'), validMaintenance, dashView === 'analysis');
   const forecastSource = useDashboardSource(withOwner('/reports/liquidity-forecast?months=6'), validForecast, dashView === 'analysis');
   const financeSource = useDashboardSource(withOwner('/reports/finance'), validFinance, dashView === 'analysis');
-  const stats = inventory.status === 'success' ? normalizeStats(inventory.data) : {};
+  const stats = inventory.status === 'success' ? { ...normalizeStats(inventory.data),
+    unreadNotifications: notificationSource.status === 'success' ? notificationSource.data.unread_count : undefined,
+  } : {};
   const tasks = asArray(taskSource.data);
-  const notifications = asArray(notificationSource.data);
+  const notifications = asArray(notificationSource.data?.items);
   const cashflow = cashflowSource.data;
   const aging = agingSource.data;
   const expiring = expiringSource.data;
@@ -307,13 +325,13 @@ export default function Dashboard() {
           attention: <DashboardWorkflow {...workflowProps} section="attention" />,
           finance: <FinanceOverview cashflow={cashflowSource} aging={agingSource} stats={stats} known={inventory.status === 'success'} />,
           tasks: <ActivityCard title="Offene Aufgaben" source={taskSource} sourceLabel="Aufgaben" empty="Keine offenen Aufgaben." to="/tasks" linkLabel="Alle Aufgaben" subtitle="Bis zu fünf offene Einträge">
-            {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><div><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></div><StatusBadge status={task.priority} /></li>)}</ul>}
+            {tasks.length > 0 && <ul className="dashboard-item-list">{tasks.map(task => <li key={task.id}><Link className="dashboard-item-link" to={`/tasks?focus_id=${encodeURIComponent(task.id)}`}><span><strong>{task.title}</strong><small>{task.due_date ? `Fällig am ${formatDate(task.due_date)}` : 'Ohne Fälligkeitsdatum'}</small></span><StatusBadge status={task.priority} /></Link></li>)}</ul>}
           </ActivityCard>,
           deadlines: <ActivityCard title="Vertragsfristen" source={expiringSource} sourceLabel="Vertragsfristen" empty="Keine Vertragsenddaten in diesem Zeitraum." to="/contracts?filter=expiring90" linkLabel="Verträge öffnen" subtitle="Enddatum in den nächsten 90 Tagen">
-            {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><div><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></div><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></li>)}</ul>}
+            {expiring?.contracts.length > 0 && <ul className="dashboard-item-list">{expiring.contracts.slice(0, 5).map(contract => <li key={contract.contractId}><Link className="dashboard-item-link" to={`/contracts?contract_id=${encodeURIComponent(contract.contractId)}`}><span><strong>{contract.contractNumber}</strong><small>{formatDate(contract.endDate)}</small></span><span className="dashboard-date-note">{contract.daysRemaining} Tage</span></Link></li>)}</ul>}
           </ActivityCard>,
-          notices: <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/messages" linkLabel="Alle Hinweise" subtitle="Bis zu fünf Einträge">
-            {notifications.length > 0 && <ul className="dashboard-item-list">{notifications.map(item => <li key={item.id}><strong>{item.title}</strong><StatusBadge status={item.severity} /></li>)}</ul>}
+          notices: <ActivityCard title="Ungelesene Hinweise" source={notificationSource} sourceLabel="Hinweise" empty="Keine ungelesenen Hinweise." to="/notifications" linkLabel="Alle Hinweise" subtitle="Bis zu fünf persönliche Hinweise">
+            {notifications.length > 0 && <ul className="dashboard-item-list">{notifications.map(item => <li key={item.id}><Link className="dashboard-item-link" to={safeInternalHref(item.open_href) || `/notifications/open/${encodeURIComponent(item.id)}`}><span><strong>{item.title}</strong>{!item.target && <small>{item.target_error || 'Hinweis und Quellenbezug ansehen'}</small>}</span><StatusBadge status={item.severity} /></Link></li>)}</ul>}
           </ActivityCard>,
           areas: <DashboardWorkflow {...workflowProps} section="areas" />,
         }[key]}</div>)}

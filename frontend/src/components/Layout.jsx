@@ -8,6 +8,7 @@ import SearchBar from './SearchBar';
 import BrandMark from './BrandMark';
 import QuickAccess from '../features/workCenter/QuickAccess';
 import NotificationBell from './NotificationBell';
+import ReminderArrival from '../features/communication/ReminderArrival';
 import { TutorialProvider, useTutorial } from './Tutorial';
 import { PartyWorkspaceProvider } from '../features/partyWorkspace/PartyWorkspace';
 import {
@@ -305,6 +306,7 @@ function LayoutFrame() {
         <div className="main-content-body">
           <h1 className="page-title page-title-auto">{currentPageTitle}</h1>
           <Outlet />
+          <ReminderArrival />
         </div>
       </main>
       {showShortcuts && <ShortcutHelp onClose={() => setShowShortcuts(false)} />}

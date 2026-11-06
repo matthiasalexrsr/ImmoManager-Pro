@@ -8,7 +8,7 @@ export default function useListRouteFilter(allowed, exactKeys = ['focus_id']) {
   const filter = !focused && allowed.includes(requested) ? requested : 'all';
   const setFilter = value => setParams(current => {
     const next = new URLSearchParams(current);
-    ['filter', 'status', 'suche', ...exactKeys].forEach(key => next.delete(key));
+    ['filter', 'status', 'suche', 'notice_id', 'source_id', ...exactKeys].forEach(key => next.delete(key));
     if (allowed.includes(value) && value !== 'all') next.set('filter', value);
     return next;
   });

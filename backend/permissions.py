@@ -33,7 +33,8 @@ import re
 
 # one's own notifications (mark read, dismiss) – not the templates, not generating new ones
 PERSONAL = ("/workspace", "/assistant", "/ai/readings", "/auth/users/me/preferences", "/auth/users/me/settings", "/auth/2fa", "/auth/logout", "/auth/refresh", "/auth/login",
-            r"^/notifications/(all/receipt|[^/]+/receipt)$")
+            r"^/notifications/(all/receipt|[^/]+/receipt)$",
+            r"^/notifications/reminders(?:/[^/]+/command)?$")
 # requests that only read although they are POSTs: printing documents and e-mail drafts of them
 READS = (r"^/documents/print$", r"^/documents/[^/]+/email-draft$")
 OFFICE = ("/work-center", "/tasks", "/documents", "/files", "/photos", "/messages", "/calendar", "/dev-notes")

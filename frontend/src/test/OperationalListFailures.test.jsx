@@ -14,7 +14,7 @@ import { api } from '../api';
 const shared = vi.hoisted(() => ({ lookups: {}, lookupErrors: {}, reload: vi.fn(), invalidate: vi.fn(), toast: vi.fn() }));
 vi.mock('../api', () => ({ api: { list: vi.fn(), get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() } }));
 vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: 'de-DE' }) }));
-vi.mock('../contexts/AuthContext', () => ({ useCanWrite: () => true }));
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => null, useCanWrite: () => true }));
 vi.mock('../contexts/DataStoreContext', () => ({
   useDataStore: () => ({ invalidateRelated: shared.invalidate }),
   useEntities: key => ({ items: shared.lookups[key] || [], error: shared.lookupErrors[key] || null,

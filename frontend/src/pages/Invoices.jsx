@@ -89,10 +89,12 @@ export default function Invoices() {
   const assistantSaved = useRef(false);
   useEffect(() => { assistantSaved.current = false; }, [assistantHandoff.identifier]);
   const aktenwerkReady = useAktenwerkReady();
-  const filter = params.get('status') || 'all';
+  const focusedId = params.get('focus_id') || '';
+  const filter = focusedId ? 'all' : params.get('status') || 'all';
   const propertyId = params.get('property_id') || '';
   const setFilter = value => setParams(current => {
     const next = new URLSearchParams(current);
+    ['focus_id', 'notice_id', 'source_id', 'suche'].forEach(key => next.delete(key));
     if (value === 'all') next.delete('status'); else next.set('status', value);
     return next;
   });
@@ -119,7 +121,7 @@ export default function Invoices() {
   }, [attempt]);
 
   const propMap = Object.fromEntries(properties.map(p => [p.id, p.name]));
-  const enriched = invoices.filter(inv => !propertyId || inv.property_id === propertyId).map(inv => ({
+  const enriched = invoices.filter(inv => focusedId ? inv.id === focusedId : !propertyId || inv.property_id === propertyId).map(inv => ({
     ...inv,
     property_name: propMap[inv.property_id] || '—',
     invoice_number: inv.invoice_number || inv.id?.toString().slice(0, 8),
@@ -224,12 +226,15 @@ export default function Invoices() {
     <div className="page">
       <h1 className="page-title">Rechnungen</h1>
       <AssistantHandoffNotice handoff={assistantHandoff} onClose={() => { setModal(null); setPrefill(null); assistantHandoff.clear(); }} />
-      {propertyId && <p role="status">Immobilienfilter: {propMap[propertyId] || `Unbekannte Immobilie (${propertyId})`}
+      {propertyId && !focusedId && <p role="status">Immobilienfilter: {propMap[propertyId] || `Unbekannte Immobilie (${propertyId})`}
         {' '}<button type="button" className="btn btn-sm btn-secondary" onClick={() => setParams(current => {
           const next = new URLSearchParams(current); next.delete('property_id'); return next;
         })}>Immobilienfilter entfernen</button>
       </p>}
       {loadError && <p className="alert-error" role="alert">Rechnungen konnten nicht aktualisiert werden. {loadError}<button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
+      {focusedId && !loading && !loadError && !invoices.some(row => row.id === focusedId) && <p role="alert">
+        Die ausgewählte Rechnung ist nicht mehr vorhanden oder für Sie nicht zugänglich.
+      </p>}
 
       {/* Summary cards */}
       {!loadError && <div className="kpi-row">

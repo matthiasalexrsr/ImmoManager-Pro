@@ -90,8 +90,9 @@ describe('operational files', () => {
 
   it('links a project event to its actual case and shows all appointment details', async () => {
     events = [{ ...eventRecord, maintenance_case_id: 'case', description: 'Dachboden prüfen', participants: 'Dach Müller' }];
+    api.get.mockResolvedValue(events[0]);
     show(Calendar, '/calendar?maintenance_case_id=case&focus_id=event');
-    const details = await screen.findByRole('region', { name: 'Termindetails' });
+    const details = (await screen.findByRole('heading', { name: eventRecord.title, level: 2 })).closest('section');
     expect(within(details).getByText('Dachboden prüfen')).toBeInTheDocument();
     expect(within(details).getByRole('link', { name: /Projektakte und Termin/ })).toHaveAttribute('href', '/maintenance/case?tab=appointments');
     expect(within(screen.getByRole('region', { name: 'Ergebnisliste' })).getByRole('link', { name: 'Ablesetermin' }))

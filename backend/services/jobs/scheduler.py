@@ -194,6 +194,8 @@ def tick(jobs: JobStore | None = None, runner: JobRunner | None = None,
          now: datetime | None = None) -> list[JobRun]:
     jobs = jobs or get_job_store()
     enqueue_due(jobs, now)
+    from ..reminders import tick_due
+    tick_due(jobs, now)
     from .communication import recover
     recover(jobs)
     from ..assistant_runner import recover as recover_assistant

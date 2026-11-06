@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
+from .financial_inputs import FinancialRequest
+
 Form = Literal["cash", "transfer", "deposit_account", "guarantee", "pledged_savings"]
 ItemKind = Literal["defect", "other", "receivable", "rent_arrears", "retention"]
 SettlementKind = Literal["final", "retention_release"]
@@ -111,7 +113,7 @@ def _uuid(value: Optional[str]) -> Optional[str]:
     return value
 
 
-class StrictModel(BaseModel):
+class StrictModel(FinancialRequest):
     model_config = ConfigDict(extra="forbid")
 
 
@@ -172,6 +174,7 @@ class TakeoverRequest(StrictModel):
     """A deposit paid before this app's bookings: received and credited until the takeover day.
 
     All values empty removes the takeover."""
+    preserve_money_precision = frozenset({"carried_amount", "carried_interest"})
     base_revision: str = Field(min_length=1, max_length=200)
     carried_on: Optional[date] = None
     carried_amount: Optional[float] = Field(None, gt=0, le=10_000_000)

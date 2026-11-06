@@ -67,7 +67,7 @@ export default function Meters() {
   const { items: properties } = useEntities('properties', '/properties');
   const [meters, setMeters] = useState([]);
   const focusedMeter = searchParams.get('focus_id');
-  const previousFocus = useRef(focusedMeter);
+  const focusedReading = searchParams.get('source_id');
   const [historyOf, setHistoryOf] = useState(null);
   const [historyRevision, setHistoryRevision] = useState(0);
   const canWrite = useCanWrite('/meters');
@@ -86,7 +86,14 @@ export default function Meters() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [drilldown, setDrilldown] = useState(0);
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
-  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete('focus_id'); next.delete('suche'); return next; }); setSourceFilter(value); setGroupBy('none'); setHistoryOf(null); setDrilldown(number => number + 1); };
+  const openSources = value => { setSearchParams(current => { const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id', 'suche'].forEach(key => next.delete(key)); return next; }); setSourceFilter(value); setGroupBy('none'); setHistoryOf(null); setDrilldown(number => number + 1); };
+  // The history endpoint owns record access. A missing/failed list must not turn
+  // an explicit source URL into an unrelated list or silently drop its detail.
+  const shownHistory = focusedMeter ? meters.find(row => row.id === focusedMeter) || { id: focusedMeter, serial_number: 'Zähler' } : historyOf;
+  const closeHistory = () => {
+    setHistoryOf(null);
+    if (focusedMeter) setSearchParams(current => { const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key)); return next; }, { replace: true });
+  };
   const inspectionSoon = meter => meter.next_inspection && Math.ceil((new Date(meter.next_inspection) - new Date()) / 86400000) < 30;
   const visibleMeters = meters.filter(meter => focusedMeter || sourceFilter === 'all' || (sourceFilter === 'active' ? meter.is_active !== false
     : sourceFilter === 'inspection' ? inspectionSoon(meter) : meter.meter_type === sourceFilter.slice(5)));
@@ -115,21 +122,6 @@ export default function Meters() {
     }).finally(() => { if (!request.signal.aborted) setLoading(false); });
     return () => request.abort();
   }, [revision, units, properties]);
-
-  const noticeMeter = focusedMeter;
-  useEffect(() => {
-    // Back to an ordinary list must leave the URL-opened history. A manually
-    // opened history has no URL focus and remains open during a data refresh.
-    if (previousFocus.current && !focusedMeter) setHistoryOf(null);
-    previousFocus.current = focusedMeter;
-  }, [focusedMeter]);
-  useEffect(() => {
-    if (noticeMeter && !loading && historyOf?.id !== noticeMeter) {
-      const meter = meters.find(row => row.id === noticeMeter); if (meter) setHistoryOf(meter);
-    }
-  // The source changes only with the loaded meter set or navigation.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noticeMeter, loading, meters]);
 
   const meterFields = [
     { key: 'unit_id', label: 'Einheit', type: 'select', required: true,
@@ -193,7 +185,7 @@ export default function Meters() {
     if (!file) return;
     setPhotoBusy(true);
     try {
-      setPhoto({ fileUrl: await aiReadingApi.upload(file, 'meter-photos'), name: file.name, meter: historyOf });
+      setPhoto({ fileUrl: await aiReadingApi.upload(file, 'meter-photos'), name: file.name, meter: shownHistory });
     } catch (failure) { setLoadError(failure.message || 'Das Foto konnte nicht hochgeladen werden.'); }
     finally { setPhotoBusy(false); }
   };
@@ -217,7 +209,7 @@ export default function Meters() {
   const handleDeleteMeter = async (row) => {
     if (!await confirm(`"${row.serial_number || row.id}" ${t('modals.confirmDelete.body')}`, { action: 'delete' })) return;
     await api.del(`/meters/${row.id}`);
-    if (historyOf?.id === row.id) setHistoryOf(null);
+    if (shownHistory?.id === row.id) closeHistory();
     refreshData();
     if (store) store.invalidateRelated('meters', 'units');
   };
@@ -251,12 +243,13 @@ export default function Meters() {
     ),
   };
 
-  if (loading && !modal) return <div className="page-loading">Laden...</div>;
+  if (loading && !modal && !focusedMeter) return <div className="page-loading">Laden...</div>;
 
   const grouped = getGroupedMeters();
 
   return (
     <div className="page">
+      {focusedReading && !focusedMeter && <p role="alert">Die verlinkte Ablesung benötigt den zugehörigen Zähler. Bitte den vollständigen Quellenlink öffnen.</p>}
       {loadError && <p role="alert">{loadError} <button type="button" className="btn btn-secondary" onClick={refreshData}>Erneut laden</button></p>}
       {!focusedMeter && sourceFilter === 'inspection' && <p className="text-muted">Prüftermine in weniger als 30 Tagen, einschließlich überfälliger Termine und inaktiver Zähler.</p>}
       {/* Summary Cards */}
@@ -325,6 +318,7 @@ export default function Meters() {
             title={group.label ? '' : 'Zähler'}
             columns={meterColumns(setHistoryOf)}
             data={group.meters}
+            acknowledgeNotifications={!focusedMeter}
             drilldownKey={drilldown}
             emptyText={loadError && !meters.length ? 'Zähler noch nicht verfügbar.' : undefined}
             viewConfig={{ column_filters: { meter_filter: sourceFilter } }}
@@ -337,13 +331,14 @@ export default function Meters() {
         </div>
       ))}
 
-      {historyOf && (
-        <MeterHistory meterId={historyOf.id} meterLabel={historyOf.serial_number || historyOf.id.slice(0, 8)}
-          unitLabel={historyOf.unit_label !== '—' ? historyOf.unit_label : null}
-          propertyName={historyOf.property_name !== '—' ? historyOf.property_name : null} propertyId={historyOf.property_id}
-          revision={historyRevision} covered={Boolean(modal)} canWrite={canWrite}
-          onClose={() => setHistoryOf(null)} onRecord={() => setModal('create-reading')}
-          onEdit={() => setModal(meters.find(row => row.id === historyOf.id) || historyOf)} />
+      {shownHistory && (
+        <MeterHistory key={shownHistory.id} meterId={shownHistory.id} meterLabel={shownHistory.serial_number || shownHistory.id.slice(0, 8)}
+          unitLabel={shownHistory.unit_label !== '—' ? shownHistory.unit_label : null}
+          propertyName={shownHistory.property_name !== '—' ? shownHistory.property_name : null} propertyId={shownHistory.property_id}
+          focusedReadingId={focusedMeter ? focusedReading : null}
+          revision={historyRevision} covered={Boolean(modal)} canWrite={canWrite && meters.some(row => row.id === shownHistory.id)}
+          onClose={closeHistory} onRecord={() => setModal('create-reading')}
+          onEdit={() => setModal(meters.find(row => row.id === shownHistory.id) || shownHistory)} />
       )}
 
       {modal === 'create-meter' && (
@@ -368,11 +363,11 @@ export default function Meters() {
       {modal === 'create-reading' && (
         <FormModal
           draftContext="readings"
-          draftAnchor={historyOf ? { kind: 'meter', id: historyOf.id } : undefined}
+          draftAnchor={shownHistory ? { kind: 'meter', id: shownHistory.id } : undefined}
           title="Ablesung erfassen"
           repeatKeep={['reading_date', 'recorded_by']}
           fields={readingFields}
-          initial={readingStart?.initial || (historyOf ? { meter_id: historyOf.id } : null)}
+          initial={readingStart?.initial || (shownHistory ? { meter_id: shownHistory.id } : null)}
           aiMarks={readingStart?.aiMarks}
           onSave={handleSaveReading}
           onClose={closeReadingForm}

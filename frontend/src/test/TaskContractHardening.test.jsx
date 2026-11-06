@@ -65,8 +65,9 @@ describe('task hardening', () => {
 
   it('opens a readable task file with its description and original series', async () => {
     api.list.mockResolvedValue([{ ...task, description: 'Den Keller gemeinsam besichtigen.' }]);
+    api.get.mockResolvedValue({ ...task, description: 'Den Keller gemeinsam besichtigen.' });
     render(<MemoryRouter initialEntries={['/tasks?focus_id=child']}><Tasks /></MemoryRouter>);
-    const details = await screen.findByRole('region', { name: 'Aufgabendetails' });
+    const details = (await screen.findByRole('heading', { name: 'Serienkind', level: 2 })).closest('section');
     expect(within(details).getByText('Den Keller gemeinsam besichtigen.')).toBeInTheDocument();
     expect(within(details).getByRole('link', { name: /Ausgangsaufgabe/ })).toHaveAttribute('href', '/tasks?focus_id=template');
     expect(api.post).not.toHaveBeenCalled();

@@ -25,6 +25,8 @@ DEFAULTS = dict(theme="light", locale="de-DE", sidebar_collapsed=False, items_pe
                 email_notifications="important", reminder_days="7")
 ORM_KEYS = frozenset(DEFAULTS)
 DEFAULTS.update(density="comfortable", start_page="/", quiet_start="", quiet_end="")
+DEFAULTS.update(reminders_enabled=True, reminder_channel='in_app', reminder_time='09:00',
+                reminder_phone='', default_message_channel='whatsapp_web')
 DEFAULTS.update(currency_display='symbol', document_sender='', document_address='', document_signature='',
                 document_contact='', document_bank='', document_footer='',
                 document_profile='housing_provider', booking_category='', invoice_cost_category='',
@@ -43,6 +45,9 @@ LABELS = dict(theme="Farbschema", locale="Sprache und Zahlenformat", sidebar_col
               default_due_day="Fälligkeitstag für neue Forderungsentwürfe", email_notifications="E-Mail-Hinweise",
               reminder_days="Erinnerungsvorlauf in Tagen")
 LABELS.update(density="Tabellendichte", start_page="Persönliche Startseite", quiet_start="Ruhezeit ab (Europe/Berlin)", quiet_end="Ruhezeit bis (Europe/Berlin)")
+LABELS.update(reminders_enabled='Persönliche Erinnerungen anzeigen', reminder_channel='Vorgabe für neue Erinnerungen',
+              reminder_time='Vorgabe der Erinnerungsuhrzeit (Europe/Berlin)', reminder_phone='Eigene WhatsApp-Nummer für Erinnerungen',
+              default_message_channel='Vorgabe für schnelle Nachrichten')
 LABELS.update(currency_display='Währungsdarstellung (Quellwährung)', document_sender='Briefkopf: Name des Wohnungsgebers',
               document_address='Briefkopf: Anschrift des Wohnungsgebers', document_signature='Unterschriftszeile: Ausstellername (keine elektronische Signatur)',
               document_contact='Briefkopf: Kontakt (Telefon, E-Mail, Sprechzeiten)', document_bank='Briefkopf: Bankverbindung (Kontoinhaber, IBAN, BIC, Bank)',
@@ -71,12 +76,15 @@ BUSINESS |= GLOBAL_ONLY | {'document_sender', 'document_address', 'document_sign
                            'booking_category', 'invoice_cost_category', 'invoice_recoverable', 'confirmed_cost_defaults'}
 CHOICES.update(currency_display=['symbol', 'code'], document_profile=['housing_provider', 'authorized_person'],
                invoice_recoverable=[False, True], confirmed_cost_defaults=[False, True])
+CHOICES.update(reminders_enabled=[False, True], reminder_channel=['in_app', 'email_draft', 'whatsapp_web'],
+               default_message_channel=['email_draft', 'whatsapp_web'])
 CHOICES.update(bank_import_format=['csv', 'mt940', 'camt'], bank_csv_encoding=['utf-8-sig', 'cp1252', 'latin-1', 'utf-16'],
                bank_csv_delimiter=[';', ',', '\t', '|'], bank_csv_decimal=['.', ','], bank_csv_date_format=['%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'])
 TEXT_KEYS = {'document_sender', 'document_address', 'document_signature', 'booking_category', 'invoice_cost_category', 'contract_number_prefix'}
 # letterhead blocks: several lines each (address up to 1500 characters, the others 500)
 MULTILINE_KEYS = {'document_address', 'document_contact', 'document_bank', 'document_footer'}
 TEXT_KEYS |= MULTILINE_KEYS
+TEXT_KEYS |= {'reminder_phone'}
 TEXT_KEYS |= {'bank_csv_date_column', 'bank_csv_amount_column', 'bank_csv_text_column', 'preferred_connection'}
 # Reading documents with the AI (services/ai_reading): installation-wide rules of the office, and how each
 # person works with the readings. The AI itself is the person's own Claude or ChatGPT account.
@@ -109,6 +117,8 @@ CHOICES.update(ai_context=['none', 'standard', 'extended'], ai_default_reader=['
                **{key: [False, True] for key, value in AI_GLOBAL.items() if isinstance(value, bool)})
 # what the choices mean, in words (the catalogue shows these instead of the stored codes)
 CHOICE_LABELS = dict(
+    reminder_channel={'in_app': 'In der Anwendung', 'email_draft': 'E-Mail-Entwurf zum manuellen Versand', 'whatsapp_web': 'WhatsApp-Web-Chat zum manuellen Versand'},
+    default_message_channel={'email_draft': 'E-Mail-Programm', 'whatsapp_web': 'WhatsApp Web'},
     ai_context={'none': 'Keine Angaben zur Immobilie', 'standard': 'Immobilie, Einheiten, Lieferanten und Zähler',
                 'extended': 'Zusätzlich die Namen der Mieter'},
     ai_default_reader={'auto': 'Automatisch: verbundene KI, sonst lokale Regeln', 'local': 'Lokale Regeln (das Dokument bleibt hier)',
@@ -136,7 +146,7 @@ def record_audit(unit, command_key, action, identifier, before, after):
     from ..models import AuditLogEntry
     audit = dict(id=hashlib.sha256((unit.actor_id + ':' + action + ':' + command_key).encode()).hexdigest(),
                  user_id=unit.actor_id, username=unit.user.get('username'), action=action,
-                 entity_type='setting' if action == 'settings_change' else 'session' if action == 'session_revoke' else 'draft_defaults',
+                 entity_type='setting' if action == 'settings_change' else 'session' if action == 'session_revoke' else 'reminder' if action.startswith('reminder_') else 'draft_defaults',
                  entity_id=identifier, changes=json.dumps({'before': before, 'after': after}, ensure_ascii=False, default=str), timestamp=state.now())
     if unit.db is None:
         if not isinstance(audit_service._audit_store, audit_service.InMemoryAuditStore):
@@ -152,6 +162,8 @@ def validate(values):
     if set(values) - DEFAULTS.keys():
         raise HTTPException(422, "Unbekannte Einstellung.")
     for key, value in values.items():
+        if key == 'reminders_enabled' and type(value) is not bool:
+            raise HTTPException(422, 'Persönliche Erinnerungen nur ein- oder ausschalten.')
         limit = 1500 if key == 'document_address' else 1000 if key in AI_RULE_KEYS else 500 if key in MULTILINE_KEYS else 120
         if key in TEXT_KEYS and (not isinstance(value, str) or len(value) > limit
                                 or any(ord(char) < 32 and not (key in MULTILINE_KEYS and char == '\n') for char in value)):
@@ -180,6 +192,10 @@ def validate(values):
             if not valid_reminder:
                 raise HTTPException(422, "Erinnerungsvorlauf muss zwischen 0 und 365 Tagen liegen.")
 
+        if key == 'reminder_phone' and value and not re.fullmatch(r'\+[1-9]\d{7,14}', value):
+            raise HTTPException(422, 'WhatsApp-Nummer mit internationaler Vorwahl angeben, zum Beispiel +491701234567.')
+        if key == 'reminder_time' and (not isinstance(value, str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value)):
+            raise HTTPException(422, 'Erinnerungsuhrzeit als HH:MM angeben.')
         if key in ("quiet_start", "quiet_end") and (not isinstance(value, str) or value != "" and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)):
             raise HTTPException(422, "Ruhezeiten im Format HH:MM angeben oder beide Felder leeren.")
 
@@ -257,9 +273,9 @@ def catalogue(store, actor_id, property_id=None):
                 choices = [{'value': '', 'label': 'Keine bevorzugte Verbindung'}] + [{'value': row.id, 'label': row.name} for row in rows]
             if key not in GLOBAL_ONLY:
                 result.append(dict(key=key, label=LABELS[key], value=value, origin=origin, scope="personal", editable=key != "currency",
-                               revision=state.get(unit, "preferences")["revision"], choices=choices, input_type="time" if key in ("quiet_start", "quiet_end") else 'textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else "number",
+                               revision=state.get(unit, "preferences")["revision"], choices=choices, input_type="time" if key in ("quiet_start", "quiet_end", "reminder_time") else 'textarea' if key in MULTILINE_KEYS else 'text' if key in TEXT_KEYS else "number",
                                inherited=key not in own, restart_required=False, secret=False,
-                               group="Benachrichtigungen" if key in ("email_notifications", "reminder_days", "quiet_start", "quiet_end") else 'KI-Verarbeitung' if key.startswith('ai_') else 'Dokumente und Kostenregeln' if key in BUSINESS else "Ansicht und Arbeitsweise"))
+                               group="Benachrichtigungen" if key in ("email_notifications", "reminder_days", "quiet_start", "quiet_end", "reminders_enabled", "reminder_channel", "reminder_time", "reminder_phone", "default_message_channel") else 'KI-Verarbeitung' if key.startswith('ai_') else 'Dokumente und Kostenregeln' if key in BUSINESS else "Ansicht und Arbeitsweise"))
             if admin and key in BUSINESS:
                 for scope in ("global" if scope_from_user(unit.user).unrestricted else None, "object:" + property_id if property_id and key not in GLOBAL_ONLY else None):
                     if scope:

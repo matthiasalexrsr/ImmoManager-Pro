@@ -973,7 +973,9 @@ export default function Statements() {
     setView('list'); setBreakdown(null); setLetterStatement(null);
     setParams(new URLSearchParams(listReturnSearch.current));
   };
-  const requestedStatement = params.get('statement_id');
+  // Older workspace history entries used focus_id for statements as well as
+  // periods. Resolve known statement IDs before interpreting the period alias.
+  const requestedStatement = params.get('statement_id') || (statements.some(row => row.id === params.get('focus_id')) ? params.get('focus_id') : null);
   const statementTarget = statements.find(row => row.id === requestedStatement);
   const noticePeriod = statementTarget?.billing_period_id || params.get('period_id') || (!params.get('filter') ? params.get('focus_id') : null);
   const previousNoticePeriod = useRef(noticePeriod);

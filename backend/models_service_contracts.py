@@ -12,8 +12,9 @@ from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, Field, PlainSerializer, field_validator, model_validator
 
 from .domain.links import web_link
-from .domain.money import money
+from .domain.money import input_money
 from .domain.service_contract_terms import Terms
+from .financial_inputs import FinancialRequest
 from .models import InvoiceCreate
 
 CONTRACT_TYPES = (
@@ -34,7 +35,7 @@ def _now() -> datetime:
 def _cents(value: Optional[float], *, label: str, allow_negative: bool = False) -> Optional[float]:
     if value is None:
         return None
-    rounded = money(value)
+    rounded = input_money(value)
     if rounded < 0 and not allow_negative:
         raise ValueError(f"{label} darf nicht negativ sein")
     if abs(rounded) >= Decimal("10000000000"):
@@ -208,7 +209,7 @@ class ServiceContractInvoiceFields(BaseModel):
     period_start: date
     period_end: date
     advances_credited: float = 0.0
-    consumption: Optional[float] = Field(default=None, ge=0)
+    consumption: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
     consumption_unit: Optional[str] = Field(default=None, max_length=20)
     notes: Optional[str] = None
 
@@ -299,7 +300,7 @@ class InvoiceLinkRequest(ServiceContractInvoiceFields):
         return self
 
 
-class PaymentLinkRequest(BaseModel):
+class PaymentLinkRequest(FinancialRequest):
     booking_id: str = Field(min_length=1)
     amount: Optional[float] = None             # default: what of the booking is not yet allocated
     service_contract_invoice_id: Optional[str] = None

@@ -3,7 +3,8 @@ import ChannelPanel from '../features/channels/ChannelPanel';
 import NotificationArrival from '../components/NotificationArrival';
 import { resolveFileUrl } from '../features/partyWorkspace/files';
 import { prepareUploadAccess } from '../utils/uploadAccess';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useTranslation } from '../i18n';
 import { useEntities, useDataStore } from '../contexts/DataStoreContext';
@@ -12,6 +13,7 @@ import FormModal from '../components/FormModal';
 import StatusBadge from '../components/StatusBadge';
 import { useConfirm } from '../components/ConfirmDialog';
 import { formatMoney } from '../utils/format';
+import { useAuth } from '../contexts/AuthContext';
 
 const PORTAL_TEMPLATES = {
   immoscout24: {
@@ -82,6 +84,8 @@ const COLUMNS = [
 ];
 
 export default function Listings() {
+  const [params, setParams] = useSearchParams();
+  const actorId = useAuth()?.user?.id;
   const { t } = useTranslation();
   const confirm = useConfirm();
   const store = useDataStore();
@@ -99,16 +103,44 @@ export default function Listings() {
   const [revision, setRevision] = useState(0);
   const choicesReady = !unitState.loading && !unitState.error;
 
-  const photoId = new URLSearchParams(window.location.search).get('notice_id') ? new URLSearchParams(window.location.search).get('source_id') : null;
-  const [noticePhoto, setNoticePhoto] = useState(null);
+  const photoId = params.get('source_id');
+  const focusedListing = params.get('focus_id');
+  const photoKey = JSON.stringify([actorId, photoId, focusedListing]);
+  const [photoResult, setPhotoResult] = useState(null);
+  const [photoAttempt, setPhotoAttempt] = useState(0);
+  const photoSource = photoResult?.key === photoKey ? photoResult : null;
+  const noticePhoto = photoSource?.photo;
+  const photoRef = useRef(null);
   useEffect(() => {
     if (!photoId) return;
-    let live = true; const same = api.captureSession(); setNoticePhoto(null);
-    api.get(`/listings/photos/${encodeURIComponent(photoId)}`).then(async photo => {
-      same(); await prepareUploadAccess(resolveFileUrl(photo.file_url)); if (live) setNoticePhoto(photo);
-    }).catch(failure => { if (live) setDeleteError(failure.message); });
-    return () => { live = false; };
-  }, [photoId]);
+    const controller = new AbortController();
+    setPhotoResult(null);
+    const invalidate = () => { controller.abort(); setPhotoResult({ key: photoKey, error: 'Die Sitzung wurde geändert. Bitte erneut anmelden.' }); };
+    window.addEventListener('workspace-owner', invalidate); window.addEventListener('workspace-logout', invalidate);
+    (async () => {
+      const same = api.captureSession();
+      if (!focusedListing) throw new Error('Das verlinkte Inseratfoto benötigt das zugehörige Inserat. Bitte den vollständigen Quellenlink öffnen.');
+      const photo = await api.get(`/listings/photos/${encodeURIComponent(photoId)}`, { signal: controller.signal }); same();
+      if (controller.signal.aborted) return;
+      if (photo?.id !== photoId || photo.listing_id !== focusedListing) throw new Error('Das verlinkte Foto ist für dieses Inserat nicht verfügbar.');
+      const listing = await api.get(`/listings/${encodeURIComponent(focusedListing)}`, { signal: controller.signal }); same();
+      if (listing?.id !== focusedListing) throw new Error('Das verlinkte Foto ist für dieses Inserat nicht verfügbar.');
+      const file = resolveFileUrl(photo.file_url);
+      if (!file) throw new Error('Das Inseratfoto hat keinen gültigen Dateiverweis.');
+      await prepareUploadAccess(file, { signal: controller.signal }); same();
+      if (!controller.signal.aborted) setPhotoResult({ key: photoKey, photo, listing });
+    })().catch(failure => {
+      if (!controller.signal.aborted) setPhotoResult({ key: photoKey, error: [403, 404].includes(failure.statusCode || failure.status)
+        ? 'Das verlinkte Foto ist für dieses Inserat nicht verfügbar.' : failure.message || 'Das verlinkte Inseratfoto konnte nicht geladen werden.' });
+    });
+    return () => { controller.abort(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); };
+  }, [photoId, focusedListing, photoKey, photoAttempt]);
+  useEffect(() => {
+    if (noticePhoto) { photoRef.current?.focus(); photoRef.current?.scrollIntoView?.({ block: 'nearest' }); }
+  }, [noticePhoto?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closePhoto = () => setParams(current => {
+    const next = new URLSearchParams(current); ['focus_id', 'source_id', 'notice_id'].forEach(key => next.delete(key)); return next;
+  }, { replace: true });
 
   const refreshData = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
@@ -204,8 +236,8 @@ export default function Listings() {
   };
 
   // only the first load replaces the page; a reload keeps the table and an open form
-  if (loading && !loaded && !modal) return <div className="page-loading">{t('ui.table.loading')}</div>;
-  if (loadError && !loaded && !modal) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
+  if (loading && !loaded && !modal && !photoId) return <div className="page-loading">{t('ui.table.loading')}</div>;
+  if (loadError && !loaded && !modal && !photoId) return <div className="page"><p className="alert-error" role="alert">{loadError}{' '}
     <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p></div>;
 
   return (
@@ -214,9 +246,16 @@ export default function Listings() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={refreshData}>Erneut laden</button></p>}
       {unitState.error && <p className="alert-error" role="alert">Die Einheitenauswahl ist nicht verfügbar. {unitState.error}{' '}
         <button type="button" className="btn btn-secondary btn-sm" onClick={unitState.reload}>Auswahl erneut laden</button></p>}
-      {noticePhoto && listings.some(row => row.id === noticePhoto.listing_id) && <section aria-label="Inseratfoto aus dem Hinweis">
-        <h2>{noticePhoto.title || 'Inseratfoto'}</h2><img style={{ maxWidth: '100%' }} src={resolveFileUrl(noticePhoto.file_url)} alt={noticePhoto.title || 'Inseratfoto'} onLoad={() => setNoticePhoto(photo => ({ ...photo, imageReady: true }))} />
-        <NotificationArrival record={noticePhoto} ready={noticePhoto.imageReady === true} />
+      {photoId && !photoSource && <p role="status">Verlinktes Inseratfoto wird geladen …</p>}
+      {photoSource?.error && <p role="alert">{photoSource.error} <button type="button" onClick={() => setPhotoAttempt(value => value + 1)}>Foto erneut laden</button></p>}
+      {noticePhoto && <section ref={photoRef} tabIndex={-1} aria-label="Verlinktes Inseratfoto" className="panel">
+        <div className="panel-body"><h2>{noticePhoto.title || 'Inseratfoto'}</h2>
+        <p>Inserat: {photoSource.listing.title || 'Ausgewähltes Inserat'}</p>
+        <img style={{ maxWidth: '100%', height: 'auto' }} src={resolveFileUrl(noticePhoto.file_url)} alt={noticePhoto.title || 'Inseratfoto'}
+          onLoad={() => setPhotoResult(current => current?.key === photoKey ? { ...current, imageReady: true } : current)}
+          onError={() => setPhotoResult(current => current?.key === photoKey ? { key: photoKey, error: 'Das Inseratfoto konnte nicht angezeigt werden. Bitte erneut laden.' } : current)} />
+        <NotificationArrival record={noticePhoto} ready={photoSource.imageReady === true} />
+        <button type="button" className="btn btn-sm btn-secondary" onClick={closePhoto}>Foto schließen</button></div>
       </section>}
       {deleteError && (
         <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
@@ -229,6 +268,7 @@ export default function Listings() {
         title="Inserate"
         columns={COLUMNS}
         data={enriched}
+        acknowledgeNotifications={!photoId}
         onAdd={choicesReady ? () => setModal('create') : undefined}
         onEdit={choicesReady ? row => setModal(row) : undefined}
         onDelete={handleDelete}

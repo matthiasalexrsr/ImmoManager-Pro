@@ -62,12 +62,27 @@ describe('Weitergeben und Drucken', () => {
     await waitFor(() => expect(screen.getByLabelText('Mobilnummer')).toHaveValue('0170 1234567'));
     fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }));
     await screen.findByText(/liegt in Ihren Downloads/);
-    expect(popup.location.replace).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/wa\.me\/491701234567\?text=Guten%20Tag/));
+    const chat = new URL(popup.location.replace.mock.calls[0][0]);
+    expect(chat.origin + chat.pathname).toBe('https://web.whatsapp.com/send');
+    expect(chat.searchParams.get('phone')).toBe('491701234567');
+    expect(chat.searchParams.get('text')).toMatch(/^Guten Tag/);
     expect(popup.opener).toBeNull();
     expect(URL.createObjectURL).toHaveBeenCalledWith(file);
 
     fireEvent.change(screen.getByLabelText('Mobilnummer'), { target: { value: '12' } });
     expect(screen.getByText(/Diese Nummer erkennt WhatsApp nicht/)).toBeInTheDocument();
+  });
+  it('schließt ein reserviertes Fenster bei Dateifehlern und blockiert fehlerhafte Nummern', async () => {
+    const popup = { location: { replace: vi.fn() }, opener: {}, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(popup);
+    const service = { emailDraft: vi.fn(), currentFile: vi.fn().mockRejectedValue(new Error('Datei nicht zugänglich')) };
+    render(<ShareDocumentDialog document={{ id: 'd1', title: 'Abrechnung' }} onClose={vi.fn()} service={service} />);
+    fireEvent.change(screen.getByLabelText('Mobilnummer'), { target: { value: 'Tel: 01701234567' } });
+    expect(screen.getByRole('button', { name: /WhatsApp Web/ })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^Mobilnummer/), { target: { value: '01701234567' } });
+    fireEvent.click(screen.getByRole('button', { name: /WhatsApp Web/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Datei nicht zugänglich');
+    expect(popup.close).toHaveBeenCalledOnce(); expect(popup.location.replace).not.toHaveBeenCalled();
   });
 });
 

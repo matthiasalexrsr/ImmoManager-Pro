@@ -486,7 +486,7 @@ def test_tenant_refund_cannot_pay_a_provider_invoice(owner, estate, linkage, act
         assert len(_ok(owner.get(f"{booking_path}/allocations"))) == 1
     invoice = _ok(owner.post(f"{API}/invoices", json={
         "property_id": estate["property"].id, "supplier": "Handwerker",
-        "invoice_date": "2026-05-01", "net_amount": 100, "gross_amount": 100}), 201)
+        "invoice_date": "2026-05-01", "net_amount": 100, "gross_amount": 100, "vat_rate": 0}), 201)
     path = f"{API}/invoices/{invoice['id']}/payments"
     if action == "candidates":
         candidates = _ok(staff.get(f"{path}/candidates"))["items"]

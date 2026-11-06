@@ -1,0 +1,9 @@
+.contract-overview { margin-bottom: var(--space-lg, 1.25rem); padding: var(--space-lg, 1.25rem); border-inline-start: 3px solid var(--primary, #176b63); }
+.contract-overview-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.contract-overview-heading h2 { scroll-margin-top: var(--workspace-focus-offset, 96px); margin: .2rem 0 1rem; overflow-wrap: anywhere; }
+.contract-overview-eyebrow { color: var(--text-muted, #64748b); font-size: var(--text-sm, .875rem); margin: 0; }
+.contract-overview-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 1rem 1.5rem; margin: 0 0 1rem; }
+.contract-overview-facts dt { color: var(--text-muted, #64748b); font-size: var(--text-sm, .875rem); margin-bottom: .25rem; }
+.contract-overview-facts dd { margin: 0; overflow-wrap: anywhere; }
+.contract-overview-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.contract-overview-notes { white-space: pre-wrap; overflow-wrap: anywhere; }

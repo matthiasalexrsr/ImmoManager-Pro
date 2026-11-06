@@ -1,8 +1,9 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import NotificationInbox from '../components/NotificationInbox';
 import { api } from '../api';
+import useNotificationInbox from '../hooks/useNotificationInbox';
 
 vi.mock('../api', () => ({ api: {
   get: vi.fn(), post: vi.fn(), captureSession: vi.fn(() => () => {}),
@@ -16,9 +17,31 @@ const page = (snapshot = 'original-proof') => ({
 });
 
 beforeEach(() => {
-  vi.clearAllMocks(); api.get.mockResolvedValue(page()); api.post.mockResolvedValue({ acknowledged: 12 });
+  vi.clearAllMocks(); api.captureSession.mockReturnValue(() => {}); api.get.mockResolvedValue(page()); api.post.mockResolvedValue({ acknowledged: 12 });
 });
 afterEach(() => cleanup());
+
+it('releases the write guard after synchronous session capture failure and never reuses its old pending command', async () => {
+  const commandIds = vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce('old-session-command').mockReturnValueOnce('new-session-command');
+  try {
+    const { result } = renderHook(() => useNotificationInbox());
+    await waitFor(() => expect(result.current.page?.items[0].id).toBe('n1'));
+    api.captureSession.mockImplementationOnce(() => {
+      window.dispatchEvent(new Event('workspace-logout'));
+      throw Object.assign(new Error('Die Sitzung wurde geändert.'), { code: 'SESSION_CHANGED' });
+    });
+    await act(async () => result.current.mutate('n1', { action: 'reopen', base_revision: 3 }));
+    expect(api.post).not.toHaveBeenCalled(); expect(result.current.busy).toBe(false);
+    expect(result.current.page).toBeNull(); expect(result.current.error).toMatch(/Sitzung wurde geändert/);
+    // Once the authenticated reader has reloaded, a fresh action must be possible.
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.page?.items[0].id).toBe('n1'));
+    await act(async () => result.current.mutate('n1', { action: 'reopen', base_revision: 3 }));
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('/notifications/n1/receipt', { action: 'reopen', base_revision: 3, idempotency_key: 'new-session-command' });
+    expect(result.current.busy).toBe(false);
+  } finally { commandIds.mockRestore(); }
+});
 
 it('bietet eine Bestätigung mit Gesamtumfang und sendet bei Abbrechen keinen Empfangsbeleg', async () => {
   render(<MemoryRouter><NotificationInbox /></MemoryRouter>);

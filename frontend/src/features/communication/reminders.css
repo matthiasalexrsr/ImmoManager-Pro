@@ -1,0 +1,11 @@
+.message-quick-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; }
+.reminder-form { display: grid; gap: 14px; }
+.reminder-form label { display: grid; gap: 6px; font-weight: 600; }
+.reminder-form p { margin: 0; font-weight: 400; line-height: 1.6; }
+.reminder-form input, .reminder-form textarea, .reminder-form select { width: 100%; min-width: 0; }
+.reminder-items { display: grid; gap: 12px; list-style: none; padding: 0; }
+.reminder-items > li { padding: 16px; border: 1px solid var(--border-color, #d5e1df); border-radius: 10px; background: var(--bg-primary, white); }
+.reminder-items p { margin: 7px 0; }
+.reminder-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.reminder-arrival { position: fixed; z-index: 900; right: 24px; bottom: 24px; width: min(410px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; overflow-wrap: anywhere; border: 1px solid var(--border-color, #b2ccc7); border-left: 5px solid var(--color-primary, #176b63); border-radius: 12px; padding: 20px; box-shadow: 0 8px 28px #0002; background: var(--bg-primary, white); }
+.reminder-arrival p { margin: 8px 0; }

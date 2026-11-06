@@ -12,6 +12,8 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => key, locale: 'de-
 vi.mock('../contexts/PreferencesContext', () => ({ usePreferences: () => settings }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => auth.value, useCanWrite: () => true }));
 vi.mock('../components/SearchBar', () => ({ default: () => <input aria-label="Globale Suche" /> }));
+// Personal reminder behavior is covered in its own authenticated workflow suite.
+vi.mock('../features/communication/ReminderArrival', () => ({ default: () => null }));
 vi.mock('../components/NotificationBell', () => ({ default: () => null }));
 vi.mock('../components/Tutorial', () => ({ TutorialProvider: ({ children }) => children, useTutorial: () => ({ start: vi.fn() }) }));
 vi.mock('../features/partyWorkspace/PartyWorkspace', () => ({ PartyWorkspaceProvider: ({ children }) => children }));

@@ -19,6 +19,8 @@ vi.mock('../contexts/AuthContext', () => ({
   useCanWrite: path => access.canWrite && (access.write === null || access.write.includes(path)),
   useAuth: () => ({ user: { id: 'viewer' }, write: access.canWrite ? access.write : [] }),
 }));
+// Receipt transport has dedicated source-navigation coverage; this suite checks dossier tabs and actions.
+vi.mock('../components/NotificationArrival', () => ({ default: () => null }));
 vi.mock('../components/PhotoDropZone', () => ({ default: () => null }));
 // Personal workspace requests have their own workflow coverage. Keep domain
 // request assertions in these existing dossier tests independent of that traffic.

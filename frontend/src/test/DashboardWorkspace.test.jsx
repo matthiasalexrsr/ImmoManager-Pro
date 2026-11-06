@@ -27,7 +27,8 @@ const stats = {
 const data = {
   '/dashboard/stats': stats,
   '/tasks?status=open&limit=5': [{ id: 't1', title: 'Heizung prüfen', due_date: '2026-10-09', priority: 'high' }],
-  '/notifications?status=unread&limit=5': [{ id: 'n1', title: 'Neue Ablesung', severity: 'info' }],
+  '/notifications/inbox?status=unread&limit=5': { items: [{ id: 'n1', title: 'Neue Ablesung', severity: 'info', status: 'unread',
+    target: { kind: 'meter_reading' }, open_href: '/meters?focus_id=m1&notice_id=n1' }], total: 1, unread_count: 1, snapshot: 'inbox-1' },
   '/reports/cashflow?months=12': { incomeTotal: 10000, expenseTotal: 2500, netTotal: 7500, filters: { date_from: '2025-11-01', date_to: '2026-10-15' } },
   '/reports/receivables-aging': { openTotal: 3250, openCredits: 100, buckets: { current: 1500, days1to30: 1750, days31to60: 0, days61to90: 0, days90plus: 0 } },
   '/reports/maintenance-costs': { categories: [{ category: 'Heizung', estimatedCost: 400 }] },
@@ -48,6 +49,56 @@ beforeEach(() => { vi.resetAllMocks(); api.get.mockImplementation(load); });
 afterEach(cleanup);
 
 describe('dashboard working overview', () => {
+  it('links individual tasks, contract deadlines and personal notices to their records', async () => {
+    show();
+    const tasks = screen.getByRole('region', { name: 'Offene Aufgaben' });
+    expect(await within(tasks).findByRole('link', { name: /Heizung prüfen/ })).toHaveAttribute('href', '/tasks?focus_id=t1');
+    const deadlines = screen.getByRole('region', { name: 'Vertragsfristen' });
+    expect(within(deadlines).getByRole('link', { name: /MV-42/ })).toHaveAttribute('href', '/contracts?contract_id=c1');
+    const notices = screen.getByRole('region', { name: 'Ungelesene Hinweise' });
+    expect(within(notices).getByRole('link', { name: /Neue Ablesung/ })).toHaveAttribute('href', '/meters?focus_id=m1&notice_id=n1');
+    expect(within(notices).getByRole('link', { name: 'Alle Hinweise' })).toHaveAttribute('href', '/notifications');
+  });
+
+  it('uses personal unread receipts and reloads them after an acknowledgement', async () => {
+    let archived = false;
+    const path = '/notifications/inbox?status=unread&limit=5';
+    api.get.mockImplementation(url => url === '/dashboard/stats' ? Promise.resolve({ ...stats, unread_notifications: 87 })
+      : url === path && archived ? Promise.resolve({ items: [], total: 0, unread_count: 0, snapshot: 'inbox-2' }) : load(url));
+    show(); await screen.findByText('Neue Ablesung');
+    fireEvent.click(screen.getByRole('button', { name: /Alle \d+ Hinweise anzeigen/ }));
+    expect(screen.getByRole('link', { name: 'Ungelesene Hinweise 1' })).toHaveAttribute('href', '/notifications?status=unread');
+    expect(screen.queryByRole('link', { name: 'Ungelesene Hinweise 87' })).not.toBeInTheDocument();
+    archived = true;
+    act(() => window.dispatchEvent(new Event('notification-receipt')));
+    const notices = screen.getByRole('region', { name: 'Ungelesene Hinweise' });
+    await within(notices).findByText('Keine ungelesenen Hinweise.');
+    expect(screen.queryByRole('link', { name: 'Ungelesene Hinweise 1' })).not.toBeInTheDocument();
+    expect(api.get.mock.calls.filter(([url]) => url === '/dashboard/stats')).toHaveLength(1);
+  });
+
+  it('rejects incomplete personal inboxes and uses a safe source landing for invalid source URLs', async () => {
+    const path = '/notifications/inbox?status=unread&limit=5';
+    let malformed = true;
+    api.get.mockImplementation(url => url === path ? Promise.resolve(malformed ? { items: [] }
+      : { ...data[path], items: [{ ...data[path].items[0], id: 'notice / 1', open_href: '//outside.invalid/chat' }] }) : load(url));
+    show();
+    const failed = await screen.findByText('Hinweise konnten nicht geladen werden.');
+    expect(screen.queryByText('Keine ungelesenen Hinweise.')).not.toBeInTheDocument();
+    malformed = false;
+    fireEvent.click(within(failed.closest('[role="alert"]')).getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByRole('link', { name: /Neue Ablesung/ })).toHaveAttribute('href', '/notifications/open/notice%20%2F%201');
+  });
+
+  it.each([
+    ['/tasks?status=open&limit=5', [{ title: 'Eintrag ohne Aufgaben-ID' }], 'Aufgaben konnten nicht geladen werden.'],
+    ['/reports/contracts-expiring?days=90', { contracts: [{ contractNumber: 'Eintrag ohne Vertrags-ID' }] }, 'Vertragsfristen konnten nicht geladen werden.'],
+  ])('does not create a broken entry link from incomplete data at %s', async (path, incomplete, message) => {
+    api.get.mockImplementation(url => url === path ? Promise.resolve(incomplete) : load(url));
+    show();
+    await screen.findByText(message);
+    expect(screen.queryByRole('link', { name: /Eintrag ohne/ })).not.toBeInTheDocument();
+  });
   it('keeps signed category amounts, uncategorized cash and categories after position eight reachable', async () => {
     api.get.mockImplementation(path => path === '/reports/finance' ? Promise.resolve({
       totalsByCategory: Array.from({ length: 12 }, (_, index) => ({ categoryId: `cat-${index}`, categoryName: `Kostenart ${index}`, total: -100 - index })),

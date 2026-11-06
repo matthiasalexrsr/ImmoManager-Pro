@@ -44,6 +44,13 @@ beforeEach(() => {
 afterEach(() => { window.history.replaceState({}, '', '/'); });
 
 describe('Billing workspace', () => {
+  it.each(['/statements?statement_id=stmt1', '/statements?focus_id=stmt1'])('opens the exact individual statement from current and saved legacy workspace links: %s', async entry => {
+    render(page(entry));
+    const detail = await screen.findByRole('dialog', { name: 'Aufschlüsselung der Abrechnung' });
+    expect(within(detail).getByText('Wasser')).toBeVisible();
+    expect(within(detail).getByText(/Musterpartei/)).toBeVisible();
+  });
+
   it('filters periods by property, year and status without hiding the remaining full stock', async () => {
     render(page()); await screen.findByRole('cell', { name: 'Haus A' });
     fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2026' } });

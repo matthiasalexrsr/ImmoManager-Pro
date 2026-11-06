@@ -1,0 +1,12 @@
+.task-overview { padding: 22px; margin-bottom: 24px; scroll-margin-top: var(--workspace-focus-offset, 96px); }
+.task-overview:focus { outline: none; }
+.task-overview-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.task-overview .page-header { align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.task-overview h2 { overflow-wrap: anywhere; margin: 0; }
+.task-overview-eyebrow { color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 8px; }
+.task-overview-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px; margin: 0 0 22px; }
+.task-overview-facts dt { font-size: var(--text-sm); color: var(--text-muted); margin-bottom: 6px; }
+.task-overview-facts dd { margin: 0; overflow-wrap: anywhere; }
+.task-overview-description h3 { font-size: var(--text-base); margin: 0 0 8px; }
+.task-overview-description p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 0; }
+.task-overview-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }

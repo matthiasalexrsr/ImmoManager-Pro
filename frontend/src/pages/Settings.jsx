@@ -20,6 +20,7 @@ import CustomerExports from '../features/dataTransfer/CustomerExports';
 import PortalAdmin from '../features/externalPortal/PortalAdmin';
 import PrivacyCenter from '../features/privacy/PrivacyCenter';
 import './settings/settings.css';
+import MessagingSection from './settings/MessagingSection';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -32,7 +33,7 @@ export default function Settings() {
   const [versionInfo, setVersionInfo] = useState(null);
   const isOwner = auth?.user?.role === 'eigentuemer';
   const canManagePortal = ['eigentuemer', 'verwalter'].includes(auth?.user?.role);
-  const allowedTabs = ['catalogue', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(canManagePortal ? ['portal', 'privacy'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
+  const allowedTabs = ['catalogue', 'notifications', 'ai', 'letterhead', 'security', 'system', ...(isOwner ? ['migration'] : []), ...(canManagePortal ? ['portal', 'privacy'] : []), ...(isAdmin ? ['users', 'dev'] : [])];
   const settingsTab = allowedTabs.includes(params.get('section')) ? params.get('section') : 'catalogue';
   const setSettingsTab = section => setParams(current => {
     const next = new URLSearchParams(current);
@@ -53,6 +54,7 @@ export default function Settings() {
 
   const tabs = [
     { key: 'catalogue', label: 'Einstellungen finden' },
+    { key: 'notifications', label: 'Nachrichten / Erinnerungen' },
     { key: 'ai', label: 'KI-Verarbeitung' },
     { key: 'letterhead', label: 'Briefkopf' },
     { key: 'security', label: 'Sicherheit / MFA' },
@@ -86,6 +88,7 @@ export default function Settings() {
       <div id="settings-section" className="settings-grid" role="region" aria-labelledby={`settings-tab-${settingsTab}`}>
         {settingsTab === 'catalogue' && <><SettingsCatalogue /><button className="btn btn-secondary" onClick={() => tutorial?.start(0)}>Bedienungstour starten</button></>}
         {settingsTab === 'ai' && <AiSettingsSection />}
+        {settingsTab === 'notifications' && <MessagingSection />}
         {settingsTab === 'letterhead' && <LetterheadSection />}
         {settingsTab === 'security' && <SecuritySection />}
 

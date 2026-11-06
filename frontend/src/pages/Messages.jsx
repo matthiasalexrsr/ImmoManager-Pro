@@ -49,42 +49,47 @@ export default function Messages() {
 
   useEffect(() => {
     const request = new AbortController();
-    const sameSession = api.captureSession();
     const invalidate = () => request.abort();
     window.addEventListener('workspace-logout', invalidate);
     window.addEventListener('workspace-owner', invalidate);
-    api.list('/contacts', { signal: request.signal }).then(values => {
+    (async () => {
+      const sameSession = api.captureSession();
+      const values = await api.list('/contacts', { signal: request.signal });
       if (request.signal.aborted) return;
       sameSession();
       if (!Array.isArray(values)) throw new Error('Die Kontaktliste ist unvollständig.');
       setContacts(values);
-    }).catch(failure => { if (!request.signal.aborted && failure.code !== 'SESSION_CHANGED') setError(failure.message || 'Kontakte konnten nicht geladen werden.'); });
+    })().catch(failure => { if (!request.signal.aborted && failure.code !== 'SESSION_CHANGED') setError(failure.message || 'Kontakte konnten nicht geladen werden.'); });
     return () => { request.abort(); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
   }, []);
 
   useEffect(() => {
     const request = new AbortController(); setLoading(true); setError(null);
-    const sameSession = api.captureSession();
     const invalidate = () => {
       request.abort(); setThreads([]); setContacts([]); setModal(null);
       setLoading(false); setError('Die Sitzung wurde geändert. Bitte erneut anmelden.');
     };
     window.addEventListener('workspace-logout', invalidate);
     window.addEventListener('workspace-owner', invalidate);
-    Promise.allSettled([api.list('/messages/threads', { signal: request.signal })])
-      .then(([thr]) => {
+    (async () => {
+        const sameSession = api.captureSession();
+        const [thr] = await Promise.allSettled([api.list('/messages/threads', { signal: request.signal })]);
         if (request.signal.aborted) return;
         try { sameSession(); } catch { invalidate(); return; }
         const failures = [];
         if (thr.status === 'fulfilled' && Array.isArray(thr.value)) setThreads(thr.value);
         else failures.push(thr.reason?.message || 'Konversationen konnten nicht gelesen werden.');
         if (failures.length) setError(failures.join(' · '));
+      })().catch(failure => {
+        if (request.signal.aborted) return;
+        if (failure.code === 'SESSION_CHANGED') invalidate();
+        else setError(failure.message || 'Konversationen konnten nicht gelesen werden.');
       }).finally(() => { if (!request.signal.aborted) setLoading(false); });
     return () => { request.abort(); window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
   }, [attempt]);
 
-  const focusThread = params.get('notice_id') ? params.get('focus_id') : null;
-  const focusMessage = params.get('notice_id') ? params.get('source_id') : null;
+  const focusMessage = params.get('source_id');
+  const focusThread = params.get('notice_id') || focusMessage ? params.get('focus_id') || params.get('thread_id') : null;
   const [arrivedMessage, setArrivedMessage] = useState(null);
   const loadThreadMessages = conversation.selectThread;
   const chooseThread = thread => {
@@ -96,16 +101,32 @@ export default function Messages() {
     });
   };
   useEffect(() => {
-    if (!focusThread) return;
-    let live = true; const same = api.captureSession(); setArrivedMessage(null);
-    api.get(`/messages/threads/${encodeURIComponent(focusThread)}`).then(thread => {
-      same(); if (!live) return; setView('threads'); loadThreadMessages(thread);
-      if (focusMessage) return api.get(`/messages/threads/${encodeURIComponent(focusThread)}/messages/${encodeURIComponent(focusMessage)}`).then(message => {
-        same(); if (live && message.thread_id === focusThread) setArrivedMessage(message);
-      });
-    }).catch(failure => { if (live) setError(failure.message); });
-    return () => { live = false; };
-  }, [focusThread, focusMessage, loadThreadMessages]);
+    if (!focusThread) {
+      if (focusMessage) setError('Der Nachrichtenlink enthält keine zugehörige Konversation.');
+      return;
+    }
+    let live = true; const request = new AbortController(); setArrivedMessage(null);
+    const invalidate = () => { live = false; request.abort(); setArrivedMessage(null); };
+    window.addEventListener('workspace-owner', invalidate); window.addEventListener('workspace-logout', invalidate);
+    (async () => {
+      const same = api.captureSession();
+      const thread = await api.get(`/messages/threads/${encodeURIComponent(focusThread)}`, { signal: request.signal });
+      same(); if (!live) return;
+      if (thread?.id !== focusThread) throw new Error('Die geladene Konversation gehört nicht zu diesem Link.');
+      setView('threads'); loadThreadMessages(thread);
+      if (focusMessage) {
+        const message = await api.get(`/messages/threads/${encodeURIComponent(focusThread)}/messages/${encodeURIComponent(focusMessage)}`, { signal: request.signal });
+        same(); if (!live) return;
+        if (message?.id !== focusMessage || message.thread_id !== focusThread) throw new Error('Die ausgewählte Nachricht gehört nicht zu dieser Konversation.');
+        setArrivedMessage(message);
+      }
+    })().catch(failure => {
+      if (!live || failure.name === 'AbortError') return;
+      if (failure.code === 'SESSION_CHANGED') { setError('Die Sitzung wurde geändert. Bitte erneut anmelden.'); invalidate(); }
+      else setError(failure.message || 'Die ausgewählte Nachricht konnte nicht geladen werden.');
+    });
+    return () => { invalidate(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); };
+  }, [focusThread, focusMessage, loadThreadMessages, attempt]);
   const handleSendMessage = () => conversation.send();
   const linkedThreadId = params.get('thread_id') || params.get('focus_id');
   useEffect(() => {
@@ -236,7 +257,7 @@ export default function Messages() {
                     onClick={() => setChannelThread(previous => previous === selectedThread.id ? null : selectedThread.id)}>WhatsApp-Vorgänge anzeigen</button>
                   {channelThread === selectedThread.id && <ChannelPanel key={selectedThread.id} sourceId={selectedThread.id} mode="whatsapp" />}
                   {!focusMessage && <NotificationArrival record={selectedThread} ready={threadPage.status === 'ready'} />}
-                  {arrivedMessage && selectedThread.id === focusThread && <section aria-label="Nachricht aus dem Hinweis">
+                  {arrivedMessage?.id === focusMessage && arrivedMessage.thread_id === focusThread && selectedThread.id === focusThread && <section aria-label="Ausgewählte Nachricht">
                     <h3>Ausgewählte Nachricht</h3><p>{arrivedMessage.body}</p><small>{arrivedMessage.sender_name} · {arrivedMessage.sent_at}</small>
                     <NotificationArrival record={arrivedMessage} ready={threadPage.status === 'ready'} />
                   </section>}

@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { useCanWrite } from '../../contexts/AuthContext';
 import useEntityFormDraft from '../../hooks/useEntityFormDraft';
 import './communication.css';
+import QuickMessageComposer from './QuickMessageComposer';
 
 const base = '/messages/communication';
 const command = () => crypto.randomUUID();
@@ -15,6 +16,7 @@ const draftFields = ['to', 'cc', 'bcc', 'subject', 'body', 'connection_id', 'tem
 export default function CommunicationCenter({ threads = [], initialThreadId = '', onOpenThread }) {
   const canWrite = useCanWrite('/messages');
   const [kind, setKind] = useState('outbound');
+  const [quickMessage, setQuickMessage] = useState(false);
   const [threadId, setThreadId] = useState(initialThreadId);
   const [rows, setRows] = useState({ items: [], total: null, next_cursor: null });
   const [selected, setSelected] = useState(null);
@@ -195,6 +197,8 @@ export default function CommunicationCenter({ threads = [], initialThreadId = ''
 
   return <section className="communication-center" aria-label="E-Mail und Empfang">
     <h2>E-Mail und Empfang</h2>
+    <button type="button" className="btn btn-secondary" onClick={() => setQuickMessage(true)}>Schnelle Nachricht über WhatsApp Web / E-Mail</button>
+    {quickMessage && <QuickMessageComposer subject={thread?.subject || ''} onClose={() => setQuickMessage(false)} />}
     <p>Vorschauen versenden nichts. Die Freigabe startet den Versand über den Hintergrundauftrag. „Angenommen“ bestätigt die Annahme durch den Mailserver; eine Zustellung ist damit nicht nachgewiesen.</p>
     <Link to="/dunning">Manuellen Mahn-Postausgang öffnen</Link>
     {!canWrite && <p>Nur Lesen: Entwürfe und Versand können nicht geändert werden.</p>}

@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getRegistrationStatus, login, register } from '../api';
 import { useTranslation } from '../i18n';
 import BrandMark from '../components/BrandMark';
 import { DemoLoginCard } from '../components/DemoMode';
 import useRuntimeInfo from '../hooks/useRuntimeInfo';
+import { safeInternalHref } from '../utils/internalLinks';
+
+function loginDestination(value) {
+  const path = safeInternalHref(value);
+  if (!path) return '/';
+  try {
+    const target = new URL(path, window.location.origin);
+    const pathname = decodeURIComponent(target.pathname);
+    if (target.origin !== window.location.origin || !safeInternalHref(pathname) || /^\/login(?:\/|$)/i.test(pathname)) return '/';
+    return path;
+  } catch {
+    return '/';
+  }
+}
 
 export default function Login() {
   const { t } = useTranslation();
@@ -21,6 +35,8 @@ export default function Login() {
   const runtime = useRuntimeInfo();
   const registering = isRegister && !runtime.demo;
   const navigate = useNavigate();
+  const location = useLocation();
+  const destination = loginDestination(location.state?.from);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +59,7 @@ export default function Login() {
       }
       if (totpRequired) await login(username, password, totpCode);
       else await login(username, password);
-      navigate('/');
+      navigate(destination, { replace: true });
     } catch (err) {
       if (err.requiresTotp) { setTotpRequired(true); setTotpCode(''); }
       else setError(err.message);

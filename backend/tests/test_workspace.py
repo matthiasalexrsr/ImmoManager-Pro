@@ -15,6 +15,7 @@ from sqlalchemy import Column, MetaData, String, Table, create_engine, inspect, 
 from backend import auth
 from backend.dependencies import store
 from backend.models import (
+    BillingPeriodCreate,
     ContactCreate,
     ContractCreate,
     MeterCreate,
@@ -24,6 +25,7 @@ from backend.models import (
     TaskCreate,
     TenantCreate,
     UnitCreate,
+    UtilityStatementCreate,
 )
 from backend.routers import auth as auth_router
 from backend.routers import workspace as workspace_router
@@ -421,6 +423,11 @@ def test_context_links_identify_exact_records_and_derive_unambiguous_property(es
         assert resolve_context(store, kind, identifier, user.id)["property_id"] == prop.id
     assert owner.get(f"{API}/source/tenant/{tenant.id}").json()["href"] == f"/tenants?focus_id={tenant.id}"
     assert owner.get(f"{API}/source/contract/{contract.id}").json()["href"] == f"/contracts?focus_id={contract.id}"
+    period = store.create_billing_period(BillingPeriodCreate(property_id=prop.id, label="Abrechnung",
+        start_date=date(2026, 1, 1), end_date=date(2026, 12, 31)))
+    statement = store.create_utility_statement(UtilityStatementCreate(billing_period_id=period.id,
+        contract_id=contract.id, unit_id=unit.id, total_cost=100, advance_paid=80, balance=20))
+    assert owner.get(f"{API}/source/utility_statement/{statement.id}").json()["href"] == f"/statements?statement_id={statement.id}"
     other_unit = store.create_unit(UnitCreate(property_id=foreign.id, label="2", unit_type="apartment"))
     store.create_contract(ContractCreate(property_id=foreign.id, unit_id=other_unit.id, tenant_id=tenant.id,
         contract_number="V2", start_date=date(2026, 1, 1)))

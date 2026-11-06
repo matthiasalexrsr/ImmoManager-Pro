@@ -5,7 +5,8 @@ import { api } from '../../api';
 import { CloseIcon } from '../../components/Icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useModalDialog } from '../partyWorkspace/useModalDialog';
-import { canShareFiles, currentFile, emailDraft, saveBlob, whatsAppLink, whatsAppNumber } from './documentShare';
+import { canShareFiles, currentFile, emailDraft, saveBlob } from './documentShare';
+import { normalizedChatNumber, whatsAppWebLink } from '../communication/quickMessages';
 import './documentShare.css';
 
 function greeting(name) {
@@ -63,18 +64,22 @@ export default function ShareDocumentDialog({ document: record, partyId, onClose
   });
   const whatsApp = () => run('whatsapp', async () => {
     const popup = window.open('about:blank', '_blank');      // reserved now, before awaiting the file
-    const shared = await file();
-    saveBlob(shared, shared.name);
-    const link = whatsAppLink(recipient.phone, message);
-    if (popup) { popup.opener = null; popup.location.replace(link); } else window.open(link, '_blank', 'noopener');
-    setNote(`WhatsApp öffnet sich${whatsAppNumber(recipient.phone) ? ` mit dem Chat von ${recipient.name || recipient.phone}` : ''} und der Nachricht. Die Datei „${shared.name}“ liegt in Ihren Downloads: Ziehen Sie sie in den Chat oder hängen Sie sie über die Büroklammer an.`);
+    if (popup) popup.opener = null;
+    try {
+      const shared = await file();
+      saveBlob(shared, shared.name);
+      const link = whatsAppWebLink(recipient.phone, message);
+      if (popup) popup.location.replace(link || 'https://web.whatsapp.com/'); else window.open(link || 'https://web.whatsapp.com/', '_blank', 'noopener');
+      setNote(`WhatsApp Web öffnet sich${link ? ` mit dem Chat von ${recipient.name || recipient.phone} und der Nachricht` : '. Wählen Sie dort Ihren Kontakt; den Nachrichtentext können Sie aus diesem Fenster übernehmen'}. Die Datei „${shared.name}“ liegt in Ihren Downloads: Ziehen Sie sie in den Chat oder hängen Sie sie über die Büroklammer an.`);
+    } catch (failure) { popup?.close(); throw failure; }
   });
   const copyLink = () => run('link', async () => {
     await navigator.clipboard.writeText(`${window.location.origin}/documents/${encodeURIComponent(record.id)}`);
     setNote('Link zur Dokumentseite kopiert. Er öffnet das Dokument für Kolleginnen und Kollegen mit Zugang zu ImmoManager.');
   });
   const download = () => run('download', async () => { const shared = await file(); saveBlob(shared, shared.name); });
-  const phoneProblem = recipient.phone.trim() && !whatsAppNumber(recipient.phone);
+  const phoneProblem = recipient.phone.trim() && !normalizedChatNumber(recipient.phone);
+  const messageProblem = message.length > 2000;
 
   return createPortal(
     <div className="modal-overlay" role="presentation" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
@@ -94,15 +99,15 @@ export default function ShareDocumentDialog({ document: record, partyId, onClose
               aria-invalid={phoneProblem || undefined} />
               {phoneProblem && <small className="text-red">Diese Nummer erkennt WhatsApp nicht; bitte mit Vorwahl angeben.</small>}</label>
             <label className="share-wide">Betreff<input value={subject} onChange={event => setSubject(event.target.value)} /></label>
-            <label className="share-wide">Nachricht<textarea rows={6} value={message} onChange={event => setMessage(event.target.value)} /></label>
+            <label className="share-wide">Nachricht<textarea rows={6} maxLength={2000} value={message} onChange={event => setMessage(event.target.value)} />{messageProblem && <small className="text-red">Für WhatsApp bitte höchstens 2.000 Zeichen verwenden.</small>}</label>
           </fieldset>
           <div className="share-options" role="group" aria-label="Weg wählen">
             <button type="button" className="share-option" onClick={email} disabled={Boolean(busy)}>
               <Mail size={20} aria-hidden="true" /><span><strong>E-Mail mit Anhang</strong>
                 <small>Fertiger Entwurf für Outlook, Thunderbird oder Windows Mail</small></span></button>
-            <button type="button" className="share-option" onClick={whatsApp} disabled={Boolean(busy)}>
-              <MessageCircle size={20} aria-hidden="true" /><span><strong>WhatsApp</strong>
-                <small>{whatsAppNumber(recipient.phone) ? 'Chat mit der Mobilnummer öffnen, Datei anhängen' : 'WhatsApp öffnen, Kontakt wählen, Datei anhängen'}</small></span></button>
+            <button type="button" className="share-option" onClick={whatsApp} disabled={Boolean(busy) || Boolean(phoneProblem) || messageProblem}>
+              <MessageCircle size={20} aria-hidden="true" /><span><strong>WhatsApp Web</strong>
+                <small>{normalizedChatNumber(recipient.phone) ? 'Chat mit der Mobilnummer öffnen, Datei anhängen' : 'WhatsApp öffnen, Kontakt wählen, Datei anhängen'}</small></span></button>
             {shareable && <button type="button" className="share-option" onClick={systemShare} disabled={Boolean(busy)}>
               <Share2 size={20} aria-hidden="true" /><span><strong>Mit Windows teilen …</strong>
                 <small>Datei direkt an WhatsApp, Outlook, Teams oder ein anderes Programm geben</small></span></button>}

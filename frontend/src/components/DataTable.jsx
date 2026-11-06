@@ -206,7 +206,7 @@ function RoutedDataTable(props) {
   return <TableWithKey {...props} onApplyView={applyView} pathname={pathname} routeSearch={search} routeViewKey={viewRoute.version}
     restoreLocationState={navigation === 'POP'} clearFocusedRow={resetFilters => {
     const query = new URLSearchParams(search);
-    query.delete('focus_id');
+    ['focus_id', 'notice_id', 'source_id'].forEach(key => query.delete(key));
     if (resetFilters === true) query.delete('suche');
     const destinationSearch = query.size ? `?${query}` : '';
     if (resetFilters === true) {
@@ -232,7 +232,7 @@ function TableWithKey(props) {
 function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler, title,
   onAdd: addHandler, onRowClick, rowActions: rowActionsFor, writeArea, serverPaged = false, persistServerView = false, loadExportData, exportLabel = 'CSV', hideTitle = false,
   resolvedSettingsKey: storageKey, pathname, routeSearch, bulkActions: bulkActionsFor, rowName, addLabel, hideAddButton = false, emptyText,
-  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true, inheritRouteSearch = true }) {
+  viewConfig, onApplyView, viewAnchor, drilldownKey, clearFocusedRow, restoreLocationState = false, inheritRouteFocus = true, inheritRouteSearch = true, acknowledgeNotifications = true }) {
   const { t } = useTranslation();
   const tr = (key, fallback) => { const text = t(key); return !text || text === key ? fallback : text; };
   const titleId = useId();
@@ -798,7 +798,7 @@ function TableView({ columns, data, onEdit: editHandler, onDelete: deleteHandler
           })} />
       )}
 
-      <NotificationArrival rows={pageData} />
+      {acknowledgeNotifications && <NotificationArrival rows={pageData} />}
       <div ref={scrollRef} className="table-scroll">
         <table className="data-table" aria-labelledby={title ? titleId : undefined}>
           <thead>

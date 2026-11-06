@@ -14,6 +14,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .domain.money import money
+from .financial_inputs import FinancialRequest
 from .maintenance_models import UtcDateTime, utcnow
 
 
@@ -122,7 +123,7 @@ class InvoiceReviewSettings(BaseModel):
 
 # ─── Requests ───────────────────────────────────────────────────────────────
 
-class _Request(BaseModel):
+class _Request(FinancialRequest):
     model_config = ConfigDict(extra="forbid")
 
 

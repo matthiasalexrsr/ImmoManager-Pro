@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .domain.links import web_link
 from .domain.money import money
+from .financial_inputs import FinancialRequest
 
 
 def _federal_state(v: Optional[str]) -> Optional[str]:
@@ -43,7 +44,7 @@ class Portfolio(PortfolioCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class PropertyCreate(BaseModel):
+class PropertyCreate(FinancialRequest):
     portfolio_id: str
     name: str
     property_type: str
@@ -75,7 +76,7 @@ class Property(PropertyCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class UnitCreate(BaseModel):
+class UnitCreate(FinancialRequest):
     property_id: str
     label: str
     unit_type: str
@@ -193,7 +194,7 @@ class Tenant(TenantCreate):
 _VALID_CONTRACT_STATUSES = {"active", "terminated", "expired", "draft"}
 
 
-class ContractCreate(BaseModel):
+class ContractCreate(FinancialRequest):
     contract_number: str
     property_id: str
     unit_id: str
@@ -254,7 +255,7 @@ class Contract(ContractCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class AccountCreate(BaseModel):
+class AccountCreate(FinancialRequest):
     portfolio_id: str
     name: str
     bank_name: Optional[str] = None
@@ -290,7 +291,7 @@ class Category(CategoryCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class BookingCreate(BaseModel):
+class BookingCreate(FinancialRequest):
     account_id: str
     category_id: Optional[str] = None
     property_id: Optional[str] = None
@@ -342,7 +343,7 @@ class Booking(BookingCreate):
         return v  # stored rows stay readable as they are; calculations round them (domain.money)
 
 
-class ReceivableCreate(BaseModel):
+class ReceivableCreate(FinancialRequest):
     contract_id: str
     due_date: date
     amount_due: float
@@ -361,7 +362,13 @@ class Receivable(ReceivableCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class InvoiceCreate(BaseModel):
+def _invoice_vat_rate_input(value: Any) -> Any:
+    if isinstance(value, bool):
+        raise ValueError("Der MwSt-Satz muss eine Zahl sein, nicht ja/nein.")
+    return value
+
+
+class InvoiceCreate(FinancialRequest):
     performance_start: Optional[date] = None
     performance_end: Optional[date] = None
     property_id: Optional[str] = None
@@ -374,6 +381,8 @@ class InvoiceCreate(BaseModel):
     gross_amount: float
     payment_terms: Optional[str] = None
     status: str = "open"
+
+    _numeric_vat_rate = field_validator("vat_rate", mode="before")(_invoice_vat_rate_input)
 
     @model_validator(mode="after")
     def validate_performance_period(self):
@@ -391,7 +400,7 @@ class Invoice(InvoiceCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class MaintenanceCaseCreate(BaseModel):
+class MaintenanceCaseCreate(FinancialRequest):
     property_id: str
     unit_id: Optional[str] = None
     title: str
@@ -516,7 +525,7 @@ class CalendarEvent(CalendarEventCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class ListingCreate(BaseModel):
+class ListingCreate(FinancialRequest):
     unit_id: str
     title: str
     description: Optional[str] = None
@@ -564,7 +573,7 @@ class PortfolioPatch(BaseModel):
     status: Optional[str] = None
 
 
-class PropertyPatch(BaseModel):
+class PropertyPatch(FinancialRequest):
     portfolio_id: Optional[str] = None
     name: Optional[str] = None
     property_type: Optional[str] = None
@@ -590,7 +599,7 @@ class PropertyPatch(BaseModel):
         return _federal_state(v)
 
 
-class UnitPatch(BaseModel):
+class UnitPatch(FinancialRequest):
     property_id: Optional[str] = None
     label: Optional[str] = None
     unit_type: Optional[str] = None
@@ -652,7 +661,7 @@ class TenantPatch(BaseModel):
         return v
 
 
-class ContractPatch(BaseModel):
+class ContractPatch(FinancialRequest):
     contract_number: Optional[str] = None
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
@@ -669,7 +678,7 @@ class ContractPatch(BaseModel):
     carried_balance: Optional[float] = Field(default=None, ge=-10_000_000, le=10_000_000)
 
 
-class AccountPatch(BaseModel):
+class AccountPatch(FinancialRequest):
     portfolio_id: Optional[str] = None
     name: Optional[str] = None
     bank_name: Optional[str] = None
@@ -687,7 +696,7 @@ class CategoryPatch(BaseModel):
     category_type: Optional[str] = None
 
 
-class BookingPatch(BaseModel):
+class BookingPatch(FinancialRequest):
     account_id: Optional[str] = None
     category_id: Optional[str] = None
     property_id: Optional[str] = None
@@ -707,7 +716,7 @@ class BookingPatch(BaseModel):
         return _cent_amount(v)
 
 
-class ReceivablePatch(BaseModel):
+class ReceivablePatch(FinancialRequest):
     contract_id: Optional[str] = None
     due_date: Optional[date] = None
     amount_due: Optional[float] = None
@@ -717,7 +726,7 @@ class ReceivablePatch(BaseModel):
     kind: Optional[Literal["other"]] = None
 
 
-class InvoicePatch(BaseModel):
+class InvoicePatch(FinancialRequest):
     performance_start: Optional[date] = None
     performance_end: Optional[date] = None
     property_id: Optional[str] = None
@@ -731,8 +740,10 @@ class InvoicePatch(BaseModel):
     payment_terms: Optional[str] = None
     status: Optional[str] = None
 
+    _numeric_vat_rate = field_validator("vat_rate", mode="before")(_invoice_vat_rate_input)
 
-class MaintenanceCasePatch(BaseModel):
+
+class MaintenanceCasePatch(FinancialRequest):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     title: Optional[str] = None
@@ -789,7 +800,7 @@ class CalendarEventPatch(BaseModel):
     description: Optional[str] = None
 
 
-class ListingPatch(BaseModel):
+class ListingPatch(FinancialRequest):
     unit_id: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
@@ -816,7 +827,7 @@ class ListingPhotoPatch(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class LeadCreate(BaseModel):
+class LeadCreate(FinancialRequest):
     listing_id: Optional[str] = None
     unit_id: Optional[str] = None
     full_name: str
@@ -850,7 +861,7 @@ class Lead(LeadCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class LeadPatch(BaseModel):
+class LeadPatch(FinancialRequest):
     listing_id: Optional[str] = None
     unit_id: Optional[str] = None
     full_name: Optional[str] = None
@@ -964,7 +975,7 @@ class AllocationKeyPatch(BaseModel):
     measure_unit: Optional[str] = None
 
 
-class CostItemCreate(BaseModel):
+class CostItemCreate(FinancialRequest):
     billing_period_id: str
     description: str
     amount: float
@@ -989,7 +1000,7 @@ class CostItem(CostItemCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class CostItemPatch(BaseModel):
+class CostItemPatch(FinancialRequest):
     billing_period_id: Optional[str] = None
     description: Optional[str] = None
     amount: Optional[float] = None
@@ -1007,7 +1018,7 @@ class CostItemPatch(BaseModel):
 _STATEMENT_PARTIES = {"tenant", "vacancy"}
 
 
-class UtilityStatementCreate(BaseModel):
+class UtilityStatementCreate(FinancialRequest):
     billing_period_id: str
     contract_id: Optional[str] = None  # None for a vacancy row (the landlord's share)
     unit_id: str
@@ -1047,7 +1058,7 @@ class UtilityStatement(UtilityStatementCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class UtilityStatementPatch(BaseModel):
+class UtilityStatementPatch(FinancialRequest):
     billing_period_id: Optional[str] = None
     contract_id: Optional[str] = None
     unit_id: Optional[str] = None
@@ -1181,7 +1192,7 @@ class BillingPreflightResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class DepositCreate(BaseModel):
+class DepositCreate(FinancialRequest):
     contract_id: str
     amount: float
     status: str = "held"  # held, partially_returned, returned
@@ -1215,7 +1226,7 @@ class Deposit(DepositCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class DepositPatch(BaseModel):
+class DepositPatch(FinancialRequest):
     contract_id: Optional[str] = None
     amount: Optional[float] = None
     status: Optional[str] = None
@@ -1407,7 +1418,7 @@ _VALID_VAT_RATES = {0.0, 7.0, 19.0}
 
 class TaxRateCreate(BaseModel):
     name: str  # e.g. "Regelsteuersatz", "Ermäßigt", "Steuerfrei"
-    rate: float  # percentage, e.g. 19.0
+    rate: float = Field(allow_inf_nan=False)  # percentage, e.g. 19.0
     description: Optional[str] = None
     is_default: bool = False
     valid_from: Optional[date] = None
@@ -1427,7 +1438,7 @@ class TaxRate(TaxRateCreate):
 
 class TaxRatePatch(BaseModel):
     name: Optional[str] = None
-    rate: Optional[float] = None
+    rate: Optional[float] = Field(default=None, allow_inf_nan=False)
     description: Optional[str] = None
     is_default: Optional[bool] = None
     valid_from: Optional[date] = None
@@ -1439,7 +1450,7 @@ class TaxRatePatch(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class RentAdjustmentCreate(BaseModel):
+class RentAdjustmentCreate(FinancialRequest):
     contract_id: str
     adjustment_type: str  # "index" or "stepped"
     effective_date: date
@@ -1463,7 +1474,7 @@ class RentAdjustment(RentAdjustmentCreate):
 RENT_PERIOD_SOURCES = {"contract_start", "adjustment", "manual"}
 
 
-class ContractRentPeriodCreate(BaseModel):
+class ContractRentPeriodCreate(FinancialRequest):
     """The rent of a contract from a date on, until the next period starts."""
 
     contract_id: str
@@ -1509,7 +1520,7 @@ class ContractOccupancy(ContractOccupancyCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class PaymentAllocationCreate(BaseModel):
+class PaymentAllocationCreate(FinancialRequest):
     """Part of a booking credited to one contract (a transfer may pay flat and garage at once)."""
 
     booking_id: str
@@ -1543,7 +1554,7 @@ class PaymentAllocation(PaymentAllocationCreate):
         return v  # stored rows stay readable as they are
 
 
-class RentAdjustmentPatch(BaseModel):
+class RentAdjustmentPatch(FinancialRequest):
     contract_id: Optional[str] = None
     adjustment_type: Optional[str] = None
     effective_date: Optional[date] = None
@@ -1565,7 +1576,7 @@ class MeterReadingCreate(BaseModel):
     handover_id: str
     meter_type: str  # electricity, gas, water, heating
     meter_number: Optional[str] = None
-    reading_value: float
+    reading_value: float = Field(allow_inf_nan=False)
     unit: str = "kWh"  # kWh, m³, etc.
     photo_url: Optional[str] = None
     notes: Optional[str] = None
@@ -1585,7 +1596,7 @@ class MeterReadingPatch(BaseModel):
     handover_id: Optional[str] = None
     meter_type: Optional[str] = None
     meter_number: Optional[str] = None
-    reading_value: Optional[float] = None
+    reading_value: Optional[float] = Field(default=None, allow_inf_nan=False)
     unit: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
@@ -1721,7 +1732,7 @@ class ChangeHistoryEntry(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class BudgetCreate(BaseModel):
+class BudgetCreate(FinancialRequest):
     property_id: str
     year: int
     category: str  # maintenance, operating_costs, renovation, reserve, other
@@ -1760,7 +1771,7 @@ class Budget(BudgetCreate):
         return (self.actual_amount / self.planned_amount) * 100
 
 
-class BudgetPatch(BaseModel):
+class BudgetPatch(FinancialRequest):
     property_id: Optional[str] = None
     year: Optional[int] = None
     category: Optional[str] = None
@@ -1931,7 +1942,7 @@ class MeterPatch(BaseModel):
 class StandaloneMeterReadingCreate(BaseModel):
     meter_id: str
     reading_date: date
-    value: float
+    value: float = Field(allow_inf_nan=False)
     recorded_by: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
@@ -1948,7 +1959,7 @@ class StandaloneMeterReading(StandaloneMeterReadingCreate):
 # ---------------------------------------------------------------------------
 
 
-class InsuranceCreate(BaseModel):
+class InsuranceCreate(FinancialRequest):
     property_id: str
     unit_id: Optional[str] = None
     insurance_type: str  # building, liability, contents, legal
@@ -1974,7 +1985,7 @@ class Insurance(InsuranceCreate):
 class StandaloneMeterReadingPatch(BaseModel):
     meter_id: Optional[str] = None
     reading_date: Optional[date] = None
-    value: Optional[float] = None
+    value: Optional[float] = Field(default=None, allow_inf_nan=False)
     recorded_by: Optional[str] = None
     photo_url: Optional[str] = None
     notes: Optional[str] = None
@@ -2033,7 +2044,7 @@ class MessagePatch(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class RentChargeCreate(BaseModel):
+class RentChargeCreate(FinancialRequest):
     contract_id: str
     month: str  # YYYY-MM
     cold_rent: float = 0.0
@@ -2050,7 +2061,7 @@ class RentCharge(RentChargeCreate):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RentChargePatch(BaseModel):
+class RentChargePatch(FinancialRequest):
     contract_id: Optional[str] = None
     month: Optional[str] = None
     cold_rent: Optional[float] = None
@@ -2061,7 +2072,7 @@ class RentChargePatch(BaseModel):
     status: Optional[str] = None
 
 
-class InsurancePatch(BaseModel):
+class InsurancePatch(FinancialRequest):
     property_id: Optional[str] = None
     unit_id: Optional[str] = None
     insurance_type: Optional[str] = None
