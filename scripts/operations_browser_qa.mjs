@@ -100,7 +100,8 @@ try {
   });
   await step('End a recurring series in the UI and verify that manual generation creates no children', async () => {
     await page.goto(`${base.origin}/tasks?focus_id=${series.id}`);
-    await row(series.title).getByRole('button', { name: 'Serie beenden', exact: true }).click();
+    await row(series.title).getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+    await page.getByRole('menu', { name: 'Weitere Aktionen', exact: true }).getByRole('menuitem', { name: 'Serie beenden', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Bestätigen', exact: true }).click();
     await expect.poll(async () => (await call('GET', `/tasks/${series.id}`)).status).toBe('cancelled');
     const generated = await call('POST', '/tasks/generate-recurring/report?as_of=2026-03-01', {});
