@@ -29,6 +29,8 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       # The public HTTPS origin(s) of this instance, e.g. https://verwaltung.example.de
       - CORS_ORIGINS=${CORS_ORIGINS:-}
+      # Additional exact HTTP authorities; preserve CSV or JSON list input.
+      - TRUSTED_HOSTS=${TRUSTED_HOSTS:-}
       # Schema changes: the entrypoint runs `python -m backend.upgrade` (full backup first).
       # Full backups: daily at 01:30 Europe/Berlin into /app/data/backups/full; optional second target
       # (mount it, e.g. a network share) and passphrase for the archived keys.
