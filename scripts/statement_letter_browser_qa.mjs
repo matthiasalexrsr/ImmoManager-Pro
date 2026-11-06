@@ -58,9 +58,11 @@ try {
   await context.addInitScript(({ token, id }) => { localStorage.setItem('access_token', token); localStorage.setItem('locale', 'de-DE'); localStorage.setItem(`immo.tutorial.${id}`, JSON.stringify({ offered: true })); }, { token, id: profile.id });
   page = await context.newPage(); page.on('pageerror', error => report.page_errors.push(String(error)));
   page.on('console', message => { if (message.type() === 'error' && /(?:Content.Security.Policy|ErrorBoundary caught:)/i.test(message.text())) report.page_errors.push(`UI console: ${message.text()}`); });
-  await step('Open letter from actual Statements list and review real multi-page Unicode PDF', async () => {
+  await step('Open exact statement overview and review real multi-page Unicode PDF', async () => {
     await page.goto(`${base.origin}/statements?filter=statements&focus_id=${statement.id}`);
-    await page.getByRole('button', { name: 'Anschreiben & PDF', exact: true }).click();
+    const overview = page.getByRole('dialog', { name: 'Aufschlüsselung der Abrechnung', exact: true });
+    await expect(overview).toBeVisible();
+    await overview.getByRole('button', { name: 'Anschreiben & PDF', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Abrechnungsbrief', exact: true }); await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Absender *', { exact: true })).toBeEnabled();
     await dialog.getByLabel('Absender *', { exact: true }).fill('Zoë Łukasz Verwaltung');
