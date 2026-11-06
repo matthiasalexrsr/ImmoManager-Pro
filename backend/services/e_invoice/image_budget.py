@@ -6,7 +6,10 @@ existing job-object ceiling instead.
 """
 from __future__ import annotations
 
+import math
 import os
+import subprocess
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -15,6 +18,7 @@ import psutil
 READY_FILE = "image-budget-ready"
 READY_CONTENT = b"image-rss-ready\n"
 MEMORY_BYTES = 768 * 1024 * 1024
+EXIT_CONFIRM_SECONDS = .05
 
 
 class ImageBudgetError(RuntimeError):
@@ -24,11 +28,12 @@ class ImageBudgetError(RuntimeError):
 class ImageBudget:
     """Retain identities only for the child/group created by this request."""
 
-    def __init__(self, process, *, max_processes: int = 2):
+    def __init__(self, process, *, max_processes: int = 2, deadline: float | None = None):
         if os.name == "nt" or max_processes < 1 or max_processes > 8:
             raise ImageBudgetError("Invalid image process boundary")
         self.process = process
         self.max_processes = max_processes
+        self.deadline = deadline
         self.pid = process.pid
         self.known: dict[int, tuple[psutil.Process, float]] = {}
         try:
@@ -77,7 +82,7 @@ class ImageBudget:
             except (psutil.NoSuchProcess, ProcessLookupError) as error:
                 # Exit can also race the individual root identity/group/children
                 # calls. Only our Popen's confirmed completion resolves it.
-                if self.process.poll() is None:
+                if self.process.poll() is None and not self._confirm_missing_root_exit():
                     raise ImageBudgetError("Running image process cannot be measured") from error
                 self.known.pop(self.pid, None)
             total = 0
@@ -110,6 +115,23 @@ class ImageBudget:
         except (psutil.Error, OSError) as error:
             raise ImageBudgetError("Image process measurement failed") from error
 
+    def _confirm_missing_root_exit(self) -> bool:
+        # A disappearing root can be unqueryable just before waitpid reports
+        # its exit. Never accept an unmeasured live root or extend its parent's
+        # deadline. Callers without a deadline retain immediate fail-closed.
+        if self.deadline is None:
+            return False
+        remaining = self.deadline - time.monotonic()
+        if not math.isfinite(remaining) or remaining <= 0:
+            return False
+        try:
+            code = self.process.wait(timeout=min(EXIT_CONFIRM_SECONDS, remaining))
+        except (subprocess.TimeoutExpired, psutil.Error, OSError) as error:
+            raise ImageBudgetError("Own image process exit could not be confirmed") from error
+        confirmed = self.process.poll()
+        return (type(code) is int and type(confirmed) is int and code == confirmed
+                and time.monotonic() <= self.deadline)
+
     def release(self, profile: Path) -> None:
         # The POSIX wrapper cannot exec the parser until this initial successful
         # measurement is followed by the fresh private-directory handshake.
@@ -135,8 +157,8 @@ class ImageBudget:
 
 
 @contextmanager
-def owned_image_budget(process, profile: Path, *, max_processes: int):
-    budget = ImageBudget(process, max_processes=max_processes)
+def owned_image_budget(process, profile: Path, *, max_processes: int, deadline: float | None = None):
+    budget = ImageBudget(process, max_processes=max_processes, deadline=deadline)
     try:
         budget.release(profile)
         yield budget

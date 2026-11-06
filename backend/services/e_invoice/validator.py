@@ -253,7 +253,7 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
             yield None
             return
         try:
-            with owned_image_budget(process, profile, max_processes=max_processes) as budget:
+            with owned_image_budget(process, profile, max_processes=max_processes, deadline=deadline) as budget:
                 yield budget
         except ImageBudgetError:
             raise ValidatorUnavailable('Die lokale Dokumentauswertung überschreitet ihr Speicher-/Prozessbudget oder kann nicht sicher gemessen werden.') from None
