@@ -1,0 +1,129 @@
+# Generated for one reviewed audit commit. Upload this workflow LAST.
+name: Import reviewed navigation and finance audit
+
+on:
+  push:
+    branches: ['transfer/navigation-audit-2026-11-06']
+    paths: ['.github/workflows/import-navigation-audit.yml']
+
+permissions: {}
+concurrency:
+  group: import-navigation-audit-2026-11-06
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'matthiasalexrsr/ImmoManager-Pro' &&
+      github.ref == 'refs/heads/transfer/navigation-audit-2026-11-06' &&
+      github.actor == 'matthiasalexrsr' &&
+      github.triggering_actor == 'matthiasalexrsr' &&
+      github.run_attempt == 1 && github.event.deleted == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      BASE_COMMIT: 'ca5750951438edf2c53b24203e7e4e1f51dc3a45'
+      EXPECTED_COMMIT: '5f6796f59aeca2328c258780711dc4a3526b3520'
+      EXPECTED_TREE: '5904d9e8fdead844b5b667b708af8cabe560264f'
+      EXPECTED_CI_BLOB: '33d4754a339883b1d86d69bf593cef516785bb63'
+      EXPECTED_BUNDLE_SHA256: 'da0d10bc6fa0e1257552896b6c34d4770916059fba41dbf9c022395dce70235e'
+      EXPECTED_BUNDLE_BYTES: '119308'
+      TARGET_REF: 'refs/heads/codex/navigation-messaging-audit-2026-11-06'
+      REMOTE_URL: 'https://github.com/matthiasalexrsr/ImmoManager-Pro.git'
+      GIT_NO_REPLACE_OBJECTS: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Read the owner-created transfer commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # official v4, verified separately
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Verify bundle and import objects without checking out product code
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git cat-file -t "$BASE_COMMIT")" == commit ]]
+          git merge-base --is-ancestor "$BASE_COMMIT" HEAD
+          [[ "$(git rev-parse HEAD:.github/workflows/ci.yml)" == "$EXPECTED_CI_BLOB" ]] || {
+            echo '::error::The owner must upload the exact reviewed ci.yml on the transfer branch first.'; exit 1;
+          }
+          [[ -f navigation-audit.bundle && ! -L navigation-audit.bundle ]]
+          [[ "$(stat -c %s navigation-audit.bundle)" == "$EXPECTED_BUNDLE_BYTES" ]]
+          printf '%s  navigation-audit.bundle\n' "$EXPECTED_BUNDLE_SHA256" | sha256sum --check --strict -
+          git bundle verify navigation-audit.bundle
+          [[ "$(git bundle list-heads navigation-audit.bundle)" == "$EXPECTED_COMMIT $TARGET_REF" ]]
+          git -c core.hooksPath=/dev/null fetch --no-tags ./navigation-audit.bundle "$TARGET_REF:refs/import/navigation-audit"
+          [[ "$(git rev-parse refs/import/navigation-audit^{commit})" == "$EXPECTED_COMMIT" ]]
+          [[ "$(git rev-parse refs/import/navigation-audit^{tree})" == "$EXPECTED_TREE" ]]
+          git merge-base --is-ancestor "$BASE_COMMIT" "$EXPECTED_COMMIT"
+          [[ "$(git rev-list --parents -n 1 "$EXPECTED_COMMIT")" == "$EXPECTED_COMMIT $BASE_COMMIT" ]]
+          [[ "$(git rev-parse "$EXPECTED_COMMIT:.github/workflows/ci.yml")" == "$EXPECTED_CI_BLOB" ]]
+          workflow_delta=$(git -c core.hooksPath=/dev/null diff --no-ext-diff --name-only "$BASE_COMMIT" "$EXPECTED_COMMIT" -- .github/workflows)
+          [[ -z "$workflow_delta" ]] || {
+            echo '::error::Unexpected workflow changes; this importer does not authorize them.'; exit 1;
+          }
+          [[ -z "$(git ls-tree --name-only "$EXPECTED_COMMIT" -- navigation-audit.bundle .github/workflows/import-navigation-audit.yml)" ]]
+          printf 'Verified commit %s; tree %s. No product code was checked out or executed.\n' "$EXPECTED_COMMIT" "$EXPECTED_TREE"
+
+      - name: Create only the reviewed target ref, or confirm an identical existing ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse refs/import/navigation-audit^{commit})" == "$EXPECTED_COMMIT" ]]
+          [[ "$(git rev-parse refs/import/navigation-audit^{tree})" == "$EXPECTED_TREE" ]]
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 --wrap=0)
+          printf '::add-mask::%s\n' "$auth"
+          auth_header="AUTHORIZATION: basic $auth"
+          printf '::add-mask::%s\n' "$auth_header"
+          unset GH_TOKEN auth
+          # Configuration exists only in these Git child processes, never in a URL or a config file.
+          git_auth() {
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="$auth_header" \
+              git -c credential.helper= "$@"
+          }
+          set +e
+          remote_line=$(git_auth ls-remote --exit-code --refs "$REMOTE_URL" "$TARGET_REF")
+          remote_status=$?
+          set -e
+          if [[ "$remote_status" == 0 ]]; then
+            [[ "$remote_line" == "$EXPECTED_COMMIT"$'\t'"$TARGET_REF" ]] || {
+              echo '::error::Target ref already exists at an unexpected commit; nothing will be updated.'; exit 1;
+            }
+            echo 'Target already contains the exact reviewed commit. No push is necessary.'
+            exit 0
+          fi
+          [[ "$remote_status" == 2 && -z "$remote_line" ]] || {
+            echo '::error::Remote lookup failed; an authentication/network error is not an absent ref.'; exit 1;
+          }
+          hooks=$(mktemp -d "$RUNNER_TEMP/navigation-import-hooks.XXXXXXXX")
+          # This own, inline guard checks the advertisement used by the actual push.
+          # It rejects a racing existing ref even if a normal fast-forward would be possible.
+          cat > "$hooks/pre-push" <<'HOOK'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          updates=0
+          while read -r local_ref local_oid remote_ref remote_oid; do
+            updates=$((updates + 1))
+            [[ "$updates" == 1 && "$local_oid" == "$EXPECTED_COMMIT" && "$remote_ref" == "$TARGET_REF" \
+               && "$remote_oid" == 0000000000000000000000000000000000000000 ]] || {
+              echo 'Rejected: only creation of the exact reviewed target is permitted.' >&2; exit 1;
+            }
+          done
+          # Zero updates is safe: another actor may already have pushed the identical commit.
+          HOOK
+          chmod 700 "$hooks/pre-push"
+          git_auth -c core.hooksPath="$hooks" -c push.followTags=false -c push.recurseSubmodules=no \
+            push --porcelain --no-follow-tags --recurse-submodules=no "$REMOTE_URL" "$EXPECTED_COMMIT:$TARGET_REF"
+          [[ "$(git_auth ls-remote --exit-code --refs "$REMOTE_URL" "$TARGET_REF")" == "$EXPECTED_COMMIT"$'\t'"$TARGET_REF" ]]
+          unset auth_header
+          printf 'Confirmed remote %s at %s. No force update or tag was used.\n' "$TARGET_REF" "$EXPECTED_COMMIT"
