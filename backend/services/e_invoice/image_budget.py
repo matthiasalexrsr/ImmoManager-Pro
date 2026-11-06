@@ -96,6 +96,13 @@ class ImageBudget:
                     count += 1
                 except (psutil.NoSuchProcess, ProcessLookupError):
                     self.known.pop(pid, None)
+                except (psutil.AccessDenied, PermissionError):
+                    # A root can finish after the identity probe but before
+                    # its RSS query. Only our Popen's confirmed completion
+                    # resolves that race; live roots/descendants stay closed.
+                    if pid != self.pid or self.process.poll() is None:
+                        raise
+                    self.known.pop(pid, None)
             if self.process.poll() is None and self.pid not in self.known:
                 raise ImageBudgetError("Running image process lost its measurement")
             if total > MEMORY_BYTES or count > self.max_processes:

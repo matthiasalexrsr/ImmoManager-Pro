@@ -19,6 +19,8 @@ from pathlib import Path
 
 from ...config import settings
 from ..assistant_provider_process import CliProcess
+from ..document_worker_diagnostics import capture_exit_before_cleanup, observed_run
+from ..document_worker_diagnostics import stage as worker_stage
 from ..filesystem_paths import filesystem_path
 from ..safe_xml import fromstring
 from .asset_bundle import safe_name
@@ -218,9 +220,11 @@ def _policy(root: Path, work: Path) -> str:
     ])
 
 
+@observed_run
 def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None = None,
          timeout_seconds: int | None = None, max_processes: int = 2,
          file_limit_bytes: int | None = None, resource_mode: str | None = None) -> tuple[int, str, str]:
+    worker_stage("process_setup")
     seconds = settings.e_invoice_timeout_seconds if timeout_seconds is None else timeout_seconds
     if seconds < 5 or seconds > 180:
         raise ValidatorUnavailable('Ungültiges Zeitbudget für den lokalen Prüfprozess.')
@@ -258,18 +262,23 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
     closed: set[str] = set()
     deadline = time.monotonic() + seconds
     options = {'max_processes': max_processes} if max_processes != 2 else {}
-    with CliProcess(argv, profile, env=env, memory_limit_bytes=768 * 1024 * 1024, **options) as process:
+    worker_stage("process_start")
+    with CliProcess(argv, profile, env=env, memory_limit_bytes=768 * 1024 * 1024, **options) as process, capture_exit_before_cleanup(process.process):
         # The gate prevents native parsing before its first RSS measurement.
         # Java/extract and non-Darwin text retain their existing AS limits.
+        worker_stage("resource_start")
         with resources(process.process) as budget:
             # KoSIT checks stdin.available(); a closed pipe works on Windows where
             # DEVNULL/console handles can raise 'Invalid function'.
+            worker_stage("stdin_close")
             assert process.process.stdin is not None
             process.process.stdin.close()
             while len(closed) < 2 or (sampled_mode and process.process.poll() is None):
+                worker_stage("time_budget")
                 if time.monotonic() > deadline:
                     raise ValidatorUnavailable("Die lokale Prüfung hat ihr Zeitlimit überschritten.")
                 if file_limit_bytes is not None:
+                    worker_stage("file_budget")
                     total = 0
                     for path in profile.rglob('*'):
                         try:
@@ -280,7 +289,9 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
                     if total > file_limit_bytes:
                         raise ValidatorUnavailable('Der lokale Prüfprozess überschreitet das Arbeitsdateibudget.')
                 if budget is not None:
+                    worker_stage("rss_probe")
                     budget.check()
+                worker_stage("stream_read")
                 item = process.next_line(.05 if sampled_mode else .1)
                 if item is None:
                     continue
@@ -288,13 +299,17 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
                 if channel.endswith("_closed"):
                     closed.add(channel)
                     continue
+                worker_stage("report_budget")
                 size += len(line.encode("utf-8"))
                 if size > MAX_REPORT:
                     raise ValidatorUnavailable("Der Prüfbericht überschreitet die zulässige Größe.")
                 outputs[channel].append(line)
             if budget is not None:
+                worker_stage("resource_final")
                 budget.check()
+            worker_stage("process_wait")
             code = process.process.wait(timeout=5)
+            worker_stage("process_cleanup")
     return code, "".join(outputs["stdout"]), "".join(outputs["stderr"])
 
 
