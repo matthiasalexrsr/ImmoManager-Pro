@@ -5,3 +5,7 @@ modules:
     http:
       preferred_ip_protocol: ip4
       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      # Connect over the private service network, using the same explicitly
+      # permitted HTTP virtual host as the container's own health check.
+      headers:
+        Host: localhost
