@@ -67,7 +67,10 @@ try {
     await expect(page.getByText('Hinweis persönlich gelesen und archiviert.', { exact: true })).toBeVisible();
     await expect.poll(async () => (await call('GET', '/notifications/inbox?status=archived')).items.some(n => n.id === notice.id)).toBe(true);
     assert.equal((await call('GET', '/tasks/' + task.id)).status, 'open');
-    assert.equal((await call('GET', '/notifications/' + notice.id)).status, 'unread');
+    const personalNotice = await call('GET', '/notifications/' + notice.id);
+    assert.equal(personalNotice.status, 'archived');
+    assert.equal(personalNotice.legacy_status, 'unread');
+    assert.equal(personalNotice.legacy_read_at, null);
     await page.screenshot({ path: path.join(output, 'notification-task-1440.png') });
   });
   await step('Missing source stays unread; archive can reopen a receipt', async () => {
