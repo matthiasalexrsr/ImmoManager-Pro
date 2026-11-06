@@ -1,0 +1,324 @@
+name: Diagnose reviewed AI image worker
+
+on:
+  push:
+    branches: ['transfer/ai-image-worker-diagnostics-2026-11-06']
+    paths: ['.github/workflows/diagnose-ai-image-worker.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-image-worker-diagnostics-2026-11-06
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'matthiasalexrsr/ImmoManager-Pro' &&
+      github.ref == 'refs/heads/transfer/ai-image-worker-diagnostics-2026-11-06' &&
+      github.actor == 'matthiasalexrsr' &&
+      github.triggering_actor == 'matthiasalexrsr' &&
+      github.run_attempt == 1 && github.event.deleted == false
+    name: ${{ matrix.id }} unchanged-budget diagnosis
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            runner: ubuntu-22.04
+            python: '3.11.18'
+            arch: x64
+          - id: linux-arm64
+            runner: ubuntu-24.04-arm
+            python: '3.12.16'
+            arch: arm64
+          - id: macos-arm64
+            runner: macos-15
+            python: '3.11.9'
+            arch: arm64
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Read only the exact reviewed source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 public tag verified
+        with:
+          ref: '49a82e4d62281a9cee7800c45fff4c6c467fe5c9'
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Select the same native Python patch version as the failed job
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5 public tag verified
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.arch }}
+          cache: pip
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      - name: Install native Linux libraries required by the pinned Qt runtime
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          if [[ '${{ matrix.runner }}' == 'ubuntu-24.04-arm' ]]; then
+            system_libs=(libasound2t64 libglib2.0-0t64 libcups2t64 libminizip1t64)
+          else
+            system_libs=(libasound2 libglib2.0-0 libcups2)
+          fi
+          sudo apt-get install --yes "${system_libs[@]}" libnss3 libnspr4 libopus0 libfontconfig1 fonts-dejavu-core libdbus-1-3 \
+            libegl1 libgl1 libglx-mesa0 libopengl0 libgbm1 libxkbcommon0 libxkbcommon-x11-0 libx11-xcb1 \
+            libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxss1 libxi6 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0
+      - name: Install the exact reviewed runtime and Qt dependency pins
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == '49a82e4d62281a9cee7800c45fff4c6c467fe5c9' ]]
+          python -m pip install -r requirements-pip.txt
+          python -m pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+          python -m pip check
+      - name: Capture only synthetic worker outputs with unchanged limits
+        env:
+          DIAGNOSTIC_OUTPUT: ${{ runner.temp }}/ai-image-worker-diag-${{ matrix.id }}
+        run: |
+          python - <<'PY'
+          """Synthetic image-worker diagnosis at one exact commit; budgets remain unchanged."""
+          from __future__ import annotations
+          
+          import argparse
+          import base64
+          import hashlib
+          import importlib.metadata
+          import json
+          import os
+          import platform
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          from io import BytesIO
+          from pathlib import Path
+          
+          EXPECTED_COMMIT = "49a82e4d62281a9cee7800c45fff4c6c467fe5c9"
+          CAPTURE_BYTES = 65536
+          
+          
+          def main():
+              parser = argparse.ArgumentParser(description=__doc__)
+              parser.add_argument("--output", type=Path, default=os.environ.get("DIAGNOSTIC_OUTPUT"))
+              options = parser.parse_args()
+              repo = Path.cwd().resolve()
+              head = subprocess.check_output(["git", "--no-optional-locks", "rev-parse", "HEAD"], text=True).strip()
+              if head != EXPECTED_COMMIT:
+                  raise RuntimeError("Diagnosis requires the exact reviewed source commit")
+              if options.output is None:
+                  parser.error("An explicit diagnostic output outside the product checkout is required")
+              output = options.output.resolve()
+              if output.is_relative_to(repo):
+                  raise RuntimeError("Diagnostic output must remain outside the product checkout")
+              output.mkdir(parents=True, exist_ok=False)
+              own_data = output / "isolated-parent-data"
+              os.environ.update(DATA_DIR=str(own_data), DATABASE_URL="sqlite:///:memory:",
+                  SECRET_KEY_FILE=str(own_data / "keyring.json"), INTEGRATION_STATE_FILE=str(own_data / "integrations.json"),
+                  JOB_SCHEDULER_ENABLED="false", BACKUP_SCHEDULE_ENABLED="false", ENVIRONMENT="development")
+              sys.path.insert(0, str(repo))
+              from PIL import Image
+              from reportlab.pdfgen.canvas import Canvas
+              from backend.services import ai_document_images as images
+              from backend.services.e_invoice import validator
+          
+              versions = {}
+              for package in ("PySide6", "PySide6_Addons", "PySide6_Essentials", "shiboken6", "pillow", "fastapi", "pydantic", "reportlab"):
+                  try:
+                      versions[package] = importlib.metadata.version(package)
+                  except importlib.metadata.PackageNotFoundError:
+                      versions[package] = None
+              record = {"schema": "immomanager-ai-image-worker-diagnostics/1", "source_commit": head,
+                  "platform": sys.platform, "machine": platform.machine(), "python": sys.version,
+                  "packages": versions, "status": "running", "budget_changes": False,
+                  "requested_budgets": {"timeout_seconds": images.TIMEOUT_SECONDS, "windows_memory_bytes": 768 * 1024 * 1024,
+                      "posix_mode": "text", "posix_address_space_bytes": 768 * 1024 * 1024,
+                      "file_bytes": images.WORK_BYTES, "max_processes_argument": 2,
+                      "note": "Existing POSIX wrapper has no RLIMIT_NPROC; max_processes is not claimed as a POSIX thread limit."},
+                  "cases": [], "process_calls": [], "process_streams": [], "provider_calls": 0}
+              original_run = validator._run
+              original_factory = validator.CliProcess
+              phase = ["initial"]
+          
+              def bounded(value):
+                  encoded = value.encode("utf-8", "replace")
+                  return {"text": encoded[:CAPTURE_BYTES].decode("utf-8", "replace"),
+                          "bytes_total": len(encoded), "truncated": len(encoded) > CAPTURE_BYTES}
+          
+              def traced_factory(argv, profile, **kwargs):
+                  if not Path(profile).name.startswith("immo-e-invoice-text-"):
+                      raise RuntimeError("Diagnosis may observe only its owned synthetic text workers")
+                  entry = {"phase": phase[0], "actual_argv": list(argv),
+                      "memory_limit_argument": kwargs.get("memory_limit_bytes"),
+                      "stdout": {"text": "", "bytes_total": 0, "truncated": False},
+                      "stderr": {"text": "", "bytes_total": 0, "truncated": False}}
+                  record["process_streams"].append(entry)
+          
+                  def persist():
+                      (output / "diagnostics.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+          
+                  try:
+                      child = original_factory(argv, profile, **kwargs)
+                  except BaseException as error:
+                      entry.update(start_exception_type=type(error).__name__, start_exception=str(error)[:2000])
+                      persist()
+                      raise
+                  entry["pid"] = child.process.pid
+          
+                  class OwnedProcessSpy:
+                      def __getattr__(self, name):
+                          return getattr(child, name)
+          
+                      def __enter__(self):
+                          child.__enter__()
+                          return self
+          
+                      def next_line(self, timeout=.2):
+                          value = child.next_line(timeout)
+                          if value is not None and value[0] in ("stdout", "stderr"):
+                              channel, line = value
+                              captured = entry[channel]
+                              raw = line.encode("utf-8", "replace")
+                              used = len(captured["text"].encode("utf-8"))
+                              captured["text"] += raw[:max(0, CAPTURE_BYTES - used)].decode("utf-8", "replace")
+                              captured["bytes_total"] += len(raw)
+                              captured["truncated"] = captured["bytes_total"] > CAPTURE_BYTES
+                              persist()
+                          return value
+          
+                      def __exit__(self, *args):
+                          try:
+                              return child.__exit__(*args)
+                          finally:
+                              entry["exit_code_after_owned_cleanup"] = child.process.poll()
+                              persist()
+          
+                  persist()
+                  return OwnedProcessSpy()
+          
+              def traced_run(argv, profile, **kwargs):
+                  entry = {"phase": phase[0], "argv": list(argv), "profile": str(profile),
+                      "timeout_seconds": kwargs.get("timeout_seconds"),
+                      "max_processes": kwargs.get("max_processes"), "file_limit_bytes": kwargs.get("file_limit_bytes"),
+                      "resource_mode": kwargs.get("resource_mode")}
+                  environment = kwargs.get("environment", {})
+                  entry["environment_contract"] = {"path_is_empty": environment.get("PATH") == "",
+                      "qt_overrides_absent": not any(key.startswith("QT_") for key in environment),
+                      "provider_secret_names_absent": not any(key in environment for key in
+                          ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN"))}
+                  start = time.monotonic()
+                  try:
+                      code, stdout, stderr = original_run(argv, profile, **kwargs)
+                      entry.update(exit_code=code, stdout=bounded(stdout), stderr=bounded(stderr))
+                      return code, stdout, stderr
+                  except BaseException as error:
+                      entry.update(exception_type=type(error).__name__, exception=str(error)[:2000])
+                      raise
+                  finally:
+                      entry["seconds"] = round(time.monotonic() - start, 3)
+                      record["process_calls"].append(entry)
+                      (output / "diagnostics.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+          
+              picture = BytesIO()
+              Image.new("RGB", (8, 4), (20, 110, 100)).save(picture, "PNG")
+              document = BytesIO()
+              canvas = Canvas(document, pagesize=(144, 72), invariant=1)
+              canvas.drawString(8, 36, "LOCAL AI WORKER")
+              canvas.showPage()
+              canvas.save()
+              validator.CliProcess = traced_factory
+              validator._run = traced_run
+              try:
+                  for name, mime, content in (("probe.png", "image/png", picture.getvalue()),
+                                              ("probe.pdf", "application/pdf", document.getvalue())):
+                      phase[0] = mime
+                      (output / name).write_bytes(content)
+                      item = {"name": name, "media_type": mime, "source_bytes": len(content),
+                              "source_sha256": hashlib.sha256(content).hexdigest()}
+                      try:
+                          result = images.render_page_images(content, mime, name, 1)
+                          item.update(status="rendered", pages_total=result["pages_total"], pages_sent=result["pages_sent"],
+                              omissions=result["omissions"])
+                          for index, image in enumerate(result["images"]):
+                              raw = base64.b64decode(image["data_base64"], validate=True)
+                              (output / (name + "." + str(index) + ".rendered.png")).write_bytes(raw)
+                      except BaseException as error:
+                          item.update(status="failed", exception_type=type(error).__name__,
+                              http_status=getattr(error, "status_code", None),
+                              error=getattr(error, "detail", str(error)))
+                      record["cases"].append(item)
+          
+                  if os.name != "nt":
+                      # Same unmodified wrapper and limits; stage markers reveal whether
+                      # exec, plain Python, Qt import or QGui initialization fails.
+                      phase[0] = "posix-phase-probe"
+                      probe = """
+          import importlib,json,os,resource,sys
+          def mark(stage):
+              value={"stage":stage,"rlimit_as":resource.getrlimit(resource.RLIMIT_AS),
+                     "rlimit_cpu":resource.getrlimit(resource.RLIMIT_CPU),
+                     "rlimit_nofile":resource.getrlimit(resource.RLIMIT_NOFILE),
+                     "maxrss":resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}
+              if sys.platform.startswith("linux"):
+                  with open("/proc/self/status") as stream:
+                      value["memory_status"]=[line.strip() for line in stream if line.startswith(("Vm","Threads:"))]
+              print(json.dumps(value),flush=True)
+          mark("python-entered")
+          for name in ("fastapi","PIL.Image","PySide6.QtCore","PySide6.QtGui","PySide6.QtPdf"):
+              mark("before:"+name)
+              importlib.import_module(name)
+              mark("after:"+name)
+          from PySide6.QtGui import QGuiApplication
+          mark("before:QGuiApplication")
+          app=QGuiApplication(["synthetic-image-diagnostic","-platform","offscreen"])
+          mark("after:QGuiApplication:"+app.platformName())
+          """
+                      with tempfile.TemporaryDirectory(prefix="immo-e-invoice-text-") as directory:
+                          folder = Path(directory)
+                          environment = {"DOCUMENT_TEXT_READ_DIR": str(folder), "PATH": "", "PYTHONPATH": str(repo),
+                              "PYTHONUTF8": "1", "DATA_DIR": str(folder), "DATABASE_URL": "sqlite:///:memory:",
+                              "SECRET_KEY_FILE": str(folder / "keyring.json"),
+                              "INTEGRATION_STATE_FILE": str(folder / "integrations.json"),
+                              "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false", "ENVIRONMENT": "development"}
+                          try:
+                              traced_run([sys.executable, "-c", probe], folder, environment=environment,
+                                  timeout_seconds=images.TIMEOUT_SECONDS, max_processes=2,
+                                  file_limit_bytes=images.WORK_BYTES, resource_mode="text")
+                          except BaseException:
+                              pass
+              finally:
+                  validator._run = original_run
+                  validator.CliProcess = original_factory
+                  record["status"] = "diagnostic_complete"
+                  record["product_smoke_passed"] = all(item["status"] == "rendered" for item in record["cases"]) and len(record["cases"]) == 2
+                  (output / "diagnostics.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+              print(json.dumps({"status": record["status"], "source_commit": head,
+                  "product_smoke_passed": record["product_smoke_passed"],
+                  "cases": [{"media_type": item["media_type"], "status": item["status"]} for item in record["cases"]],
+                  "artifact": str(output)}))
+          
+          
+          if __name__ == "__main__":
+              main()
+          PY
+      - name: Preserve diagnosis even when the synthetic rendering fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 public tag verified
+        with:
+          name: AI-image-worker-diagnostics-${{ matrix.id }}
+          path: ${{ runner.temp }}/ai-image-worker-diag-${{ matrix.id }}/
+          if-no-files-found: error
+          retention-days: 7
+
