@@ -1,19 +1,26 @@
 import { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { useToast } from '../../components/Toast';
-import { useConfirm } from '../../components/ConfirmDialog';
 import { api } from '../../api';
+
+function releaseDownloadUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.port || url.username || url.password
+      || url.search || url.hash || !/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/tag\/[^/?#]+$/.test(url.pathname)) return null;
+    return url.href;
+  } catch { return null; }
+}
 
 export default function UpdateSection({ versionInfo }) {
   const { t } = useTranslation();
-  const toast = useToast();
-  const confirm = useConfirm();
 
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateApplying, setUpdateApplying] = useState(false);
-  const [updateResult, setUpdateResult] = useState(null);
   const [updateHistory, setUpdateHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+  const downloadUrl = releaseDownloadUrl(updateInfo?.release_url);
 
   const tr = (key, fallback) => {
     const result = t(key);
@@ -23,7 +30,6 @@ export default function UpdateSection({ versionInfo }) {
   const checkForUpdates = async () => {
     setUpdateChecking(true);
     setUpdateInfo(null);
-    setUpdateResult(null);
     try {
       const data = await api.get('/updates/check');
       setUpdateInfo(data);
@@ -34,32 +40,16 @@ export default function UpdateSection({ versionInfo }) {
     }
   };
 
-  const applyUpdate = async () => {
-    if (!await confirm(tr('settings.update.confirmApply', 'Update jetzt anwenden? Es wird automatisch ein Backup erstellt.'),
-      { action: 'apply' })) return;
-    setUpdateApplying(true);
-    setUpdateResult(null);
-    try {
-      const data = await api.post('/updates/apply', {
-        target_version: updateInfo?.latest_version || null,
-      });
-      setUpdateResult(data);
-      if (data.restart_required) {
-        api.post('/updates/restart').catch(() => { toast.error('Neustart konnte nicht ausgelöst werden'); });
-      }
-    } catch (err) {
-      setUpdateResult({ success: false, message: err.message || 'Update fehlgeschlagen' });
-    } finally {
-      setUpdateApplying(false);
-    }
-  };
-
   const loadUpdateHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
       const data = await api.get('/updates/history');
       setUpdateHistory(data.history || []);
-    } catch {
-      setUpdateHistory([]);
+    } catch (err) {
+      setHistoryError(err.message || 'Update-Verlauf konnte nicht geladen werden.');
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -79,7 +69,7 @@ export default function UpdateSection({ versionInfo }) {
             <button
               className="btn btn-sm btn-primary"
               onClick={checkForUpdates}
-              disabled={updateChecking || updateApplying}
+              disabled={updateChecking}
             >
               {updateChecking
                 ? tr('settings.update.checking', 'Prüfe...')
@@ -142,29 +132,17 @@ export default function UpdateSection({ versionInfo }) {
               </div>
             )}
 
-            {updateInfo.update_available && updateInfo.can_apply !== false && (
-              <div className="settings-row">
-                <label>{tr('settings.update.applyLabel', 'Update installieren')}</label>
-                <div className="settings-control">
-                  <button className="btn btn-sm btn-primary" onClick={applyUpdate} disabled={updateApplying}>
-                    {updateApplying
-                      ? tr('settings.update.applying', 'Wird installiert...')
-                      : tr('settings.update.applyNow', 'Jetzt installieren')}
-                  </button>
-                </div>
-              </div>
-            )}
-            {/* the Windows package is replaced by the new package: where to get it and what happens */}
-            {updateInfo.update_available && updateInfo.can_apply === false && (
+            {updateInfo.update_available && (
               <div className="settings-row" style={{ alignItems: 'flex-start' }}>
                 <label>{tr('settings.update.applyLabel', 'Update installieren')}</label>
                 <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
-                  {updateInfo.release_url && (
-                    <a className="btn btn-sm btn-primary" href={updateInfo.release_url} target="_blank" rel="noopener noreferrer">
+                  {downloadUrl && (
+                    <a className="btn btn-sm btn-primary" href={downloadUrl} target="_blank" rel="noopener noreferrer">
                       {tr('settings.update.download', 'Neue Version herunterladen')}
                     </a>
                   )}
-                  {updateInfo.download_hint && <span className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>{updateInfo.download_hint}</span>}
+                  {!downloadUrl && <span role="alert">Für diese Version wurde keine gültige Downloadadresse geliefert. Bitte prüfen Sie die offizielle Veröffentlichungsseite.</span>}
+                  <span className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>{updateInfo.download_hint || 'Beenden Sie ImmoManager Pro und installieren Sie das geprüfte neue Paket. Vor einer erforderlichen Datenbankumstellung erstellt die Anwendung ein Vollbackup. Bewahren Sie dieses für eine Wiederherstellung auf.'}</span>
                 </div>
               </div>
             )}
@@ -175,58 +153,7 @@ export default function UpdateSection({ versionInfo }) {
           <div className="settings-row">
             <label>{tr('settings.update.error', 'Fehler')}</label>
             <div className="settings-control">
-              <span style={{ color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>{updateInfo.error}</span>
-            </div>
-          </div>
-        )}
-
-        {updateResult && (
-          <div className="settings-row" style={{ alignItems: 'flex-start' }}>
-            <label>{tr('settings.update.result', 'Ergebnis')}</label>
-            <div className="settings-control" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-              <span style={{
-                fontWeight: 600,
-                color: updateResult.success ? 'var(--success, #22c55e)' : 'var(--danger)',
-                fontSize: 'var(--text-sm)',
-              }}>
-                {updateResult.message}
-              </span>
-              {updateResult.steps && updateResult.steps.length > 0 && (
-                <details style={{ marginTop: '0.5rem', fontSize: 'var(--text-xs)', width: '100%' }}>
-                  <summary style={{ cursor: 'pointer', color: 'var(--primary)' }}>
-                    {tr('settings.update.showSteps', 'Schritte anzeigen')} ({updateResult.steps.length})
-                  </summary>
-                  <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
-                    {updateResult.steps.map((step, i) => (
-                      <li key={i} style={{ marginBottom: '0.2rem' }}>{step}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {updateResult.restart_required && (
-                <span style={{
-                  marginTop: '0.5rem',
-                  padding: '0.4rem 0.8rem',
-                  background: 'var(--warning-bg, #fef3c7)',
-                  color: 'var(--warning-text, #92400e)',
-                  borderRadius: '4px',
-                  fontSize: 'var(--text-sm)',
-                }}>
-                  {tr('settings.update.restartRequired', 'Bitte starten Sie die Anwendung neu, um das Update zu aktivieren.')}
-                </span>
-              )}
-              {updateResult.rollback_performed && (
-                <span style={{
-                  marginTop: '0.5rem',
-                  padding: '0.4rem 0.8rem',
-                  background: 'var(--danger-bg, #fef2f2)',
-                  color: 'var(--danger, #dc2626)',
-                  borderRadius: '4px',
-                  fontSize: 'var(--text-sm)',
-                }}>
-                  {tr('settings.update.rolledBack', 'Automatischer Rollback wurde durchgeführt. Ihre Daten sind unverändert.')}
-                </span>
-              )}
+              <span role="alert" style={{ color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>{updateInfo.error}</span>
             </div>
           </div>
         )}
@@ -234,11 +161,12 @@ export default function UpdateSection({ versionInfo }) {
         <div className="settings-row">
           <label>{tr('settings.update.history', 'Update-Verlauf')}</label>
           <div className="settings-control">
-            <button className="btn btn-sm btn-secondary" onClick={loadUpdateHistory}>
-              {tr('settings.update.showHistory', 'Anzeigen')}
+            <button className="btn btn-sm btn-secondary" onClick={loadUpdateHistory} disabled={historyLoading}>
+              {historyLoading ? 'Wird geladen…' : tr('settings.update.showHistory', 'Anzeigen')}
             </button>
           </div>
         </div>
+        {historyError && <div role="alert">{historyError}</div>}
         {updateHistory && updateHistory.length > 0 && (
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
             <label></label>
@@ -252,7 +180,7 @@ export default function UpdateSection({ versionInfo }) {
             </div>
           </div>
         )}
-        {updateHistory && updateHistory.length === 0 && (
+        {!historyError && updateHistory && updateHistory.length === 0 && (
           <div className="settings-row">
             <label></label>
             <div className="settings-control">

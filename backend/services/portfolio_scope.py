@@ -108,6 +108,7 @@ INTERNAL = frozenset({
     "users",
     "user_preferences", "daily_user_state", "daily_commands", "daily_setting_rules", "daily_inbox_epoch", "daily_auth_sessions", "daily_number_reservations",
     "login_attempts",
+    "registration_quotas",  # private hashed authentication quotas, never portfolio records
     "revoked_tokens",
     "integration_action_attempts", "integration_run_cursors",
     "communication_items", "communication_evidence", "communication_blocks", "communication_attachments",

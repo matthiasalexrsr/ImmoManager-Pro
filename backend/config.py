@@ -148,6 +148,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:5173",
     ]
+    # Additional API/LAN hostnames, without scheme/port or wildcard. Loopback,
+    # configured CORS hosts and PORTAL_PUBLIC_URL are included automatically.
+    trusted_hosts: Annotated[list[str], NoDecode] = []
     cors_methods: Annotated[list[str], NoDecode] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     cors_headers: Annotated[list[str], NoDecode] = [
         "Authorization",
@@ -299,10 +302,21 @@ class Settings(BaseSettings):
     # --- Contract wizard runtime behavior ---
     contract_wizard_required: bool = False
 
-    @field_validator("cors_origins", "cors_methods", "cors_headers", "plugin_dirs", mode="before")
+    @field_validator("cors_origins", "cors_methods", "cors_headers", "trusted_hosts", "plugin_dirs", mode="before")
     @classmethod
     def parse_string_list_settings(cls, value: object) -> list[str]:
         return _parse_string_list(value)
+
+    @field_validator("trusted_hosts")
+    @classmethod
+    def validate_trusted_hosts(cls, value: list[str]) -> list[str]:
+        from .services.http_boundary import authority
+
+        for item in value:
+            _, port = authority(item)
+            if port is not None:
+                raise ValueError("TRUSTED_HOSTS expects hostnames without ports")
+        return value
 
     @property
     def is_production(self) -> bool:

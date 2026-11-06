@@ -88,6 +88,7 @@ it('keeps the return link across two-factor challenges and rejected codes', asyn
 
 it('keeps first-owner registration and the optional tutorial without replacing the requested source', async () => {
   getRegistrationStatus.mockResolvedValue({ open: true, initial_setup: true });
+  register.mockResolvedValue({ id: fixture.owner, role: 'eigentuemer', is_active: true, approval_required: false });
   localStorage.removeItem(`immo.tutorial.${fixture.owner}`);
   browserApp();
   await screen.findByText('auth.register.initialSetup');

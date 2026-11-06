@@ -129,8 +129,9 @@ def months(start: date, end: date):
 
 
 def build_world(seed: int = 2026, units: int = 120, years: int = 5, today: date | None = None) -> World:
+    from backend.domain.clock import local_today
     rnd = random.Random(seed)
-    today = today or date.today()
+    today = today or local_today()
     end = today.replace(day=1) - timedelta(days=1)          # last full month
     start = add_months(end.replace(day=1), -12 * years + 1)
     portfolios: list[Portfolio] = []

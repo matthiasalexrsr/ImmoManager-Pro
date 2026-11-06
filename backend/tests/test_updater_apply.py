@@ -1,5 +1,6 @@
 """Installing an update in a git checkout: pinned dependencies, no merge commits, nothing saved in between."""
 
+import sqlite3
 import subprocess
 import sys
 
@@ -7,14 +8,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import updater
-from backend.config import settings
+from backend.config import Environment, settings
+
+OLD, NEW = "a" * 40, "b" * 40
+
+
+def developer_apply():
+    return updater.apply_update("v2.1.0", developer_mode=True, expected_commit=NEW)
 
 
 class Checkout:
     """git, pip, npm and the upgrade answered locally; records what ran."""
 
     def __init__(self):
-        self.commits = ["old", "new"]
+        self.commits = [OLD, NEW]
         self.calls: list[list[str]] = []
         self.fail: set[str] = set()
 
@@ -27,6 +34,10 @@ class Checkout:
             return subprocess.CompletedProcess(args, 0, "main", "")
         if args[:2] == ("remote", "get-url"):
             return subprocess.CompletedProcess(args, 0, "https://github.com/o/r.git", "")
+        if args[:2] == ("rev-parse", "--verify"):
+            return subprocess.CompletedProcess(args, 0, NEW, "")
+        if args[0] == "show":
+            return subprocess.CompletedProcess(args, 0, '[project]\nversion = "2.1.0"\n', "")
         if args[0] == "merge" and not code:
             self.commits.pop(0)
         if args[:2] == ("reset", "--hard"):
@@ -52,21 +63,27 @@ def checkout(tmp_path, monkeypatch):
     monkeypatch.setattr(updater, "_UPDATE_DIR", tmp_path / ".updates")
     monkeypatch.setattr(updater, "_LOCK_FILE", tmp_path / ".updates" / "update.lock")
     monkeypatch.setattr(updater, "_HISTORY_FILE", tmp_path / ".updates" / "history.json")
+    monkeypatch.setattr(updater, "_BACKUP_DIR", tmp_path / "backups")
     monkeypatch.setattr(updater, "_run_git", fake.git)
     monkeypatch.setattr(updater.subprocess, "run", fake.run)
     monkeypatch.setattr(updater, "_npm_command", lambda: ["npm"])
     monkeypatch.setattr(updater, "_is_git_repo", lambda: True)
     monkeypatch.setattr(updater, "_has_uncommitted_changes", lambda: False)
     monkeypatch.setattr(updater, "_create_pre_update_backup", lambda: "pre_update.json")
-    monkeypatch.setattr(updater, "_create_db_snapshot", lambda: None)
     monkeypatch.setattr(updater, "_restart_pending", False)
     monkeypatch.setattr(settings, "update_repo_url", "https://github.com/o/r")
+    monkeypatch.setattr(settings, "environment", Environment.development)
+    monkeypatch.setattr(settings, "app_version", "2.0.0")
+    database = tmp_path / "owned.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE owned_marker(value TEXT)")
+    monkeypatch.setattr(settings, "database_url", "sqlite:///" + database.as_posix())
     monkeypatch.delattr(sys, "frozen", raising=False)
     return fake
 
 
 def test_dependencies_come_from_the_pinned_tree(checkout):
-    result = updater.apply_update()
+    result = developer_apply()
 
     assert result["success"], result
     (pip,) = checkout.ran("pip")
@@ -79,34 +96,34 @@ def test_a_failed_pip_stops_the_update_before_the_migration(checkout):
     """Regression: a pip failure counted as "nicht kritisch"; the migration ran on missing packages."""
     checkout.fail.add("pip")
 
-    result = updater.apply_update()
+    result = developer_apply()
 
-    assert not result["success"] and result["rollback_performed"]
+    assert not result["success"] and result["recovery_required"]
+    assert not result["rollback_performed"] and updater.writes_blocked()
     assert not checkout.ran("backend.upgrade")
-    assert ["git", "reset", "--hard", "old"] in checkout.calls
+    assert ["git", "reset", "--hard", OLD] in checkout.calls
     # the previous commit's dependencies are installed again
     assert len(checkout.ran("pip")) == 2
 
 
 def test_local_commits_are_never_merged(checkout):
     """Regression: without a fast-forward the updater made a merge commit of local and remote changes."""
-    checkout.fail.add("merge")
+    checkout.fail.add("merge-base")
 
-    result = updater.apply_update()
+    result = developer_apply()
 
-    assert not result["success"] and "eigene Commits" in result["message"]
-    assert [call for call in checkout.calls if call[:2] == ["git", "merge"]] == [
-        ["git", "merge", "origin/main", "--ff-only"]]
+    assert not result["success"]
+    assert not [call for call in checkout.calls if call[:2] == ["git", "merge"]]
     assert not checkout.ran("pip")
 
 
 def test_a_failed_migration_restores_code_and_dependencies(checkout):
     checkout.fail.add("upgrade")
 
-    result = updater.apply_update()
+    result = developer_apply()
 
     assert not result["success"] and result["rollback_performed"]
-    assert ["git", "reset", "--hard", "old"] in checkout.calls
+    assert ["git", "reset", "--hard", OLD] in checkout.calls
     assert len(checkout.ran("pip")) == 2
     assert updater.writes_blocked() is None          # the old code runs on the old schema again
 
@@ -133,19 +150,19 @@ def test_nothing_is_saved_while_an_update_runs_or_before_the_restart(client, che
     assert http.get("/api/v1/updates/status", headers=owner).status_code == 200
     updater._release_lock()
 
-    assert updater.apply_update()["success"]
+    assert developer_apply()["success"]
     refused = http.post("/api/v1/portfolios", headers=owner, json={"name": "Neu"})
     assert refused.status_code == 503 and "neu starten" in refused.json()["detail"]
     assert http.post("/api/v1/updates/restart", headers=owner).status_code == 200
 
 
-def test_the_update_script_follows_the_installed_branch():
-    """Regression: scripts/update.sh pulled origin/main; the repository's branch is master, every run failed."""
+def test_the_update_script_requires_the_explicit_pinned_developer_contract():
     from pathlib import Path
 
     script = (Path(__file__).resolve().parents[2] / "scripts" / "update.sh").read_text(encoding="utf-8")
-    assert "origin main" not in script and 'git pull --ff-only origin "$branch"' in script
-    assert "-c constraints.txt" in script and "npm ci" in script and "python -m backend.upgrade" in script
+    assert "git pull" not in script and "git merge" not in script
+    assert '"$#" -ne 2' in script and "--developer-mode" in script
+    assert '--target-version "$1" --expected-commit "$2"' in script
 
 
 def test_only_the_owner_decides_where_updates_come_from(client):

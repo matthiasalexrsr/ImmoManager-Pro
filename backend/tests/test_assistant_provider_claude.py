@@ -208,7 +208,8 @@ def test_execute_argv_input_inline_image_and_streamed_final_answer(transport):
 
 
 def test_explicit_web_research_enables_only_websearch(transport):
-    transport.scripts.append({"events": [frame(type="system", subtype="init", tools=["WebSearch"], mcp_servers=[], plugins=[]), final()]})
+    transport.scripts.append({"events": [frame(type="system", subtype="init", tools=["WebSearch"], mcp_servers=[], plugins=[],
+                                              session_id="session-synthetic"), final()]})
     execute(transport, {"web_research": True})
     argv = transport.children[0].argv
     assert argv[argv.index("--tools") + 1] == "WebSearch"
@@ -332,8 +333,8 @@ def test_real_owned_stdio_process_receives_one_frame_and_cleanly_exits(tmp_path,
         "from pathlib import Path\n"
         "data=json.loads(sys.stdin.read())\n"
         "Path('captured.json').write_text(json.dumps(data), encoding='utf-8')\n"
-        "print(json.dumps({'type':'system','subtype':'init','tools':[],'mcp_servers':[],'plugins':[]}))\n"
-        "print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':'Synthetic owned process'}))\n",
+        "print(json.dumps({'type':'system','subtype':'init','tools':[],'mcp_servers':[],'plugins':[],'session_id':'session-synthetic'}))\n"
+        "print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':'Synthetic owned process','session_id':'session-synthetic'}))\n",
         encoding="utf-8")
     monkeypatch.setattr(claude, "CliProcess", CliProcess)
     profile = cast(ProfileLease, SimpleNamespace(provider="claude", path=tmp_path))

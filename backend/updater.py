@@ -1,20 +1,12 @@
-"""Self-update engine for ImmoManager Pro.
+"""Customer release discovery and a separate explicit developer deployment CLI.
 
-Checks GitHub for new releases, downloads and applies updates via git,
-runs database migrations, and can roll back on failure.
-
-Safety guarantees:
-- Automatic JSON backup of all data before every update
-- Database snapshot (SQLite) or migration dry-run (PostgreSQL) before applying
-- Git stash of local changes before pull
-- Automatic rollback to previous commit on migration or startup failure
-- Lock file prevents concurrent updates
-- All operations are logged to the audit trail
-- Backup integrity verification via SHA-256 checksum
-- Production environment guard (updates disabled by default in production)
-
-This module is designed for the standard Python/uvicorn deployment.
-Docker and PyInstaller deployments should use their native update mechanisms.
+Customers install a verified package with the application stopped. HTTP never
+promotes source code. The optional non-production developer CLI requires a clean
+checkout, exact HTTPS origin, named version tag and immutable expected commit.
+It supports local SQLite only, with a full backup, verified rollback snapshot
+and durable write fences. Interrupted or incomplete recovery never expires by
+age and requires operator verification before the source installation is used.
+Git identity/hash binding is not publisher-signature verification.
 """
 
 import hashlib
@@ -22,16 +14,22 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
+import stat
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlsplit
 
 import httpx
 
 from .config import settings
+from .paths import get_backup_dir, get_data_dir
+from .services.filesystem_paths import filesystem_path
 from .services.runtime_process import frozen_cli_executable
 
 logger = logging.getLogger(__name__)
@@ -39,14 +37,23 @@ logger = logging.getLogger(__name__)
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_BACKUP_DIR = _PROJECT_ROOT / "backups"
-_UPDATE_DIR = _PROJECT_ROOT / ".updates"
+_BACKUP_DIR = filesystem_path(get_backup_dir())
+_UPDATE_DIR = filesystem_path(get_data_dir()) / ".updates"
 _LOCK_FILE = _UPDATE_DIR / "update.lock"
 _HISTORY_FILE = _UPDATE_DIR / "history.json"
 _FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "dist"
 
 # Timeout for GitHub API requests
 _HTTP_TIMEOUT = 30.0
+INSTALLER_HINT = (
+    "ImmoManager Pro schließen und das geprüfte Installationspaket der neuen Version verwenden. "
+    "Bei portablen Paketen in einen neuen Ordner entpacken. Der bestehende Datenordner bleibt erhalten; "
+    "vor einer nötigen Datenbankmigration wird zuerst ein geprüftes Vollbackup angelegt. "
+    "Die laufende Anwendung ersetzt ihren Quellcode nicht selbst."
+)
+_lock_mutex = threading.Lock()
+_owned_lock_token: str | None = None
+_retain_lock = False
 
 
 # ─── Version Comparison ──────────────────────────────────────────────────────
@@ -59,8 +66,11 @@ _RELEASED = 4
 
 def _parse_version(version_str: str) -> tuple[tuple[int, ...], int, int]:
     """'1.2.3', 'v2.1.0-rc1', '2.0.0-beta.2' or '2.0.0b2' as a comparable key; '+build' does not count."""
-    cleaned = version_str.strip().lstrip("vV").split("+")[0]
-    match = _VERSION.match(cleaned)
+    if not isinstance(version_str, str) or len(version_str) > 80 or not re.fullmatch(
+            r"[vV]?[^+\s]+(?:\+[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?", version_str):
+        return ((), 0, 0)
+    cleaned = version_str.removeprefix("v").removeprefix("V").split("+")[0]
+    match = _VERSION.fullmatch(cleaned)
     if not match:
         return ((), 0, 0)
     numbers = [int(number) for number in match.group(1).split(".")]
@@ -69,59 +79,99 @@ def _parse_version(version_str: str) -> tuple[tuple[int, ...], int, int]:
     phase = match.group(2)
     if phase is None:
         return (tuple(numbers), _RELEASED, 0)
+    if phase.lower() not in _PHASES:
+        return ((), 0, 0)
     return (tuple(numbers), _PHASES.get(phase.lower(), 0), int(match.group(3) or 0))
 
 
 def is_newer_version(remote: str, local: str) -> bool:
     """Return True if `remote` is strictly newer than `local`."""
-    return _parse_version(remote) > _parse_version(local)
+    remote_key, local_key = _parse_version(remote), _parse_version(local)
+    return bool(remote_key[0] and local_key[0]) and remote_key > local_key
 
 
 # ─── Lock Management ─────────────────────────────────────────────────────────
 
 def _acquire_lock() -> bool:
-    """Try to acquire the update lock.  Returns False if already locked."""
-    _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    if _LOCK_FILE.exists():
-        # Check for stale lock (older than 30 minutes)
+    """Exclusive creation; an interrupted or unreadable lock never expires by age."""
+    global _owned_lock_token, _retain_lock
+    with _lock_mutex:
+        if _owned_lock_token is not None:
+            return False
+        _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
         try:
-            lock_data = json.loads(_LOCK_FILE.read_text())
-            lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-            age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
-            if age_seconds < 1800:
-                return False
-            logger.warning("Stale update lock detected (age: %.0fs), removing", age_seconds)
-        except Exception:
-            logger.debug("Could not parse update lock file", exc_info=True)
-    _LOCK_FILE.write_text(json.dumps({
-        "locked_at": datetime.now(timezone.utc).isoformat(),
-        "pid": os.getpid(),
-    }))
-    return True
+            fd = os.open(_LOCK_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except FileExistsError:
+            return False
+        token = secrets.token_hex(24)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"locked_at": datetime.now(timezone.utc).isoformat(), "pid": os.getpid(),
+                           "token": token}, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            # Keep a partially written marker: removing it could reopen writes
+            # after an uncertain filesystem failure.
+            raise
+        _owned_lock_token, _retain_lock = token, False
+        return True
 
 
 def _release_lock() -> None:
-    """Release the update lock."""
-    try:
-        _LOCK_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
+    """Only the acquiring invocation may remove its own unchanged marker."""
+    global _owned_lock_token
+    with _lock_mutex:
+        token = _owned_lock_token
+        _owned_lock_token = None
+        if token is None or _retain_lock:
+            return
+        try:
+            info = _LOCK_FILE.lstat()
+            value = json.loads(_LOCK_FILE.read_text(encoding="utf-8"))
+            if stat.S_ISREG(info.st_mode) and value.get("token") == token and value.get("pid") == os.getpid():
+                _LOCK_FILE.unlink()
+        except (OSError, ValueError, AttributeError):
+            logger.warning("Update lock could not be released safely", exc_info=True)
 
 
 def is_update_locked() -> bool:
-    """Check whether an update is currently in progress."""
-    if not _LOCK_FILE.exists():
-        return False
+    """A leftover marker requires recovery, including after a process crash."""
     try:
-        lock_data = json.loads(_LOCK_FILE.read_text())
-        if lock_data.get("pid") == os.getpid():
-            return True             # this process is updating; a long migration may take hours
-        lock_time = datetime.fromisoformat(lock_data.get("locked_at", ""))
-        age_seconds = (datetime.now(timezone.utc) - lock_time).total_seconds()
-        return age_seconds < 1800
-    except Exception:
-        logger.debug("Could not read update lock status", exc_info=True)
+        _LOCK_FILE.lstat()
+    except FileNotFoundError:
         return False
+    except OSError:
+        return True
+    return True
+
+
+def _transaction_state() -> dict:
+    try:
+        value = json.loads((_UPDATE_DIR / "transaction.json").read_text(encoding="utf-8"))
+        if not isinstance(value, dict) or value.get("phase") not in {
+            "prepared", "applying", "installed", "rolled_back", "recovery_required"
+        }:
+            raise ValueError("Invalid update transaction")
+        return value
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return {"phase": "recovery_required"}
+
+
+def _save_transaction(value: dict) -> None:
+    _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = _UPDATE_DIR / (".transaction-" + secrets.token_hex(8) + ".tmp")
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, _UPDATE_DIR / "transaction.json")
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 # Set once an update is installed: this process still runs the previous code on the new schema.
@@ -137,6 +187,12 @@ def writes_blocked() -> str | None:
     """
     if _restart_pending:
         return "Das Update ist installiert. Bitte ImmoManager neu starten; bis dahin sind Änderungen gesperrt."
+    state = _transaction_state()
+    if state.get("phase") == "installed":
+        if state.get("new_version") != settings.app_version:
+            return "Das Update ist installiert. Bitte ImmoManager neu starten; bis dahin sind Änderungen gesperrt."
+    elif state.get("phase") in {"prepared", "applying", "recovery_required"}:
+        return "Ein Quellcode-Update ist nicht vollständig abgeschlossen. Änderungen bleiben bis zur geprüften Wiederherstellung gesperrt."
     if is_update_locked():
         return "Ein Update läuft. Änderungen sind bis zu seinem Ende gesperrt; Lesen geht weiter."
     return None
@@ -146,7 +202,8 @@ def writes_blocked() -> str | None:
 
 def _run_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run a git command and return the result."""
-    cmd = ["git"] + list(args)
+    cmd = ["git", "--no-replace-objects", "-c", "core.fsmonitor=false",
+           "-c", "core.hooksPath=" + str(_UPDATE_DIR / "disabled-hooks"), *args]
     return subprocess.run(
         cmd,
         cwd=cwd or _PROJECT_ROOT,
@@ -161,7 +218,10 @@ def _run_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess
 
 def _is_git_repo() -> bool:
     """Check whether the project root is a git repository."""
-    result = _run_git("rev-parse", "--is-inside-work-tree")
+    try:
+        result = _run_git("rev-parse", "--is-inside-work-tree")
+    except (OSError, subprocess.SubprocessError):
+        return False
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
@@ -185,12 +245,14 @@ def _source_mismatch() -> str | None:
     configured = _extract_owner_repo(settings.update_repo_url or "")
     remote = _run_git("remote", "get-url", "origin")
     origin = remote.stdout.strip() if remote.returncode == 0 else ""
-    if not configured or (origin and (_extract_owner_repo(origin) or "").lower() == configured.lower()):
+    if not configured:
+        return "Die Updatequelle ist keine exakte HTTPS-GitHub-Repositoryadresse."
+    if origin and (_extract_owner_repo(origin) or "").lower() == configured.lower():
         return None
     if not origin:
         return "Der Checkout hat kein Remote „origin“; ein Update lässt sich nicht holen."
     # never show credentials of an https remote
-    shown = _extract_owner_repo(origin) or re.sub(r"//[^/@]*@", "//", origin)
+    shown = _extract_owner_repo(origin) or "einer ungültigen oder nicht zugelassenen Remoteadresse"
     return (f"Die Update-Prüfung liest {configured}, der Checkout holt seinen Code aber von {shown}. "
             "Bitte UPDATE_REPO_URL oder das Remote „origin“ angleichen.")
 
@@ -243,13 +305,13 @@ def check_for_updates() -> dict:
         "release_url": None,
         "published_at": None,
         "error": None,
-        "is_git_repo": _is_git_repo(),
+        "is_git_repo": False if getattr(sys, "frozen", False) else _is_git_repo(),
         "update_channel": channel,
         "is_frozen": getattr(sys, "frozen", False),
-        # whether this installation can install the update itself (a git checkout); the Windows
-        # package is replaced by the new package instead (download_hint)
+        # Customer updates always use the verified installer, including source checkouts.
         "can_apply": False,
         "download_hint": None,
+        "update_method": "verified_installer",
     }
 
     if not repo_url:
@@ -259,7 +321,7 @@ def check_for_updates() -> dict:
     # Extract owner/repo from URL
     owner_repo = _extract_owner_repo(repo_url)
     if not owner_repo:
-        result["error"] = f"Ungültige Repository-URL: {repo_url}"
+        result["error"] = "Die Updatequelle ist keine gültige HTTPS-GitHub-Repositoryadresse."
         return result
 
     try:
@@ -288,66 +350,65 @@ def check_for_updates() -> dict:
         data = resp.json()
 
         if channel == "stable":
+            if not isinstance(data, dict) or data.get("draft") or data.get("prerelease"):
+                raise ValueError("Keine gültige veröffentlichte Version")
             release = data
         else:
             # data is a list, newest first by date; the highest version wins (a fix of an older line
             # published after a pre-release does not hide it)
-            published = [item for item in data if not item.get("draft")]
+            if not isinstance(data, list):
+                raise ValueError("Ungültige Release-Liste")
+            published = [item for item in data if isinstance(item, dict) and not item.get("draft")
+                         and _parse_version(str(item.get("tag_name", "")))[0]]
             if not published:
                 result["error"] = "Keine Releases gefunden"
                 return result
             release = max(published, key=lambda item: _parse_version(item.get("tag_name", "")))
 
         tag = release.get("tag_name", "")
+        if not isinstance(tag, str) or not _parse_version(tag)[0]:
+            raise ValueError("Ungültige Release-Version")
+        if channel == "stable" and _parse_version(tag)[1] != _RELEASED:
+            raise ValueError("Keine stabile veröffentlichte Version")
         result["latest_version"] = tag.lstrip("vV")
-        result["release_notes"] = release.get("body", "")
-        result["release_url"] = release.get("html_url", "")
-        result["published_at"] = release.get("published_at", "")
+        body = release.get("body", "")
+        result["release_notes"] = body[:128000] if isinstance(body, str) else ""
+        # Never expose an arbitrary link supplied by release metadata.
+        result["release_url"] = f"https://github.com/{owner_repo}/releases/tag/{quote(tag, safe='')}"
+        published_at = release.get("published_at", "")
+        result["published_at"] = published_at[:80] if isinstance(published_at, str) else ""
         result["update_available"] = is_newer_version(tag, current)
-        frozen = bool(result["is_frozen"])
-        mismatch = _source_mismatch() if result["is_git_repo"] and not frozen else None
-        result["can_apply"] = (not frozen and bool(result["is_git_repo"]) and not mismatch
-                               and (not settings.is_production or settings.update_allow_in_production))
-        if result["update_available"] and mismatch:
-            result["download_hint"] = mismatch
-        elif result["update_available"] and not result["can_apply"]:
-            result["download_hint"] = (
-                "Neue Version von der Release-Seite herunterladen und ImmoManager Pro schließen. Unter Windows "
-                "den Installer ausführen; bei einer portablen Installation das ZIP in einen neuen Ordner entpacken "
-                "und das Programm dort starten. Die Daten bleiben im bisherigen Datenordner; beim ersten Start legt das Programm "
-                "zuerst ein geprüftes Vollbackup an und aktualisiert dann die Datenbank.")
+        if result["update_available"]:
+            result["download_hint"] = INSTALLER_HINT
 
     except httpx.TimeoutException:
         result["error"] = "Zeitüberschreitung bei der Verbindung zu GitHub"
     except httpx.HTTPStatusError as exc:
         result["error"] = f"GitHub API Fehler: HTTP {exc.response.status_code}"
-    except Exception as exc:
+    except Exception:
         logger.exception("Update check failed")
-        result["error"] = f"Prüfung fehlgeschlagen: {exc}"
+        result["error"] = "Die Updateinformationen konnten nicht verlässlich geprüft werden."
 
     return result
 
 
 def _extract_owner_repo(url: str) -> str | None:
-    """Extract 'owner/repo' from various GitHub URL formats.
-
-    Only accepts valid GitHub owner/repo patterns to prevent SSRF or
-    injection via crafted repository URLs.
-    """
-    url = url.strip().rstrip("/").removesuffix(".git")
-    # https://github.com/owner/repo or git@github.com:owner/repo
-    if "github.com" not in url:
+    """An exact HTTPS GitHub identity, never a substring or credential URL."""
+    if not isinstance(url, str) or len(url) > 500 or any(ord(c) < 33 for c in url):
         return None
-    parts = url.split("github.com")[-1].lstrip(":/").split("/")
-    if len(parts) < 2:
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or parsed.netloc.lower() not in {"github.com", "github.com:443"}
+                or parsed.username or parsed.password or parsed.query or parsed.fragment):
+            return None
+    except ValueError:
         return None
-    owner, repo = parts[0], parts[1]
-    # Validate owner/repo contain only safe characters
-    _SAFE_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
-    if not _SAFE_RE.match(owner) or not _SAFE_RE.match(repo):
-        logger.warning("Rejected unsafe owner/repo pattern: %s/%s", owner, repo)
+    match = re.fullmatch(r"/([A-Za-z0-9][A-Za-z0-9_-]{0,99})/([A-Za-z0-9][A-Za-z0-9._-]{0,99})/?", parsed.path)
+    if not match:
         return None
-    return f"{owner}/{repo}"
+    owner, repository = match.groups()
+    repository = repository.removesuffix(".git")
+    return f"{owner}/{repository}" if repository else None
 
 
 # ─── Data Backup ──────────────────────────────────────────────────────────────
@@ -357,40 +418,12 @@ def _create_pre_update_backup() -> str | None:
 
     Returns the backup filename on success, None on failure.
     """
-    _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_name = f"pre_update_{timestamp}.json"
-    backup_path = _BACKUP_DIR / backup_name
-
     try:
-
-        # Same lossless snapshot as /admin/export
-        from .dependencies import store
-        from .services.data_snapshot import export_snapshot
-        data = export_snapshot(store)
-        data["_meta"] = {
-            "type": "pre_update_backup",
-            "version": settings.app_version,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "commit": _get_current_commit(),
-        }
-
-        content = json.dumps(data, ensure_ascii=False, indent=2)
-        backup_path.write_text(content, encoding="utf-8")
-
-        # Write checksum for integrity verification
-        checksum = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        checksum_path = backup_path.with_suffix(".json.sha256")
-        checksum_path.write_text(checksum, encoding="utf-8")
-
-        # Verify backup is readable and non-empty
-        verify = json.loads(backup_path.read_text(encoding="utf-8"))
-        if not verify or not verify.get("_meta"):
-            logger.error("Backup verification failed: missing _meta")
+        from .services.full_backup import Sources, create_full_backup
+        event = create_full_backup("pre-upgrade", Sources.from_settings())
+        if not event.get("ok"):
             return None
-
-        logger.info("Pre-update backup created: %s (sha256: %s)", backup_name, checksum[:16])
-        return backup_name
+        return event["archive"]
     except Exception:
         logger.exception("Failed to create pre-update backup")
         return None
@@ -401,23 +434,30 @@ def _create_db_snapshot() -> str | None:
 
     Returns the snapshot filename on success, None otherwise.
     """
-    if "sqlite" not in settings.database_url:
-        return None
-
-    db_path = Path(settings.database_url.replace("sqlite:///", ""))
-    if not db_path.exists():
+    from .services.sqlite_backup import sqlite_path_from_url
+    db_path = sqlite_path_from_url(settings.database_url)
+    if db_path is not None:
+        db_path = filesystem_path(db_path)
+    if db_path is None or str(db_path) == ":memory:" or not db_path.is_file():
         return None
 
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    snapshot_name = f"pre_update_{timestamp}.db"
-    snapshot_path = _BACKUP_DIR / snapshot_name
+    snapshot_name = f"pre_update_{timestamp}_{secrets.token_hex(8)}.db"
+    snapshot_path = filesystem_path(_BACKUP_DIR / snapshot_name)
 
     try:
         # online backup API: a file copy of the live WAL database would miss commits
         from .services.full_backup import sqlite_online_copy
-
+        fd = os.open(snapshot_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
         sqlite_online_copy(db_path, snapshot_path)
+        digest = hashlib.sha256()
+        with snapshot_path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        from .services.secret_box import write_private_file
+        write_private_file(snapshot_path.with_suffix(".db.sha256"), digest.hexdigest().encode("ascii"))
         logger.info("Database snapshot created: %s", snapshot_name)
         return snapshot_name
     except Exception:
@@ -492,7 +532,7 @@ def _rebuild_frontend() -> tuple[bool, str]:
         subprocess.run(["node", "--version"], capture_output=True, stdin=subprocess.DEVNULL, timeout=10,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        return True, "Node.js nicht installiert, Frontend-Build übersprungen"
+        return False, "Node.js fehlt; der erforderliche Frontend-Build wurde nicht ausgeführt"
 
     try:
         npm = _npm_command()
@@ -535,11 +575,14 @@ def _rebuild_frontend() -> tuple[bool, str]:
 # ─── Update History ──────────────────────────────────────────────────────────
 
 def _load_history() -> list[dict]:
-    """Load the update history from disk."""
+    """Read only a bounded list of history entries; corrupt optional history is ignored."""
     if not _HISTORY_FILE.exists():
         return []
     try:
-        return json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
+        if _HISTORY_FILE.stat().st_size > 1024 * 1024:
+            return []
+        value = json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
+        return value[-50:] if isinstance(value, list) and all(isinstance(entry, dict) for entry in value) else []
     except Exception:
         logger.debug("Could not load update history file", exc_info=True)
         return []
@@ -548,10 +591,8 @@ def _load_history() -> list[dict]:
 def _save_history(history: list[dict]) -> None:
     """Save the update history to disk."""
     _UPDATE_DIR.mkdir(parents=True, exist_ok=True)
-    _HISTORY_FILE.write_text(
-        json.dumps(history, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    from .services.secret_box import write_private_file
+    write_private_file(_HISTORY_FILE, json.dumps(history, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 def _record_update(entry: dict) -> None:
@@ -571,250 +612,232 @@ def get_update_history() -> list[dict]:
 
 # ─── Core Update Logic ───────────────────────────────────────────────────────
 
-def apply_update(target_version: str | None = None) -> dict:
-    """Apply an update from GitHub.
+def apply_update(target_version: str | None = None, *, developer_mode: bool = False,
+                 expected_commit: str | None = None) -> dict:
+    """Offline developer deployment only; HTTP/customer promotion is disabled.
 
-    Steps:
-    1. Acquire lock
-    2. Verify git repo and connectivity
-    3. Create data backup (JSON + SQLite snapshot)
-    4. Stash uncommitted changes
-    5. Git fetch + merge (or reset to tag)
-    6. Install updated Python dependencies
-    7. Run database migrations
-    8. Rebuild frontend
-    9. Record success in history
-    10. Signal restart needed
-
-    On failure at any step, rolls back to the previous commit.
-
-    Returns a result dict with status, messages, and whether restart is needed.
+    A caller must deliberately name the exact tag and immutable commit. This is
+    not installer publisher-signature verification and is not a customer update
+    guarantee. A stopped application and a clean source checkout are required.
     """
     global _restart_pending
     result: dict[str, Any] = {
-        "success": False,
-        "message": "",
-        "steps": [],
-        "restart_required": False,
-        "backup_name": None,
-        "previous_version": settings.app_version,
-        "new_version": None,
-        "rollback_performed": False,
+        "success": False, "message": "", "steps": [], "restart_required": False,
+        "backup_name": None, "previous_version": settings.app_version,
+        "new_version": None, "rollback_performed": False, "recovery_required": False,
     }
-
-    # Preflight checks
-    if getattr(sys, "frozen", False):
-        result["message"] = "Updates sind im PyInstaller-Bundle nicht verfügbar"
+    if not developer_mode:
+        result["message"] = INSTALLER_HINT
         return result
-
+    if getattr(sys, "frozen", False) or settings.is_production:
+        result["message"] = "Der Entwickler-Quellcodepfad ist für Paket- und Produktionsinstallationen gesperrt. " + INSTALLER_HINT
+        return result
+    from .services.sqlite_backup import sqlite_path_from_url
+    database = sqlite_path_from_url(settings.database_url)
+    if database is not None:
+        database = filesystem_path(database)
+    if database is None or str(database) == ":memory:" or not database.is_file():
+        result["message"] = ("Automatische Quellcodeänderungen benötigen eine lokale SQLite-Datei. "
+                             "Andere Datenbanken nur mit geprüftem Deployment, Vollbackup und ausdrücklichem Upgrade aktualisieren.")
+        return result
+    if (not isinstance(target_version, str) or len(target_version) > 80 or not re.fullmatch(
+            r"[vV]?\d+\.\d+\.\d+(?:-(?:dev|alpha|beta|rc)\.\d+)?", target_version)
+            or not isinstance(expected_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_commit)):
+        result["message"] = "Exakter Versionstag und vollständiger erwarteter Commit sind für den Entwickleraufruf erforderlich."
+        return result
+    new_version = target_version.lstrip("vV")
+    if not is_newer_version(new_version, settings.app_version):
+        result["message"] = "Der Zielstand muss eine neuere Version sein; ein Downgrade wird nicht ausgeführt."
+        return result
+    state = _transaction_state()
+    if state.get("phase") in {"prepared", "applying", "recovery_required"}:
+        result["message"] = "Eine frühere Aktualisierung benötigt geprüfte Wiederherstellung; die Sperre wird nicht automatisch entfernt."
+        return result
     if not _is_git_repo():
-        result["message"] = "Kein Git-Repository. Updates erfordern eine Git-Installation."
+        result["message"] = "Kein Git-Quellcheckout für den Entwickleraufruf vorhanden."
         return result
-
-    if not settings.update_repo_url:
-        result["message"] = "Kein Update-Repository konfiguriert"
-        return result
-
     mismatch = _source_mismatch()
     if mismatch:
         result["message"] = mismatch
         return result
-
-    # Validate target_version format if provided
-    if target_version:
-        cleaned = target_version.lstrip("vV").strip()
-        if not re.match(r"^\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?$", cleaned):
-            result["message"] = f"Ungültiges Versionsformat: {target_version}"
-            return result
-
-    if not _acquire_lock():
-        result["message"] = "Ein Update läuft bereits"
+    if _has_uncommitted_changes():
+        result["message"] = "Der Quellcheckout enthält lokale Änderungen. Diese zuerst bewusst sichern; sie werden nicht automatisch verworfen oder zusammengeführt."
         return result
-
-    previous_commit = _get_current_commit()
-    stashed = False
-    dependencies_changed = False
-
+    if not _acquire_lock():
+        result["message"] = "Eine Aktualisierung läuft oder benötigt Wiederherstellung. Die Sperre wird nicht zeitgesteuert aufgehoben."
+        return result
+    previous_commit = None
+    snapshot = None
+    code_changed = dependencies_changed = frontend_changed = migration_attempted = False
+    transaction: dict[str, Any] = {}
     try:
-        # Step 1: Create backups
-        result["steps"].append("Erstelle Datensicherung...")
-        backup_name = _create_pre_update_backup()
-        if not backup_name:
-            result["message"] = "Datensicherung fehlgeschlagen — Update abgebrochen"
-            return result
-        result["backup_name"] = backup_name
-        result["steps"].append(f"Backup erstellt: {backup_name}")
-
-        db_snapshot = _create_db_snapshot()
-        if db_snapshot:
-            result["steps"].append(f"Datenbank-Snapshot erstellt: {db_snapshot}")
-
-        # Step 2: Stash local changes
-        stashed = _stash_changes()
-        if stashed:
-            result["steps"].append("Lokale Änderungen gesichert (git stash)")
-
-        # Step 3: Fetch from remote
-        result["steps"].append("Hole Updates von GitHub...")
-        branch = _get_current_branch() or "main"
-
-        fetch_result = _run_git("fetch", "origin", branch)
-        if fetch_result.returncode != 0:
-            result["message"] = f"Git fetch fehlgeschlagen: {fetch_result.stderr.strip()}"
-            _rollback(previous_commit, stashed, result)
-            return result
-
-        # Step 4: Check out target version or merge
-        if target_version:
-            # Check out a specific tag
-            tag_name = target_version if target_version.startswith("v") else f"v{target_version}"
-            # First try the tag, then without 'v' prefix
-            checkout = _run_git("checkout", tag_name)
-            if checkout.returncode != 0:
-                checkout = _run_git("checkout", target_version)
-            if checkout.returncode != 0:
-                result["message"] = f"Version {target_version} nicht gefunden"
-                _rollback(previous_commit, stashed, result)
-                return result
-            result["steps"].append(f"Version {target_version} ausgecheckt")
-        else:
-            # Only a fast-forward: a merge with local commits would install an untested combination
-            merge_result = _run_git("merge", f"origin/{branch}", "--ff-only")
-            if merge_result.returncode != 0:
-                result["message"] = ("Der Stand lässt sich nicht vorspulen: Diese Installation hat eigene Commits "
-                                     f"gegenüber origin/{branch}. Bitte von Hand zusammenführen.")
-                _rollback(previous_commit, stashed, result)
-                return result
-            result["steps"].append("Code aktualisiert")
-
-        new_commit = _get_current_commit()
-        if new_commit == previous_commit:
-            result["success"] = True
-            result["message"] = "Bereits auf dem neuesten Stand"
-            result["steps"].append("Keine Änderungen erforderlich")
-            if stashed:
-                _stash_pop()
-            return result
-
-        # Step 5: Install updated dependencies
-        result["steps"].append("Installiere Abhängigkeiten...")
+        previous_commit = _get_current_commit()
+        if not previous_commit or not re.fullmatch(r"[0-9a-f]{40}", previous_commit):
+            raise RuntimeError("Vorheriger Commit nicht eindeutig")
+        result["steps"].append("Erstelle geprüftes Vollbackup und SQLite-Rückfallpunkt...")
+        backup = _create_pre_update_backup()
+        if not backup:
+            raise RuntimeError("Vollbackup fehlgeschlagen")
+        result["backup_name"] = backup
+        snapshot = _create_db_snapshot()
+        if not snapshot:
+            raise RuntimeError("Pflichtsnapshot fehlgeschlagen; kein Code wird geändert")
+        transaction = {"phase": "prepared", "at": datetime.now(timezone.utc).isoformat(),
+                       "previous_commit": previous_commit, "expected_commit": expected_commit,
+                       "previous_version": settings.app_version, "new_version": new_version,
+                       "snapshot": snapshot, "backup": backup}
+        _save_transaction(transaction)
+        fetch = _run_git("fetch", "--no-tags", "origin", "refs/tags/" + target_version)
+        if fetch.returncode:
+            raise RuntimeError("Der exakte Zieltag konnte nicht geholt werden")
+        fetched = _run_git("rev-parse", "--verify", "FETCH_HEAD^{commit}")
+        if fetched.returncode or fetched.stdout.strip() != expected_commit:
+            raise RuntimeError("Der geholte Tag entspricht nicht dem erwarteten Commit")
+        if _run_git("merge-base", "--is-ancestor", previous_commit, expected_commit).returncode:
+            raise RuntimeError("Der Zielcommit ist kein Fast-forward des geprüften Ausgangsstands")
+        import tomllib
+        project = _run_git("show", expected_commit + ":pyproject.toml")
+        if project.returncode or tomllib.loads(project.stdout).get("project", {}).get("version") != new_version:
+            raise RuntimeError("Versionstag und Version des Zielcommits stimmen nicht überein")
+        transaction["phase"] = "applying"
+        _save_transaction(transaction)
+        code_changed = True
+        changed = _run_git("merge", "--ff-only", expected_commit)
+        if changed.returncode or _get_current_commit() != expected_commit:
+            raise RuntimeError("Der exakte Zielstand konnte nicht vorspulend übernommen werden")
         dependencies_changed = True
-        pip_ok, pip_msg = _install_dependencies()
-        result["steps"].append(pip_msg)
-        if not pip_ok:
-            result["message"] = "Abhängigkeiten konnten nicht installiert werden — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result, dependencies_changed)
-            return result
-
-        # Step 6: Run database migrations
-        result["steps"].append("Führe Datenbank-Migrationen aus...")
-        mig_ok, mig_msg = _run_migrations()
-        result["steps"].append(mig_msg)
-        if not mig_ok:
-            result["message"] = "Migration fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result, dependencies_changed)
-            # Restore DB snapshot if available
-            if db_snapshot and "sqlite" in settings.database_url:
-                _restore_db_snapshot(db_snapshot)
-                result["steps"].append("Datenbank-Snapshot wiederhergestellt")
-            return result
-
-        # Step 7: Rebuild frontend
-        result["steps"].append("Baue Frontend neu...")
-        fe_ok, fe_msg = _rebuild_frontend()
-        result["steps"].append(fe_msg)
-        if not fe_ok:
-            result["message"] = "Frontend-Build fehlgeschlagen — Rollback wird durchgeführt"
-            _rollback(previous_commit, stashed, result, dependencies_changed)
-            if db_snapshot and "sqlite" in settings.database_url:
-                _restore_db_snapshot(db_snapshot)
-                result["steps"].append("Datenbank-Snapshot wiederhergestellt")
-            return result
-
-        # Step 8: Re-apply stashed changes
-        if stashed:
-            if _stash_pop():
-                result["steps"].append("Lokale Änderungen wiederhergestellt")
-            else:
-                result["steps"].append("Lokale Änderungen konnten nicht automatisch wiederhergestellt werden (im Stash gespeichert)")
-            stashed = False
-
-        # Read new version from updated pyproject.toml
-        from .config import _get_version
-        new_version = _get_version()
-        result["new_version"] = new_version
-
-        # Success! The running process is the old code from now on.
+        ok, message = _install_dependencies()
+        result["steps"].append(message)
+        if not ok:
+            raise RuntimeError("Abhängigkeiten fehlgeschlagen")
+        # Build before touching the schema. A missing tool is a failure, never a
+        # successful skipped build serving old browser assets with a new API.
+        frontend_changed = True
+        ok, message = _rebuild_frontend()
+        result["steps"].append(message)
+        if not ok:
+            raise RuntimeError("Frontend-Build fehlgeschlagen")
+        migration_attempted = True
+        ok, message = _run_migrations()
+        result["steps"].append(message)
+        if not ok:
+            raise RuntimeError("Datenbank-Upgrade fehlgeschlagen")
+        transaction["phase"] = "installed"
+        _save_transaction(transaction)
         _restart_pending = True
-        result["success"] = True
-        result["restart_required"] = True
-        result["message"] = f"Update von {settings.app_version} auf {new_version} erfolgreich"
-        result["steps"].append("Update abgeschlossen — Neustart erforderlich")
-
-        _record_update({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "from_version": settings.app_version,
-            "to_version": new_version,
-            "from_commit": previous_commit,
-            "to_commit": new_commit,
-            "backup": backup_name,
-            "db_snapshot": db_snapshot,
-            "success": True,
-        })
-
+        result.update(success=True, restart_required=True, new_version=new_version,
+                      message=f"Entwicklerstand {new_version} exakt installiert; Anwendung neu starten.")
+        # The durable installed checkpoint is the commit point. A secondary
+        # history write may not revert code behind an already upgraded schema.
+        try:
+            _record_update({"timestamp": datetime.now(timezone.utc).isoformat(),
+                            "from_version": settings.app_version, "to_version": new_version,
+                            "from_commit": previous_commit, "to_commit": expected_commit,
+                            "backup": backup, "db_snapshot": snapshot, "success": True})
+        except Exception:
+            logger.exception("Installed developer update history could not be saved")
+            result["steps"].append("Updatehistorie nicht gespeichert; der dauerhafte Transaktionsnachweis und das Vollbackup bleiben maßgeblich.")
     except Exception as exc:
-        logger.exception("Unexpected error during update")
-        # Avoid leaking internal paths or stack traces to the API response
-        result["message"] = f"Unerwarteter Fehler: {type(exc).__name__}"
-        _rollback(previous_commit, stashed, result, dependencies_changed)
+        logger.exception("Developer update failed")
+        result.update(success=False, restart_required=False,
+                      message=f"Entwickleraktualisierung abgebrochen: {type(exc).__name__}.")
+        result["steps"].append(str(exc)[:300] if isinstance(exc, RuntimeError) else "Der geprüfte Ablauf konnte nicht abgeschlossen werden.")
+        if previous_commit and code_changed:
+            _rollback(previous_commit, False, result, dependencies_changed,
+                      snapshot_name=snapshot if migration_attempted else None,
+                      frontend_changed=frontend_changed)
+        elif transaction:
+            try:
+                _save_transaction({**transaction, "phase": "rolled_back"})
+            except Exception:
+                _mark_recovery(result, transaction)
+        elif previous_commit is None:
+            _mark_recovery(result, transaction)
     finally:
         _release_lock()
-
     return result
 
 
-def _rollback(previous_commit: str | None, stashed: bool, result: dict, dependencies_changed: bool = False) -> None:
-    """Roll back to the previous commit (and its dependencies, if they were already replaced)."""
-    if not previous_commit:
-        result["steps"].append("Rollback nicht möglich: vorheriger Commit unbekannt")
-        return
+def _mark_recovery(result: dict, transaction: dict | None = None) -> None:
+    global _restart_pending, _retain_lock
+    _restart_pending, _retain_lock = True, True
+    result.update(success=False, recovery_required=True, restart_required=True, rollback_performed=False)
+    try:
+        _save_transaction({**(transaction or _transaction_state()), "phase": "recovery_required"})
+    except Exception:
+        logger.exception("Recovery state could not be saved; retaining the durable update lock")
+    result["steps"].append("Wiederherstellung nicht vollständig bestätigt. Anwendung gestoppt lassen und Vollbackup sowie Quellstand prüfen; Änderungen bleiben gesperrt.")
 
-    logger.warning("Rolling back to commit %s", previous_commit)
-    reset = _run_git("reset", "--hard", previous_commit)
-    if reset.returncode == 0:
-        result["steps"].append(f"Rollback auf {previous_commit[:8]} durchgeführt")
-        result["rollback_performed"] = True
-        if dependencies_changed:
+
+def _rollback(previous_commit: str | None, stashed: bool, result: dict, dependencies_changed: bool = False,
+              *, snapshot_name: str | None = None, frontend_changed: bool = False) -> None:
+    """Only a complete code/dependency/assets/data recovery reopens writes."""
+    del stashed  # dirty worktrees are refused before the first change
+    complete = bool(previous_commit)
+    try:
+        reset = _run_git("reset", "--hard", previous_commit or "")
+        complete = complete and reset.returncode == 0 and _get_current_commit() == previous_commit
+    except Exception:
+        logger.exception("Source rollback failed")
+        complete = False
+    if dependencies_changed:
+        try:
             ok, message = _install_dependencies()
-            result["steps"].append(("Abhängigkeiten des vorherigen Stands: " + message) if ok else
-                                   f"Abhängigkeiten des vorherigen Stands nicht wiederhergestellt: {message}")
-    else:
-        result["steps"].append(f"Rollback fehlgeschlagen: {reset.stderr.strip()}")
-
-    if stashed:
-        _stash_pop()
+            result["steps"].append("Vorherige Abhängigkeiten: " + message)
+            complete = complete and ok
+        except Exception:
+            logger.exception("Dependency rollback failed")
+            complete = False
+    if frontend_changed:
+        try:
+            ok, message = _rebuild_frontend()
+            result["steps"].append("Vorheriges Frontend: " + message)
+            complete = complete and ok
+        except Exception:
+            logger.exception("Frontend rollback failed")
+            complete = False
+    if snapshot_name:
+        try:
+            restored = _restore_db_snapshot(snapshot_name)
+            result["steps"].append("Datenbank-Snapshot wiederhergestellt" if restored else "Datenbank-Snapshot nicht wiederhergestellt")
+            complete = complete and restored
+        except Exception:
+            logger.exception("Database rollback failed")
+            complete = False
+    try:
+        if complete:
+            _save_transaction({**_transaction_state(), "phase": "rolled_back"})
+            result["rollback_performed"] = True
+        else:
+            _mark_recovery(result)
+    except Exception:
+        logger.exception("Rollback checkpoint could not be saved")
+        _mark_recovery(result)
 
 
 def _restore_db_snapshot(snapshot_name: str) -> bool:
-    """Restore a SQLite database snapshot."""
-    if "sqlite" not in settings.database_url:
+    from .services.sqlite_backup import copy_database, is_sqlite_database, sqlite_path_from_url
+    database = sqlite_path_from_url(settings.database_url)
+    if database is not None:
+        database = filesystem_path(database)
+    if database is None or Path(snapshot_name).name != snapshot_name:
         return False
-
-    db_path = Path(settings.database_url.replace("sqlite:///", ""))
-    snapshot_path = _BACKUP_DIR / snapshot_name
-
-    if not snapshot_path.exists():
-        return False
-
+    snapshot = filesystem_path(_BACKUP_DIR / snapshot_name)
     try:
-        # page by page into the live file: a file copy would be overridden by its old WAL
-        from .services.sqlite_backup import copy_database
-
-        copy_database(snapshot_path, db_path)
-        logger.info("Database restored from snapshot: %s", snapshot_name)
-        return True
+        if snapshot.is_symlink() or not is_sqlite_database(snapshot):
+            return False
+        expected = snapshot.with_suffix(snapshot.suffix + ".sha256").read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            return False
+        from .services.full_backup import sha256_file
+        if sha256_file(snapshot) != expected:
+            return False
+        copy_database(snapshot, database)
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            return connection.execute("PRAGMA quick_check").fetchone() == ("ok",)
     except Exception:
-        logger.exception("Failed to restore database snapshot")
+        logger.exception("Database snapshot restoration could not be verified")
         return False
 
 
@@ -840,3 +863,32 @@ def signal_restart() -> dict:
         ),
         "touch_file": str(touch_file),
     }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Explicit source maintenance by the developer; never called by HTTP."""
+    import argparse
+    parser = argparse.ArgumentParser(description=(
+        "Entwickler-Quellupdate für eine gestoppte lokale SQLite-Installation. "
+        "Kein Kundeninstaller und keine Herausgebersignaturprüfung. "
+        "Bei unterbrochener Transaktion Anwendung gestoppt lassen und Backup/Quellstand manuell prüfen."))
+    parser.add_argument("--developer-mode", action="store_true", required=True)
+    parser.add_argument("--target-version", required=True, help="Exakter Git-Versionstag, einschließlich vorhandenem v-Präfix")
+    parser.add_argument("--expected-commit", required=True, help="Unabhängig geprüfter vollständiger 40-stelliger Commit")
+    args = parser.parse_args(argv)
+    from .desktop_control import acquire_instance_guard
+    guard = acquire_instance_guard(get_data_dir())
+    try:
+        if guard.existed:
+            print("Die Anwendung verwendet diesen Datenordner noch. Vor dem Entwicklerupdate vollständig schließen.")
+            return 1
+        result = apply_update(args.target_version, developer_mode=args.developer_mode,
+                              expected_commit=args.expected_commit)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["success"] else 1
+    finally:
+        guard.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

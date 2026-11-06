@@ -10,12 +10,13 @@ import statistics
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
 from uuid import uuid4
+
+from backend.domain.clock import local_today
 
 from .core import PASSWORD, Client, Findings, FixtureSetupError, Server, setup_users
 
-SPARE_YEAR = date.today().year + 2     # test contracts in the future, but not implausibly far
+SPARE_YEAR = local_today().year + 2    # test contracts in the future, but not implausibly far
 
 # action -> roles that should be allowed to do it
 MATRIX = {

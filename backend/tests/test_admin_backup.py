@@ -81,8 +81,7 @@ def _wal_database(path, rows):
     return conn
 
 
-def test_sqlite_restore_wins_over_live_wal(tmp_path, monkeypatch):
-    """Regression: copying the file over a live WAL database was a silent no-op."""
+def test_live_wal_backup_is_complete_but_http_never_swaps_a_running_database(tmp_path, monkeypatch):
     db_path = tmp_path / "live.db"
     live = _wal_database(db_path, 100)
     backup_dir = tmp_path / "backups"
@@ -96,16 +95,20 @@ def test_sqlite_restore_wins_over_live_wal(tmp_path, monkeypatch):
 
     monkeypatch.setattr(admin, "_BACKUP_DIR", backup_dir)
     monkeypatch.setattr(admin, "_live_sqlite_path", lambda: db_path)
-    result = admin.restore_backup("backup_old.db")
+    with pytest.raises(HTTPException) as refused:
+        admin.restore_backup("backup_old.db")
+    assert refused.value.status_code == 409
+    from backend.services.sqlite_backup import copy_database
+    copy_database(db_path, backup_dir / "own_complete_wal_copy.db")
 
-    assert live.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 100
+    assert live.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 5000
     live.close()
     reopened = sqlite3.connect(db_path)
-    assert reopened.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 100
+    assert reopened.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 5000
     assert reopened.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     reopened.close()
-    # The safety copy holds the pre-restore state, including WAL-only commits.
-    safety = sqlite3.connect(backup_dir / result["safety_backup"])
+    # The online copy includes the WAL-only commits without touching the live DB.
+    safety = sqlite3.connect(backup_dir / "own_complete_wal_copy.db")
     assert safety.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 5000
     safety.close()
 
@@ -118,7 +121,7 @@ def test_sqlite_restore_rejects_non_database_file(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "_live_sqlite_path", lambda: tmp_path / "live.db")
     with pytest.raises(HTTPException) as exc:
         admin.restore_backup("backup_bad.db")
-    assert exc.value.status_code == 400
+    assert exc.value.status_code == 409
 
 
 @pytest.mark.parametrize("kind", ["foreign", "newer"])
@@ -140,7 +143,6 @@ def test_sqlite_restore_refuses_foreign_and_newer_databases(tmp_path, monkeypatc
     monkeypatch.setattr(admin, "_live_sqlite_path", lambda: live)
     with pytest.raises(HTTPException) as exc:
         admin.restore_backup("backup_x.db")
-    assert exc.value.status_code == 400
-    assert ("keine ImmoManager-Datenbank" if kind == "foreign" else "neueren Programmversion") in exc.value.detail
+    assert exc.value.status_code == 409
     assert sorted(p.name for p in backup_dir.iterdir() if p.suffix == ".db") == ["backup_x.db"]
     assert live.read_bytes() == b""

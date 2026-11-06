@@ -30,6 +30,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [loading, setLoading] = useState(false);
   const [registration, setRegistration] = useState({ open: false, initial_setup: false });
   const runtime = useRuntimeInfo();
@@ -53,9 +54,22 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       if (registering) {
-        await register(username, email, fullName, password);
+        const created = await register(username, email, fullName, password);
+        if (created?.approval_required === true || created?.is_active === false) {
+          setNotice('Ihr Konto wurde angelegt. Ein Eigentümer muss es aktivieren und die benötigten Portfolios freigeben. Anschließend können Sie sich anmelden.');
+          setIsRegister(false);
+          setRegistration(current => ({ ...current, initial_setup: false }));
+          setPassword(''); setTotpRequired(false); setTotpCode(''); setEmail(''); setFullName('');
+          return;
+        }
+        if (created?.approval_required !== false || created?.is_active !== true || created?.role !== 'eigentuemer') {
+          setNotice('Die Registrierung wurde beantwortet, der Freigabestatus aber nicht eindeutig bestätigt. Bitte wenden Sie sich an den Eigentümer der Verwaltung.');
+          setIsRegister(false); setPassword(''); setTotpRequired(false); setTotpCode('');
+          return;
+        }
       }
       if (totpRequired) await login(username, password, totpCode);
       else await login(username, password);
@@ -79,6 +93,7 @@ export default function Login() {
           onUse={(credentials) => { setUsername(credentials.username); setPassword(credentials.password); setIsRegister(false); setError(null); }} />}
         <form onSubmit={handleSubmit}>
           {error && <div className="alert-error" role="alert">{error}</div>}
+          {notice && <div className="alert-info" role="status">{notice}</div>}
           {registering && registration.initial_setup && (
             <div className="alert-info">{t('auth.register.initialSetup')}</div>
           )}
@@ -91,11 +106,11 @@ export default function Login() {
             <>
               <div className="form-group">
                 <label htmlFor="login-email">{t('auth.register.email')}</label>
-                <input id="login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                <input id="login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" disabled={loading} />
               </div>
               <div className="form-group">
                 <label htmlFor="login-full-name">{t('auth.register.firstName')}</label>
-                <input id="login-full-name" type="text" value={fullName} onChange={e => setFullName(e.target.value)} required autoComplete="name" />
+                <input id="login-full-name" type="text" value={fullName} onChange={e => setFullName(e.target.value)} required autoComplete="name" disabled={loading} />
               </div>
             </>
           )}
@@ -120,7 +135,7 @@ export default function Login() {
         <p className="login-toggle"><a href="/api/v1/legal" target="_blank" rel="noopener noreferrer">Lizenzen und Quellarchive</a></p>
         {registration.open && !registration.initial_setup && !runtime.demo && (
           <p className="login-toggle">
-            <button disabled={loading} onClick={() => { setIsRegister(!isRegister); setError(null); setTotpRequired(false); setTotpCode(''); }} className="link-btn">
+            <button disabled={loading} onClick={() => { setIsRegister(!isRegister); setError(null); setNotice(null); setPassword(''); setTotpRequired(false); setTotpCode(''); }} className="link-btn">
               {isRegister ? t('auth.login.submit') : t('auth.register.title')}
             </button>
           </p>

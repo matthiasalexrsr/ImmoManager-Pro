@@ -102,9 +102,9 @@ def _period_statements(period_id: str) -> list[UtilityStatement]:
     return [s for s in store.list_utility_statements() if s.billing_period_id == period_id]
 
 
-def _compute_snapshot_hash(period_id: str) -> str:
+def _compute_snapshot_hash(period_id: str, statements: list[UtilityStatement] | None = None) -> str:
     """Compute a deterministic SHA-256 hash over all statement data for a period."""
-    return statement_snapshot_hash(_period_statements(period_id))
+    return statement_snapshot_hash(_period_statements(period_id) if statements is None else statements)
 
 
 def _set_period_status(period_id: str, new_status: str) -> BillingPeriod:
@@ -380,27 +380,29 @@ def get_billing_period_preflight(period_id: str) -> BillingPreflightResult:
     return _run_billing_period_preflight(period_id)
 
 
-def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
+def _run_billing_period_preflight(period_id: str, *, period: BillingPeriod | None = None,
+                                  billing: Any = None, statements: list[UtilityStatement] | None = None) -> BillingPreflightResult:
     try:
-        period = store.get_billing_period(period_id)
+        period = store.get_billing_period(period_id) if period is None else period
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    billing = compute_period_billing(store, period)
+    billing = compute_period_billing(store, period) if billing is None else billing
+    statements = _period_statements(period_id) if statements is None else statements
     issues = [
         BillingPreflightIssue(code=i.code, message=i.message, severity=i.severity, context=i.context)
         for i in billing.issues
     ]
     metrics = dict(billing.metrics)
     if period.status not in _IMMUTABLE_STATUSES:
-        if _statements_outdated(period_id, billing):
+        if _statements_outdated(period_id, billing, statements):
             issues.append(BillingPreflightIssue(
                 code="STATEMENTS_OUTDATED",
                 message="Die Einzelabrechnungen entsprechen nicht mehr den Daten; bitte neu erzeugen",
                 severity="warning",
             ))
     else:
-        problems = final_version_problems(period, _period_statements(period_id))
+        problems = final_version_problems(period, statements)
         metrics["final_version_intact"] = not problems
         if problems:
             issues.append(BillingPreflightIssue(
@@ -408,7 +410,7 @@ def _run_billing_period_preflight(period_id: str) -> BillingPreflightResult:
                 message="Die gespeicherten Einzelabrechnungen entsprechen nicht der finalisierten Fassung",
                 severity="blocker", context="; ".join(problems),
             ))
-        elif _statements_outdated(period_id, billing):
+        elif _statements_outdated(period_id, billing, statements):
             issues.append(BillingPreflightIssue(
                 code="FINAL_VERSION_DIFFERS",
                 message="Die heutigen Daten ergeben eine andere Abrechnung; die finalisierte Fassung bleibt "
@@ -436,9 +438,9 @@ def _statement_fingerprint(stmt: Any) -> tuple:
     )
 
 
-def _statements_outdated(period_id: str, billing: Any) -> bool:
+def _statements_outdated(period_id: str, billing: Any, statements: list[UtilityStatement] | None = None) -> bool:
     """True if stored statements exist and differ from what the current data gives."""
-    stored = [s for s in store.list_utility_statements() if s.billing_period_id == period_id]
+    stored = _period_statements(period_id) if statements is None else statements
     if not stored:
         return False
     if billing.blockers:
@@ -506,32 +508,38 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
             detail=f"Abschließen geht nur aus Entwurf oder Prüfung (aktuell: „{status_label(period.status)}“)",
         )
 
-    preflight = _run_billing_period_preflight(period_id)
+    # The parent write lock already covers this complete validation/freeze.
+    # Reuse its one calculation and read set instead of resolving the same
+    # rent histories and every stored statement again inside that transaction.
+    computed = compute_period_billing(store, period)
+    period_statements = _period_statements(period_id)
+    preflight = _run_billing_period_preflight(period_id, period=period, billing=computed, statements=period_statements)
     if preflight.has_blockers:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Abschließen nicht möglich: Die Vorprüfung meldet noch offene Punkte, die zuerst geklärt werden müssen",
         )
 
-    period_statements = _period_statements(period_id)
     if not period_statements:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Finalisierung nicht möglich: Keine Einzelabrechnungen vorhanden",
         )
-    if _statements_outdated(period_id, compute_period_billing(store, period)):
+    if _statements_outdated(period_id, computed, period_statements):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Finalisierung nicht möglich: Die Einzelabrechnungen sind veraltet, bitte neu erzeugen",
         )
 
     # Freeze the document first: the hash covers it, later edits of names cannot change it.
+    frozen_statements = []
     for stmt in period_statements:
         if not stmt.snapshot_hash:
-            store._patch_entity("utility_statement", stmt.id, UtilityStatementPatch(
+            stmt = store._patch_entity("utility_statement", stmt.id, UtilityStatementPatch(
                 final_document=json_safe(_live_statement_document(stmt, period))))
-    snapshot = _compute_snapshot_hash(period_id)
-    for stmt in _period_statements(period_id):
+        frozen_statements.append(stmt)
+    snapshot = _compute_snapshot_hash(period_id, frozen_statements)
+    for stmt in frozen_statements:
         patch_data: dict[str, Any] = {}
         if stmt.status != "finalized":
             patch_data["status"] = "finalized"

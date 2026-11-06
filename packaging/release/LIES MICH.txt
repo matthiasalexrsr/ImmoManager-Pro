@@ -16,14 +16,17 @@ Installieren und starten
    Verknüpfung auf dem Desktop an.
 3. Prüfen Sie vor dem Start Herkunft, bereitgestellte Prüfsummen und eine gegebenenfalls
    vorhandene digitale Herausgebersignatur. Interne Testpakete können unsigniert sein.
-4. Das Statusfenster bereitet die Anwendung vor und öffnet anschließend Ihren Browser.
-   "Anwendung öffnen" führt jederzeit zurück zur Verwaltung.
+4. Der Installer bietet die eigenständige Desktop-Anwendung und den Browsermodus an.
+   Im empfohlenen Desktopmodus öffnet sich die Verwaltung in einem eigenen Fenster.
+   Im Browsermodus bereitet das Statusfenster die Anwendung vor und öffnet Ihren Browser.
+   "Anwendung öffnen" führt dort jederzeit zurück zur Verwaltung.
 5. Beim ersten Start legen Sie das Eigentümer-Konto an. Danach führt "Erste Schritte" auf der
    Startseite durch die Einrichtung: Portfolio, Immobilie, Einheiten, Bankkonto, Mietverträge.
    Laufende Mietverträge mit "Mietkonto hier geführt ab" und dem Saldo zu diesem Tag erfassen,
    damit keine alten Monate als offen gelten.
 
-Zum vollständigen Beenden im Statusfenster "Beenden" wählen. Ein Terminalfenster bleibt
+Zum vollständigen Beenden das Desktopfenster schließen und den Hinweis bestätigen
+oder im Statusfenster des Browsermodus "Beenden" wählen. Ein Terminalfenster bleibt
 während des normalen Programmstarts und Betriebs nicht geöffnet. Das Schließen eines
 Browserreiters beendet die Anwendung nicht.
 
@@ -56,14 +59,16 @@ entsteht trotzdem.
 Auf eine neue Version aktualisieren
 -----------------------------------
 Ob es eine neue Version gibt, zeigt Einstellungen → System → Updates → "Jetzt prüfen".
-1. ImmoManager Pro im Statusfenster beenden.
-2. Den neuen Installer öffnen und die Installation im bisherigen Programmordner ausführen.
+1. Ein aktuelles Vollbackup unter Einstellungen → System → Betrieb erstellen und
+   dessen erfolgreiche Prüfung kontrollieren. ImmoManager Pro danach vollständig beenden.
+2. Herkunft, Herausgeber und Prüfsummen des neuen Pakets kontrollieren.
+3. Den neuen Installer öffnen und die Installation im bisherigen Programmordner ausführen.
    Die neue Version erhält ein eigenes Unterverzeichnis; Ihre Daten bleiben erhalten.
-3. ImmoManager Pro über das Startmenü öffnen. Vor einem erforderlichen Datenbank-Upgrade
+4. ImmoManager Pro über das Startmenü öffnen. Vor einem erforderlichen Datenbank-Upgrade
    erstellt die Anwendung ein geprüftes Vollbackup im Datenordner unter "backups\full".
 
 Für die portable Variante das neue ZIP in einen neuen Ordner entpacken, die alte Anwendung
-im Statusfenster beenden und die neue "ImmoManager-Pro.exe" öffnen.
+    vollständig beenden und die neue "ImmoManager-Pro.exe" öffnen.
 
 Falls nach dem Update etwas nicht stimmt: Die Datenbank ist dann schon auf dem neuen Stand,
 die alte Version startet damit nicht mehr. Den Stand davor enthält das Vollbackup vom Update

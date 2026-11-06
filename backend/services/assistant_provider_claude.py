@@ -326,9 +326,16 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                 event_type = event.get("type")
                 if event_type == "system" and event.get("subtype") == "init":
                     _init(event, web, mcp)
+                    if initialized or final is not None or _identifier(event.get("session_id")) is None:
+                        raise ProviderError("Claude hat einen widersprüchlichen Startstatus geliefert.",
+                                            "provider_protocol_error", uncertain=True)
                     initialized = True
                     session_id = _identifier(event.get("session_id"))
-                elif event_type == "stream_event":
+                    continue
+                if initialized and 'session_id' in event and _identifier(event['session_id']) != session_id:
+                    raise ProviderError("Die Claude-Antwort gehört nicht zur gestarteten Sitzung.",
+                                        "provider_protocol_error", uncertain=True)
+                if event_type == "stream_event":
                     stream = event.get("event")
                     if not isinstance(stream, dict):
                         continue
@@ -352,6 +359,9 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                             if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
                                 raise ProviderError("Claude hat ein nicht freigegebenes Werkzeug angefordert.", "provider_isolation_failed", uncertain=True)
                 elif event_type == "result":
+                    if final is not None:
+                        raise ProviderError("Claude hat einen widersprüchlichen Abschluss geliefert.",
+                                            "provider_protocol_error", uncertain=True)
                     final = event
             if final is not None and _authentication_failed(final):
                 raise ProviderError("Die Claude-Anmeldung muss erneuert werden. Bitte das Konto erneut verbinden.", "authentication_required")
@@ -359,13 +369,16 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                 raise ProviderError("Claude hat kein vollständiges Ergebnis bestätigt. Bitte den Ergebnisstatus prüfen.", "provider_result_missing", uncertain=True)
             if process.process.returncode != 0 or final.get("is_error") is not False or final.get("subtype") != "success":
                 raise ProviderError("Claude konnte die Anfrage nicht abschließen. Anmeldung, Kontolimit und Modell prüfen.", "provider_execution_failed", uncertain=True)
+            if _identifier(final.get('session_id')) != session_id:
+                raise ProviderError("Die Claude-Abschlussantwort hat keine bestätigte Sitzungszuordnung.",
+                                    "provider_protocol_error", uncertain=True)
             text = final.get("result")
             if not isinstance(text, str):
                 raise ProviderError("Claude hat keine gültige Abschlussantwort geliefert.", "provider_protocol_error", uncertain=True)
             if not text.strip():
                 raise ProviderError("Claude lieferte keine verwertbare Antwort. Bitte die Anfrage prüfen.", "empty_answer", uncertain=True)
             result = finish_answer(text)
-            result.update(provider_session_id=_identifier(final.get("session_id")) or session_id,
+            result.update(provider_session_id=session_id,
                           provider_turn_id=turn_id, usage=_usage(final.get("usage")))
             return result
     except (OSError, ValueError, TypeError) as error:

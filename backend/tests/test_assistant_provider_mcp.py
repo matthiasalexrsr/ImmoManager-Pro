@@ -36,7 +36,7 @@ def frame(**event):
 
 def claude_init(**extra):
     return frame(type='system', subtype='init', tools=['mcp__immomanager__' + name for name in sorted(APPLICATION_TOOLS)],
-                 mcp_servers=[{'name': 'immomanager', 'status': 'connected'}], plugins=[], **extra)
+                 mcp_servers=[{'name': 'immomanager', 'status': 'connected'}], plugins=[], session_id='session-synthetic', **extra)
 
 
 @pytest.mark.parametrize('url', ['https://127.0.0.1/mcp', 'http://localhost:2/mcp', 'http://evil.test:80/mcp',
@@ -144,7 +144,7 @@ def test_codex_rejects_other_server_tools_and_side_effect_paths(monkeypatch, tmp
 def test_claude_all_application_tools_and_only_private_mcp_config_are_accepted(transport, tool):
     transport.scripts.append({'events': [claude_init(), frame(type='assistant', message={'content': [
         {'type': 'tool_use', 'id': 'tool-current', 'name': 'mcp__immomanager__' + tool, 'input': {}}]}),
-        frame(type='result', subtype='success', is_error=False, result='Geprüfte Antwort')]})
+        frame(type='result', subtype='success', is_error=False, result='Geprüfte Antwort', session_id='session-synthetic')]})
     result = claude.execute(transport.profile, transport.executable, {'_application_mcp': broker()}, lambda event: None, lambda: False)
     child = transport.children[0]
     config = json.loads((transport.profile.path / 'application-mcp.json').read_text())

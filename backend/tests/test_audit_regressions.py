@@ -19,8 +19,8 @@ from backend.dependencies import store
 from backend.models import DocumentCreate
 
 
-def otp(secret):
-    digest = hmac.new(base64.b32decode(secret), struct.pack(">Q", int(time.time()) // 30), hashlib.sha1).digest()
+def otp(secret, now=None):
+    digest = hmac.new(base64.b32decode(secret), struct.pack(">Q", int(time.time() if now is None else now) // 30), hashlib.sha1).digest()
     offset = digest[-1] & 15
     return str((struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF) % 1000000).zfill(6)
 
@@ -93,15 +93,17 @@ def test_enabled_totp_cannot_be_replaced_without_current_factor(case):
     )
 
 
-def test_totp_login_supported_by_browser_client(case):
+def test_totp_login_supported_by_browser_client(case, monkeypatch):
     client = case["clients"]["eigentuemer"]
     setup = client.post("/api/v1/auth/2fa/setup", json={}).json()
     assert client.post("/api/v1/auth/2fa/verify", json={"code": otp(setup["secret"])}).status_code == 200
+    next_step = (int(time.time()) // 30 + 1) * 30 + 5
+    monkeypatch.setattr(auth, "_totp_now", lambda: next_step)
     payload = {"username": case["users"]["eigentuemer"].username, "password": "Secret123"}
     with TestClient(app) as public:
         rejected = public.post("/api/v1/auth/login", json=payload)
         assert rejected.status_code == 401 and "Zwei-Faktor" in rejected.text, rejected.text
-        accepted = public.post("/api/v1/auth/login", json={**payload, "totp_code": otp(setup["secret"])})
+        accepted = public.post("/api/v1/auth/login", json={**payload, "totp_code": otp(setup["secret"], next_step)})
         assert accepted.status_code == 200, accepted.text
 
 
@@ -117,7 +119,7 @@ def test_required_totp_signal_survives_error_handler(case):
     assert response.headers.get("x-2fa-required") == "true", "HTTPException.headers is discarded"
 
 
-def test_totp_disable_clears_secret_and_rejects_stale_factor_updates(case):
+def test_totp_disable_clears_secret_and_rejects_stale_factor_updates(case, monkeypatch):
     client = case["clients"]["eigentuemer"]
     user_id = case["users"]["eigentuemer"].id
     secret = client.post("/api/v1/auth/2fa/setup").json()["secret"]
@@ -129,7 +131,9 @@ def test_totp_disable_clears_secret_and_rejects_stale_factor_updates(case):
     assert rejected.value.status_code == 409
     account = auth.get_user_by_id(user_id)
     assert account is not None and account["totp_secret"] == secret
-    assert client.post("/api/v1/auth/2fa/disable", json={"code": otp(secret)}).status_code == 200
+    next_step = (int(time.time()) // 30 + 1) * 30 + 5
+    monkeypatch.setattr(auth, "_totp_now", lambda: next_step)
+    assert client.post("/api/v1/auth/2fa/disable", json={"code": otp(secret, next_step)}).status_code == 200
     account = auth.get_user_by_id(user_id)
     assert account is not None and account["totp_secret"] is None and account["totp_enabled"] is False
     with pytest.raises(HTTPException) as rejected:

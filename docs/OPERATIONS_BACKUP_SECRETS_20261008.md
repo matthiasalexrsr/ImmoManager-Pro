@@ -2,10 +2,18 @@
 
 Stand 8. Oktober 2026, Branch `claude/ops-secrets-backup` (auf `claude/dreamy-gauss-nmaxhn`, `8578a66`). Umsetzung der Pakete „P1 I: Geheimnisse/Integrationen“ (Teil Geheimnisse, Schlüssel, Vollbackup) und „P1 L: Betrieb“ aus Abschnitt 9 von `CLAUDE_HANDOFF_20261007.md`. **Keine neue Migration**: Alembic-Head bleibt `b8e3d5f7a2c4`.
 
+Aktualisiert am 6. November 2026: Die historischen Versions-/Branchangaben oben
+beschreiben die ursprüngliche Einführung. Maßgeblich für den aktuellen Betrieb
+sind der tatsächlich gebündelte Schema-Head und die nachfolgend korrigierten
+Update-/Restorewege. Ein laufender HTTP-Server darf weder seinen Quellcode noch
+die rohe Datenbank austauschen. Kunden aktualisieren bei vollständig geschlossener
+Anwendung mit dem verifizierten neuen Paket; ein Vollrestore erfolgt offline in
+ein neues leeres Verzeichnis.
+
 ## Regel
 
 1. **Der normale Start ändert kein bestehendes Schema.** Eine leere Datenbank wird angelegt und auf den Head gestempelt. Eine Datenbank auf dem Head startet. Jede andere Datenbank wird mit einer klaren Meldung und dem Befehl abgewiesen: älterer Stand, ohne Versionsstand (alte Desktop-Installation) oder neuerer Stand. Der Speicher-Fallback (`ALLOW_INMEMORY_FALLBACK`) verdeckt das nie.
-2. **Schemaänderungen laufen nur über das explizite Upgrade** `python -m backend.upgrade` (Windows-Paket: `ImmoManager-Pro.exe upgrade`). Es legt **vorher ein geprüftes Vollbackup** an. Scheitert das Backup, bleibt das Schema unverändert. Es gibt kein automatisches Downgrade.
+2. **Schemaänderungen laufen nur über das explizite Upgrade** `python -m backend.upgrade` (Windows-Paket: `ImmoManager-Pro-CLI.exe upgrade`). Es legt **vorher ein geprüftes Vollbackup** an. Scheitert das Backup, bleibt das Schema unverändert. Es gibt kein automatisches Downgrade.
 3. **Geheimnisse liegen nie im Klartext auf der Platte**, soweit das Programm sie verwaltet (Integrationskonfiguration). Die API zeigt sie nie, sondern nur `***`. Fehlt der Schlüssel, werden Änderungen gesperrt. Es wird nichts zurückgesetzt und kein Ersatzschlüssel erfunden.
 4. **Ein Vollbackup ist vollständig und prüfbar.** Es enthält Datenbank, Anhänge, Konfiguration und Schlüssel in einem Archiv, mit SHA-256 je Datei. Ein Archiv gilt erst nach erfolgreicher Prüfung als vorhanden. Wiederhergestellt wird nie über laufende Daten, sondern in ein neues Verzeichnis.
 5. **Jeden Monat beweist eine isolierte Wiederherstellungsprobe**, dass die Sicherung tatsächlich zurückgespielt werden kann.
@@ -18,12 +26,12 @@ Stand 8. Oktober 2026, Branch `claude/ops-secrets-backup` (auf `claude/dreamy-ga
 | --- | --- | --- |
 | `backend/dependencies.py` → `db/session.create_tables()` | Bei **jedem** Import `create_all` (ergänzte fehlende Tabellen, nie Spalten), `adopt_legacy_access`, Archiv-Trigger | `db/schema_state.ensure_current()`: leer → `create_all` + Trigger + `alembic stamp head`; Head → Start; sonst `SchemaUpgradeRequired` (wird auch bei `ALLOW_INMEMORY_FALLBACK=true` durchgereicht) |
 | `app.py` Lifespan | `AUTO_MIGRATE=true` → `alembic upgrade head` im Serverprozess, Fehler nur geloggt | entfernt; `AUTO_MIGRATE` wird ignoriert (Hinweis im Log) |
-| `routers/admin_runtime.restore_backup` (.db) | danach `ensure_archive/access/job_schema` (nur Tabellen) | Revision der Sicherung vorher prüfen (neuer/fremd → 400, nichts ersetzt); nach der Sicherheitskopie bei Bedarf `run_migrations` auf die Datei; scheitert das, wird der vorherige Stand zurückgespielt |
+| `routers/admin_runtime.restore_backup` (.db) | Austausch einer Live-Datenbank mit begrenzter lokaler Rücksprungkopie | Gesperrt mit 409; vollständiges Offline-Restore in einen neuen Datenordner. Fachlich begrenzte JSON-Snapshots und Mergeimporte sind eigene Verfahren. |
 | `migrations/env.py` | URL aus `DATABASE_URL` oder `alembic.ini` | URL vom Aufrufer (`config.attributes["database_url"]`), sonst `DATABASE_URL`, sonst ini; eigene Verbindung ohne App-Pragmas; Übernahme unversionierter DBs auch bei leerer `alembic_version` |
 | Desktop-Launcher `python -m backend` / `.exe` | importierte die App direkt | `run_upgrade_step()` vor dem Import: nur bei Bedarf Vollbackup + Upgrade; leere DB → normaler Start; `--no-upgrade` überspringt; Unterbefehle `upgrade …` und `ops …` |
 | `docker-entrypoint.sh` | `alembic upgrade head` | `python -m backend.upgrade` (überspringbar mit `IMMO_SKIP_UPGRADE=true`) |
-| `scripts/update.sh` | `alembic upgrade head` | `python -m backend.upgrade`; außerdem `pip … -c constraints.txt`, `npm ci` |
-| `updater.py` | Alembic im laufenden Prozess mit `alembic.ini` (konfigurierte Logging neu) | Unterprozess `python -m backend.upgrade` mit dem neuen Code; DB-Schnappschuss und Rücksprung per Online-Backup-API statt Dateikopie |
+| `scripts/update.sh` | Allgemeines Pull-/Installationsskript | Nur ausdrücklicher Offline-Entwicklerweg mit Versionstag und erwartetem vollständigem Commit; Kunden verwenden Installationspakete. |
+| `updater.py` | Quellcode-Austausch aus der Anwendung | HTTP-Anwendung meldet immer `can_apply=false`; `/updates/apply` ist gesperrt. Optierter Entwickler-CLI nur für SQLite, mit exakter Quelle, Vollbackup, Rücksprungkopie und dauerhafter Schreibsperre bei unklarer Recovery. |
 
 Zustände (`schema_state.SchemaStatus.state`): `empty`, `current`, `outdated`, `unversioned`, `newer`. Rückgabecodes des Upgrades: 0 erledigt bzw. nichts zu tun, 2 Backup fehlgeschlagen (Schema unverändert), 3 Upgrade fehlgeschlagen (das Pre-Upgrade-Archiv existiert), 4 Datenbank neuer als das Programm, 5 Upgrade nötig (nur `--check`).
 
@@ -147,12 +155,16 @@ Abgedeckt sind:
 
 1. Programm bzw. Dienst stoppen.
 2. Archiv wählen und prüfen: `python -m backend.ops verify <archiv>`.
-3. In ein **neues** Verzeichnis wiederherstellen: `python -m backend.ops restore <archiv> --target D:\ImmoManagerPro-restore` (Windows-Paket: `ImmoManager-Pro.exe ops restore …`). Mit Passphrase: `set IMMO_RESTORE_PASS=…` und `--passphrase-env IMMO_RESTORE_PASS`, oder Eingabe am Prompt.
+3. In ein **neues** Verzeichnis wiederherstellen: `python -m backend.ops restore <archiv> --target D:\ImmoManagerPro-restore` (Windows-Paket: `ImmoManager-Pro-CLI.exe ops restore …`). Mit Passphrase: `set IMMO_RESTORE_PASS=…` und `--passphrase-env IMMO_RESTORE_PASS`, oder Eingabe am Prompt.
 4. `.env` im Zielverzeichnis prüfen (Pfade sind entfernt; Original in `.env.from-backup`). Bei PostgreSQL: leere Datenbank anlegen und `--pg-target-url` nutzen oder `pg_restore --no-owner --dbname <url> postgres.dump`.
-5. Programm mit dem neuen Datenverzeichnis starten (`start.bat -DataDir D:\ImmoManagerPro-restore` bzw. `--data-dir`), oder die Verzeichnisse bei gestopptem Programm tauschen. Der Launcher führt das Upgrade aus, falls die Sicherung älter ist (vorher wieder ein Vollbackup).
-6. Anmeldung, Dokumente und Integrationen prüfen. Erscheint „Schlüssel … fehlt“, liegt der passende `secrets/keyring.json` nicht im Datenverzeichnis.
+5. Programm mit dem neuen Datenverzeichnis starten (`start.bat -DataDir D:\ImmoManagerPro-restore` bzw. `--data-dir`). Den bisherigen Bestand erhalten. Der Launcher führt das Upgrade aus, falls die Sicherung älter ist (vorher wieder ein Vollbackup).
+6. Neu anmelden, Dokumente und Integrationen prüfen. Das Restore erzeugt eine neue private Sitzungsgrenze; alte Tokens werden trotz passendem damaligem JWT-Schlüssel abgewiesen. Beim SQLite-Restore werden zusätzlich archivierte Sitzungsfamilien in der Datenbank geschlossen. Die AES-Schlüssel für Integrationsdaten bleiben erhalten. Die Datenschutzprüfung bleibt offen. Erscheint „Schlüssel … fehlt“, liegt der passende `secrets/keyring.json` nicht im Datenverzeichnis.
 
-Einzelne ältere `.db`-Sicherungen (`backups/backup_*.db`) lassen sich weiter über Einstellungen bzw. `/admin/restore` einspielen. Eine Sicherheitskopie entsteht vorher; ältere Stände werden danach ausdrücklich hochgezogen, neuere oder fremde abgewiesen.
+Einzelne ältere `.db`-Sicherungen (`backups/backup_*.db`) werden nicht mehr über
+`/admin/restore` in eine laufende Anwendung eingespielt. Sie ersetzen kein
+vollständiges Archiv aus Datenbank, Dokumenten und passenden Schlüsseln. Eine
+erforderliche Altdatenrettung braucht einen getrennten Offline-Bestand und eine
+gesonderte Vollständigkeitsprüfung.
 
 ### Schlüsselverwahrung
 

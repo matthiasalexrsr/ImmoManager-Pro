@@ -19,7 +19,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.pool import NullPool
 
 from ..services.filesystem_paths import filesystem_path
@@ -76,7 +76,7 @@ class SchemaUpgradeRequired(RuntimeError):
         super().__init__(status.describe())
 
 
-def alembic_config(database_url: str | None = None) -> Config:
+def alembic_config(database_url: str | URL | None = None) -> Config:
     """A Config without ini file: never reconfigures the running process's logging."""
     config = Config()
     # Alembic opens migration source files itself. Preserve the extended Win32
@@ -123,7 +123,7 @@ def inspect_engine(engine: Engine) -> SchemaStatus:
         return inspect_connection(connection)
 
 
-def inspect_url(database_url: str) -> SchemaStatus:
+def inspect_url(database_url: str | URL) -> SchemaStatus:
     engine = create_engine(database_url, poolclass=NullPool)
     try:
         return inspect_engine(engine)
@@ -135,7 +135,8 @@ def inspect_sqlite_file(path: Path) -> tuple[SchemaStatus, bool]:
     """Read-only look at a SQLite file (a backup): (status, has the application tables)."""
     import sqlite3
 
-    uri = f"{path.resolve().as_uri()}?mode=ro"
+    from ..services.sqlite_backup import readonly_uri
+    uri = readonly_uri(path)
     engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(uri, uri=True), poolclass=NullPool)
     try:
         with engine.connect() as connection:
@@ -189,7 +190,7 @@ def ensure_current(engine: Engine) -> SchemaStatus:
     return status
 
 
-def run_migrations(database_url: str) -> tuple[SchemaStatus, SchemaStatus]:
+def run_migrations(database_url: str | URL) -> tuple[SchemaStatus, SchemaStatus]:
     """Bring the database to the head with its own connection (no app pragmas, no pool)."""
     before = inspect_url(database_url)
     if before.state == NEWER:

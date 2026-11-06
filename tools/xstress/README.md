@@ -18,6 +18,7 @@ Berichte und Daten werden weder wiederverwendet noch gelöscht. Datenbank, Uploa
 Backups, Integrationskonfiguration und Journal, Logs und KI-Cache liegen in der
 jeweiligen synthetischen Fixture; KI und Plugins bleiben ausgeschaltet. Ein zufälliges
 JWT-Geheimnis gilt nur für den Lauf und seine Kopien und bleibt bei Neustarts stabil.
+Jede Fixture bindet ihre eigenen Dateischlüssel an `secrets/keyring.json`.
 Hintergrundjobs und automatische Backups sind ausgeschaltet, damit ausschließlich die
 ausdrücklich gestarteten Testschritte die Daten verändern.
 
@@ -45,6 +46,18 @@ der Stresstest ausdrücklich das vollständige Archiv und seine isolierte Wieder
 eine beliebige andere Exportablehnung gilt weiterhin als Fehler. Die Sicherung verwendet
 eine nur für die synthetische Testinstallation erzeugte Passphrase.
 
+Das Ersetzen einer vollständigen Datenbank im laufenden Programm bleibt geschlossen:
+der ältere RawDB-HTTP-Restore muss mit 409 ablehnen und den Bestand unverändert lassen.
+Für den tatsächlichen Wiederherstellungsnachweis wird eine Wegwerfkopie gesichert und
+anschließend absichtlich verändert. Deren Server wird geschlossen; der echte Operatorbefehl
+`python -m backend.ops restore` legt das Vollarchiv offline in einem NEUEN Datenordner ab.
+Darauf folgen ein ausdrückliches `backend.upgrade`, ein eigener HTTP-Start mit sämtlichen
+Pfaden und Schlüsseln aus diesem neuen Profil und eine neue Anmeldung. Die ursprünglichen
+Archivinhalte werden mit dem Fingerabdruck verglichen, während die Quellkopie ihre Änderungen
+behalten muss. Die neue Datenschutz-Wiederherstellungssperre bleibt dabei ausdrücklich pending.
+Der Oracle akzeptiert dafür nur die benannten QA-Datenbanken `app.db` und `immo_manager.db`;
+er liest auch lange Windows-Pfade über den kanonischen Readonly-URI-Helper.
+
 Unter Windows startet der Prozess verborgen und zunächst angehalten, wird einem
 eigenen Job zugeordnet und erst danach fortgesetzt. Dadurch gehören auch Python-
 Launcher-Kinder zu diesem Job. Normaler und harter Abbruch beenden und prüfen den
@@ -68,7 +81,7 @@ Für den Browser-Durchlauf werden `frontend/dist` (`npm run build`) und Playwrig
 | | Jährliche Zählerablesung, vereinzelt mit Ablesefehler | Hausmeister |
 | | Installationsweiter Mahnlauf zweimal im Jahr; der Steuerberater liest Berichte und versucht jeden Monat eine Buchung (muss scheitern) | Eigentümer, Steuerberater |
 | Prüfungen | Alle 6 Monate und am Ende: Mieterkonten (Soll, gezahlt, Aufteilung), aktuelle Mieten, Mietverläufe, Dashboard, Belegung, Summe aller Buchungen, Berichte, Prüfliste | – |
-| Speichern/Laden | Jedes Jahresende: Neustart, Export → Import in eine frische Installation, doppelter Import. In der Mitte und am Ende zusätzlich: Backup → Änderung → Restore, Migration auf einer Kopie, harter Absturz mitten im Schreiben. In der Mitte: Stromausfall (Server hart beendet) | Eigentümer |
+| Speichern/Laden | Jedes Jahresende: Neustart, Export → Import in eine frische Installation, doppelter Import. Bei privaten Beständen stattdessen Vollarchiv und isolierte Restore-Probe. In der Mitte und am Ende zusätzlich: RawDB-Live-Restore muss 409 ablehnen; Vollarchiv → Änderung → Offline-Restore in neues Profil → Upgrade → neuer HTTP-Start; Migration auf einer Kopie und harter Absturz mitten im Schreiben. In der Mitte: Stromausfall (Server hart beendet) | Eigentümer |
 | Fehldaten | Rund 90 unplausible oder fehlerhafte Eingaben (negative Mieten, Datum 1900/2100, Brutto ≠ Netto + MwSt, Kaution über drei Mieten, Kappungsgrenze, Nullbytes, 5000 Zeichen, deutsches Zahlenformat, falsche Zugehörigkeiten, kaputte Importdateien …) auf einer Kopie | Verwalter |
 | Rechte und Gleichzeitigkeit | Rechte-Matrix für fünf Rollen, Rollenanhebung, deaktivierte Benutzer, Passwort-Reset, Kontosperre; gleichzeitige Änderungen, 40 parallele Zahlungen, doppeltes Anwenden einer Mietanpassung, Doppelklick auf Speichern; anschließend 30 s Mischbetrieb mit zehn unabhängigen Benutzern (acht Leser, zwei Schreiber) | alle |
 | Oberfläche | Jede Seite für Eigentümer, Buchhaltung, Hausmeister und Steuerberater: JS-Fehler, Serverfehler, verweigerte Anfragen, Rohtexte, Ladezeiten, Bearbeiten-Knöpfe für Nur-Lesen | alle |
@@ -76,6 +89,12 @@ Für den Browser-Durchlauf werden `frontend/dist` (`npm run build`) und Playwrig
 Die Daten sind bewusst unvollständig: etwa 15 % der Häuser ohne PLZ oder Baujahr,
 12 % der Einheiten ohne Fläche oder Personenzahl, 15 % der Mieter ohne E-Mail oder IBAN,
 6 % der Verträge ohne Kaution. Einheitentypen mischen deutsche Wörter und englische Codes.
+
+Weltaufbau, heutige Abnahme und Zukunfts-/Fehldaten verwenden denselben fachlichen
+Europe/Berlin-Kalendertag wie die Anwendung; ein UTC-Server darf an Mitternacht keinen
+anderen Stichtag erzeugen. Aktuelle Dashboard-/Belegungswerte werden ausschließlich
+gegen die heutige Welt geprüft, niemals gegen das Ende eines zurückliegenden Monats.
+Die historischen Miet-/Zahlungsprüfungen behalten ihren ausdrücklich übergebenen Stichtag.
 
 Der Mischbetrieb startet alle zehn Sitzungen an einer gemeinsamen Barriere und misst
 die tatsächliche Überlappung laufender Lese- und Schreibanfragen. Die zwei Schreiber
@@ -100,6 +119,23 @@ und die Rollenaktionen gegen einen eigenen echten HTTP-Server.
 | LANGSAM | Aufruf über 2 s, Seite über 4 s, Last-p95 über 2 s |
 | HINWEIS | Auffällig, aber nicht falsch (z. B. Warnung fehlt, Fehlermeldung nur auf Englisch) |
 
+Die 2-Sekunden-Grenze bleibt für interaktive Aufrufe einschließlich gewöhnlicher
+Mutationen und Admin-Endpunkte bestehen. Ausschließlich `POST /admin/operations/backup`
+und `POST /admin/operations/restore-probe` erhalten im Testprofil 30 Sekunden je Aufruf:
+Sie erzeugen bzw. entpacken und prüfen synchron das vollständige verschlüsselte Archiv
+einschließlich Datenbank, Dateien, Schlüsseln und privaten Nachweisen. Dies ist keine
+pauschale Admin-Ausnahme. Methode und Pfad müssen exakt passen; der tatsächlich
+angewandte Grenzwert steht zusätzlich im Anfragejournal. Über 30 Sekunden bleibt auch
+hier ein LANGSAM-Befund. Der harte HTTP-Timeout von 180 Sekunden ist unverändert.
+Bei beiden Vollarchivoperationen messen separate HTTP-Verbindungen parallel `GET /health`
+und `GET /api/v1/tasks?limit=1` mit dem bestehenden Token. Diese Leser behalten 2 Sekunden
+und dürfen keine 4xx-/5xx-Antworten liefern. Zeiten, tatsächliche Überlappungen und die
+Anzahl je Leser stehen unter `measurements.bulk_responsiveness`. Fehlt für einen Leser
+eine echte Zeitüberschneidung, meldet der Lauf ausdrücklich fehlenden Nachweis; daraus
+entsteht keine Responsivitätsabnahme. Die gezielte echte HTTP-Regression verlangt beide
+Überlappungen und erfolgreiche Leser unter 2 Sekunden. Frühere Messungen und Befunde
+mit dem älteren pauschalen 2-Sekunden-Budget werden nicht rückwirkend geändert.
+
 ## Das Kontrollbuch (`ledger.py`)
 
 Rechnet unabhängig vom App-Code nach den fachlichen Regeln: Miete je Kalendermonat,
@@ -120,3 +156,7 @@ Gültig-ab-Datum, Vorauszahlungen je Nutzungszeitraum, Zahlungen je Mieter.
 | `roles.py` | Rechte-Matrix und Gleichzeitigkeit |
 | `ui.js` | Browser-Durchlauf je Benutzer |
 | `run.py` | Ablauf und Aufruf |
+
+Bankvorschauen nennen zusätzlich Monat, CSV-Zeilen, Bytezahl, Erfolg und gemessene Dauer
+unter `measurements.bank_import_previews`. Damit bleibt eine langsame Vorschau ihrem
+tatsächlichen Arbeitsumfang zugeordnet, ohne Zahlungsinhalte in das Messprotokoll zu kopieren.

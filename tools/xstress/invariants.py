@@ -9,6 +9,8 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
+from backend.domain.clock import local_today
+
 from .core import REPO, Client, Findings
 from .ledger import due_until, money, step_on
 from .timeline import Simulation
@@ -80,7 +82,7 @@ def check_overview(sim: Simulation, client: Client, as_of: date) -> None:
     occupied = len({t.unit.id for t in sim.w.tenancies if id(t) in sim.created and t.start <= as_of
                     and (not t.end or t.end >= as_of)})
     dashboard = client.ok("GET", "/dashboard/stats", area="Übersicht") or {}
-    if as_of >= sim.w.end:        # the dashboard counts for today
+    if as_of == local_today():    # these APIs count today, not the historical simulation cutoff
         f.check(dashboard.get("active_contracts") == running, "FALSCH", "Dashboard",
                 f"{dashboard.get('active_contracts')} aktive Verträge statt {running}")
         f.check(dashboard.get("occupied_units") == occupied, "FALSCH", "Dashboard",

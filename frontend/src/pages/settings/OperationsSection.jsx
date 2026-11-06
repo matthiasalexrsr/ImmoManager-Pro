@@ -174,6 +174,11 @@ export default function OperationsSection() {
           {showPlatform && <PlatformSection />}
         </div>}
         <p className="text-muted" style={{ margin: 0, padding: '0.75rem 1.1rem 0.25rem' }}>{t('settings.operations.intro')}</p>
+        <p className="text-muted" style={{ margin: 0, padding: '0.5rem 1.1rem', overflowWrap: 'anywhere' }}>
+          Die Wiederherstellungsprobe prüft eine Sicherung in einem getrennten Testbestand. Ihre laufende Verwaltung bleibt erhalten.
+          Für eine tatsächliche Wiederherstellung die Anwendung vollständig beenden und das Vollbackup in einen neuen Datenordner zurückspielen.
+          Eine rohe Datenbank wird während des Betriebs nicht ausgetauscht.
+        </p>
         {error && <div role="alert" style={{ color: 'var(--danger)', padding: '0.5rem 1.1rem' }}>{error}</div>}
         {data && (
           <>

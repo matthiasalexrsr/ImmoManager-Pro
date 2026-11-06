@@ -10,7 +10,7 @@ After an accepted case the stored record is read back: numbers must come back as
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 from .core import Client, Findings, FixtureSetupError, Server, setup_users
 
@@ -42,7 +42,8 @@ def cases(r: dict) -> list[tuple[str, str, str, str, dict, str]]:
     """(area, case, method, path, body, expectation)"""
     c, o, u, free, acc = r["contract"], r["other"], r["unit"], r["free_unit"], r["account"]
     rent = r["rent"]
-    today = date.today()
+    from backend.domain.clock import local_today
+    today = local_today()
     unit = {"property_id": u["property_id"], "label": "Test", "unit_type": "Wohnung"}
     contract = {"contract_number": "X-1", "property_id": free["property_id"], "unit_id": free["id"],
                 "tenant_id": c["tenant_id"], "start_date": "2026-01-01"}

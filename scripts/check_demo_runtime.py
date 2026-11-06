@@ -27,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.desktop_control import READY_PREFIX, ready_message  # noqa: E402
+from backend.services.filesystem_paths import filesystem_path  # noqa: E402
+from backend.services.sqlite_backup import readonly_uri  # noqa: E402
 from scripts.check_frozen_desktop import (  # noqa: E402
     ServerWatch,
     backend_shutdown_record,
@@ -42,18 +44,20 @@ MINIMUM_COUNTS = {"properties": 8, "units": 40, "tenants": 35, "contracts": 35, 
 
 
 def inventory(folder: Path) -> dict[str, str]:
+    folder = filesystem_path(folder)
     return {path.relative_to(folder).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in folder.rglob("*") if path.is_file()}
 
 
 def inspect_demo(data: Path) -> tuple[dict, dict[str, int]]:
+    data = filesystem_path(data)
     marker = json.loads((data / "immomanager-demo-bw.json").read_text(encoding="utf-8"))
     if (marker.get("schema"), marker.get("database"), marker.get("state")) != ("immomanager-demo-bw/1", "demo-bw.sqlite3", "complete"):
         raise ValueError("The actual demo dataset has no complete bound marker")
     database = data / "demo-bw.sqlite3"
     if database.is_symlink() or not database.is_file():
         raise ValueError("The demo database is missing or linked")
-    with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+    with closing(sqlite3.connect(readonly_uri(database), uri=True)) as connection:
         counts = {table: connection.execute('SELECT count(*) FROM "' + table + '"').fetchone()[0]
                   for table in MINIMUM_COUNTS}
     if any(counts[table] < minimum for table, minimum in MINIMUM_COUNTS.items()):

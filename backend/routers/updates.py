@@ -1,24 +1,24 @@
 """Update management API endpoints.
 
-Provides endpoints for checking, applying, and monitoring application updates
-from GitHub. All endpoints require admin role (eigentuemer/verwalter).
+Provides release discovery and installer guidance from the configured GitHub repository.
+Customer source promotion is disabled even for non-production source checkouts.
 
 Security considerations:
 - All endpoints are admin-only (enforced via routing.py dependencies)
 - The /configure endpoint does NOT persist changes (restart resets them)
-- The /apply endpoint validates target_version format before delegating
+- The /apply endpoint always rejects source promotion (409)
 - Error responses are sanitized to avoid leaking internal details
 """
 
 import logging
-import re
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 
 from ..config import settings
 from ..updater import (
-    apply_update,
+    INSTALLER_HINT,
+    _extract_owner_repo,
     check_for_updates,
     get_update_history,
     is_update_locked,
@@ -37,8 +37,8 @@ class ApplyUpdateRequest(BaseModel):
     @classmethod
     def validate_version(cls, v):
         if v is not None:
-            cleaned = v.lstrip("vV").strip()
-            if not re.match(r"^\d+\.\d+\.\d+([a-zA-Z0-9._-]*)?$", cleaned):
+            from ..updater import _parse_version
+            if not _parse_version(v)[0]:
                 raise ValueError("Ungültiges Versionsformat")
         return v
 
@@ -59,7 +59,7 @@ class ConfigureUpdateRequest(BaseModel):
     @classmethod
     def validate_repo_url(cls, v):
         if v is not None and v != "":
-            if not re.match(r"^https?://github\.com/[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+", v):
+            if _extract_owner_repo(v) is None:
                 raise ValueError("Nur GitHub-Repository-URLs sind erlaubt")
         return v
 
@@ -83,52 +83,19 @@ def update_status():
     """
     return {
         "current_version": settings.app_version,
-        "update_repo_url": settings.update_repo_url or None,
+        "update_repo_url": ("https://github.com/" + repo) if (repo := _extract_owner_repo(settings.update_repo_url)) else None,
         "update_channel": settings.update_channel,
         "repo_configured": bool(settings.update_repo_url),
         "update_in_progress": is_update_locked(),
+        "can_apply": False,
+        "update_method": "verified_installer",
     }
 
 
 @router.post("/apply")
 def apply_update_endpoint(payload: ApplyUpdateRequest | None = None):
-    """Apply an available update.
-
-    Optional body: {"target_version": "1.2.0"} to update to a specific version.
-    If omitted, updates to the latest version on the current branch.
-
-    This endpoint:
-    1. Creates a full data backup
-    2. Creates a database snapshot (SQLite)
-    3. Pulls updates from GitHub
-    4. Runs database migrations
-    5. Rebuilds the frontend
-    6. Rolls back automatically on failure
-
-    Returns detailed step-by-step progress and result.
-    """
-    if settings.is_production and not settings.update_allow_in_production:
-        raise HTTPException(
-            status_code=403,
-            detail="Updates sind in der Produktionsumgebung deaktiviert. Setzen Sie UPDATE_ALLOW_IN_PRODUCTION=true.",
-        )
-
-    if not settings.update_repo_url:
-        raise HTTPException(
-            status_code=400,
-            detail="Kein GitHub-Repository konfiguriert. Setzen Sie UPDATE_REPO_URL in der .env Datei.",
-        )
-
-    if is_update_locked():
-        raise HTTPException(
-            status_code=409,
-            detail="Ein Update läuft bereits. Bitte warten Sie.",
-        )
-
-    target = payload.target_version if payload else None
-
-    result = apply_update(target_version=target)
-    return result
+    """Customer source promotion is unavailable; no payload enables developer mode."""
+    raise HTTPException(status_code=409, detail=INSTALLER_HINT)
 
 
 @router.post("/restart")

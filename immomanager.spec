@@ -18,8 +18,9 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # Project root
 ROOT = os.path.abspath('.')
-from tools.desktop_bundle import IMPORTS as DESKTOP_IMPORTS, isolated_native_analysis, mac_bundle_versions, verify_versions, write_runtime_manifest
+from tools.desktop_bundle import IMPORTS as DESKTOP_IMPORTS, isolated_native_analysis, mac_bundle_versions, macos_signing_options, seal_macos_bundle, verify_versions, write_runtime_manifest
 verify_versions()
+MAC_SIGNING = macos_signing_options(ROOT)
 WIZARD_ROOT = os.path.join(ROOT, 'mietvertrag_wizard_fastapi_reportlab_pro')
 
 if os.path.isdir(WIZARD_ROOT) and WIZARD_ROOT not in sys.path:
@@ -471,6 +472,7 @@ cli = EXE(
     console=True,
     icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
     version=version_resource(Path(ROOT), 'ImmoManager-Pro-CLI.exe', 'ImmoManager Pro – Wartung') if sys.platform == 'win32' else None,
+    **MAC_SIGNING,
 )
 
 exe = EXE(
@@ -486,6 +488,7 @@ exe = EXE(
     console=False,
     icon=os.path.join(ROOT, 'assets', 'immomanager.ico'),
     version=version_resource(Path(ROOT), 'ImmoManager-Pro.exe', 'ImmoManager Pro') if sys.platform == 'win32' else None,
+    **MAC_SIGNING,
 )
 
 coll = COLLECT(
@@ -533,7 +536,4 @@ if sys.platform == 'darwin':
     # Relocation and ad-hoc signing can change native Qt bytes. Inventory the
     # actual .app, then reseal only its outer resource envelope, leaving nested
     # binaries' signatures/bytes intact. Native CI must verify this final layout.
-    write_runtime_manifest(Path(app.name) / 'Contents', target='darwin', layout='macos-app')
-    import subprocess
-    subprocess.run(['codesign', '--force', '--sign', '-', app.name], check=True)
-    subprocess.run(['codesign', '--verify', '--deep', '--strict', app.name], check=True)
+    seal_macos_bundle(app.name, signing_options=MAC_SIGNING)

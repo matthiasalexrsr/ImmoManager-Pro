@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -34,8 +35,10 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import stat
 import subprocess
 import time
+import unicodedata
 import zipfile
 from collections.abc import Callable, Iterator
 from contextlib import closing
@@ -53,6 +56,7 @@ from ..config import settings
 from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
 from . import secret_box
 from .filesystem_paths import filesystem_path
+from .sqlite_backup import file_url, readonly_uri
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +65,16 @@ BERLIN = ZoneInfo("Europe/Berlin")
 FORMAT = "immomanager-full-backup"
 FORMAT_VERSION = 1
 LOG_NAME = "ops-log.jsonl"
-_NAME = re.compile(r"^immomanager-full-(\d{8}T\d{6})Z-([a-z-]+)-([0-9a-f]{4})\.zip$")
+_NAME = re.compile(r"^immomanager-full-(\d{8}T\d{6})Z-([a-z-]+)-([0-9a-f]{4,16})\.zip$")
 _CHUNK = 1024 * 1024
+_MAX_MANIFEST_BYTES = 16 * 1024 * 1024
+_MAX_CONFIG_BYTES = 16 * 1024 * 1024
+_MAX_ARCHIVE_MEMBERS = 100_000
+_MAX_EXPANDED_BYTES = 1024 ** 4  # 1 TiB; reject before allocating/extracting declared payloads
 _STORED_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".zip", ".gz", ".7z", ".docx", ".xlsx",
                     ".pptx", ".odt", ".ods", ".mp4", ".mov", ".dump"}
 # Paths in .env that point at the old installation; dropped when restoring elsewhere.
 _PATH_KEYS = ("DATA_DIR", "UPLOADS_DIR", "BACKUP_DIR", "LOG_FILE", "INTEGRATION_STATE_FILE", "SECRET_KEY_FILE")
-_LOCK_STALE_SECONDS = 6 * 3600
 TRIGGERS = ("scheduled", "manual", "pre-upgrade", "cli")
 
 DB_SQLITE = "database/immo_manager.sqlite3"
@@ -150,7 +157,7 @@ def configured_second_target(data_dir: Path | None = None) -> tuple[str, str | N
     from_env = settings.backup_second_target.strip()
     if from_env:
         return from_env, "env"
-    path = (data_dir or get_data_dir()) / TARGET_FILE
+    path = filesystem_path((data_dir or get_data_dir()) / TARGET_FILE)
     try:
         value = json.loads(path.read_text(encoding="utf-8")).get("second_target")
     except FileNotFoundError:
@@ -257,7 +264,7 @@ def _utcnow() -> datetime:
 
 def sha256_file(path: Path, pulse: _Pulse | None = None) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with filesystem_path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(_CHUNK), b""):
             digest.update(chunk)
             if pulse:
@@ -266,27 +273,42 @@ def sha256_file(path: Path, pulse: _Pulse | None = None) -> str:
 
 
 def _fsync(path: Path) -> None:
-    with path.open("rb+") as handle:
+    with filesystem_path(path).open("rb+") as handle:
         os.fsync(handle.fileno())
 
 
 def _write_sidecar(archive: Path, digest: str) -> None:
-    sidecar = archive.with_name(archive.name + ".sha256")
-    sidecar.write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
+    sidecar = filesystem_path(archive.with_name(archive.name + ".sha256"))
+    secret_box.write_private_file(sidecar, f"{digest}  {archive.name}\n".encode("utf-8"))
 
 
 def _read_sidecar(archive: Path) -> str | None:
-    sidecar = archive.with_name(archive.name + ".sha256")
+    sidecar = filesystem_path(archive.with_name(archive.name + ".sha256"))
     try:
-        return sidecar.read_text(encoding="utf-8").split()[0].lower()
-    except (OSError, IndexError):
+        with sidecar.open("rb") as handle:
+            raw = handle.read(4097)
+        if len(raw) > 4096:
+            return ""
+        digest = raw.decode("utf-8").split()[0].lower()
+        return digest if re.fullmatch(r"[0-9a-f]{64}", digest) else ""
+    except FileNotFoundError:
         return None
+    except (OSError, ValueError, IndexError):
+        return ""
 
 
 def _safe_member(name: str) -> bool:
+    if not isinstance(name, str) or not name or any(ord(character) < 32 for character in name):
+        return False
     path = PurePosixPath(name)
-    return bool(name) and "\\" not in name and not path.is_absolute() and ".." not in path.parts \
-        and ":" not in path.parts[0]
+    if str(path) != name or "\\" in name or path.is_absolute() or not path.parts:
+        return False
+    for part in path.parts:
+        if part in {".", ".."} or ":" in part or part.endswith((".", " ")):
+            return False
+        if re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])", part.split(".", 1)[0], re.I):
+            return False
+    return True
 
 
 def _sqlite_path(database_url: str) -> Path:
@@ -298,9 +320,10 @@ def _sqlite_path(database_url: str) -> Path:
 
 def sqlite_online_copy(source: Path, target: Path) -> None:
     """Consistent copy of a live (WAL) SQLite file; never creates a missing source."""
+    source, target = filesystem_path(source), filesystem_path(target)
     if not source.is_file():
         raise BackupError(f"Datenbankdatei nicht gefunden: {source}")
-    src = sqlite3.connect(source, timeout=30)
+    src = sqlite3.connect(readonly_uri(source), uri=True, timeout=30)
     try:
         dst = sqlite3.connect(target)
         try:
@@ -312,7 +335,7 @@ def sqlite_online_copy(source: Path, target: Path) -> None:
 
 
 def _sqlite_facts(path: Path, *, full_check: bool) -> dict[str, Any]:
-    connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    connection = sqlite3.connect(readonly_uri(path), uri=True)
     try:
         check = connection.execute("PRAGMA integrity_check" if full_check else "PRAGMA quick_check").fetchone()[0]
         tables = [row[0] for row in connection.execute(
@@ -406,37 +429,70 @@ def _pg_dump(sources: Sources, target: Path, private_keys: list[secret_box.Key] 
 
 
 class _Lock:
-    """One full backup/probe at a time per backup directory (job, button and CLI alike)."""
+    """Kernel-owned lifetime; a long backup never expires and crash releases it."""
+
+    _HEADER = b"IMMO-BACKUP-LOCK-2\n"
 
     def __init__(self, root: Path):
-        self.path = root / ".lock"
+        self.path = filesystem_path(root / ".lock")
+        self.fd: int | None = None
+
+    @staticmethod
+    def _change(fd: int, *, release: bool = False) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            module = importlib.import_module("msvcrt")
+            getattr(module, "locking")(fd, getattr(module, "LK_UNLCK" if release else "LK_NBLCK"), 1)
+        else:
+            module = importlib.import_module("fcntl")
+            mode = getattr(module, "LOCK_UN") if release else getattr(module, "LOCK_EX") | getattr(module, "LOCK_NB")
+            getattr(module, "flock")(fd, mode)
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
-            try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            except FileExistsError:
-                try:
-                    age = time.time() - self.path.stat().st_mtime
-                except FileNotFoundError:
-                    continue
-                if age > _LOCK_STALE_SECONDS:
-                    self.path.unlink(missing_ok=True)
-                    continue
-                raise BackupError("Eine andere Sicherung oder Wiederherstellungsprobe läuft gerade.") from None
-            with os.fdopen(fd, "w") as handle:
-                handle.write(f"{socket.gethostname()}:{os.getpid()} {_utcnow().isoformat()}\n")
+        fd = os.open(self.path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise BackupError("Die Sicherungssperre ist keine eigene reguläre Datei")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise BackupError("Die Sicherungssperre gehört einem anderen Benutzer")
+            os.set_inheritable(fd, False)
+            self._change(fd)
+            raw = os.read(fd, 4096)
+            if raw and not raw.startswith(self._HEADER):
+                # A PID/hostname is not proof of ownership across namespaces or
+                # machines. Legacy/unknown markers require explicit inspection.
+                raise BackupError("Eine ältere Sicherungssperre benötigt Prüfung; sie wird nicht durch Zeitablauf entfernt")
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, self._HEADER + f"{socket.gethostname()}:{os.getpid()}\n".encode("utf-8"))
+            os.fsync(fd)
+            self.fd = fd
             return self
-        raise BackupError("Sperrdatei der Sicherung konnte nicht angelegt werden.")
+        except BackupError:
+            os.close(fd)
+            raise
+        except OSError:
+            os.close(fd)
+            raise BackupError("Eine andere Sicherung oder Wiederherstellungsprobe läuft, oder die Sperre ist nicht zugänglich.") from None
+        except BaseException:
+            os.close(fd)
+            raise
 
     def __exit__(self, *exc):
-        self.path.unlink(missing_ok=True)
+        if self.fd is not None:
+            try:
+                self._change(self.fd, release=True)
+            finally:
+                os.close(self.fd)
+                self.fd = None
 
 
 # --- ops log ------------------------------------------------------------------------------
 
 def record_event(root: Path, event: dict[str, Any]) -> dict[str, Any]:
+    root = filesystem_path(root)
     root.mkdir(parents=True, exist_ok=True)
     event = {"at": _utcnow().isoformat(timespec="seconds"), **event}
     path = root / LOG_NAME
@@ -456,6 +512,7 @@ def record_event(root: Path, event: dict[str, Any]) -> dict[str, Any]:
 
 def read_events(root: Path, limit: int = 200) -> list[dict[str, Any]]:
     """Newest first; unreadable lines are skipped."""
+    root = filesystem_path(root)
     try:
         lines = (root / LOG_NAME).read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -490,6 +547,7 @@ class Archive:
 
 def list_archives(directory: Path) -> list[Archive]:
     """Finished archives, newest first (a .partial never counts)."""
+    directory = filesystem_path(directory)
     archives: list[Archive] = []
     if not directory.is_dir():
         return archives
@@ -537,7 +595,7 @@ def apply_retention(directory: Path, keep_daily: int, keep_monthly: int, keep_pr
 
 
 def _archive_name(trigger: str, now: datetime) -> str:
-    return f"immomanager-full-{now.strftime('%Y%m%dT%H%M%S')}Z-{trigger}-{secrets.token_hex(2)}.zip"
+    return f"immomanager-full-{now.strftime('%Y%m%dT%H%M%S')}Z-{trigger}-{secrets.token_hex(8)}.zip"
 
 
 # --- writing ------------------------------------------------------------------------------
@@ -549,6 +607,7 @@ class _Writer:
     files: list[dict[str, Any]] = field(default_factory=list)
 
     def add_file(self, source: Path, arcname: str, kind: str) -> None:
+        source = filesystem_path(source)
         stat = source.stat()
         info = zipfile.ZipInfo(arcname, time.gmtime(max(stat.st_mtime, 315532800))[:6])
         info.compress_type = zipfile.ZIP_STORED if source.suffix.lower() in _STORED_SUFFIXES \
@@ -662,17 +721,21 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
     dialect = sources.dialect
     if dialect not in ("sqlite", "postgresql"):
         raise BackupError(f"Vollbackup für {dialect} wird nicht unterstützt (nur SQLite und PostgreSQL).")
-    sources.root.mkdir(parents=True, exist_ok=True)
-    work = sources.root / f".work-{secrets.token_hex(4)}"
-    filesystem_path(work).mkdir()
+    filesystem_path(sources.root).mkdir(parents=True, exist_ok=True)
+    work = filesystem_path(sources.root / f".work-{secrets.token_hex(4)}")
+    filesystem_path(work).mkdir(mode=0o700)
     name = _archive_name(trigger, now)
     final = filesystem_path(sources.root / name)
     partial = filesystem_path(sources.root / (name + ".partial"))
+    partial_created = False
     try:
+        if final.exists():
+            raise BackupError("Der neue Archivname ist bereits belegt")
         # These exact bytes both decrypt the snapshot inventory and enter the
         # archive. Never use an ambient/default keyring for private AI sources.
-        keyring_bytes = sources.key_file.read_bytes() if sources.key_file.is_file() else None
-        env_bytes = sources.env_file.read_bytes() if sources.env_file.is_file() else None
+        key_file, env_file = filesystem_path(sources.key_file), filesystem_path(sources.env_file)
+        keyring_bytes = key_file.read_bytes() if key_file.is_file() else None
+        env_bytes = env_file.read_bytes() if env_file.is_file() else None
         from .portable_runtime import RUNTIME
         runtime_bytes = sources.runtime_bytes
         if sources.env_secret_keys:
@@ -700,10 +763,11 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         pulse.beat()
 
         journal_copy = None
-        if sources.journal.is_file():
+        if filesystem_path(sources.journal).is_file():
             journal_copy = work / "journal.sqlite3"
             sqlite_online_copy(sources.journal, journal_copy)
-        state_bytes = sources.integration_state.read_bytes() if sources.integration_state.is_file() else None
+        state_file = filesystem_path(sources.integration_state)
+        state_bytes = state_file.read_bytes() if state_file.is_file() else None
 
         from .backup_extensions import extensions
         from .portable_runtime import RUNTIME, inventory
@@ -722,7 +786,7 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         needed = sorted(set(_needed_key_ids(state_bytes)) | set(facts.get('bank_key_ids', [])) | set(facts.get('communication_key_ids', [])))
         if dialect == "sqlite":
             from .tax_archive_validation import needed_key_ids
-            tax_engine = create_engine(f"sqlite:///{db_copy.resolve().as_posix()}", poolclass=NullPool)
+            tax_engine = create_engine(file_url(db_copy), poolclass=NullPool)
             try:
                 with tax_engine.connect() as connection:
                     needed = sorted(set(needed) | needed_key_ids(connection))
@@ -739,6 +803,9 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         from .plugin_packages import inventory as plugin_inventory
         packages = plugin_inventory(sources.plugin_dirs)
 
+        descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(descriptor)
+        partial_created = True
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
             writer = _Writer(zf, pulse)
             writer.add_file(db_copy, db_entry, "database")
@@ -828,7 +895,8 @@ def _create(trigger: str, sources: Sources, pulse: _Pulse, now: datetime) -> dic
         os.replace(partial, final)
         _write_sidecar(final, digest)
     except BaseException:
-        partial.unlink(missing_ok=True)
+        if partial_created:
+            partial.unlink(missing_ok=True)
         raise
     finally:
         shutil.rmtree(filesystem_path(work), ignore_errors=True)
@@ -859,8 +927,11 @@ def _copy_verified(archive: Path, digest: str, directory: Path, pulse: _Pulse) -
     archive, directory = filesystem_path(archive), filesystem_path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     partial = directory / (archive.name + ".partial")
+    created = False
     try:
-        with archive.open("rb") as source, partial.open("wb") as target:
+        descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        created = True
+        with os.fdopen(descriptor, "wb") as target, archive.open("rb") as source:
             for chunk in iter(lambda: source.read(_CHUNK), b""):
                 target.write(chunk)
                 pulse.beat()
@@ -872,7 +943,8 @@ def _copy_verified(archive: Path, digest: str, directory: Path, pulse: _Pulse) -
         os.replace(partial, directory / archive.name)
         _write_sidecar(directory / archive.name, digest)
     finally:
-        partial.unlink(missing_ok=True)
+        if created:
+            partial.unlink(missing_ok=True)
 
 
 # --- verification -------------------------------------------------------------------------
@@ -884,90 +956,181 @@ def _recorded_digest(root: Path, name: str) -> str | None:
     return None
 
 
+def _hash_stream(handle, pulse: _Pulse) -> str:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: handle.read(_CHUNK), b""):
+        digest.update(chunk)
+        pulse.beat()
+    return digest.hexdigest()
+
+
+def _validated_manifest(zf: zipfile.ZipFile) -> tuple[dict[str, Any], dict[str, dict]]:
+    """Validate the envelope before reading any declared backup payload."""
+    from .portable_runtime import RUNTIME
+    infos = zf.infolist()
+    if not 1 <= len(infos) <= _MAX_ARCHIVE_MEMBERS:
+        raise BackupError("Zu viele oder keine Archiveinträge")
+    names = [info.filename for info in infos]
+    aliases = [unicodedata.normalize("NFC", name).casefold() for name in names]
+    if len(names) != len(set(names)) or len(aliases) != len(set(aliases)):
+        raise BackupError("Doppelte oder auf anderen Betriebssystemen gleiche Archivpfade")
+    all_names = set(names)
+    for info in infos:
+        if not _safe_member(info.filename) or info.is_dir():
+            raise BackupError("Unsicherer oder nicht portabler Archivpfad")
+        if stat.S_IFMT(info.external_attr >> 16) not in (0, stat.S_IFREG):
+            raise BackupError("Nur reguläre Dateien sind im Archiv erlaubt")
+        if info.flag_bits & 1 or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            raise BackupError("Nicht unterstützte ZIP-Verschlüsselung oder Kompression")
+        if any(str(parent) in all_names for parent in PurePosixPath(info.filename).parents if str(parent) != "."):
+            raise BackupError("Ein Archivpfad überschattet ein Verzeichnis")
+    if sum(info.file_size for info in infos) > _MAX_EXPANDED_BYTES:
+        raise BackupError("Die entpackte Sicherung überschreitet das Größenlimit von 1 TiB")
+    try:
+        metadata = zf.getinfo("manifest.json")
+    except KeyError:
+        raise BackupError("Manifest fehlt") from None
+    if metadata.file_size > _MAX_MANIFEST_BYTES:
+        raise BackupError("Das Manifest überschreitet das Größenlimit von 16 MiB")
+    manifest = json.loads(zf.read("manifest.json"))
+    if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
+        raise BackupError("Kein gültiges Vollbackup von ImmoManager Pro")
+    version = manifest.get("format_version")
+    if type(version) is not int or version != FORMAT_VERSION:
+        raise BackupError("Unbekannte oder ungültige Version des Backupformats")
+    files = manifest.get("files")
+    if not isinstance(files, list) or len(files) > _MAX_ARCHIVE_MEMBERS - 1:
+        raise BackupError("Ungültige Dateiliste im Manifest")
+    allowed = {DB_SQLITE, DB_POSTGRES, INTEGRATIONS, JOURNAL, KEYRING, ENV, SEALED, RUNTIME}
+    entries: dict[str, dict] = {}
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise BackupError("Ungültiger Dateieintrag im Manifest")
+        name, size, digest = entry.get("path"), entry.get("size"), entry.get("sha256")
+        if not isinstance(name, str) or not _safe_member(name) or name in entries:
+            raise BackupError("Ungültiger oder doppelter Manifestpfad")
+        if name not in allowed and not name.startswith(("uploads/", "plugins/")):
+            raise BackupError("Nicht unterstützter Restore-Pfad im Manifest")
+        if type(size) is not int or not 0 <= size <= _MAX_EXPANDED_BYTES:
+            raise BackupError("Ungültige Dateigröße im Manifest")
+        if name in {INTEGRATIONS, KEYRING, ENV, SEALED, RUNTIME} and size > _MAX_CONFIG_BYTES:
+            raise BackupError("Eine Konfigurations- oder Schlüsseldatei überschreitet 16 MiB")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise BackupError("Ungültige Dateiprüfsumme im Manifest")
+        if name not in all_names or zf.getinfo(name).file_size != size:
+            raise BackupError("ZIP-Dateigröße oder Dateiliste weicht vom Manifest ab")
+        entries[name] = entry
+    if all_names != set(entries) | {"manifest.json"}:
+        raise BackupError("Nicht im Manifest aufgeführte Dateien")
+    database, uploads, protected = manifest.get("database"), manifest.get("uploads"), manifest.get("secrets")
+    if not isinstance(database, dict) or not isinstance(uploads, dict) or not isinstance(protected, dict):
+        raise BackupError("Ungültige Datenbank-, Anhang- oder Geheimnismetadaten")
+    dialect = database.get("dialect")
+    database_path = {"sqlite": DB_SQLITE, "postgresql": DB_POSTGRES}.get(dialect) if isinstance(dialect, str) else None
+    if database_path is None or database.get("path") != database_path or database_path not in entries:
+        raise BackupError("Datenbank fehlt oder verwendet ein unbekanntes Format")
+    if {DB_SQLITE, DB_POSTGRES} & set(entries) != {database_path}:
+        raise BackupError("Widersprüchliche Datenbankdateien im Archiv")
+    counts = database.get("row_counts")
+    if not isinstance(counts, dict) or any(not isinstance(key, str) or type(value) is not int or value < 0
+                                           for key, value in counts.items()):
+        raise BackupError("Ungültige Datenbankzählwerte")
+    if any(type(uploads.get(name)) is not int or uploads[name] < 0 for name in ("files", "bytes")):
+        raise BackupError("Ungültige Anhangszählwerte")
+    if protected.get("protection") not in {"none", "passphrase"} or not isinstance(protected.get("protected_files"), list):
+        raise BackupError("Ungültiger Schutzstatus im Manifest")
+    for item in protected["protected_files"]:
+        if (not isinstance(item, dict) or item.get("path") not in {KEYRING, ENV, RUNTIME}
+                or type(item.get("size")) is not int or not 0 <= item["size"] <= _MAX_CONFIG_BYTES
+                or not isinstance(item.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])):
+            raise BackupError("Ungültiger geschützter Dateieintrag")
+    return manifest, entries
+
+
 def verify_archive(path: Path, *, expected_sha256: str | None = None, pulse: _Pulse | None = None) -> dict[str, Any]:
-    """Digest of the archive (sidecar, expected), every file's digest/size, no unlisted files."""
+    """Hash and ZIP parsing use the same descriptor; invalid envelopes fail closed."""
     path = filesystem_path(path)
     pulse = pulse or _Pulse(None)
     problems: list[str] = []
-    if not path.is_file():
-        return {"ok": False, "problems": [f"Archiv nicht gefunden: {path.name}"], "archive": path.name}
-    digest = sha256_file(path, pulse)
-    sidecar = _read_sidecar(path)
-    if sidecar is not None and sidecar != digest:
-        problems.append("SHA-256 des Archivs stimmt nicht mit der .sha256-Datei überein")
-    if expected_sha256 is not None and expected_sha256 != digest:
-        problems.append("SHA-256 des Archivs weicht vom protokollierten Wert ab")
     manifest: dict[str, Any] = {}
+    digest = None
     try:
-        with zipfile.ZipFile(path) as zf:
-            names = zf.namelist()
-            if len(names) != len(set(names)):
-                problems.append("Archiv enthält doppelte Einträge")
-            unsafe = [name for name in names if not _safe_member(name)]
-            if unsafe:
-                problems.append(f"Unsichere Pfade im Archiv: {unsafe[:3]}")
-            manifest = json.loads(zf.read("manifest.json"))
-            if manifest.get("format") != FORMAT:
-                problems.append("Kein Vollbackup von ImmoManager Pro")
-            elif int(manifest.get("format_version", 0)) > FORMAT_VERSION:
-                problems.append("Vollbackup stammt aus einer neueren Programmversion")
-            entries = {entry["path"]: entry for entry in manifest.get("files", [])}
-            extra = sorted(set(names) - set(entries) - {"manifest.json"})
-            if extra:
-                problems.append(f"Nicht im Manifest aufgeführte Dateien: {extra[:3]}")
-            for name, entry in entries.items():
-                if name not in names:
-                    problems.append(f"Fehlt im Archiv: {name}")
-                    continue
-                file_digest, size = hashlib.sha256(), 0
-                with zf.open(name) as handle:
-                    for chunk in iter(lambda: handle.read(_CHUNK), b""):
-                        file_digest.update(chunk)
-                        size += len(chunk)
-                        pulse.beat()
-                if file_digest.hexdigest() != entry.get("sha256") or size != entry.get("size"):
-                    problems.append(f"Prüfsumme oder Größe stimmt nicht: {name}")
-            if manifest.get("database", {}).get("path") not in entries:
-                problems.append("Archiv enthält keine Datenbank")
-    # a damaged archive fails in many ways (zlib, bz2/lzma, an unknown method, the encryption flag): all unreadable
+        with path.open("rb") as raw:
+            digest = _hash_stream(raw, pulse)
+            sidecar = _read_sidecar(path)
+            if sidecar is not None and sidecar != digest:
+                raise BackupError("SHA-256 des Archivs stimmt nicht mit der .sha256-Datei überein")
+            if expected_sha256 is not None and expected_sha256 != digest:
+                raise BackupError("SHA-256 des Archivs weicht vom protokollierten Wert ab")
+            raw.seek(0)
+            with zipfile.ZipFile(raw) as zf:
+                manifest, entries = _validated_manifest(zf)
+                for name, entry in entries.items():
+                    file_digest, size = hashlib.sha256(), 0
+                    with zf.open(name) as handle:
+                        for chunk in iter(lambda: handle.read(_CHUNK), b""):
+                            size += len(chunk)
+                            if size > entry["size"]:
+                                raise BackupError("Datei überschreitet ihre geprüfte Größe")
+                            file_digest.update(chunk)
+                            pulse.beat()
+                    if file_digest.hexdigest() != entry["sha256"] or size != entry["size"]:
+                        raise BackupError("Prüfsumme oder Größe einer Datei stimmt nicht")
+    except BackupError as exc:
+        problems.append(str(exc))
     except Exception as exc:
-        problems.append(f"Archiv nicht lesbar: {type(exc).__name__}: {exc}")
+        problems.append("Archiv nicht lesbar: " + type(exc).__name__)
     return {"ok": not problems, "problems": problems, "archive": path.name, "sha256": digest,
             "files": len(manifest.get("files", [])), "manifest": _manifest_summary(manifest)}
 
 
 def _manifest_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     database = manifest.get("database", {})
+    if not isinstance(database, dict):
+        database = {}
     return {"created_at": manifest.get("created_at"), "trigger": manifest.get("trigger"),
             "app_version": manifest.get("app_version"), "alembic_head": manifest.get("alembic_head"),
             "revision": database.get("revision"), "dialect": database.get("dialect"),
             "uploads": manifest.get("uploads"), "secrets": manifest.get("secrets")}
 
 
-# --- extraction ---------------------------------------------------------------------------
-
-def _extract(path: Path, target: Path, pulse: _Pulse) -> dict[str, Any]:
-    """Extract the listed files (and only those); re-hash what landed on disk."""
-    with zipfile.ZipFile(path) as zf:
-        manifest = json.loads(zf.read("manifest.json"))
-        for entry in manifest["files"]:
-            name = entry["path"]
-            if not _safe_member(name):
-                raise BackupError(f"Unsicherer Pfad im Archiv: {name}")
-            destination = target.joinpath(*PurePosixPath(name).parts)
-            if not destination.resolve().is_relative_to(target.resolve()):
-                raise BackupError(f"Pfad außerhalb des Zielverzeichnisses: {name}")
-            destination = filesystem_path(destination)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(name) as source, destination.open("wb") as out:
-                shutil.copyfileobj(source, out, _CHUNK)
-            if sha256_file(destination, pulse) != entry["sha256"]:
-                raise BackupError(f"Wiederhergestellte Datei weicht ab: {name}")
+def _extract(path: Path, target: Path, pulse: _Pulse, *, expected_sha256: str | None = None) -> dict[str, Any]:
+    """Only validated portable entries; source stays open from hash to extraction."""
+    with filesystem_path(path).open("rb") as raw:
+        if expected_sha256 is not None:
+            if _hash_stream(raw, pulse) != expected_sha256:
+                raise BackupError("Das Archiv wurde nach der Prüfung verändert")
+            raw.seek(0)
+        with zipfile.ZipFile(raw) as zf:
+            manifest, entries = _validated_manifest(zf)
+            if sum(entry["size"] for entry in entries.values()) + 16 * 1024 * 1024 > shutil.disk_usage(filesystem_path(target)).free:
+                raise BackupError("Zu wenig freier Speicher für die geprüfte Wiederherstellung")
+            for name, entry in entries.items():
+                destination = target.joinpath(*PurePosixPath(name).parts)
+                if not destination.resolve().is_relative_to(target.resolve()):
+                    raise BackupError("Pfad außerhalb des Zielverzeichnisses")
+                destination = filesystem_path(destination)
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                count, digest = 0, hashlib.sha256()
+                with os.fdopen(fd, "wb") as out, zf.open(name) as source:
+                    for chunk in iter(lambda: source.read(_CHUNK), b""):
+                        count += len(chunk)
+                        if count > entry["size"]:
+                            raise BackupError("Extraktion überschreitet die geprüfte Dateigröße")
+                        out.write(chunk)
+                        digest.update(chunk)
+                        pulse.beat()
+                    out.flush()
+                    os.fsync(out.fileno())
+                if count != entry["size"] or digest.hexdigest() != entry["sha256"]:
+                    raise BackupError("Wiederhergestellte Datei weicht vom Manifest ab")
     return manifest
 
 
 def _secret_files(manifest: dict[str, Any], extracted: Path, passphrase: str) -> tuple[dict[str, bytes], str | None]:
     """Key file and .env of the archive (decrypted with the passphrase); (files, warning)."""
+    extracted = filesystem_path(extracted)
     if manifest["secrets"]["protection"] == "passphrase":
         sealed = extracted / SEALED
         if not sealed.is_file():
@@ -978,11 +1141,12 @@ def _secret_files(manifest: dict[str, Any], extracted: Path, passphrase: str) ->
             return {}, "Schlüsselsicherung ist mit Passphrase geschützt; ohne Passphrase nicht geprüft."
         bundle = json.loads(secret_box.open_with_passphrase(sealed.read_bytes(), passphrase))
         from .portable_runtime import RUNTIME
-        if set(bundle) - {KEYRING, ENV, RUNTIME}:
+        if not isinstance(bundle, dict) or set(bundle) - {KEYRING, ENV, RUNTIME} or any(not isinstance(value, str) for value in bundle.values()):
             raise BackupError("Unbekannte Datei im Geheimnisbundle")
         files = {arc: base64.b64decode(data, validate=True) for arc, data in bundle.items()}
         for entry in manifest["secrets"]["protected_files"]:
-            if hashlib.sha256(files.get(entry["path"], b"")).hexdigest() != entry["sha256"]:
+            raw = files.get(entry["path"], b"")
+            if len(raw) != entry["size"] or hashlib.sha256(raw).hexdigest() != entry["sha256"]:
                 raise BackupError(f"Geschützte Datei weicht ab: {entry['path']}")
         return files, None
     from .portable_runtime import RUNTIME
@@ -996,6 +1160,7 @@ def _secret_files(manifest: dict[str, Any], extracted: Path, passphrase: str) ->
 
 def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, env_secret_keys: str,
                    extra_key_ids=()) -> dict:
+    extracted = filesystem_path(extracted)
     files, warning = _secret_files(manifest, extracted, passphrase)
     state_path = extracted / INTEGRATIONS
     tokens = []
@@ -1008,7 +1173,7 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
     bank_path = extracted / DB_SQLITE
     if bank_path.is_file():
         from .bank_backup import tokens as bank_tokens
-        with closing(sqlite3.connect(f'{bank_path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
+        with closing(sqlite3.connect(readonly_uri(bank_path), uri=True)) as connection:
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             tokens.extend(bank_tokens(connection, tables))
     result: dict[str, Any] = {"sealed_values": len(tokens), "decrypted": 0, "warning": warning}
@@ -1032,14 +1197,14 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
         result["decrypted"] += 1
     if bank_path.is_file():
         from .bank_backup import verify as verify_bank
-        with closing(sqlite3.connect(f'{bank_path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
+        with closing(sqlite3.connect(readonly_uri(bank_path), uri=True)) as connection:
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             result['bank_originals'] = verify_bank(connection, tables, keys)
 
     if manifest.get("database", {}).get("dialect") == "sqlite":
         from .tax_archive_validation import verify_tax_archive
         database_path = extracted / manifest["database"]["path"]
-        engine = create_engine(f"sqlite:///{database_path.resolve().as_posix()}", poolclass=NullPool)
+        engine = create_engine(file_url(database_path), poolclass=NullPool)
         try:
             with engine.connect() as tax_connection:
                 result["tax_receipts_verified"] = verify_tax_archive(tax_connection,
@@ -1049,7 +1214,7 @@ def _check_secrets(manifest: dict[str, Any], extracted: Path, passphrase: str, e
 
     if communication_database.is_file():
         from .communication_backup import verify
-        connection = sqlite3.connect(f"{communication_database.resolve().as_uri()}?mode=ro", uri=True)
+        connection = sqlite3.connect(readonly_uri(communication_database), uri=True)
         try:
             tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             result["communication"] = verify(connection, keys, tables)
@@ -1187,11 +1352,11 @@ def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, norma
     from sqlalchemy.pool import NullPool
 
     if normalize:
-        engine = create_engine(f"sqlite:///{path.as_posix()}", poolclass=NullPool)
+        engine = create_engine(file_url(path), poolclass=NullPool)
     else:
         # Probe the extracted copy read-only: even a benign SQL transaction
         # must not rewrite the archived evidence before its verification.
-        uri = f"{path.resolve().as_uri()}?mode=ro"
+        uri = readonly_uri(path)
         engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(uri, uri=True), poolclass=NullPool)
     try:
         if normalize:
@@ -1204,6 +1369,7 @@ def _sqlite_private_connections(path: Path, keys: list[secret_box.Key], *, norma
 
 
 def _check_attachments(manifest: dict, extracted: Path) -> dict:
+    extracted = filesystem_path(extracted)
     from .backup_extensions import extensions
     from .file_storage import validate_key
     from .portable_runtime import inventory
@@ -1265,12 +1431,12 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
     report = verify_archive(archive, expected_sha256=_recorded_digest(sources.root, archive.name), pulse=pulse)
     if not report["ok"]:
         raise BackupError("Archivprüfung fehlgeschlagen: " + "; ".join(report["problems"][:5]))
-    probe_dir = sources.root / f".probe-{secrets.token_hex(4)}"
-    probe_dir.mkdir()
+    probe_dir = filesystem_path(sources.root / f".probe-{secrets.token_hex(4)}")
+    probe_dir.mkdir(mode=0o700)
     checks: dict[str, Any] = {"archive_verified": True}
     warnings: list[str] = []
     try:
-        manifest = _extract(archive, probe_dir, pulse)
+        manifest = _extract(archive, probe_dir, pulse, expected_sha256=report["sha256"])
         checks["files_restored"] = len(manifest["files"])
         checks["attachments"] = _check_attachments(manifest, probe_dir)
         database = manifest["database"]
@@ -1293,7 +1459,7 @@ def _probe(archive: Path | None, sources: Sources, pulse: _Pulse, passphrase: st
             if facts["revision"] != head:
                 from ..db.schema_state import run_migrations
 
-                run_migrations(f"sqlite:///{db_path.resolve().as_posix()}")
+                run_migrations(file_url(db_path))
                 checks["upgrade_to_head_tested"] = True
                 warnings.append(f"Sicherung auf Revision {facts['revision']}, Programm auf {head}: nach einer "
                                 "Wiederherstellung ist python -m backend.upgrade nötig (in der Probe erfolgreich).")
@@ -1389,7 +1555,9 @@ def _probe_postgres(dump: Path, database: dict[str, Any], sources: Sources, head
 
 def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target_url: str = "") -> dict[str, Any]:
     """Verify, then lay the archive out as a fresh data directory (plus pg_restore when asked)."""
-    target = target.resolve()
+    if target.is_symlink():
+        raise BackupError("Das Restore-Ziel darf kein symbolischer Link sein")
+    target = filesystem_path(target.resolve())
     final_target = target
     report = verify_archive(path)
     if not report["ok"]:
@@ -1397,9 +1565,9 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
     if target.exists() and any(target.iterdir()):
         raise BackupError(f"Zielverzeichnis ist nicht leer: {target}")
     staging = target.parent / f".{target.name}.restore-{secrets.token_hex(4)}"
-    filesystem_path(staging).mkdir(parents=True)
+    filesystem_path(staging).mkdir(mode=0o700, parents=True)
     try:
-        manifest = _extract(path, staging, _Pulse(None))
+        manifest = _extract(path, staging, _Pulse(None), expected_sha256=report["sha256"])
         files, warning = _secret_files(manifest, staging, passphrase)
         if warning:
             raise BackupError("Schlüsselsicherung ist mit Passphrase geschützt: Passphrase angeben "
@@ -1414,8 +1582,26 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
         target.mkdir(parents=True, exist_ok=True)
         database = manifest["database"]
         steps = []
+        restored_sessions_closed = None
         if database["dialect"] == "sqlite":
+            from ..db.schema_state import NEWER, inspect_sqlite_file
+            restored_database = staging / DB_SQLITE
+            facts = _sqlite_facts(restored_database, full_check=True)
+            if facts["integrity"] != "ok":
+                raise BackupError("Die wiederhergestellte Datenbank besteht die Integritätsprüfung nicht")
+            _compare(facts, database)
+            status, application_tables = inspect_sqlite_file(restored_database)
+            if not application_tables:
+                raise BackupError("Die Sicherung enthält keine ImmoManager-Datenbank")
+            if status.state == NEWER:
+                raise BackupError("Die Sicherung stammt aus einer neueren Programmversion; zuerst das passende Programm installieren")
             private = _sqlite_private_connections(staging / DB_SQLITE, archived_keys, normalize=True, uploads_dir=staging / "uploads")
+            from . import auth_epoch
+            try:
+                with closing(sqlite3.connect(filesystem_path(restored_database))) as restored_connection, restored_connection:
+                    restored_sessions_closed = auth_epoch.close_restored_sessions(restored_connection)
+            except auth_epoch.EpochUnavailable:
+                raise BackupError("Wiederhergestellte Sitzungen konnten nicht sicher beendet werden") from None
             steps.append(f"Geschützte Verbindungen vor Publikation geprüft ({private['verified_rows']} Datensätze); "
                          f"{private['restored_unconfirmed']} unterbrochene Vorgänge gesperrt.")
             os.replace(staging / DB_SQLITE, target / "immo_manager.db")
@@ -1468,10 +1654,18 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
         lines = [line for line in lines if line.strip().partition("=")[0].strip() != "PRIVACY_RESTORE_ID"]
         lines.append("PRIVACY_RESTORE_ID=" + secrets.token_hex(24))
         secret_box.write_private_file(restored_env, ("\n".join(lines) + "\n").encode())
+        from . import auth_epoch
+        try:
+            auth_epoch.rotate_for_restore(target)
+        except auth_epoch.EpochUnavailable:
+            raise BackupError("Eine neue private Sitzungsgrenze konnte nicht angelegt werden; das Ziel wird nicht freigegeben") from None
+        steps.append("Alle alten Anmelde- und Erneuerungstoken sind im neuen Datenprofil ungültig. Nach dem Start erneut anmelden.")
         steps.append("Vor Freigabe von Portal, Suche und KI: aktuelles Datenschutzjournal importieren, Löschungen/Sperren abgleichen und die Wiederherstellungsprüfung in Einstellungen → Datenschutz bestätigen.")
         if final_target.exists():
             final_target.rmdir()  # only the previously empty target; refuses a concurrent new file
         os.replace(filesystem_path(target), filesystem_path(final_target))
+    except OSError as exc:
+        raise BackupError("Wiederherstellung wegen eines Dateisystemfehlers abgebrochen; das neue Ziel wurde nicht freigegeben.") from exc
     finally:
         shutil.rmtree(filesystem_path(staging), ignore_errors=True)
     target = final_target
@@ -1480,6 +1674,7 @@ def restore_archive(path: Path, target: Path, *, passphrase: str = "", pg_target
     return {"restored_to": str(target), "revision": database["revision"], "dialect": database["dialect"],
             "readiness": "data_verified" if attachments["checked"] else "archive_only",
             "application_gate": "not_run",
+            "sessions": {"generation": "renewed", "restored_sessions_closed": restored_sessions_closed},
             "uploads": manifest["uploads"]["files"], "steps": steps}
 
 
@@ -1499,7 +1694,7 @@ def _pg_restore_into(dump: Path, database_url: str) -> None:
     finally:
         engine.dispose()
     conninfo, env = _libpq(database_url)
-    _run([_pg_tool("pg_restore", settings.pg_bin_dir), "--no-owner", "--no-privileges", "--exit-on-error",
+    _run([_pg_tool("pg_restore", settings.pg_bin_dir), "--no-owner", "--no-privileges", "--exit-on-error", "--single-transaction",
           "--dbname", conninfo, str(dump)], env)
 
 

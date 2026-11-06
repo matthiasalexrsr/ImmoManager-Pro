@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from .file_storage import validate_key
+from .sqlite_backup import readonly_uri
 
 RUNTIME = "secrets/runtime.json"
 TOKEN = re.compile(r"enc:v1:([^:]+):")
@@ -77,7 +78,7 @@ def inventory(database) -> tuple[set[str], set[str]]:
             for child in value:
                 visit(child)
     is_file = isinstance(database, Path)
-    context = closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) if is_file else nullcontext(database)
+    context = closing(sqlite3.connect(readonly_uri(database), uri=True)) if is_file else nullcontext(database)
     with context as database_connection:
         conn: Any = database_connection
         execute = conn.execute if is_file else conn.exec_driver_sql

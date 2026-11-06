@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
+import plistlib
 import re
 import subprocess
 import sys
@@ -15,6 +17,43 @@ from pathlib import Path
 VERSION = "6.11.3"
 IMPORTS = ["PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtNetwork",
            "PySide6.QtPrintSupport", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets"]
+
+
+def macos_signing_options(root, *, environment=None, target=None):
+    """Opt-in real signing; internal builds retain PyInstaller's ad-hoc default."""
+    environment = os.environ if environment is None else environment
+    enabled = environment.get("IMMO_MACOS_CUSTOMER_SIGNING", "0")
+    if enabled not in {"0", "1"}:
+        raise ValueError("Invalid IMMO_MACOS_CUSTOMER_SIGNING mode")
+    if enabled == "0":
+        return {}
+    if (target or sys.platform) != "darwin":
+        raise ValueError("Customer signing requires a native macOS build")
+    identity = environment.get("MACOS_SIGNING_IDENTITY", "")
+    team = environment.get("MACOS_TEAM_ID", "")
+    if (not re.fullmatch(r"[A-Z0-9]{10}", team)
+            or not identity.startswith("Developer ID Application: ")
+            or not identity.endswith(" (" + team + ")")
+            or any(ord(ch) < 32 for ch in identity)):
+        raise ValueError("A matching Developer ID Application identity and MACOS_TEAM_ID are required")
+    entitlements = Path(root) / "packaging/macos/qt-entitlements.plist"
+    expected = {"com.apple.security.cs.allow-jit": True,
+                "com.apple.security.cs.disable-library-validation": True}
+    if entitlements.is_symlink() or plistlib.loads(entitlements.read_bytes()) != expected:
+        raise ValueError("Unexpected customer Qt entitlements")
+    return {"codesign_identity": identity, "entitlements_file": str(entitlements)}
+
+
+def seal_macos_bundle(app, *, signing_options=None, runner=subprocess.run):
+    """Inventory signed nested Qt bytes, then seal only the outer app envelope."""
+    app = Path(app)
+    signing_options = signing_options or {}
+    write_runtime_manifest(app / "Contents", target="darwin", layout="macos-app")
+    command = ["/usr/bin/codesign", "--force", "--sign", signing_options.get("codesign_identity", "-")]
+    if signing_options:
+        command += ["--options", "runtime", "--timestamp", "--entitlements", signing_options["entitlements_file"]]
+    runner([*command, str(app)], check=True)
+    runner(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
 @contextmanager

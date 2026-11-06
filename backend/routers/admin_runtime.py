@@ -2,20 +2,19 @@
 
 import json
 import logging
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ..config import settings
-from ..paths import get_backup_dir, get_data_dir, get_uploads_dir, sqlite_url_for_path
+from ..paths import get_backup_dir, get_data_dir, get_uploads_dir
 from ..services.data_snapshot import SnapshotError, export_snapshot, prepare_import
-from ..services.document_version_validation import ArchiveIntegrityError
+from ..services.filesystem_paths import filesystem_path
 from ..services.sqlite_backup import (
     copy_database,
-    is_sqlite_database,
     sqlite_path_from_url,
-    verify_archived_originals,
 )
 from ..storage import InMemoryStore
 from . import admin as legacy_admin
@@ -31,7 +30,10 @@ def _resolve_backup_path(backup_name: str) -> Path:
     candidate = Path(backup_name)
     if candidate.is_absolute() or candidate.name != backup_name:
         raise HTTPException(400, "Ungültiger Name der Sicherung")
-    return _BACKUP_DIR / candidate.name
+    path = filesystem_path(_BACKUP_DIR / candidate.name)
+    if path.is_symlink() or not path.resolve().is_relative_to(filesystem_path(_BACKUP_DIR).resolve()):
+        raise HTTPException(400, "Die Sicherung muss eine eigene Datei im Sicherungsordner sein")
+    return path
 
 
 @router.get("/system-status")
@@ -42,6 +44,12 @@ def system_status():
         "data_dir": str(get_data_dir()),
         "upload_dir": str(get_uploads_dir()),
         "backup_dir": str(_BACKUP_DIR),
+        "backup_restore_capabilities": {
+            "raw_sqlite_http_restore": False,
+            "full_archive_restore": "offline_new_directory",
+            "json_snapshot_restore": "guarded_business_only",
+            "json_merge_import": True,
+        },
     })
     return status
 
@@ -64,7 +72,7 @@ def _live_sqlite_path() -> Path | None:
 
 
 def _timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f") + "_" + secrets.token_hex(4)
 
 
 @router.post("/backup", response_model=None)
@@ -79,12 +87,13 @@ def create_backup():
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     db_path = _live_sqlite_path()
     if db_path is not None:
-        backup_path = _BACKUP_DIR / f"backup_{_timestamp()}.db"
+        backup_path = filesystem_path(_BACKUP_DIR / f"backup_{_timestamp()}.db")
         copy_database(db_path, backup_path)
     else:
-        backup_path = _BACKUP_DIR / f"backup_{_timestamp()}.json"
+        backup_path = filesystem_path(_BACKUP_DIR / f"backup_{_timestamp()}.json")
         payload = export_snapshot(store)
-        backup_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        from ..services.secret_box import write_private_file
+        write_private_file(backup_path, json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"))
     logger.info("Backup created: %s", backup_path.name)
     return {"backup": backup_path.name, "size_bytes": backup_path.stat().st_size}
 
@@ -105,19 +114,23 @@ def list_backups():
 
 @router.post("/restore/{backup_name}", response_model=None)
 def restore_backup(backup_name: str):
-    """Restore a JSON snapshot or SQLite backup without allowing path traversal.
-
-    The backup is validated first and the current data is saved as a
-    safety backup; on any problem the live data stays untouched.
-    """
+    """Guarded business JSON only; whole databases are never swapped live."""
     from ..dependencies import store
 
+    candidate = Path(backup_name)
+    if candidate.is_absolute() or candidate.name != backup_name:
+        raise HTTPException(400, "Ungültiger Name der Sicherung")
+    if candidate.suffix.lower() != ".json":
+        raise HTTPException(409, "Eine vollständige Datenbank wird nicht im laufenden Programm ersetzt. "
+            "Anwendung vollständig schließen und ein geprüftes Vollarchiv offline in ein NEUES leeres "
+            "Datenverzeichnis wiederherstellen; anschließend Upgrade und Datenschutzprüfung ausführen. "
+            "Eine einzelne DB-Datei enthält keine vollständige Sicherung der Anhänge und Schlüssel.")
     backup_path = _resolve_backup_path(backup_name)
     if not backup_path.exists():
         raise HTTPException(404, f"Sicherung nicht gefunden: {backup_name}")
 
     db_path = _live_sqlite_path()
-    if backup_path.suffix == ".json":
+    if backup_path.suffix.lower() == ".json":
         try:
             data = json.loads(backup_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -131,53 +144,16 @@ def restore_backup(backup_name: str):
         logger.info("Data restored from %s", backup_name)
         return {"restored_from": backup_name, "safety_backup": safety.name, **result}
 
-    if db_path is None:
-        raise HTTPException(400, "Eine Datenbankdatei lässt sich nur bei SQLite wiederherstellen.")
-    if not is_sqlite_database(backup_path):
-        raise HTTPException(400, f"Keine SQLite-Datenbank: {backup_name}")
-
-    from ..db.schema_state import NEWER, inspect_sqlite_file, run_migrations
-
-    try:
-        status, application = inspect_sqlite_file(backup_path)
-    except Exception as exc:
-        raise HTTPException(400, f"Wiederherstellung abgebrochen – Sicherung nicht lesbar ({type(exc).__name__})") \
-            from None
-    if status.state == NEWER:
-        raise HTTPException(400, f"Wiederherstellung abgebrochen – {status.describe()}")
-    if not application:
-        raise HTTPException(400, f"Wiederherstellung abgebrochen – keine ImmoManager-Datenbank: {backup_name}")
-    try:
-        verify_archived_originals(backup_path)
-    except ArchiveIntegrityError as exc:
-        raise HTTPException(400, f"Wiederherstellung abgebrochen – {exc}") from exc
-
-    # Online backup API, not file copies: the live database runs in WAL mode
-    # and stays open, so a file copy would be overridden by the old WAL.
-    safety = _safety_backup(store, db_path)
-    copy_database(backup_path, db_path)
-    result = {"restored_from": backup_name, "safety_backup": safety.name}
-    if status.needs_upgrade:
-        # an explicit action with a safety copy taken: the older backup gets the explicit upgrade
-        try:
-            run_migrations(sqlite_url_for_path(db_path))
-        except Exception:
-            logger.exception("Upgrade of the restored backup %s failed; putting the previous data back", backup_name)
-            copy_database(safety, db_path)
-            raise HTTPException(500, "Wiederherstellung abgebrochen – das Upgrade der älteren Sicherung ist "
-                                     "fehlgeschlagen; der vorherige Stand ist wieder aktiv.") from None
-        result["upgraded_from"] = status.revision or status.state
-    logger.info("Database restored from %s", backup_name)
-    return result
 
 
 def _safety_backup(store, db_path: Path | None) -> Path:
     """Save the current data before it is replaced."""
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     if db_path is not None:
-        safety = _BACKUP_DIR / f"pre_restore_{_timestamp()}.db"
+        safety = filesystem_path(_BACKUP_DIR / f"pre_restore_{_timestamp()}.db")
         copy_database(db_path, safety)
     else:
-        safety = _BACKUP_DIR / f"pre_restore_{_timestamp()}.json"
-        safety.write_text(json.dumps(export_snapshot(store), ensure_ascii=False, indent=2), encoding="utf-8")
+        safety = filesystem_path(_BACKUP_DIR / f"pre_restore_{_timestamp()}.json")
+        from ..services.secret_box import write_private_file
+        write_private_file(safety, json.dumps(export_snapshot(store), ensure_ascii=False, indent=2).encode("utf-8"))
     return safety

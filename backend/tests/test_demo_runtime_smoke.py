@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from contextlib import closing
 from types import SimpleNamespace
 
 import pytest
 
+from backend.services.filesystem_paths import filesystem_path
 from scripts import check_demo_runtime as smoke
 
 
@@ -30,6 +32,19 @@ def test_count_verification_reads_real_sqlite_rows_without_writing_the_database(
     assert marker["identity"] == "private-fixture"
     assert counts == smoke.MINIMUM_COUNTS
     assert hashlib.sha256((dataset / "demo-bw.sqlite3").read_bytes()).hexdigest() == before
+
+
+def test_count_verification_supports_deep_unicode_and_fragment_character_paths(dataset,tmp_path):
+    plain=tmp_path/('long-owned-demo-'*5)/('nested-'*12)/('Demo Ä # space '+'x'*60)
+    deep=filesystem_path(plain)
+    deep.mkdir(parents=True)
+    for path in dataset.iterdir():
+        shutil.copyfile(path,deep/path.name)
+    database=deep/'demo-bw.sqlite3'
+    before=hashlib.sha256(database.read_bytes()).hexdigest()
+    marker,counts=smoke.inspect_demo(plain)
+    assert marker['identity']=='private-fixture' and counts==smoke.MINIMUM_COUNTS
+    assert hashlib.sha256(database.read_bytes()).hexdigest()==before
 
 
 def test_self_reported_complete_marker_cannot_approve_an_empty_entity_table(dataset):

@@ -1,3 +1,38 @@
+# Noch nicht veröffentlichter Härtungsstand
+
+Diese Änderungen gehören zum neuen Quellstand und ändern keine bereits
+veröffentlichten Tags oder Installationsdateien. Die Freigabe jedes neuen Pakets
+benötigt CI, native Abnahme und den Härtungsworkflow auf genau seinem Commit.
+
+- **Anmeldung:** Zwei-Faktor-Versuche werden gemeinsam je Konto begrenzt und
+  gültige Codes nur einmal angenommen. Gleichzeitige Ersteinrichtungen erzeugen
+  höchstens einen Eigentümer. Wenn öffentliche Folgeregistrierungen erlaubt sind,
+  warten neue Konten ohne Objektzugriff auf die Aktivierung durch einen Eigentümer.
+- **Lokaler und gehosteter Zugriff:** Nicht konfigurierte Hostnamen und fremde
+  Browserursprünge werden vor Datenzugriff abgewiesen. Zusätzliche LAN-/API-Namen
+  müssen ausdrücklich konfiguriert werden.
+- **Updates:** Die Oberfläche führt zum geprüften Installationspaket. Ein Update
+  ersetzt keinen Quellcode über eine laufende Kundensitzung. Vor der Installation
+  Sicherung und Herkunft prüfen und die Anwendung vollständig schließen.
+- **Sicherung und Wiederherstellung:** Archive werden vor dem Entpacken strenger
+  auf Pfade, Größen, doppelte Einträge und freien Platz geprüft. Lange
+  Windows-Pfade funktionieren auch beim verschlüsselten Geheimnisbundle. Ein
+  Vollrestore erfolgt offline in einen neuen Bestand; danach ist eine neue
+  Anmeldung nötig. Alte Tokens werden nicht wieder gültig, und die erforderliche
+  Datenschutzprüfung bleibt offen.
+- **KI-Verbindungen:** Antworten aus einer anderen Claude-Sitzung werden
+  zurückgewiesen. Kontrollierte Fehlerfälle, Warteschlangen, Abbruch und
+  Wiederholung werden im Härtungslauf geprüft. Das ersetzt keine fachliche
+  Prüfung der Antworten eines tatsächlich verbundenen Modells.
+- **Auslieferung:** Die Freigabe verlangt die vollständigen Plattform-, Quellen-
+  und Laufzeitnachweise. Reguläre Kundenpakete für macOS benötigen echte
+  Developer-ID-Signierung, Notarisierung und die Abnahme der final signierten
+  Pakete. Fehlende Nachweise werden nicht durch positive Testattrappen ersetzt.
+
+Das konkrete Update-/Restoreverfahren und die Auslieferungsgrenzen stehen in
+[Kommerzielle Auslieferung](COMMERCIAL_RELEASE.md) und
+[Betrieb und Sicherung](OPERATIONS_BACKUP_SECRETS_20261008.md).
+
 # ImmoManager Pro 2.0.0-beta.1
 
 **Beta mit eigenständiger Desktop-Anwendung und Demo Baden-Württemberg.** Die Verwaltung öffnet sich im eigenen Programmfenster oder im Standardbrowser. Der Installer bietet beide Startarten an. Für den Desktopbetrieb ist kein installierter Browser und kein WebView2 erforderlich. Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.

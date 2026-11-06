@@ -286,7 +286,11 @@ def verify(connection, keys: list[secret_box.Key], *, uploads: Path | None = Non
 def inventory(database, keys: list[secret_box.Key]) -> dict:
     """The caller supplies a consistent copied DB or its exported PG snapshot."""
     if isinstance(database, Path):
-        engine = create_engine(f"sqlite:///{database.resolve().as_posix()}", poolclass=NullPool)
+        import sqlite3
+
+        from .sqlite_backup import readonly_uri
+
+        engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(readonly_uri(database), uri=True), poolclass=NullPool)
         try:
             with engine.connect() as connection:
                 result = verify(connection, keys, check_files=False)

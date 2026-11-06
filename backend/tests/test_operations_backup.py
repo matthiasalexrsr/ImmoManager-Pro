@@ -282,13 +282,14 @@ def test_tampering_is_detected(installation, tmp_path):
 
     changed = _rewrite(archive, tmp_path / "changed.zip", replace={"uploads/documents/vertrag.pdf": b"%PDF forged"})
     report = full_backup.verify_archive(changed)
-    assert not report["ok"] and any("vertrag.pdf" in problem for problem in report["problems"])
+    assert not report["ok"] and any("Größe" in problem or "Manifest" in problem for problem in report["problems"])
 
     extra = _rewrite(archive, tmp_path / "extra.zip", add={"uploads/evil.exe": b"MZ"})
     assert any("Nicht im Manifest" in p for p in full_backup.verify_archive(extra)["problems"])
 
     traversal = _rewrite(archive, tmp_path / "traversal.zip", add={"../outside.txt": b"x"})
-    assert any("Unsichere Pfade" in p for p in full_backup.verify_archive(traversal)["problems"])
+    traversal_report = full_backup.verify_archive(traversal)
+    assert not traversal_report["ok"] and traversal_report["problems"]
 
     raw = bytearray(archive.read_bytes())
     raw[len(raw) // 2] ^= 0xFF
@@ -501,8 +502,46 @@ def test_failures_are_logged_and_concurrent_runs_refused(installation):
     overview = full_backup.overview(installation.sources)
     assert {"last_backup_failed", "no_backup"} <= {w["code"] for w in overview["warnings"]}
     with full_backup._Lock(installation.sources.root):
-        with pytest.raises(full_backup.BackupError, match="läuft gerade"):
+        with pytest.raises(full_backup.BackupError, match="läuft"):
             full_backup.create_full_backup("manual", installation.sources)
+
+
+def test_full_archive_restore_invalidates_old_tokens_and_keeps_encrypted_secrets(installation, tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+
+    from backend import paths
+    from backend.services import auth_epoch
+    from backend.services.sqlite_backup import file_url
+
+    monkeypatch.setattr(paths, "get_data_dir", lambda: installation.data)
+    source_engine = create_engine(file_url(installation.db), poolclass=NullPool)
+    monkeypatch.setattr(auth, "_auth_session_factory", sessionmaker(source_engine))
+    # Four actual signed JWTs, deliberately using the same signing secret before
+    # and after restore. No token or private key value enters the evidence log.
+    tokens = [issue("staff", "own-synthetic-family" if family else None)
+              for issue in (auth.create_access_token, auth.create_refresh_token) for family in (False, True)]
+    assert all(auth.decode_token(token).sub == "staff" for token in tokens)
+    event = full_backup.create_full_backup(sources=installation.sources)
+    target = tmp_path / "new-owned-profile"
+    restored = full_backup.restore_archive(installation.sources.root / event["archive"], target)
+    assert restored["sessions"]["generation"] == "renewed"
+    assert restored["sessions"]["restored_sessions_closed"] == 1
+    assert auth_epoch.path_for(target).is_file()
+    assert not auth_epoch.path_for(installation.data).exists()
+    assert (target / "secrets/keyring.json").read_bytes() == installation.box.key_file.read_bytes()
+    monkeypatch.setattr(paths, "get_data_dir", lambda: target)
+    restored_engine = create_engine(file_url(target / "immo_manager.db"), poolclass=NullPool)
+    monkeypatch.setattr(auth, "_auth_session_factory", sessionmaker(restored_engine))
+    for token in tokens:
+        with pytest.raises(HTTPException) as refused:
+            auth.decode_token(token)
+        assert refused.value.status_code == 401
+    assert auth.decode_token(auth.create_access_token("staff")).sub == "staff"
+    assert _manager(target, secret_box.SecretBox(target / "secrets/keyring.json"))._config["email"]["smtp_password"] == SMTP["smtp_password"]
+    source_engine.dispose()
+    restored_engine.dispose()
 
 
 def test_postgres_without_pg_dump_is_refused_clearly(tmp_path, monkeypatch):

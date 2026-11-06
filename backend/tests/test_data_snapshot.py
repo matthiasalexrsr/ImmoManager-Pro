@@ -250,15 +250,39 @@ def test_json_restore_keeps_safety_backup(tmp_path, monkeypatch):
     assert len(store.list_contracts()) == 1
 
 
-def test_pre_update_backup_is_a_full_snapshot(tmp_path, monkeypatch):
-    from backend import updater
+def test_pre_update_backup_is_a_verified_full_archive(tmp_path, monkeypatch):
+    import sqlite3
+    import zipfile
 
-    monkeypatch.setattr(updater, "_BACKUP_DIR", tmp_path)
-    _seed()
+    from sqlalchemy import create_engine
+
+    from backend import updater
+    from backend.db import schema_state
+    from backend.services import full_backup
+
+    database = tmp_path / "owned.db"
+    engine = create_engine("sqlite:///" + database.as_posix())
+    schema_state.initialise_empty(engine)
+    engine.dispose()
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE synthetic_update_payload(value TEXT)")
+        connection.execute("INSERT INTO synthetic_update_payload VALUES ('owned full archive')")
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / "owned.txt").write_bytes(b"synthetic archived original")
+    sources = full_backup.Sources(
+        database_url="sqlite:///" + database.as_posix(), data_dir=tmp_path,
+        uploads_dir=uploads, root=tmp_path / "backups", integration_state=tmp_path / "integrations.json",
+        key_file=tmp_path / "secrets/keyring.json", env_file=tmp_path / ".env",
+    )
+    monkeypatch.setattr(full_backup.Sources, "from_settings", classmethod(lambda cls: sources))
 
     name = updater._create_pre_update_backup()
 
     assert name is not None
-    data = json.loads((tmp_path / name).read_text(encoding="utf-8"))
-    assert data["format"] == "immomanager-snapshot"
-    assert len(data["utility_statements"]) == 1
+    report = full_backup.verify_archive(sources.root / name)
+    assert report["ok"] and report["manifest"]["dialect"] == "sqlite"
+    with zipfile.ZipFile(sources.root / name) as archive:
+        assert archive.read("uploads/owned.txt") == b"synthetic archived original"
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["database"]["row_counts"]["synthetic_update_payload"] == 1

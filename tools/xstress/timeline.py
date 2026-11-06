@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import calendar
 import random
+import time
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -26,6 +27,18 @@ RECOVERABLE = [  # description, key type, share of yearly costs per m² (approx.
     ("Grundsteuer", "area_sqm", 2.1), ("Gebäudeversicherung", "area_sqm", 2.6), ("Hausmeister", "area_sqm", 3.0),
     ("Müllabfuhr", "unit_count", 0.0), ("Wasser/Abwasser", "person_count", 0.0), ("Allgemeinstrom", "unit_count", 0.0),
 ]
+
+
+def create_maintenance_case(client: Client, payload: dict) -> dict:
+    """A historical completed case still follows today's audited lifecycle."""
+    target = payload.get("status", "open")
+    initial = "in_progress" if target == "completed" else target
+    created = client.require_entity("POST", "/maintenance", {**payload, "status": initial}, area="Wartung")
+    if target == "completed":
+        return client.require_entity("POST", f'/maintenance/{created["id"]}/transition',
+            {"status": "completed", "reason": "Synthetischer Langzeitfall: Arbeiten geprüft und abgeschlossen."},
+            area="Wartungsabschluss")
+    return created
 
 
 def german_iban(bank_code: int, account: int) -> str:
@@ -248,7 +261,11 @@ class Simulation:
         self.csv_bookings = []
         for account, rows in by_account.items():
             csv = "date;amount;text\n" + "\n".join(line for line, _, _ in rows)
+            started = time.perf_counter()
             result = b.ok("POST", "/reports/bookings/import", {"account_id": account, "csv_content": csv}, area="Bankimport")
+            self.f.measurements.setdefault('bank_import_previews', []).append({
+                'month': month.isoformat(), 'row_count': len(rows), 'csv_bytes': len(csv.encode('utf-8')),
+                'seconds': time.perf_counter() - started, 'ok': bool(result)})
             if not result:
                 continue
             preview = result.get('preview', {})
@@ -472,13 +489,13 @@ class Simulation:
                 if self.rnd.random() < 0.12:
                     unit = self.rnd.choice(prop.units)
                     cost = round(self.rnd.uniform(80, 4500), 2)
-                    h.call("POST", "/maintenance", {
+                    create_maintenance_case(h, {
                         "property_id": prop.id, "unit_id": unit.id, "title": self.rnd.choice(
                             ["Heizung ausgefallen", "Wasserschaden Bad", "Fenster undicht", "Klingel defekt", "Schimmel"]),
                         "priority": self.rnd.choice(["low", "medium", "high", "urgent"]),
                         "status": self.rnd.choice(["open", "in_progress", "completed", "completed"]),
                         "estimated_cost": cost, "contractor": "Handwerk Schmidt GmbH",
-                        "due_date": (month + timedelta(days=21)).isoformat()}, area="Wartung")
+                        "due_date": (month + timedelta(days=21)).isoformat()})
                     inv = b.ok("POST", "/invoices", {
                         "property_id": prop.id, "supplier": "Handwerk Schmidt GmbH",
                         "invoice_date": (month + timedelta(days=10)).isoformat(),

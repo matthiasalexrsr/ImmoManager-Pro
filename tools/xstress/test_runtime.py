@@ -33,7 +33,8 @@ def test_request_correlation_log_is_append_only_and_excludes_payloads(tmp_path):
     assert entries[0]["request_id"] == "abc12345"
     assert entries[0]["path"] == "/bookings/{id}"
     assert entries[0]["status"] == 201
-    assert set(entries[0]) == {"phase", "user", "method", "path", "status", "seconds", "request_id"}
+    assert set(entries[0]) == {"phase", "user", "method", "path", "status", "seconds", "budget_seconds", "request_id"}
+    assert entries[0]['budget_seconds'] == 2.0
     assert "not-in-trace" not in text and "synthetic-secret-token" not in text
 
 
@@ -159,9 +160,8 @@ def test_stop_reaps_python_launcher_and_child(tmp_path, monkeypatch, hard):
         if proc.poll() is None:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) if os.name == "nt" else proc.kill()
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(child_pid), "/T", "/F"], capture_output=True,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
+        # The child's exit was already asserted above. Never target that bare
+        # PID after exit: Windows may have reused it for an unrelated process.
 
 
 @pytest.mark.parametrize("failure", ["startup", "simulation", "finding", "none"])

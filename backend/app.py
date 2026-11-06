@@ -32,6 +32,7 @@ from .middleware import (
 from .paths import ensure_runtime_dirs, get_uploads_dir
 from .plugins import get_plugins, load_plugins, start_plugins, stop_plugins
 from .routing import build_api_v1, get_i18n_router
+from .services.http_boundary import HTTPBoundaryMiddleware, configured_hosts
 from .services.portfolio_http import PortfolioScopeMiddleware
 from .services.upload_policy import UploadStaticFiles
 
@@ -219,7 +220,6 @@ app.add_middleware(
 
 # Application middleware (added in reverse execution order)
 app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AcceptLanguageMiddleware)
 app.add_middleware(DBSessionMiddleware)
 app.add_middleware(AuditMiddleware)
@@ -236,6 +236,15 @@ if settings.immo_demo:
         if blocked_action(request.method, request.url.path):
             return JSONResponse(status_code=409, content={"detail": "Diese Aktion überträgt Daten an einen externen Dienst und steht im Demobestand nicht zur Verfügung.", "code": "DEMO_EXTERNAL_ACTION_DISABLED"})
         return await call_next(request)
+
+
+# The host and browser-origin boundary runs before portfolio/auth/database work.
+# Security headers also cover its controlled rejection responses.
+app.add_middleware(HTTPBoundaryMiddleware,
+    allowed_hosts=configured_hosts(settings.trusted_hosts, settings.cors_origins, settings.portal_public_url,
+                                   production=settings.is_production),
+    allowed_origins=settings.cors_origins)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ─── API Routers ─────────────────────────────────────────────────────────────

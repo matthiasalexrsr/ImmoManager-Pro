@@ -1379,6 +1379,7 @@ class TokenPayload(BaseModel):
     type: str  # access or refresh
     jti: Optional[str] = None  # unique token identifier for rotation
     sid: Optional[str] = None  # durable login family; absent on legacy APIv1 JWTs
+    aep: Optional[str] = None  # independent destination-profile fence after restore
 
 
 class LoginRequest(BaseModel):

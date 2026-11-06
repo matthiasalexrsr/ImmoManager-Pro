@@ -17,6 +17,49 @@ def write(path, value):
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
+def worker_fixture(report):
+    """Controlled promotion-contract fixture, never a claim of native execution."""
+    pdf, png, docx = "application/pdf", "image/png", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    for stage in ("source-runtime", "frozen-runtime", "qt-demo-ui"):
+        packaged = stage != "source-runtime"
+        cases = {mime: {"input_sha256": "c"*64, "status": "rendered", "pages_total": 1, "pages_sent": 1,
+                       "omissions": [], "pixels": pixels, "image_sha256": "d"*64, "image_bytes": 100}
+                 for mime, pixels in ((pdf, [300, 150]), (png, [8, 4]))}
+        attachments = {mime: {"status": "ready", "input_sha256": "c"*64, "byte_length": 100,
+                             "expected_phrases": phrases, "text_characters": 70 if phrases else 0,
+                             "text_truncated": False, "omissions": [] if phrases else ["image-only"], "original_unchanged": True}
+                       for mime, phrases in ((pdf, ["LOCAL AI WORKER"]), (png, []),
+                           (docx, ["LOCAL DOCX BODY", "LOCAL DOCX TABLE", "LOCAL DOCX HEADER", "LOCAL DOCX FOOTER"]))}
+        write(report/stage/"ai-image-worker-smoke.json", {"packaged_runtime": packaged, "action": "render_images",
+              "cases": cases, "text_worker": {"status": "extracted", "source": "pdf_text", "complete": True,
+              "warning": None, "input_sha256": "c"*64, "original_unchanged": True, "expected_phrase": "LOCAL AI WORKER"},
+              "assistant_attachments": attachments})
+        write(report/stage/"ai-text-worker-observation.json", {"packaged_runtime": packaged, "complete": True,
+              "failed": False, "source": "pdf_text", "warning": None, "text_characters": 16,
+              "expected_phrase_found": True, "input_sha256": "c"*64})
+
+
+def customer_macos_fixture(folder):
+    """Synthetic native-signing contract; no real signing/notarization here."""
+    for arch in ("x64", "arm64"):
+        path = folder/f"ImmoManager-Pro-{VERSION}-macOS-{arch}.dmg"
+        receipt = release.read_json(path.with_suffix(".dmg.json"))
+        runtime = release.read_json(folder/"native-acceptance.json")["targets"]["macos-"+arch]
+        runtime.pop("package")
+        runtime["environment"].update(customer_signed_runtime=True, customer_package_sha256=release.digest(path))
+        receipt["customer_signing"] = {"schema": "immomanager-macos-customer-signing/1", "source_commit": COMMIT,
+            "architecture": arch, "developer_id_verified": True, "hardened_runtime_verified": True,
+            "notarization_status": "Accepted", "stapler_validated": True, "gatekeeper_accepted": True,
+            "signed_runtime_verified": True, "signed_runtime_package_sha256": release.digest(path),
+            "accepted_package_sha256": release.digest(path), "signed_runtime_acceptance": runtime}
+        write(path.with_suffix(".dmg.json"), receipt)
+    manifest = release.read_json(folder/"release-assets.json")
+    manifest["files"] = [release.row(folder/entry["file"]) for entry in manifest["files"]]
+    write(folder/"release-assets.json", manifest)
+    (folder/"SHA256SUMS.txt").write_text("\n".join(f"{release.digest(p)}  {p.name}"
+        for p in sorted(folder.iterdir()) if p.name != "SHA256SUMS.txt")+"\n", encoding="ascii")
+
+
 @pytest.fixture
 def inputs(tmp_path, monkeypatch):
     packages, reports, sources = [tmp_path / name for name in ("packages", "reports", "sources")]
@@ -54,6 +97,7 @@ def inputs(tmp_path, monkeypatch):
             "server_exit_code": 0, "server_port_closed": True, "checks": {key: True for key in (
                 "demo_login_page_in_embedded_renderer", "demo_seeded_login_through_real_ui", "demo_health_from_embedded_fetch",
                 "embedded_pdf_print_output", "normal_window_close_with_explicit_test_confirmation")}})
+        worker_fixture(report)
         if target == "windows-x64":
             write(report / "installer/immoqa-owned/verification.json", {"status": "passed", "installer_sha256": release.digest(package)})
     archives = []
@@ -74,7 +118,8 @@ def inputs(tmp_path, monkeypatch):
 
     monkeypatch.setattr(release, "source_snapshot", snapshot)
     return {"packages": packages, "reports": reports, "sources": sources, "output": tmp_path / "staged",
-            "version": VERSION, "commit": COMMIT, "desktop_run": 123, "ci_run": 456, "qt_manifest": manifest}
+            "version": VERSION, "commit": COMMIT, "desktop_run": 123, "ci_run": 456,
+            "hardening_run": 789, "qt_manifest": manifest}
 
 
 def test_complete_five_target_release_has_bound_sources_and_every_final_checksum(inputs):
@@ -199,6 +244,7 @@ def test_changed_final_checksum_manifest_blocks_publication_before_any_remote_ac
 @pytest.mark.parametrize("signature", ["Valid", "NotSigned"])
 def test_regular_release_replaces_only_windows_baseline_with_verified_signed_output(inputs, tmp_path, signature):
     release.stage_native(**inputs)
+    customer_macos_fixture(inputs["output"])
     signed, metadata, final = [tmp_path / name for name in ("signed", "sbom", "final")]
     signed.mkdir()
     metadata.mkdir()

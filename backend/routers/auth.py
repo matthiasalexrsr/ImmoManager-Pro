@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import (
     authenticate_user,
+    capture_token_epoch,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -20,6 +21,7 @@ from ..auth import (
     login_address_blocked,
     normalize_access,
     record_failed_login_address,
+    register_public_user,
     register_user,
     require_auth,
     require_role,
@@ -28,7 +30,7 @@ from ..auth import (
     set_user_password,
     update_totp,
     update_user,
-    verify_totp,
+    verified_totp_counter,
 )
 from ..config import settings
 from ..dependencies import store
@@ -41,6 +43,7 @@ from ..models import (
     UserPatch,
     UserRead,
 )
+from ..services import auth_factor
 from ..services.session_cookie import clear_refresh_cookie, cookie_token, set_refresh_cookie, wants_cookie
 from ..services.upload_access import clear_upload_access_cookie, set_upload_access_cookie
 
@@ -74,13 +77,17 @@ _DEFAULT_PREFERENCES = {
 }
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, request: Request) -> UserRead:
+class PublicRegistrationResponse(UserRead):
+    approval_required: bool
+
+
+@router.post("/register", response_model=PublicRegistrationResponse, status_code=status.HTTP_201_CREATED)
+def register(payload: UserCreate, request: Request) -> PublicRegistrationResponse:
     """Register a new account.
 
     The first account ever created becomes the owner (initial setup).
     Afterwards sign-up is closed unless ALLOW_SELF_REGISTRATION is enabled,
-    and self-registered accounts are always read-only.
+    and follow-up self-registered accounts await activation without portfolios.
     """
     client_ip = request.client.host if request.client else "unknown"
     if reserve_registration_attempt(client_ip):
@@ -89,22 +96,14 @@ def register(payload: UserCreate, request: Request) -> UserRead:
             detail="Zu viele Registrierungsversuche. Bitte versuchen Sie es später erneut.",
         )
     with _registration_lock:
-        if not has_users():
-            role = "eigentuemer"
-        elif settings.allow_self_registration:
-            role = "readonly"
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Selbstregistrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.",
-            )
-        return register_user(
+        user = register_public_user(
             username=payload.username,
             email=payload.email,
             full_name=payload.full_name,
             password=payload.password,
-            role=role,
+            allow_self_registration=settings.allow_self_registration,
         )
+        return PublicRegistrationResponse(**user.model_dump(), approval_required=not user.is_active)
 
 
 # FastAPI needs concrete Request/Response annotations for framework injection.
@@ -116,6 +115,7 @@ def login(
     response: Response = None,  # type: ignore[assignment]
 ) -> TokenResponse:
     """Authenticate and receive JWT tokens. Enforces TOTP when enabled."""
+    issuance_epoch = capture_token_epoch()
     client_ip = request.client.host if request is not None and request.client else None
     if login_address_blocked(client_ip):
         raise HTTPException(
@@ -130,14 +130,16 @@ def login(
             detail="Ungültige Anmeldedaten",
         )
     # Enforce TOTP when 2FA is enabled for this user
-    if user.get("totp_enabled") and user.get("totp_secret"):
+    if user.get("totp_enabled"):
+        if not user.get("totp_secret"):
+            raise auth_factor._unavailable()
         if not payload.totp_code:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Zwei-Faktor-Code erforderlich",
                 headers={"X-2FA-Required": "true"},
             )
-        if not verify_totp(user["totp_secret"], payload.totp_code):
+        if not _check_factor_code(user, payload.totp_code, replay_status=401):
             record_failed_login_address(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -146,8 +148,8 @@ def login(
     from uuid import uuid4
     session_id = str(uuid4())
     tokens = TokenResponse(
-        access_token=create_access_token(user["id"], session_id),
-        refresh_token=create_refresh_token(user["id"], session_id),
+        access_token=create_access_token(user["id"], session_id, epoch=issuance_epoch),
+        refresh_token=create_refresh_token(user["id"], session_id, epoch=issuance_epoch),
     )
     return _deliver(tokens, request, response)
 
@@ -197,8 +199,8 @@ def refresh(
     # Rotate: revoke the old refresh token so it cannot be reused
     revoke_token(token, require_unrevoked=True)
     tokens = TokenResponse(
-        access_token=create_access_token(user["id"], token_data.sid),
-        refresh_token=create_refresh_token(user["id"], token_data.sid),
+        access_token=create_access_token(user["id"], token_data.sid, epoch=token_data.aep),
+        refresh_token=create_refresh_token(user["id"], token_data.sid, epoch=token_data.aep),
     )
     return _deliver(tokens, request, response)
 
@@ -563,6 +565,25 @@ class TotpCodeRequest(BaseModel):
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
+def _check_factor_code(account: dict, code: str, *, replay_status: int = 400) -> bool:
+    """All factor checks share the current account's budget, not its login alias."""
+    auth_factor.reserve(account["id"])
+    try:
+        if not isinstance(account.get("totp_secret"), str) or not account["totp_secret"]:
+            raise ValueError("Factor unavailable")
+        secret = account["totp_secret"]
+        counter = verified_totp_counter(secret, code)
+        if counter is None:
+            return False
+        auth_factor.complete(account["id"], secret=secret, counter=counter)
+        return True
+    except auth_factor.FactorReplay:
+        raise HTTPException(replay_status, "Dieser Zwei-Faktor-Code wurde bereits verwendet. Bitte den nächsten Code eingeben.",
+                            headers={"X-2FA-Required": "true"} if replay_status == 401 else None) from None
+    except (ValueError, TypeError):
+        raise auth_factor._unavailable() from None
+
+
 @router.post("/2fa/verify", response_model=None)
 def verify_2fa_setup(
     payload: TotpCodeRequest,
@@ -573,7 +594,7 @@ def verify_2fa_setup(
     user_data = get_user_by_id(user.id)
     if not user_data or not user_data.get("totp_secret"):
         raise HTTPException(status_code=400, detail="2FA nicht eingerichtet. Bitte zuerst /2fa/setup aufrufen.")
-    if not verify_totp(user_data["totp_secret"], code):
+    if not _check_factor_code(user_data, code):
         raise HTTPException(status_code=400, detail="Ungültiger TOTP-Code")
     update_totp(user.id, expected_secret=user_data["totp_secret"],
                 expected_enabled=bool(user_data.get("totp_enabled")), secret=user_data["totp_secret"], enabled=True)
@@ -590,7 +611,7 @@ def disable_2fa(
     user_data = get_user_by_id(user.id)
     if not user_data or not user_data.get("totp_enabled"):
         raise HTTPException(status_code=400, detail="2FA ist nicht aktiviert.")
-    if not verify_totp(user_data["totp_secret"], code):
+    if not _check_factor_code(user_data, code):
         raise HTTPException(status_code=400, detail="Ungültiger TOTP-Code")
     update_totp(user.id, expected_secret=user_data["totp_secret"], expected_enabled=True, secret=None, enabled=False)
     return {"enabled": False, "message": "Zwei-Faktor-Authentifizierung deaktiviert."}

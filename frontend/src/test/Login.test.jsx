@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Login from '../pages/Login';
-import { getRegistrationStatus, login } from '../api';
+import { getRegistrationStatus, login, register } from '../api';
 
 vi.mock('../api', () => ({
   getRegistrationStatus: vi.fn(),
@@ -16,7 +16,7 @@ function renderLogin() {
 }
 
 describe('Login registration gating', () => {
-  beforeEach(() => { getRegistrationStatus.mockReset(); login.mockReset(); });
+  beforeEach(() => { getRegistrationStatus.mockReset(); login.mockReset(); register.mockReset(); });
 
   it('hides sign-up when the server has it closed', async () => {
     getRegistrationStatus.mockResolvedValue({ open: false, initial_setup: false });
@@ -61,4 +61,43 @@ describe('Login registration gating', () => {
     expect(screen.queryByLabelText('Zwei-Faktor-Code')).not.toBeInTheDocument();
     expect(screen.getByLabelText('auth.login.password')).toHaveValue('');
   });
+
+  async function fillRegistration() {
+    fireEvent.change(await screen.findByLabelText('auth.login.username'),{target:{value:'neues-konto'}});
+    fireEvent.change(screen.getByLabelText('auth.register.email'),{target:{value:'neu@example.invalid'}});
+    fireEvent.change(screen.getByLabelText('auth.register.firstName'),{target:{value:'Neues Konto'}});
+    fireEvent.change(screen.getByLabelText('auth.login.password'),{target:{value:'SyntheticPasswort42!'}});
+    fireEvent.click(screen.getByRole('button',{name:'auth.register.submit'}));
+  }
+
+  it.each([false,true])('explains pending approval without signing in, including a stale first-owner screen (initial=%s)',async initial_setup=>{
+    getRegistrationStatus.mockResolvedValue({open:true,initial_setup});
+    register.mockResolvedValue({role:'readonly',is_active:false,approval_required:true});
+    renderLogin();
+    if (!initial_setup) fireEvent.click(await screen.findByRole('button',{name:'auth.register.title'}));
+    await fillRegistration();
+    expect(await screen.findByRole('status')).toHaveTextContent('Ein Eigentümer muss es aktivieren');
+    expect(screen.getByLabelText('auth.login.password')).toHaveValue('');
+    expect(screen.queryByLabelText('auth.register.email')).not.toBeInTheDocument();
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('still signs in the explicitly confirmed active first owner',async()=>{
+    getRegistrationStatus.mockResolvedValue({open:true,initial_setup:true});
+    register.mockResolvedValue({role:'eigentuemer',is_active:true,approval_required:false});
+    login.mockResolvedValue({access_token:'synthetic'});
+    renderLogin();
+    await fillRegistration();
+    await waitFor(()=>expect(login).toHaveBeenCalledWith('neues-konto','SyntheticPasswort42!'));
+  });
+
+  it.each([undefined,{role:'readonly',is_active:true},{role:'readonly',is_active:true,approval_required:false}])(
+    'does not create a session from an ambiguous or non-owner registration response (%s)',async response=>{
+      getRegistrationStatus.mockResolvedValue({open:true,initial_setup:true});
+      register.mockResolvedValue(response);
+      renderLogin();
+      await fillRegistration();
+      expect(await screen.findByRole('status')).toHaveTextContent('nicht eindeutig bestätigt');
+      expect(login).not.toHaveBeenCalled();
+    });
 });

@@ -61,20 +61,21 @@ def test_a_current_installation_gets_no_hint(github, monkeypatch):
     assert (result["update_available"], result["download_hint"]) == (False, None)
 
 
-def test_a_git_checkout_outside_production_installs_itself(github, monkeypatch):
-    cloned_from(monkeypatch, "git@github.com:O/R.git")
+def test_a_development_git_checkout_uses_the_verified_installer(github, monkeypatch):
+    cloned_from(monkeypatch, "https://github.com/O/R.git")
     monkeypatch.setattr(settings, "environment", Environment.development)
     result = updater.check_for_updates()
-    assert (result["update_available"], result["can_apply"], result["download_hint"]) == (True, True, None)
+    assert (result["update_available"], result["can_apply"]) == (True, False)
+    assert result["download_hint"] and result["update_method"] == "verified_installer"
 
 
-def test_production_checkouts_install_only_when_allowed(github, monkeypatch):
+def test_production_checkouts_cannot_bypass_installer_policy_with_an_environment_flag(github, monkeypatch):
     cloned_from(monkeypatch, "https://github.com/o/r.git")
     monkeypatch.setattr(settings, "environment", Environment.production)
     monkeypatch.setattr(settings, "update_allow_in_production", False)
     assert updater.check_for_updates()["can_apply"] is False
     monkeypatch.setattr(settings, "update_allow_in_production", True)
-    assert updater.check_for_updates()["can_apply"] is True
+    assert updater.check_for_updates()["can_apply"] is False
 
 
 def test_a_checkout_of_another_repository_is_not_offered_an_update_it_cannot_fetch(github, monkeypatch):
@@ -85,7 +86,7 @@ def test_a_checkout_of_another_repository_is_not_offered_an_update_it_cannot_fet
     result = updater.check_for_updates()
 
     assert (result["update_available"], result["can_apply"]) == (True, False)
-    assert "o/r" in result["download_hint"] and "someone/fork" in result["download_hint"]
+    assert result["download_hint"] == updater.INSTALLER_HINT
     assert "geheim" not in result["download_hint"]
     refused = updater.apply_update()
     assert not refused["success"] and refused["message"] == result["download_hint"] and not refused["steps"]

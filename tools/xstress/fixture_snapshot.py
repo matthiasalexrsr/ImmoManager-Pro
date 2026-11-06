@@ -19,18 +19,22 @@ def snapshot(directory: Path) -> dict:
     marker = json.loads((directory / '.xstress-owned.json').read_text(encoding='utf-8'))
     if marker.get('kind') != 'synthetic-xstress' or Path(marker['parent']).resolve() != directory.parent:
         raise ValueError('Not an owned synthetic fixture')
-    database = (directory / 'app.db').resolve(strict=True)
+    database_name = marker.get('database_name', 'app.db')
+    if database_name not in ('app.db', 'immo_manager.db'):
+        raise ValueError('Not a declared synthetic database name')
+    database = (directory / database_name).resolve(strict=True)
     if database.parent != directory:
         raise ValueError('Database escapes the fixture')
     # Run as a subprocess with this fixture's isolated environment. Importing the
     # schema here cannot bind config/logs/keys to either real installation.
     from backend.services.data_snapshot import entity_specs
+    from backend.services.sqlite_backup import readonly_uri
 
     business = {spec.key for spec in entity_specs()} | {'receivable_settlements', 'saved_finance_reports'}
     prefixes = ('bank_', 'integration_', 'finance_', 'financial_', 'communication_',
                 'teha_', 'channel_', 'document_')
     counts, digests = {}, {}
-    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+    with sqlite3.connect(readonly_uri(database), uri=True) as connection:
         connection.row_factory = sqlite3.Row
         connection.execute('PRAGMA query_only=ON')
         connection.execute('BEGIN')

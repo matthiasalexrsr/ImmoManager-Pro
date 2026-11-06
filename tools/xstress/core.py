@@ -13,6 +13,7 @@ Every finding has a class:
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import secrets
@@ -34,7 +35,16 @@ from .processes import start_owned, stop_owned
 REPO = Path(__file__).resolve().parents[2]
 SEVERITIES = ["KRITISCH", "FALSCH", "LÜCKE", "RECHTE", "LANGSAM", "HINWEIS"]
 SLOW_SECONDS = 2.0
+BULK_OPERATION_SECONDS = {
+    ("POST", "/admin/operations/backup"): 30.0,
+    ("POST", "/admin/operations/restore-probe"): 30.0,
+}
 PASSWORD = "Stress-Test-2026!"
+
+
+def operation_budget(method: str, path: str) -> float:
+    """Only the two named synchronous full-archive operations get a bulk budget."""
+    return BULK_OPERATION_SECONDS.get((method.upper(), path.partition('?')[0]), SLOW_SECONDS)
 
 
 def fresh_directory(parent: Path, name: str) -> Path:
@@ -56,6 +66,7 @@ def isolated_env(directory: Path, *, secret: str, persistent: bool = True) -> di
             "DATA_DIR": str(directory), "DATABASE_URL": f"sqlite:///{(directory / 'app.db').as_posix()}",
             "UPLOADS_DIR": str(directory / "uploads"), "BACKUP_DIR": str(directory / "backups"),
             "INTEGRATION_STATE_FILE": str(directory / "integrations.json"),
+            "SECRET_KEY_FILE": str(directory / "secrets" / "keyring.json"),
             "LOG_FILE": str(directory / "application.log"), "AI_CACHE_DIR": str(directory / "ai-cache"),
             "JWT_SECRET_KEY": secret, "ENVIRONMENT": "production", "IMMO_TESTVERSION": "false",
             "BACKUP_PASSPHRASE": secret,
@@ -76,8 +87,15 @@ def free_port() -> int:
 class Server:
     """A real app process (uvicorn, SQLite file) that can be stopped, restarted and copied."""
 
-    def __init__(self, workdir: Path, name: str = "main", port: int | None = None):
+    def __init__(self, workdir: Path, name: str = "main", port: int | None = None,
+                 *, database_name: str = "app.db"):
+        if database_name not in ("app.db", "immo_manager.db"):
+            raise ValueError("Only the declared synthetic database filenames are supported")
+        self.database_name = database_name
         self.dir = fresh_directory(workdir, name)
+        marker = self.dir / '.xstress-owned.json'
+        ownership = json.loads(marker.read_text(encoding='utf-8'))
+        marker.write_text(json.dumps({**ownership, 'database_name': database_name}), encoding='utf-8')
         self.secret = secrets.token_urlsafe(48)
         self.port = port or free_port()
         self.proc: subprocess.Popen | None = None
@@ -90,10 +108,14 @@ class Server:
 
     @property
     def db_file(self) -> Path:
-        return self.dir / "app.db"
+        return self.dir / self.database_name
 
     def env(self) -> dict:
-        return isolated_env(self.dir, secret=self.secret)
+        environment = {**isolated_env(self.dir, secret=self.secret),
+                       "DATABASE_URL": f"sqlite:///{self.db_file.as_posix()}"}
+        # The newly restored profile owns its epoch through its own .env file.
+        environment.pop('PRIVACY_RESTORE_ID', None)
+        return environment
 
     def start(self, timeout: float = 60) -> None:
         if self.proc is not None:
@@ -132,7 +154,7 @@ class Server:
         """A second server on a copy of this one's data (taken while it is stopped)."""
         if self.proc is not None:
             raise RuntimeError("Stop the source server before cloning its database")
-        other = Server(self.dir.parent, name)
+        other = Server(self.dir.parent, name, database_name=self.database_name)
         other.secret = self.secret
         shutil.copytree(self.dir, other.dir, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("server.log", ".xstress-owned.json"))
@@ -200,6 +222,7 @@ class Client:
             self.f.add("KRITISCH", area, f"{method} {path}: keine Antwort ({type(exc).__name__})", str(exc))
             return None, None
         elapsed = time.perf_counter() - started
+        budget = operation_budget(method, path)
         key = path.split("?")[0]
         for part in key.split("/"):
             if len(part) == 36 and part.count("-") == 4:
@@ -214,13 +237,14 @@ class Client:
                     output.write(json.dumps({"phase": self.f.phase, "user": self.username,
                                              "method": method, "path": key, "status": resp.status_code,
                                              "seconds": elapsed,
+                                             "budget_seconds": budget,
                                              "request_id": resp.headers.get("x-request-id")}, ensure_ascii=False) + "\n")
         if resp.status_code == 401 and not quiet:
             self.login()
             return self.call(method, path, body, expect=expect, area=area, params=params, files=files, quiet=True,
                              raw=raw)
-        if elapsed > SLOW_SECONDS:
-            self.f.add("LANGSAM", area, f"{method} {key} dauerte {elapsed:.1f} s")
+        if elapsed > budget:
+            self.f.add("LANGSAM", area, f"{method} {key} dauerte {elapsed:.1f} s (Budget {budget:g} s)")
         content: Any = resp.content if raw else _json(resp)
         if resp.status_code >= 500:
             self.f.add("KRITISCH", area, f"{method} {path} -> {resp.status_code}", content if not raw else None)
@@ -308,11 +332,17 @@ def write_report(findings: Findings, out: Path, meta: dict) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     meta = {**meta, "measurements": findings.measurements}
     (out / "findings.json").write_text(json.dumps(findings.items, indent=1, ensure_ascii=False), encoding="utf-8")
-    (out / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     grouped = findings.summary()
     slow = defaultdict(list)
     for method, path, seconds in findings.timings:
         slow[f"{method} {path}"].append(seconds)
+    meta['latency_by_endpoint'] = {}
+    for endpoint, values in slow.items():
+        ordered = sorted(values)
+        meta['latency_by_endpoint'][endpoint] = {
+            'count': len(ordered), 'p50_seconds': ordered[math.ceil(len(ordered)*.5)-1],
+            'p95_seconds': ordered[math.ceil(len(ordered)*.95)-1], 'max_seconds': ordered[-1]}
+    (out / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     top = sorted(((max(v), sum(v) / len(v), len(v), k) for k, v in slow.items()), reverse=True)[:15]
     lines = ["# Extrem-Stresstest – Ergebnis", "",
              f"- Lauf: {meta.get('started')} · Dauer {meta.get('minutes', 0):.0f} min · "
@@ -340,8 +370,10 @@ def write_report(findings: Findings, out: Path, meta: dict) -> Path:
             lines.append("")
             lines += [f"- ↑ {n}× insgesamt: {k[1]}" for k, n in repeated]
         lines.append("")
-    lines += ["## Langsamste Aufrufe", "", "| Aufruf | max s | Ø s | Anzahl |", "|---|---:|---:|---:|"]
-    lines += [f"| {k} | {mx:.2f} | {avg:.2f} | {n} |" for mx, avg, n, k in top]
+    lines += ["## Langsamste Aufrufe", "", "| Aufruf | p50 s | p95 s | max s | Ø s | Anzahl |", "|---|---:|---:|---:|---:|---:|"]
+    lines += [f"| {k} | {meta['latency_by_endpoint'][k]['p50_seconds']:.2f} | "
+              f"{meta['latency_by_endpoint'][k]['p95_seconds']:.2f} | {mx:.2f} | {avg:.2f} | {n} |"
+              for mx, avg, n, k in top]
     path = out / "report.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path

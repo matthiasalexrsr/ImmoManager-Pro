@@ -14,6 +14,7 @@ import threading
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from time import time as _totp_now
 from typing import Any, Callable, Iterator, Optional
 from uuid import uuid4
 
@@ -26,6 +27,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .config import settings
 from .models import TokenPayload, UserRead
+from .services import auth_epoch
 
 logger = logging.getLogger(__name__)
 
@@ -362,16 +364,20 @@ def get_totp_uri(secret: str, username: str, issuer: str = "ImmoManager Pro") ->
 
 def verify_totp(secret: str, code: str) -> bool:
     """Verify a TOTP code against the secret. Allows 1 period drift."""
+    return verified_totp_counter(secret, code) is not None
+
+
+def verified_totp_counter(secret: str, code: str) -> int | None:
+    """The matched step, for atomic consumption by authenticated HTTP flows."""
     import hmac as _hmac
     import struct
-    import time
 
     if not code or len(code) != 6 or not code.isdigit():
-        return False
+        return None
 
     import base64
     key = base64.b32decode(secret, casefold=True)
-    now = int(time.time())
+    now = int(_totp_now())
 
     for offset in [-1, 0, 1]:  # Allow ±30s drift
         counter = (now // 30) + offset
@@ -380,8 +386,8 @@ def verify_totp(secret: str, code: str) -> bool:
         o = h[-1] & 0x0F
         token = str((struct.unpack(">I", h[o:o+4])[0] & 0x7FFFFFFF) % 1000000).zfill(6)
         if _hmac.compare_digest(token, code):
-            return True
-    return False
+            return counter
+    return None
 
 
 def hash_password(password: str) -> str:
@@ -403,23 +409,45 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, session_id: str | None = None) -> str:
+def capture_token_epoch() -> str | None:
+    try:
+        return auth_epoch.current()
+    except auth_epoch.EpochUnavailable:
+        raise HTTPException(503, "Die Sitzungsprüfung ist vorübergehend nicht verfügbar.", headers={"Retry-After": "30"}) from None
+
+
+def _issue_epoch(expected) -> str | None:
+    try:
+        return auth_epoch.for_issue(expected)
+    except auth_epoch.EpochMismatch:
+        raise HTTPException(401, "Der Datenbestand wurde wiederhergestellt. Bitte erneut anmelden.") from None
+    except auth_epoch.EpochUnavailable:
+        raise HTTPException(503, "Die Sitzungsprüfung ist vorübergehend nicht verfügbar.", headers={"Retry-After": "30"}) from None
+
+
+def create_access_token(user_id: str, session_id: str | None = None, *, epoch=auth_epoch.AUTO) -> str:
     """Create a JWT access token with a unique jti."""
+    selected_epoch = _issue_epoch(epoch)
     expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     from .services.daily_sessions import issue
     session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
     payload = {"sub": user_id, "exp": expires, "type": "access", "jti": jti, "sid": session_id}
+    if selected_epoch is not None:
+        payload["aep"] = selected_epoch
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str, session_id: str | None = None) -> str:
+def create_refresh_token(user_id: str, session_id: str | None = None, *, epoch=auth_epoch.AUTO) -> str:
     """Create a JWT refresh token with a unique jti for rotation tracking."""
+    selected_epoch = _issue_epoch(epoch)
     expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     from .services.daily_sessions import issue
     session_id = issue(user_id, expires, session_id) if session_id else None
     jti = str(uuid4())
     payload = {"sub": user_id, "exp": expires, "type": "refresh", "jti": jti, "sid": session_id}
+    if selected_epoch is not None:
+        payload["aep"] = selected_epoch
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -576,10 +604,15 @@ def decode_token(token: str) -> TokenPayload:
         )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        auth_epoch.validate(payload.get("aep"))
         from .services.daily_sessions import check
         parsed = TokenPayload.model_validate(payload)
         check(parsed.sid, parsed.sub)
         return parsed
+    except auth_epoch.EpochMismatch:
+        raise HTTPException(401, "Der Datenbestand wurde wiederhergestellt. Bitte erneut anmelden.") from None
+    except auth_epoch.EpochUnavailable:
+        raise HTTPException(503, "Die Sitzungsprüfung ist vorübergehend nicht verfügbar.", headers={"Retry-After": "30"}) from None
     except (JWTError, ValidationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -941,6 +974,15 @@ def register_user(username: str, email: str, full_name: str, password: str, role
     """
     if _user_store.get_by_username(username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Benutzername existiert bereits")
+    user_data = _registration_data(username, email, full_name, password, role,
+                                   portfolio_access=portfolio_access, portfolio_ids=portfolio_ids)
+    _user_store.create(user_data)
+    return _to_user_read(user_data)
+
+
+def _registration_data(username: str, email: str, full_name: str, password: str, role: str, *,
+                       portfolio_access: str = "all", portfolio_ids=None) -> dict:
+    """One validated account shape for trusted admin and public registration."""
     # T21: Validate password strength
     pw_errors = validate_password_strength(password, username=username, email=email)
     if pw_errors:
@@ -965,30 +1007,105 @@ def register_user(username: str, email: str, full_name: str, password: str, role
         **normalize_access(role, portfolio_access, portfolio_ids),
         "portfolio_access_origin": "owner_assignment",
     }
-    _user_store.create(user_data)
-    return _to_user_read(user_data)
+    return user_data
+
+
+_public_registration_lock = threading.RLock()
+
+
+def _public_role(existing: bool, allow_self_registration: bool) -> str:
+    if not existing:
+        return "eigentuemer"
+    if allow_self_registration:
+        return "readonly"
+    raise HTTPException(403, "Selbstregistrierung ist deaktiviert. Bitte wenden Sie sich an den Eigentümer.")
+
+
+def register_public_user(username: str, email: str, full_name: str, password: str, *,
+                         allow_self_registration: bool) -> UserRead:
+    """Decide bootstrap ownership and insert atomically across SQL workers."""
+    store = _user_store
+    if not isinstance(store, SQLUserStore):
+        with _public_registration_lock:
+            role = _public_role(has_users(), allow_self_registration)
+            if store.get_by_username(username) is not None:
+                raise HTTPException(409, "Benutzername existiert bereits")
+            data = _registration_data(username, email, full_name, password, role,
+                                      portfolio_access="all" if role == "eigentuemer" else "selected", portfolio_ids=[])
+            data["is_active"] = role == "eigentuemer"
+            store.create(data)
+            return _to_user_read(data)
+    from sqlalchemy import select, text
+
+    from .db.orm_models import UserORM
+
+    session = None
+    try:
+        session = store._session_factory()
+        dialect = session.get_bind().dialect.name
+        if dialect == "sqlite":
+            session.execute(text("BEGIN IMMEDIATE"))
+        elif dialect == "postgresql":
+            session.execute(text("SELECT pg_advisory_xact_lock(5281961005831242824)"))
+        else:
+            raise RuntimeError("Unsupported public registration database")
+        role = _public_role(session.scalar(select(UserORM.id).limit(1)) is not None, allow_self_registration)
+        if session.scalar(select(UserORM.id).where(UserORM.username == username)) is not None:
+            raise HTTPException(409, "Benutzername existiert bereits")
+        data = _registration_data(username, email, full_name, password, role,
+                                  portfolio_access="all" if role == "eigentuemer" else "selected", portfolio_ids=[])
+        data["is_active"] = role == "eigentuemer"
+        session.add(UserORM(**{key: value for key, value in data.items() if key not in ACCESS_FIELDS}))
+        session.flush()
+        store._write_access(session, data["id"], data)
+        session.commit()
+        return _to_user_read(data)
+    except HTTPException:
+        if session is not None:
+            try:
+                session.rollback()
+            except SQLAlchemyError:
+                logger.warning("Public registration rollback unavailable; request refused")
+                raise HTTPException(503, "Die Registrierung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.") from None
+        raise
+    except (SQLAlchemyError, RuntimeError):
+        if session is not None:
+            try:
+                session.rollback()
+            except SQLAlchemyError:
+                pass
+        logger.warning("Public registration unavailable; account creation refused")
+        raise HTTPException(503, "Die Registrierung ist vorübergehend nicht verfügbar. Bitte erneut versuchen.") from None
+    finally:
+        if session is not None:
+            try:
+                store._finalize_session(session)
+            except SQLAlchemyError:
+                logger.warning("Public registration session cleanup failed")
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
     """Authenticate a user by username and password with rate limiting (T21)."""
+    user = _find_login(username)
+    # The accepted e-mail aliases/case variants are one subscriber account.
+    attempt_key = "account:" + user["id"] if user is not None else username
     # T21: Check rate limit
-    if check_login_rate_limit(username):
+    if check_login_rate_limit(attempt_key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Zu viele Anmeldeversuche. Bitte warten Sie {LOCKOUT_DURATION_MINUTES} Minuten.",
         )
-    user = _find_login(username)
     if user is None:
-        record_failed_login(username)
+        record_failed_login(attempt_key)
         return None
     if not user["is_active"]:
-        record_failed_login(username)
+        record_failed_login(attempt_key)
         return None
     if not verify_password(password, user["hashed_password"]):
-        record_failed_login(username)
+        record_failed_login(attempt_key)
         return None
     # Success: clear attempts
-    clear_login_attempts(username)
+    clear_login_attempts(attempt_key)
     return user
 
 
@@ -1108,6 +1225,7 @@ def set_user_password(user_id: str, password: str, *, keep_session: str | None =
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benutzer nicht gefunden")
     clear_login_attempts(user["username"])
+    clear_login_attempts("account:" + user["id"])
     from .services.daily_sessions import revoke_all
     revoke_all(user_id, keep=keep_session)       # OWASP: a new password ends the sessions signed in with the old one
     return _to_user_read(user)
@@ -1130,6 +1248,8 @@ def clear_users() -> None:
     _blacklist_expiry.clear()
     _register_limiter._attempts.clear()
     _address_login_limiter._attempts.clear()
+    from .services.auth_factor import clear_memory
+    clear_memory()
 
 
 def get_current_user(

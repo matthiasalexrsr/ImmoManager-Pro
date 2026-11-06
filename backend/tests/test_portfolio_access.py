@@ -148,10 +148,10 @@ def test_first_start_after_the_update_keeps_existing_accounts_working(tmp_path, 
     engine.dispose()
 
 
-def test_restoring_an_older_backup_keeps_its_accounts_working(tmp_path, monkeypatch):
-    """A database file from before portfolio access, put back by the binary restore: explicitly upgraded."""
+def test_offline_copy_of_an_older_backup_keeps_its_accounts_working(tmp_path):
+    """An old DB is explicitly migrated in a separate file; the live profile stays unchanged."""
     from backend.db.schema_state import head_revision, run_migrations
-    from backend.routers import admin_runtime
+    from backend.services.sqlite_backup import copy_database
 
     backups = tmp_path / "backups"
     backups.mkdir()
@@ -161,14 +161,12 @@ def test_restoring_an_older_backup_keeps_its_accounts_working(tmp_path, monkeypa
     run_migrations(f"sqlite:///{live}")
     with sqlite3.connect(live) as conn:
         conn.execute("UPDATE user_portfolio_access SET mode = 'selected'")
-    monkeypatch.setattr(admin_runtime, "_BACKUP_DIR", backups)
-    monkeypatch.setattr(admin_runtime, "_live_sqlite_path", lambda: live)
-
-    result = admin_runtime.restore_backup("backup_old.db")
-
-    assert result["upgraded_from"] == "unversioned"
-    with sqlite3.connect(live) as conn:
+    restored = tmp_path / "new-profile.db"
+    copy_database(backups / "backup_old.db", restored)
+    before, after = run_migrations(f"sqlite:///{restored}")
+    assert before.state == "unversioned" and after.state == "current"
+    with sqlite3.connect(restored) as conn:
         assert conn.execute("SELECT mode, origin FROM user_portfolio_access").fetchall() == [("all", "legacy_all")]
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == head_revision()
-    with sqlite3.connect(backups / result["safety_backup"]) as conn:     # the replaced data is kept
+    with sqlite3.connect(live) as conn:
         assert conn.execute("SELECT mode FROM user_portfolio_access").fetchone() == ("selected",)

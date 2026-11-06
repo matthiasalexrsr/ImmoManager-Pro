@@ -20,6 +20,8 @@ import traceback
 from datetime import date, datetime
 from pathlib import Path
 
+from backend.domain.clock import local_today
+
 from . import bad_input, roles, saveload
 from .core import PASSWORD, REPO, Findings, Server, fresh_directory, setup_users, write_report
 from .invariants import run_checks
@@ -102,7 +104,7 @@ def main() -> int:
 
         sim.run(after_month)
         run_checks(sim, world.end)
-        run_checks(sim, date.today())
+        run_checks(sim, local_today())
         if "fehldaten" not in args.skip:
             bad_input.run(server, findings)
         if "rechte" not in args.skip:
