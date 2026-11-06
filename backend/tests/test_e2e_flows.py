@@ -705,7 +705,11 @@ class TestNotificationLifecycle:
             headers=auth_headers,
         )
         assert verify_resp.status_code == 200
-        assert verify_resp.json()["status"] == "unread"  # shared source is retained
+        personal_notice = verify_resp.json()
+        assert personal_notice["status"] == "archived"
+        assert personal_notice["legacy_status"] == "unread"
+        assert personal_notice["legacy_read_at"] is None
+        assert client.get('/api/v1/tasks/' + task_id, headers=auth_headers).json()['status'] == 'open'
         archived = client.get('/api/v1/notifications/inbox?status=archived', headers=auth_headers).json()['items']
         assert [row['id'] for row in archived] == [notif_id]
         assert archived[0]['read_at'] and archived[0]['archived_at']
