@@ -36,8 +36,9 @@ docker compose "${COMPOSE_FILES[@]}" up -d --build
 # Wait for every service the checks below ask: the app, Prometheus and Grafana start at
 # their own pace, and asking one seconds after its start resets the connection.
 wait_for() {
-  for _ in {1..60}; do
-    if curl -fsS "$1" >/dev/null 2>&1; then
+  local readiness_deadline=$((SECONDS + 120))
+  while [ "$SECONDS" -lt "$readiness_deadline" ]; do
+    if curl --connect-timeout 2 --max-time 3 -fsS "$1" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
@@ -48,6 +49,37 @@ wait_for() {
 wait_for http://localhost:8000/health
 wait_for http://localhost:9090/-/ready
 wait_for http://localhost:3001/api/health
+
+# A running Prometheus says nothing about whether it can actually probe the app.
+# Require both real blackbox targets to have a fresh successful measurement.
+probes_ready=false
+probes_deadline=$((SECONDS + 120))
+while [ "$SECONDS" -lt "$probes_deadline" ]; do
+  if curl --connect-timeout 2 --max-time 3 -fsSG http://localhost:9090/api/v1/query \
+      --data-urlencode 'query=probe_success{job="blackbox-app-health"} and on(instance) (timestamp(probe_success{job="blackbox-app-health"}) > time() - 60)' >/tmp/app_probes.json && \
+      python3 - <<'PY'
+import json
+import time
+from pathlib import Path
+
+result = json.loads(Path('/tmp/app_probes.json').read_text())
+expected = {'http://app:8000/health', 'http://app:8000/mietvertrag/'}
+rows = result.get('data', {}).get('result', [])
+assert result.get('status') == 'success'
+assert len(rows) == len(expected)
+assert {row['metric']['instance'] for row in rows} == expected
+assert all(float(row['value'][1]) == 1 and 0 <= time.time() - float(row['value'][0]) <= 60 for row in rows)
+PY
+  then
+    probes_ready=true
+    break
+  fi
+  sleep 2
+done
+if [ "$probes_ready" != true ]; then
+  echo 'Application monitoring has no fresh successful measurement for both required routes' >&2
+  exit 1
+fi
 
 curl -fsS http://localhost:8000/health | tee /tmp/health.json
 curl -fsS -o /tmp/wizard.html -w '%{http_code}' http://localhost:8000/mietvertrag/ >/tmp/wizard_status.txt

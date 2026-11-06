@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import shutil
-import xml.etree.ElementTree as ET
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from uuid import uuid4
 

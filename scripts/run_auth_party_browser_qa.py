@@ -16,6 +16,16 @@ from tools.xstress.core import PASSWORD, Findings, Server, fresh_directory, setu
 from tools.xstress.processes import start_owned, stop_owned  # noqa: E402
 
 
+def _check_totp_clock_fixture() -> None:
+    """Fail before starting any account/server if the bounded clock tests fail."""
+    result = subprocess.run(["node", "--test", str(ROOT / "scripts/totp_qa_steps.test.mjs")],
+                            cwd=ROOT, capture_output=True, text=True, timeout=30,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    result.check_returncode()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("playwright", type=Path, help="Absolute @playwright/test/index.mjs path")
@@ -29,6 +39,7 @@ def main() -> int:
     binary = options.binary.resolve(strict=True) if options.binary else None
     if binary and (not binary.is_file() or not binary.is_relative_to(ROOT)):
         parser.error("Built application must be a file inside this checkout")
+    _check_totp_clock_fixture()
     output = fresh_directory(destination, "regression")
     server = BinaryServer(output / "server", binary) if binary else Server(output / "server", "auth-party")
     users, results = {}, []
