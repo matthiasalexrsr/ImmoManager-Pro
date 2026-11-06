@@ -1,4 +1,4 @@
-name: Diagnose reviewed AI image worker
+name: Diagnose reviewed AI image worker phase 2
 
 on:
   push:
@@ -86,7 +86,7 @@ jobs:
           python -m pip check
       - name: Capture only synthetic worker outputs with unchanged limits
         env:
-          DIAGNOSTIC_OUTPUT: ${{ runner.temp }}/ai-image-worker-diag-${{ matrix.id }}
+          DIAGNOSTIC_OUTPUT: ${{ runner.temp }}/ai-image-worker-diag-v2-${{ matrix.id }}
         run: |
           python - <<'PY'
           """Synthetic image-worker diagnosis at one exact commit; budgets remain unchanged."""
@@ -108,6 +108,70 @@ jobs:
           
           EXPECTED_COMMIT = "49a82e4d62281a9cee7800c45fff4c6c467fe5c9"
           CAPTURE_BYTES = 65536
+          
+          LIMIT_TRACE = """
+          import json,resource,sys
+          from backend.services.e_invoice.posix_worker import main
+          original=resource.setrlimit
+          names={}
+          for name in dir(resource):
+              if name.startswith('RLIMIT_'):
+                  names.setdefault(getattr(resource,name),[]).append(name)
+          def traced(name,values):
+              print(json.dumps({'limit_stage':'before','resource_names':names.get(name),
+                    'current':resource.getrlimit(name),'proposed':values}),flush=True)
+              original(name,values)
+              print(json.dumps({'limit_stage':'after','resource_names':names.get(name),
+                    'applied':resource.getrlimit(name)}),flush=True)
+          resource.setrlimit=traced
+          main(sys.argv[1:])
+          """
+          
+          WORKER_TRACE = """
+          import inspect,json,sys
+          try:
+              import resource
+          except ImportError:
+              resource=None
+          from backend.services import ai_document_images as images
+          from backend.services.document_text_worker import main
+          lines,start=inspect.getsourcelines(images._qt_pdf)
+          needles={'QtGui.QGuiApplication([':'create_gui_application',
+                   'document = QtPdf.QPdfDocument(':'construct_pdf_document',
+                   'source.setData(':'set_pdf_buffer', 'document.load(source)':'load_pdf',
+                   'document.pageCount()':'page_count','document.pagePointSize(':'page_geometry',
+                   'image = document.render(':'render_page','opaque = QtGui.QImage(':'allocate_white_background',
+                   'painter.drawImage(':'composite_white_background','opaque.save(':'encode_png',
+                   'document.close()':'close_pdf'}
+          selected={start+i:label for i,line in enumerate(lines) for needle,label in needles.items() if needle in line}
+          pending={}
+          def mark(stage,frame):
+              item={'qt_pdf_stage':stage,'line':frame.f_lineno}
+              number=frame.f_locals.get('number')
+              if isinstance(number,int): item['page_index']=number
+              if resource is not None:
+                  item['rlimit_as']=resource.getrlimit(resource.RLIMIT_AS)
+                  item['maxrss']=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+              if sys.platform.startswith('linux'):
+                  with open('/proc/self/status') as stream:
+                      item['memory_status']=[line.strip() for line in stream if line.startswith(('Vm','Threads:'))]
+              print(json.dumps(item),flush=True)
+          def trace(frame,event,arg):
+              if frame.f_code is not images._qt_pdf.__code__: return None
+              if event=='call': mark('entered',frame)
+              if event=='line':
+                  previous=pending.pop(id(frame),None)
+                  if previous: mark('after:'+previous,frame)
+                  current=selected.get(frame.f_lineno)
+                  if current:
+                      mark('before:'+current,frame)
+                      pending[id(frame)]=current
+              elif event=='exception': mark('python_exception:'+arg[0].__name__,frame)
+              elif event=='return': mark('function_exit',frame)
+              return trace
+          sys.settrace(trace)
+          main(sys.argv[1])
+          """
           
           
           def main():
@@ -140,7 +204,7 @@ jobs:
                       versions[package] = importlib.metadata.version(package)
                   except importlib.metadata.PackageNotFoundError:
                       versions[package] = None
-              record = {"schema": "immomanager-ai-image-worker-diagnostics/1", "source_commit": head,
+              record = {"schema": "immomanager-ai-image-worker-diagnostics/2", "source_commit": head,
                   "platform": sys.platform, "machine": platform.machine(), "python": sys.version,
                   "packages": versions, "status": "running", "budget_changes": False,
                   "requested_budgets": {"timeout_seconds": images.TIMEOUT_SECONDS, "windows_memory_bytes": 768 * 1024 * 1024,
@@ -160,7 +224,10 @@ jobs:
               def traced_factory(argv, profile, **kwargs):
                   if not Path(profile).name.startswith("immo-e-invoice-text-"):
                       raise RuntimeError("Diagnosis may observe only its owned synthetic text workers")
-                  entry = {"phase": phase[0], "actual_argv": list(argv),
+                  original_argv = list(argv)
+                  if argv[1:3] == ["-m", "backend.services.e_invoice.posix_worker"]:
+                      argv = [argv[0], "-c", LIMIT_TRACE, *argv[3:]]
+                  entry = {"phase": phase[0], "original_actual_argv": original_argv, "actual_argv": list(argv),
                       "memory_limit_argument": kwargs.get("memory_limit_bytes"),
                       "stdout": {"text": "", "bytes_total": 0, "truncated": False},
                       "stderr": {"text": "", "bytes_total": 0, "truncated": False}}
@@ -209,7 +276,10 @@ jobs:
                   return OwnedProcessSpy()
           
               def traced_run(argv, profile, **kwargs):
-                  entry = {"phase": phase[0], "argv": list(argv), "profile": str(profile),
+                  original_argv = list(argv)
+                  if argv[1:3] == ["-m", "backend.services.document_text_worker"]:
+                      argv = [argv[0], "-c", WORKER_TRACE, *argv[3:]]
+                  entry = {"phase": phase[0], "original_argv": original_argv, "argv": list(argv), "profile": str(profile),
                       "timeout_seconds": kwargs.get("timeout_seconds"),
                       "max_processes": kwargs.get("max_processes"), "file_limit_bytes": kwargs.get("file_limit_bytes"),
                       "resource_mode": kwargs.get("resource_mode")}
@@ -317,8 +387,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 public tag verified
         with:
-          name: AI-image-worker-diagnostics-${{ matrix.id }}
-          path: ${{ runner.temp }}/ai-image-worker-diag-${{ matrix.id }}/
+          name: AI-image-worker-diagnostics-v2-${{ matrix.id }}
+          path: ${{ runner.temp }}/ai-image-worker-diag-v2-${{ matrix.id }}/
           if-no-files-found: error
           retention-days: 7
 
