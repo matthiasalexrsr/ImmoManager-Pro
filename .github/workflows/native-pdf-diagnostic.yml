@@ -1,6 +1,6 @@
-name: Compare both native PDF gates with explicit Qt scenegraph selection
+name: Compare original PDF waiting with event-aware Qt test waiting
 
-# Four fixed fresh processes; preserve the original method before diagnosis.
+# Two fixed fresh Cocoa runners; only the selected PDF-method wait differs.
 # This branch prefix matches neither ordinary CI nor native-package push filters.
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-pdf-scene-graph-${{ github.ref }}
+  group: native-pdf-wait-pump-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -22,16 +22,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        qpa: [offscreen, cocoa]
-        scene_graph: [default, software]
+        wait_pump: [original, qt-aware]
     runs-on: macos-15-intel
     timeout-minutes: 45
     defaults:
       run:
         shell: bash
     env:
-      DIAGNOSTIC_QPA: ${{ matrix.qpa }}
-      DIAGNOSTIC_SCENE_GRAPH: ${{ matrix.scene_graph }}
+      DIAGNOSTIC_QPA: cocoa
+      DIAGNOSTIC_SCENE_GRAPH: default
+      DIAGNOSTIC_WAIT_PUMP: ${{ matrix.wait_pump }}
       PYTHONUTF8: '1'
       PYTHONUNBUFFERED: '1'
       QT_OPENGL: software
@@ -62,7 +62,7 @@ jobs:
           node-version: '24.21.0'
       - name: Prove the real Mac and record its image
         run: |
-          mkdir -p "$RUNNER_TEMP/native-pdf-scene-graph"
+          mkdir -p "$RUNNER_TEMP/native-pdf-wait-pump"
           python - <<'PY'
           import json, os, platform, sys
           from pathlib import Path
@@ -70,9 +70,9 @@ jobs:
           assert sys.version_info[:3] == (3, 11, 9)
           result = {'platform': platform.platform(), 'machine': platform.machine(), 'python': sys.version,
                     'runner_image': os.environ.get('ImageVersion'), 'runner_os': os.environ.get('ImageOS'),
-                    'requested_qpa': os.environ['DIAGNOSTIC_QPA'], 'requested_scene_graph': os.environ['DIAGNOSTIC_SCENE_GRAPH'],
+                    'requested_wait_pump': os.environ['DIAGNOSTIC_WAIT_PUMP'], 'requested_qpa': os.environ['DIAGNOSTIC_QPA'], 'requested_scene_graph': os.environ['DIAGNOSTIC_SCENE_GRAPH'],
                     'helper_commit': os.environ['GITHUB_SHA'], 'product_commit': 'cf35d8d7a3e978c13fe75b5b3026cdb64950dac5'}
-          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-scene-graph/environment.json').write_text(json.dumps(result, indent=2) + '\n')
+          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-wait-pump/environment.json').write_text(json.dumps(result, indent=2) + '\n')
           PY
       - name: Build the same pinned independent Intel OpenSSL
         working-directory: product
@@ -91,35 +91,35 @@ jobs:
           test -f "$OPENSSL_DIR/lib/libcrypto.a"
           python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
           python -m pip check
-          python -m pip freeze > "$RUNNER_TEMP/native-pdf-scene-graph/installed-python.txt"
-          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-scene-graph/macos-openssl-abi.json"
-          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-scene-graph/qt-ownership.json"
+          python -m pip freeze > "$RUNNER_TEMP/native-pdf-wait-pump/installed-python.txt"
+          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-wait-pump/macos-openssl-abi.json"
+          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-wait-pump/qt-ownership.json"
       - name: Build the same actual core frontend
         working-directory: product/frontend
         run: |
           npm ci
           npm run build
-      - name: Observe exactly one original full pytest process on this fresh runner
+      - name: Observe exactly one full pytest process with the selected PDF wait strategy
         run: |
           set -o pipefail
           status=0
-          folder="$RUNNER_TEMP/native-pdf-scene-graph/$DIAGNOSTIC_SCENE_GRAPH-$DIAGNOSTIC_QPA"
+          folder="$RUNNER_TEMP/native-pdf-wait-pump/$DIAGNOSTIC_WAIT_PUMP"
           if python helper/_diagnostics/native_pdf/native_pdf_full_context_probe.py --execute \
               --product "$GITHUB_WORKSPACE/product" --output "$folder" \
-              --qpa "$DIAGNOSTIC_QPA" --scene-graph "$DIAGNOSTIC_SCENE_GRAPH" 2>&1 \
+              --qpa "$DIAGNOSTIC_QPA" --scene-graph "$DIAGNOSTIC_SCENE_GRAPH" --wait-pump "$DIAGNOSTIC_WAIT_PUMP" 2>&1 \
               | python helper/_diagnostics/native_pdf/filter_native_pdf_log.py \
-              > "$RUNNER_TEMP/native-pdf-scene-graph/$DIAGNOSTIC_SCENE_GRAPH-$DIAGNOSTIC_QPA.log"; then
-            echo "$DIAGNOSTIC_SCENE_GRAPH/$DIAGNOSTIC_QPA: original pytest succeeded; diagnostics recorded; evaluate supplementary findings in result.json"
+              > "$RUNNER_TEMP/native-pdf-wait-pump/$DIAGNOSTIC_WAIT_PUMP.log"; then
+            echo "$DIAGNOSTIC_WAIT_PUMP: pytest succeeded under the selected wait strategy; evaluate result.json and supplementary findings"
           else
             status=$?
-            echo "::error::$DIAGNOSTIC_SCENE_GRAPH/$DIAGNOSTIC_QPA exited $status; see result.json for original outcome and separate diagnostic findings"
+            echo "::error::$DIAGNOSTIC_WAIT_PUMP exited $status; see result.json for original outcome and separate diagnostic findings"
           fi
           exit "$status"
       - name: Preserve original captures and bounded diagnostics, even after a failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: native-pdf-cf35-macos-intel-scene-graph-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.scene_graph }}-${{ matrix.qpa }}
-          path: ${{ runner.temp }}/native-pdf-scene-graph/
+          name: native-pdf-cf35-macos-intel-wait-pump-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.wait_pump }}
+          path: ${{ runner.temp }}/native-pdf-wait-pump/
           if-no-files-found: error
           retention-days: 14
