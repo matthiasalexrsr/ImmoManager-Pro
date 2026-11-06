@@ -230,12 +230,14 @@ class StandaloneRuntimeTests(unittest.TestCase):
                 time.sleep(0.05)
 
     def spin(self, predicate, timeout=20):
+        from PySide6.QtTest import QTest
+
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             self.app.processEvents()
             if predicate():
                 return
-            time.sleep(0.01)
+            QTest.qWait(10)
         self.fail("Qt offscreen condition timed out")
 
     def javascript(self, code):
@@ -318,10 +320,11 @@ class StandaloneRuntimeTests(unittest.TestCase):
 
     def test_download_cancel_does_not_write_a_file(self):
         self.dialogs.save = ""
-        states = []
-        self.window.profile.downloadRequested.connect(lambda request: request.stateChanged.connect(lambda state: states.append(state)))
+        requests: list[Any] = []
+        self.window.profile.downloadRequested.connect(lambda request: requests.append(request))
         self.click("#download")
-        self.spin(lambda: self.engine.QWebEngineDownloadRequest.DownloadState.DownloadCancelled in states)
+        cancelled = self.engine.QWebEngineDownloadRequest.DownloadState.DownloadCancelled
+        self.spin(lambda: bool(requests) and all(request.state() == cancelled for request in requests))
         self.assertFalse((self.root / "Export.csv").exists())
         self.assertEqual(self.window._downloads, set())
         self.assertFalse(self.dialogs.errors)
@@ -394,6 +397,9 @@ class StandaloneRuntimeTests(unittest.TestCase):
                 regions = [(max(0, round(offset.x() * sx)), max(0, round(offset.y() * sy)),
                             min(image.width(), round((offset.x() + target.width()) * sx)),
                             min(image.height(), round((offset.y() + target.height()) * sy)))]
+                # Exclude sidebar thumbnails from the popup's document check.
+                left, top, right, bottom = regions[0]
+                regions = [((left + right) // 2, top, right, bottom)]
             else:
                 cx, cy = target.width() / geometry["width"], target.height() / geometry["height"]
                 regions = [(max(0, round((offset.x() + r["left"] * cx) * sx)),
