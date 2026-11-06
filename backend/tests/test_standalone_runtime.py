@@ -376,16 +376,30 @@ class StandaloneRuntimeTests(unittest.TestCase):
         self.spin(lambda: self.javascript("window.nativePdfReady === true"))
         last_geometry = {}
         def teal_pixels(view=None):
-            image = (view or self.window.web_view).grab().toImage()
-            regions = [(0, 0, image.width(), image.height())]
+            # Contract: render the composed standalone window and inspect
+            # each visible PDF region. QWidget.grab actively renders widgets;
+            # this does not assert what a passive screen capture would show.
+            target = view or self.window.web_view
+            geometry = None
             if view is None:
                 geometry = json.loads(self.javascript("JSON.stringify({width:innerWidth,height:innerHeight,frames:['localpdf','blobpdf'].map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})})"))
                 last_geometry.update(geometry)
-                sx, sy = image.width() / geometry["width"], image.height() / geometry["height"]
-                # Check each actual document rectangle. Splitting the entire
-                # window in half misses both fixed-width PDFs on wide screens.
-                regions = [(max(0, round(r["left"] * sx)), max(0, round(r["top"] * sy)),
-                            min(image.width(), round(r["right"] * sx)), min(image.height(), round(r["bottom"] * sy)))
+            # Resolve DOM geometry before capturing so a later JavaScript
+            # callback cannot advance the paint represented by this image.
+            offset = target.mapTo(self.window, self.core.QPoint(0, 0))
+            image = self.window.grab().toImage()
+            # Image pixels may differ from logical widget coordinates (DPR).
+            sx, sy = image.width() / self.window.width(), image.height() / self.window.height()
+            if geometry is None:
+                regions = [(max(0, round(offset.x() * sx)), max(0, round(offset.y() * sy)),
+                            min(image.width(), round((offset.x() + target.width()) * sx)),
+                            min(image.height(), round((offset.y() + target.height()) * sy)))]
+            else:
+                cx, cy = target.width() / geometry["width"], target.height() / geometry["height"]
+                regions = [(max(0, round((offset.x() + r["left"] * cx) * sx)),
+                            max(0, round((offset.y() + r["top"] * cy) * sy)),
+                            min(image.width(), round((offset.x() + r["right"] * cx) * sx)),
+                            min(image.height(), round((offset.y() + r["bottom"] * cy) * sy)))
                            for r in geometry["frames"]]
                 self.assertEqual(len(regions), 2)
             counts = []
