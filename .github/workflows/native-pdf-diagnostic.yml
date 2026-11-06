@@ -1,6 +1,6 @@
-name: Compare original native PDF capture without prepaint
+name: Observe full-context native PDF timing without changing its result
 
-# Isolated comparison: preserve the original gate before any parent capture.
+# Original full pytest context; retain its 30s outcome, then observe to 90s.
 # This branch prefix matches neither ordinary CI nor native-package push filters.
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-pdf-no-prepaint-${{ github.ref }}
+  group: native-pdf-full-context-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
       - name: Read the exact unchanged failed product commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 6c5b22c8f4e5c9ef142338695e120c5fcc69cf56
+          ref: cf35d8d7a3e978c13fe75b5b3026cdb64950dac5
           path: product
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -55,7 +55,7 @@ jobs:
           node-version: '24.21.0'
       - name: Prove the real Mac and record its image
         run: |
-          mkdir -p "$RUNNER_TEMP/native-pdf-no-prepaint"
+          mkdir -p "$RUNNER_TEMP/native-pdf-full-context"
           python - <<'PY'
           import json, os, platform, sys
           from pathlib import Path
@@ -63,8 +63,8 @@ jobs:
           assert sys.version_info[:3] == (3, 11, 9)
           result = {'platform': platform.platform(), 'machine': platform.machine(), 'python': sys.version,
                     'runner_image': os.environ.get('ImageVersion'), 'runner_os': os.environ.get('ImageOS'),
-                    'helper_commit': os.environ['GITHUB_SHA'], 'product_commit': '6c5b22c8f4e5c9ef142338695e120c5fcc69cf56'}
-          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-no-prepaint/environment.json').write_text(json.dumps(result, indent=2) + '\n')
+                    'helper_commit': os.environ['GITHUB_SHA'], 'product_commit': 'cf35d8d7a3e978c13fe75b5b3026cdb64950dac5'}
+          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-full-context/environment.json').write_text(json.dumps(result, indent=2) + '\n')
           PY
       - name: Build the same pinned independent Intel OpenSSL
         working-directory: product
@@ -83,40 +83,38 @@ jobs:
           test -f "$OPENSSL_DIR/lib/libcrypto.a"
           python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
           python -m pip check
-          python -m pip freeze > "$RUNNER_TEMP/native-pdf-no-prepaint/installed-python.txt"
-          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-no-prepaint/macos-openssl-abi.json"
-          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-no-prepaint/qt-ownership.json"
+          python -m pip freeze > "$RUNNER_TEMP/native-pdf-full-context/installed-python.txt"
+          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-full-context/macos-openssl-abi.json"
+          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-full-context/qt-ownership.json"
       - name: Build the same actual core frontend
         working-directory: product/frontend
         run: |
           npm ci
           npm run build
-      - name: Compare both real platforms without any pre-result parent capture
+      - name: Preserve the full pytest result on each real platform path
         run: |
           set -o pipefail
           status=0
           for qpa in offscreen cocoa; do
-            for scenario in preceded; do
-              folder="$RUNNER_TEMP/native-pdf-no-prepaint/$qpa-$scenario"
-              if python helper/_diagnostics/native_pdf/native_pdf_no_prepaint_probe.py --execute \
-                  --product "$GITHUB_WORKSPACE/product" --output "$folder" \
-                  --qpa "$qpa" --scenario "$scenario" 2>&1 \
-                  | python helper/_diagnostics/native_pdf/filter_native_pdf_log.py \
-                  > "$RUNNER_TEMP/native-pdf-no-prepaint/$qpa-$scenario.log"; then
-                echo "$qpa/$scenario: original assertions and immediate capture comparison passed"
-              else
-                code=$?
-                echo "::error::$qpa/$scenario exited $code; original outcome remains a failure"
-                status=1
-              fi
-            done
+            folder="$RUNNER_TEMP/native-pdf-full-context/$qpa"
+            if python helper/_diagnostics/native_pdf/native_pdf_full_context_probe.py --execute \
+                --product "$GITHUB_WORKSPACE/product" --output "$folder" \
+                --qpa "$qpa" 2>&1 \
+                | python helper/_diagnostics/native_pdf/filter_native_pdf_log.py \
+                > "$RUNNER_TEMP/native-pdf-full-context/$qpa.log"; then
+              echo "$qpa: original full pytest outcome and bounded diagnosis passed"
+            else
+              code=$?
+              echo "::error::$qpa exited $code; probe failed or diagnosis incomplete; see result.json for original pytest outcome"
+              status=1
+            fi
           done
           exit "$status"
       - name: Preserve original captures and bounded diagnostics, even after a failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: native-pdf-6c-macos-intel-no-prepaint-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/native-pdf-no-prepaint/
+          name: native-pdf-cf35-macos-intel-full-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-pdf-full-context/
           if-no-files-found: error
           retention-days: 14
