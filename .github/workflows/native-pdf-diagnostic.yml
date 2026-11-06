@@ -1,6 +1,6 @@
-name: Diagnose unchanged 6c native PDF on macOS Intel
+name: Compare original native PDF capture without prepaint
 
-# Prepared candidate; only Root may upload/start it.
+# Isolated comparison: preserve the original gate before any parent capture.
 # This branch prefix matches neither ordinary CI nor native-package push filters.
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-pdf-diagnostic-${{ github.ref }}
+  group: native-pdf-no-prepaint-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -55,7 +55,7 @@ jobs:
           node-version: '24.21.0'
       - name: Prove the real Mac and record its image
         run: |
-          mkdir -p "$RUNNER_TEMP/native-pdf-diagnostic"
+          mkdir -p "$RUNNER_TEMP/native-pdf-no-prepaint"
           python - <<'PY'
           import json, os, platform, sys
           from pathlib import Path
@@ -64,7 +64,7 @@ jobs:
           result = {'platform': platform.platform(), 'machine': platform.machine(), 'python': sys.version,
                     'runner_image': os.environ.get('ImageVersion'), 'runner_os': os.environ.get('ImageOS'),
                     'helper_commit': os.environ['GITHUB_SHA'], 'product_commit': '6c5b22c8f4e5c9ef142338695e120c5fcc69cf56'}
-          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-diagnostic/environment.json').write_text(json.dumps(result, indent=2) + '\n')
+          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-no-prepaint/environment.json').write_text(json.dumps(result, indent=2) + '\n')
           PY
       - name: Build the same pinned independent Intel OpenSSL
         working-directory: product
@@ -83,27 +83,27 @@ jobs:
           test -f "$OPENSSL_DIR/lib/libcrypto.a"
           python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
           python -m pip check
-          python -m pip freeze > "$RUNNER_TEMP/native-pdf-diagnostic/installed-python.txt"
-          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-diagnostic/macos-openssl-abi.json"
-          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-diagnostic/qt-ownership.json"
+          python -m pip freeze > "$RUNNER_TEMP/native-pdf-no-prepaint/installed-python.txt"
+          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-no-prepaint/macos-openssl-abi.json"
+          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-no-prepaint/qt-ownership.json"
       - name: Build the same actual core frontend
         working-directory: product/frontend
         run: |
           npm ci
           npm run build
-      - name: Run separate fresh processes and preserve every result
+      - name: Compare both real platforms without any pre-result parent capture
         run: |
           set -o pipefail
           status=0
           for qpa in offscreen cocoa; do
-            for scenario in isolated preceded; do
-              folder="$RUNNER_TEMP/native-pdf-diagnostic/$qpa-$scenario"
-              if python helper/_diagnostics/native_pdf/native_pdf_diagnostic.py \
+            for scenario in preceded; do
+              folder="$RUNNER_TEMP/native-pdf-no-prepaint/$qpa-$scenario"
+              if python helper/_diagnostics/native_pdf/native_pdf_no_prepaint_probe.py --execute \
                   --product "$GITHUB_WORKSPACE/product" --output "$folder" \
                   --qpa "$qpa" --scenario "$scenario" 2>&1 \
                   | python helper/_diagnostics/native_pdf/filter_native_pdf_log.py \
-                  > "$RUNNER_TEMP/native-pdf-diagnostic/$qpa-$scenario.log"; then
-                echo "$qpa/$scenario: original assertions and all diagnostics passed"
+                  > "$RUNNER_TEMP/native-pdf-no-prepaint/$qpa-$scenario.log"; then
+                echo "$qpa/$scenario: original assertions and immediate capture comparison passed"
               else
                 code=$?
                 echo "::error::$qpa/$scenario exited $code; original outcome remains a failure"
@@ -116,7 +116,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: native-pdf-6c-macos-intel-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/native-pdf-diagnostic/
+          name: native-pdf-6c-macos-intel-no-prepaint-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-pdf-no-prepaint/
           if-no-files-found: error
           retention-days: 14
