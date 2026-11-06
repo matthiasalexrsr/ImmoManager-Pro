@@ -29,12 +29,73 @@ def free_port():
         return reservation.getsockname()[1]
 
 
+def verify_ai_attachment_worker(output: Path, pdf_content: bytes, png_content: bytes) -> dict[str, Any]:
+    """Inspect real global-chat files through the public service, without a model."""
+    import zipfile
+
+    from backend.services.assistant import inspect_attachment
+
+    namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    package = BytesIO()
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", '''<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+          <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+          <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+        </Types>''')
+        archive.writestr("_rels/.rels", f'''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="document" Type="{relationships}/officeDocument" Target="word/document.xml"/>
+        </Relationships>''')
+        archive.writestr("word/document.xml", f'''<w:document xmlns:w="{namespace}" xmlns:r="{relationships}"><w:body>
+          <w:p><w:r><w:t>LOCAL DOCX BODY</w:t></w:r></w:p>
+          <w:tbl><w:tr><w:tc><w:p><w:r><w:t>LOCAL DOCX TABLE</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:sectPr><w:headerReference w:type="default" r:id="header"/><w:footerReference w:type="default" r:id="footer"/></w:sectPr>
+        </w:body></w:document>''')
+        archive.writestr("word/_rels/document.xml.rels", f'''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="header" Type="{relationships}/header" Target="header1.xml"/>
+          <Relationship Id="footer" Type="{relationships}/footer" Target="footer1.xml"/>
+        </Relationships>''')
+        for section, tag in (("header", "hdr"), ("footer", "ftr")):
+            archive.writestr(f"word/{section}1.xml", f'<w:{tag} xmlns:w="{namespace}"><w:p><w:r><w:t>LOCAL DOCX {section.upper()}</w:t></w:r></w:p></w:{tag}>')
+    receipt = {}
+    for name, mime, content, phrases in (
+        ("ai-chat-smoke.pdf", "application/pdf", pdf_content, ["LOCAL AI WORKER"]),
+        ("ai-chat-smoke.png", "image/png", png_content, []),
+        ("ai-chat-smoke.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+         package.getvalue(), ["LOCAL DOCX BODY", "LOCAL DOCX TABLE", "LOCAL DOCX HEADER", "LOCAL DOCX FOOTER"]),
+    ):
+        digest = hashlib.sha256(content).hexdigest()
+        original = output / name
+        original.write_bytes(content)
+        inspected = inspect_attachment(content, name)
+        assert inspected["status"] == "ready" and inspected["name"] == name and inspected["mime"] == mime
+        assert inspected["byte_length"] == len(content) and inspected["sha256"] == digest
+        assert isinstance(inspected["text"], str)
+        assert inspected["text_truncated"] is False
+        assert isinstance(inspected["omissions"], list)
+        if phrases:
+            assert all(phrase in inspected["text"] for phrase in phrases)
+            assert inspected["omissions"] == []
+        else:
+            assert inspected["text"] == "" and inspected["omissions"]
+        assert hashlib.sha256(original.read_bytes()).hexdigest() == digest
+        receipt[mime] = {"status": "ready", "input_sha256": digest, "byte_length": len(content),
+                         "expected_phrases": phrases, "text_characters": len(inspected["text"]),
+                         "text_truncated": False, "omissions": inspected["omissions"], "original_unchanged": True}
+    return receipt
+
+
 def verify_ai_image_worker(output: Path) -> dict[str, Any]:
     """Require real PDF and PNG replies from the source/frozen companion worker."""
     from PIL import Image
     from reportlab.pdfgen.canvas import Canvas
 
     from backend.services.ai_document_images import render_page_images
+    from backend.services.document_text_process import read_isolated
+    from backend.services.document_text_reader import Budget
 
     picture = BytesIO()
     Image.new("RGB", (8, 4), (20, 110, 100)).save(picture, "PNG")
@@ -44,9 +105,22 @@ def verify_ai_image_worker(output: Path) -> dict[str, Any]:
     canvas.showPage()
     canvas.save()
     receipt: dict[str, Any] = {"packaged_runtime": bool(getattr(sys, "frozen", False)), "action": "render_images", "cases": {}}
+    pdf_content = document.getvalue()
+    pdf_digest = hashlib.sha256(pdf_content).hexdigest()
+    # Exercise the actual reader used before AI image conversion, including the
+    # Darwin RSS-bound document wrapper, in both source and frozen runtimes.
+    (output / "ai-worker-smoke.pdf").write_bytes(pdf_content)
+    text = read_isolated(pdf_content, "ai-worker-smoke.pdf", {}, Budget())
+    assert text.complete and not text.failed and text.warning is None and text.source == "pdf_text"
+    assert "LOCAL AI WORKER" in text.text
+    assert hashlib.sha256((output / "ai-worker-smoke.pdf").read_bytes()).hexdigest() == pdf_digest
+    receipt["text_worker"] = {"status": "extracted", "source": text.source, "complete": text.complete,
+                              "warning": text.warning, "expected_phrase": "LOCAL AI WORKER",
+                              "input_sha256": pdf_digest, "original_unchanged": True}
+    receipt["assistant_attachments"] = verify_ai_attachment_worker(output, pdf_content, picture.getvalue())
     for name, mime, content, expected_pixels in (
         ("ai-worker-smoke.png", "image/png", picture.getvalue(), (8, 4)),
-        ("ai-worker-smoke.pdf", "application/pdf", document.getvalue(), (300, 150)),
+        ("ai-worker-smoke.pdf", "application/pdf", pdf_content, (300, 150)),
     ):
         digest = hashlib.sha256(content).hexdigest()
         (output / name).write_bytes(content)

@@ -15,7 +15,6 @@ from ..db.assistant_models import AssistantMessageORM as Message
 from ..db.assistant_models import AssistantProposalORM as Proposal
 from ..db.assistant_models import AssistantRunORM as Run
 from . import assistant_storage as db
-from . import safe_xml
 from .file_storage import get_file_storage
 from .integrations import connection_storage as dbs
 
@@ -27,7 +26,8 @@ MIME = {"txt": "text/plain", "csv": "text/csv", "pdf": "application/pdf", "png":
 
 
 def attachment_limit():
-    return settings.assistant_max_attachment_bytes or settings.max_upload_size_bytes
+    from .assistant_attachment_inspection import MAX_SOURCE_BYTES
+    return min(settings.assistant_max_attachment_bytes or settings.max_upload_size_bytes, MAX_SOURCE_BYTES)
 
 
 def capabilities(actor_id):
@@ -320,7 +320,6 @@ def inspect_attachment(raw, name):
         raise HTTPException(415, "Erlaubt sind PDF, DOCX, UTF-8-Text/CSV und PNG/JPEG/WebP.")
     if not raw or len(raw) > attachment_limit():
         raise HTTPException(413, f"Anhang ist leer oder größer als {attachment_limit()} Byte.")
-    mime, text, omissions = MIME[ext], "", []
     if ext in ("txt", "csv"):
         try:
             text = raw.decode("utf-8-sig")
@@ -328,71 +327,14 @@ def inspect_attachment(raw, name):
                 raise ValueError
         except (UnicodeError, ValueError):
             raise HTTPException(415, "Textanhänge benötigen gültiges UTF-8 ohne Binärdaten.") from None
-    elif ext == "docx":
-        import zipfile
-
-        from .document_formats import validate_docx
-        validate_docx(raw)
-        namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-        parts, length = [], 0
-        with zipfile.ZipFile(io.BytesIO(raw)) as package:
-            selected = ["word/document.xml"] + sorted(name for name in package.namelist()
-                if name.startswith(("word/header", "word/footer")) and name.endswith(".xml"))
-            for part in selected:
-                root = safe_xml.fromstring(package.read(part))
-                for paragraph in root.iter(namespace + "p"):
-                    chunk = "".join(node.text or "" if node.tag == namespace + "t" else
-                                    "\t" if node.tag == namespace + "tab" else "\n"
-                                    for node in paragraph.iter() if node.tag in (
-                                        namespace + "t", namespace + "tab", namespace + "br")) + "\n"
-                    remaining = MAX_TEXT + 1 - length
-                    parts.append(chunk[:remaining])
-                    length += len(chunk)
-                    if length > MAX_TEXT:
-                        break
-                if length > MAX_TEXT:
-                    break
-        text = "".join(parts)
-        if not text.strip():
-            omissions.append("DOCX enthält keinen extrahierbaren Text.")
-    elif ext == "pdf":
-        if not raw.startswith(b"%PDF-"):
-            raise HTTPException(415, "Datei enthält kein gültiges PDF.")
-        try:
-            import fitz
-            with fitz.open(stream=raw, filetype="pdf") as document:
-                if document.needs_pass:
-                    raise HTTPException(422, "Passwortgeschützte PDFs können nicht analysiert werden.")
-                parts, length = [], 0
-                for index, page in enumerate(document):
-                    if index >= 100 or length >= MAX_TEXT:
-                        omissions.append("PDF-Auszug auf 100 Seiten / 64.000 Zeichen begrenzt.")
-                        break
-                    chunk = page.get_text()
-                    parts.append(chunk)
-                    length += len(chunk)
-                text = "\n".join(parts)
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(422, "PDF konnte nicht gelesen werden.") from None
-        if not text.strip():
-            omissions.append("PDF enthält keinen extrahierbaren Text; keine automatische OCR durchgeführt.")
+        result = {"text": text[:MAX_TEXT], "text_truncated": len(text) > MAX_TEXT,
+                  "omissions": ["Textauszug auf 64.000 Zeichen begrenzt."] if len(text) > MAX_TEXT else []}
     else:
-        try:
-            from PIL import Image
-            with Image.open(io.BytesIO(raw)) as image:
-                expected = {"png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "webp": "WEBP"}[ext]
-                if image.format != expected or image.width * image.height > 25_000_000:
-                    raise ValueError
-                image.verify()
-        except Exception:
-            raise HTTPException(415, "Bildformat ist ungültig oder das Bild ist zu groß.") from None
-        omissions.append("Bild wird nur an bildfähige Modelle übergeben; lokal keine automatische OCR.")
-    if len(text) > MAX_TEXT:
-        omissions.append("Textauszug auf 64.000 Zeichen begrenzt.")
-    return dict(name=name, mime=mime, byte_length=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
-                text=text[:MAX_TEXT], text_truncated=len(text) > MAX_TEXT, omissions=omissions, status="ready")
+        from .assistant_attachment_inspection import inspect_binary
+        result = inspect_binary(raw, ext, source_limit=attachment_limit(),
+                                upload_limit=min(settings.max_upload_size_bytes, attachment_limit()))
+    return dict(name=name, mime=MIME[ext], byte_length=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                **result, status="ready")
 
 
 def add_attachment(store, actor_id, identifier, raw, name):

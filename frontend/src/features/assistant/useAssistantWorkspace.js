@@ -6,6 +6,7 @@ import { readAssistantDraft, writeAssistantDraft, readAssistantCommand, writeAss
 import { originalRetryReview, workingAttachmentIds } from './assistantRetry';
 
 const emptyDraft = () => ({ body: '', attachments: [], context: [], web_research: false, report: null, data_scope: 'authorized', excluded_attachment_ids: [], context_explicit: false });
+const shortTitle = value => Array.from(value.trim()).slice(0, 80).join('');
 const rejected = failure => [400, 403, 404, 409, 413, 415, 422].includes(failure.statusCode);
 const mergeRows = (first, next) => [...new Map([...first, ...next].map(row => [row.id, row])).values()];
 const proposalPageCursor = page => page?.has_more === false ? null : page?.next_cursor || null;
@@ -208,7 +209,7 @@ export default function useAssistantWorkspace(owner) {
     if (activeRun(run)) throw new Error('Bitte warten Sie auf die laufende Antwort oder brechen Sie sie ab.');
     const original = { ...draftRef.current };
     if (!retry && !original.body.trim()) { if (currentProvider === 'local') original.body = 'Prüfe die ausgewählten Grundlagen mit den vorhandenen lokalen Regeln.'; else return; }
-    const conversation = await ensureConversation(current, original.body.trim().slice(0, 80) || 'Neuer Chat'); current();
+    const conversation = await ensureConversation(current, shortTitle(original.body) || 'Neuer Chat'); current();
     const prior = readAssistantCommand(owner, conversation.id);
     const command = prior || { kind: 'submit', idempotency_key: crypto.randomUUID(), request: {
       content: original.body, attachment_ids: original.attachments.map(item => item.id), excluded_attachment_ids: original.excluded_attachment_ids || [], data_scope: original.data_scope,
@@ -250,7 +251,9 @@ export default function useAssistantWorkspace(owner) {
     try {
       if (draftRef.current.attachments.length + files.length > (capabilities?.max_attachments || 12)) throw new Error('Zu viele ausgewählte Dateien. Bitte die Auswahl verkleinern.');
       for (const file of files) if (capabilities?.attachment_max_bytes && file.size > capabilities.attachment_max_bytes) throw new Error(`„${file.name}“ überschreitet die erlaubte Dateigröße.`);
-      const conversation = await ensureConversation(current); current();
+      const firstFileName = files[0]?.name?.split(/[\\/]/).pop()?.trim();
+      const title = shortTitle(draftRef.current.body) || (firstFileName ? shortTitle(`Dateiprüfung: ${firstFileName}`) : 'Neuer Chat');
+      const conversation = await ensureConversation(current, title); current();
       setRecord(conversation);
       for (const file of files) {
         const uploaded = await assistantApi.upload(conversation.id, file); current();

@@ -30,7 +30,7 @@ def read_isolated(content: bytes, name: str, cursor: dict, budget: Budget) -> Ex
     if not content:
         return ExtractionPart()
     if len(content) > budget.file_bytes:
-        return ExtractionPart(warning="Die Datei überschreitet das Lesebudget; der Inhalt ist nicht indiziert.")
+        return ExtractionPart(failed=True, warning="Die Datei überschreitet das Lesebudget; der Inhalt ist nicht indiziert.")
     try:
         with tempfile.TemporaryDirectory(prefix="immo-e-invoice-text-") as directory:
             folder = Path(directory)
@@ -69,7 +69,7 @@ def read_isolated(content: bytes, name: str, cursor: dict, budget: Budget) -> Ex
                 timeout_seconds=TEXT_TIMEOUT_SECONDS,
                 max_processes=4,
                 file_limit_bytes=TEXT_WORK_BYTES,
-                resource_mode="text",
+                resource_mode="document" if sys.platform == "darwin" else "text",
             )
             result = folder / "result.json"
             if code or not result.is_file() or result.stat().st_size > MAX_JSON:
@@ -80,6 +80,7 @@ def read_isolated(content: bytes, name: str, cursor: dict, budget: Budget) -> Ex
                 not isinstance(part.text, str)
                 or len(part.text) > budget.characters + 2
                 or type(part.complete) is not bool
+                or part.failed is not False
                 or not isinstance(part.cursor, dict)
                 or part.source not in {"none", "plain", "office", "pdf_text", "ocr"}
                 or type(part.indexed_units) is not int
@@ -92,5 +93,6 @@ def read_isolated(content: bytes, name: str, cursor: dict, budget: Budget) -> Ex
             return part
     except Exception:
         return ExtractionPart(
+            failed=True,
             warning="Die isolierte Dokumentauswertung wurde wegen eines Lese- oder Ressourcenlimits nicht vollständig beendet. Suchtreffer können fehlen; bitte das begrenzte Dokument prüfen oder erneut lesen."
         )

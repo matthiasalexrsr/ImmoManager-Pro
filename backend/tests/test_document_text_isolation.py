@@ -49,10 +49,12 @@ def test_reader_resource_failures_are_bounded_and_owned_children_are_stopped(mon
         patch.setattr(process, "worker_command", lambda folder: [sys.executable, "-c", code, str(folder)])
         started = time.monotonic()
         part = process.read_isolated(b"Own synthetic fixture", "fixture.txt", {}, Budget())
-        assert part.complete and part.warning and not part.text
+        assert part.complete and part.failed and part.warning and not part.text
         assert owned and all(instance.process.poll() is not None for instance in owned)
         assert time.monotonic() - started < 12
-        if failure == "memory":
+        if failure == "memory" and sys.platform == "darwin":
+            assert errors and "Speicher-/Prozessbudget" in errors[0]
+        elif failure == "memory":
             assert returned[0][0] != 0
             assert "MemoryError" in returned[0][2]
         elif failure == "file" and os.name != "nt":
@@ -63,4 +65,4 @@ def test_reader_resource_failures_are_bounded_and_owned_children_are_stopped(mon
             assert expected in errors[0]
     # Normal protected extraction still works after each rejected/terminated child.
     valid = process.read_isolated(b"Weiterhin normal lesbar", "normal.txt", {}, Budget())
-    assert valid.text == "Weiterhin normal lesbar" and valid.complete and valid.warning is None
+    assert valid.text == "Weiterhin normal lesbar" and valid.complete and not valid.failed and valid.warning is None

@@ -25,6 +25,32 @@ def main(folder_argument=None):
     if not isinstance(request, dict):
         raise RuntimeError("Invalid document worker request")
     action = request.get("action", "read_text")
+    if action == "inspect_attachment":
+        from .assistant_attachment_inspection import (
+            MAX_RESPONSE_BYTES,
+            InspectionError,
+            _limits,
+            inspect_in_worker,
+        )
+
+        if set(request) != {"action", "extension", "source_limit", "upload_limit"}:
+            raise RuntimeError("Invalid attachment worker request")
+        _limits(request["extension"], request["source_limit"], request["upload_limit"])
+        source = folder / "source.bin"
+        if source.is_symlink() or source.stat().st_size > request["source_limit"]:
+            raise RuntimeError("Attachment worker input too large")
+        try:
+            value = inspect_in_worker(source.read_bytes(), request["extension"],
+                                      request["source_limit"], request["upload_limit"])
+        except InspectionError as error:
+            value = {"error": error.code}
+        raw = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise RuntimeError("Attachment worker response too large")
+        temporary = folder / "result.tmp"
+        temporary.write_bytes(raw)
+        os.replace(temporary, folder / "result.json")
+        return
     if action == "render_images":
         from .ai_document_images import MAX_RESPONSE_BYTES, MAX_SOURCE_BYTES, ImageRenderError, render_in_worker
 

@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 # cryptography seals integration secrets and the full backup; PyJWT signs the sessions.
-REQUIRED = {"cryptography", "pyjwt"}
+REQUIRED = {"cryptography", "pyjwt", "psutil"}
 
 
 def _name(spec: str) -> str:

@@ -279,6 +279,56 @@ describe('assistant providers and explicit cloud controls', () => {
   });
 });
 
+describe('first-upload conversation titles', () => {
+  it('names an upload-first chat from its file and keeps that title when the first message is sent', async () => {
+    mount('/assistant'); await ready();
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['%PDF-local'], 'Rechnung.pdf', { type: 'application/pdf' })] } });
+    await within(screen.getByRole('group', { name: 'Dateiauswahl für die Nachricht' })).findByRole('button', { name: 'Datei ansehen: Rechnung.pdf' });
+    expect(screen.getByRole('heading', { name: 'Dateiprüfung: Rechnung.pdf' })).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/assistant/conversations', expect.objectContaining({ title: 'Dateiprüfung: Rechnung.pdf' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lokal prüfen' })).toBeEnabled());
+    body('Bitte diese Rechnung prüfen'); fireEvent.click(screen.getByRole('button', { name: 'Lokal prüfen' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/assistant/conversations/new/runs', expect.objectContaining({ content: 'Bitte diese Rechnung prüfen', attachment_ids: ['file-1'] })));
+    await waitFor(() => expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue(''));
+    expect(screen.getByRole('heading', { name: 'Dateiprüfung: Rechnung.pdf' })).toBeInTheDocument();
+    expect(api.post.mock.calls.filter(([path]) => path === '/assistant/conversations')).toHaveLength(1);
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { draft: '', fileName: `${'R'.repeat(65)}🏡.pdf`, expected: `Dateiprüfung: ${'R'.repeat(65)}🏡` },
+    { draft: `${'A'.repeat(79)}🏡 Ende`, fileName: 'Andere.pdf', expected: `${'A'.repeat(79)}🏡` },
+  ])('uses a short Unicode-safe title and prefers an existing draft ($fileName)', async ({ draft, fileName, expected }) => {
+    mount('/assistant'); await ready(); if (draft) body(draft);
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['%PDF-local'], fileName, { type: 'application/pdf' })] } });
+    await screen.findByRole('heading', { name: expected });
+    const created = api.post.mock.calls.find(([path]) => path === '/assistant/conversations')[1];
+    expect(created.title).toBe(expected); expect(Array.from(created.title)).toHaveLength(80);
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue(draft);
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+
+  it('reconciles an uncertain first upload creation with its original frozen title and key', async () => {
+    const base = api.post.getMockImplementation(); let first = true;
+    api.post.mockImplementation((path, data) => path === '/assistant/conversations' && first
+      ? (first = false, Promise.reject(new Error('Chatbestätigung verloren'))) : base(path, data));
+    const view = mount('/assistant'); await ready();
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['%PDF-local'], 'Erste.pdf', { type: 'application/pdf' })] } });
+    await screen.findByRole('button', { name: 'Übermittlung abgleichen' });
+    const original = api.post.mock.calls.find(([path]) => path === '/assistant/conversations')[1];
+    expect(original.title).toBe('Dateiprüfung: Erste.pdf');
+    const restored = JSON.parse(localStorage.getItem('workspace:owner-a:assistant:draft:new'));
+    localStorage.setItem('workspace:owner-a:assistant:draft:new', JSON.stringify({ ...restored, body: 'Später wiederhergestellter Entwurf' }));
+    view.unmount(); mount('/assistant');
+    fireEvent.click(await screen.findByRole('button', { name: 'Übermittlung abgleichen' }));
+    await screen.findByRole('heading', { name: 'Dateiprüfung: Erste.pdf' });
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue('Später wiederhergestellter Entwurf');
+    const creates = api.post.mock.calls.filter(([path]) => path === '/assistant/conversations');
+    expect(creates).toHaveLength(2); expect(creates[1][1]).toEqual(original);
+    expect(api.upload).not.toHaveBeenCalled(); expect(api.patch).not.toHaveBeenCalled();
+  });
+});
+
 describe('private conversations, durable runs and files', () => {
   it.each([false, true])('keeps a newer draft entered before a delayed submission is confirmed (lost response: %s)', async lost => {
     const pending = deferred(); const base = api.post.getMockImplementation(); let first = true;

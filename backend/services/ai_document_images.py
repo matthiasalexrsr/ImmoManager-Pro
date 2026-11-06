@@ -238,7 +238,7 @@ def render_page_images(content: bytes, media_type: str, filename: str, max_pages
                    "SECRET_KEY_FILE": str(folder / "keyring.json"), "INTEGRATION_STATE_FILE": str(folder / "integrations.json"),
                    "JOB_SCHEDULER_ENABLED": "false", "BACKUP_SCHEDULE_ENABLED": "false", "ENVIRONMENT": "development"}
             code, _, _ = _run(worker_command(folder), folder, environment=env, timeout_seconds=TIMEOUT_SECONDS,
-                              max_processes=2, file_limit_bytes=WORK_BYTES, resource_mode="text")
+                              max_processes=2, file_limit_bytes=WORK_BYTES, resource_mode="image")
             result = folder / "result.json"
             if code or not result.is_file() or result.stat().st_size > MAX_RESPONSE_BYTES:
                 raise ValueError("Image worker did not complete")

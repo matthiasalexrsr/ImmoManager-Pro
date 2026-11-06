@@ -112,6 +112,14 @@ def test_desktop_smoke_requires_real_pdf_and_png_worker_replies(tmp_path, monkey
     from scripts.check_desktop_runtime import verify_ai_image_worker
     result = verify_ai_image_worker(tmp_path)
     assert result["action"] == "render_images"
+    assert result["text_worker"]["status"] == "extracted"
+    assert result["text_worker"]["source"] == "pdf_text" and result["text_worker"]["complete"]
+    assert result["text_worker"]["warning"] is None and result["text_worker"]["original_unchanged"]
+    assert result["text_worker"]["expected_phrase"] == "LOCAL AI WORKER"
+    assert set(result["assistant_attachments"]) == {"application/pdf", "image/png",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+    assert all(item["status"] == "ready" and item["original_unchanged"]
+               for item in result["assistant_attachments"].values())
     assert set(result["cases"]) == {"image/png", "application/pdf"}
     assert all(item["status"] == "rendered" and item["pages_total"] == item["pages_sent"] == 1
                for item in result["cases"].values())
@@ -129,6 +137,24 @@ def test_desktop_smoke_never_accepts_missing_pdf_renderer_or_worker_failure(tmp_
         return render(content, mime, *args)
     monkeypatch.setattr(images, "render_page_images", fake)
     with pytest.raises(HTTPException):
+        verify_ai_image_worker(tmp_path)
+    assert not (tmp_path / "ai-image-worker-smoke.json").exists()
+
+
+@pytest.mark.parametrize("part", [
+    {"failed": True, "text": "LOCAL AI WORKER", "source": "pdf_text"},
+    {"complete": False, "text": "LOCAL AI WORKER", "source": "pdf_text"},
+    {"warning": "worker failed", "text": "LOCAL AI WORKER", "source": "pdf_text"},
+    {"text": "", "source": "none"},
+    {"text": "LOCAL AI WORKER", "source": "ocr"},
+])
+def test_desktop_smoke_never_renders_after_failed_or_partial_text(tmp_path, monkeypatch, part):
+    from backend.services import document_text_process
+    from backend.services.document_text_reader import ExtractionPart
+    from scripts.check_desktop_runtime import verify_ai_image_worker
+    monkeypatch.setattr(document_text_process, "read_isolated", lambda *args: ExtractionPart(**part))
+    monkeypatch.setattr(images, "render_page_images", lambda *args: pytest.fail("Text stage must pass first"))
+    with pytest.raises(AssertionError):
         verify_ai_image_worker(tmp_path)
     assert not (tmp_path / "ai-image-worker-smoke.json").exists()
 

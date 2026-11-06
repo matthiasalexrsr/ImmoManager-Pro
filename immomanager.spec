@@ -89,6 +89,7 @@ _THIRD_PARTY_PACKAGES = [
     'pypdf',
     'httpx',
     'httpcore',
+    'psutil',
 ]
 
 # Optional engines use runtime imports and native libraries that static import

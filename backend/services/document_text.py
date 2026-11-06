@@ -70,10 +70,11 @@ def extract(content: bytes, name: str) -> tuple[str, str]:
     """One bounded direct extraction; resumable or partial results fail explicitly.
 
     The persisted production index uses extract_part and stores its warning and
-    continuation. An unreadable file with no text still returns ("", "none").
+    continuation. A successfully empty file still returns ("", "none"); a
+    failed worker is never mistaken for a successfully empty scan.
     """
     part = extract_part(content, name)
-    if not part.complete or (part.warning and part.text):
+    if part.failed or not part.complete or (part.warning and part.text):
         raise ValueError("Die Dokumentauswertung ist unvollständig; bitte den fortsetzbaren Suchindex verwenden.")
     text = normalize(part.text)
     return text, part.source if text else "none"

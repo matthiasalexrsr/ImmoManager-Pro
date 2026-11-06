@@ -236,41 +236,65 @@ def _run(argv: list[str], profile: Path, *, environment: dict[str, str] | None =
                    [frozen_cli_executable(), '-m', 'backend.services.e_invoice.posix_worker'])
         env.update(E_INVOICE_LIMIT_DIR=str(profile), PYTHONPATH=str(Path(__file__).resolve().parents[3]))
         argv = [*wrapper, str(profile), mode, str(seconds), *argv]
+    sampled_mode = resource_mode in ('image', 'document') and os.name != 'nt'
+    if sampled_mode:
+        try:
+            from .image_budget import ImageBudgetError, owned_image_budget
+        except ImportError:
+            raise ValidatorUnavailable('Die Ressourcenmessung der lokalen Dokumentauswertung ist nicht verfügbar.') from None
+
+    @contextmanager
+    def resources(process):
+        if not sampled_mode:
+            yield None
+            return
+        try:
+            with owned_image_budget(process, profile, max_processes=max_processes) as budget:
+                yield budget
+        except ImageBudgetError:
+            raise ValidatorUnavailable('Die lokale Dokumentauswertung überschreitet ihr Speicher-/Prozessbudget oder kann nicht sicher gemessen werden.') from None
     outputs: dict[str, list[str]] = {"stdout": [], "stderr": []}
     size = 0
     closed: set[str] = set()
     deadline = time.monotonic() + seconds
     options = {'max_processes': max_processes} if max_processes != 2 else {}
     with CliProcess(argv, profile, env=env, memory_limit_bytes=768 * 1024 * 1024, **options) as process:
-        # KoSIT checks stdin.available(); a closed pipe works on Windows where
-        # DEVNULL/console handles can raise 'Invalid function'.
-        assert process.process.stdin is not None
-        process.process.stdin.close()
-        while len(closed) < 2:
-            if time.monotonic() > deadline:
-                raise ValidatorUnavailable("Die lokale Prüfung hat ihr Zeitlimit überschritten.")
-            if file_limit_bytes is not None:
-                total = 0
-                for path in profile.rglob('*'):
-                    try:
-                        if path.is_file():
-                            total += path.stat().st_size
-                    except FileNotFoundError:
-                        continue
-                if total > file_limit_bytes:
-                    raise ValidatorUnavailable('Der lokale Prüfprozess überschreitet das Arbeitsdateibudget.')
-            item = process.next_line(.1)
-            if item is None:
-                continue
-            channel, line = item
-            if channel.endswith("_closed"):
-                closed.add(channel)
-                continue
-            size += len(line.encode("utf-8"))
-            if size > MAX_REPORT:
-                raise ValidatorUnavailable("Der Prüfbericht überschreitet die zulässige Größe.")
-            outputs[channel].append(line)
-        code = process.process.wait(timeout=5)
+        # The gate prevents native parsing before its first RSS measurement.
+        # Java/extract and non-Darwin text retain their existing AS limits.
+        with resources(process.process) as budget:
+            # KoSIT checks stdin.available(); a closed pipe works on Windows where
+            # DEVNULL/console handles can raise 'Invalid function'.
+            assert process.process.stdin is not None
+            process.process.stdin.close()
+            while len(closed) < 2 or (sampled_mode and process.process.poll() is None):
+                if time.monotonic() > deadline:
+                    raise ValidatorUnavailable("Die lokale Prüfung hat ihr Zeitlimit überschritten.")
+                if file_limit_bytes is not None:
+                    total = 0
+                    for path in profile.rglob('*'):
+                        try:
+                            if path.is_file():
+                                total += path.stat().st_size
+                        except FileNotFoundError:
+                            continue
+                    if total > file_limit_bytes:
+                        raise ValidatorUnavailable('Der lokale Prüfprozess überschreitet das Arbeitsdateibudget.')
+                if budget is not None:
+                    budget.check()
+                item = process.next_line(.05 if sampled_mode else .1)
+                if item is None:
+                    continue
+                channel, line = item
+                if channel.endswith("_closed"):
+                    closed.add(channel)
+                    continue
+                size += len(line.encode("utf-8"))
+                if size > MAX_REPORT:
+                    raise ValidatorUnavailable("Der Prüfbericht überschreitet die zulässige Größe.")
+                outputs[channel].append(line)
+            if budget is not None:
+                budget.check()
+            code = process.process.wait(timeout=5)
     return code, "".join(outputs["stdout"]), "".join(outputs["stderr"])
 
 

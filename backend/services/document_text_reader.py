@@ -41,6 +41,9 @@ class ExtractionPart:
     total_units: int = 0
     complete: bool = True
     warning: str | None = None
+    # Parent-side worker failure is distinct from a successfully empty scan.
+    # The index may retain a terminal warning; direct AI reads must reject it.
+    failed: bool = False
 
 
 def normalize(text: str, *, trim: bool = True) -> str:
