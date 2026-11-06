@@ -172,9 +172,10 @@ async def lifespan(app: FastAPI):
     # Durable installation jobs (recurring tasks, escalation): DB work runs in a thread
     scheduler_stop = threading.Event()
     scheduler_task = None
-    if settings.job_scheduler_enabled:
+    if settings.job_scheduler_enabled or settings.immo_demo:
         from .services.jobs.scheduler import run_forever
-        scheduler_task = asyncio.create_task(run_forever(settings.job_scheduler_interval_seconds, scheduler_stop))
+        scheduler_task = asyncio.create_task(run_forever(settings.job_scheduler_interval_seconds, scheduler_stop,
+                                                       assistant_only=settings.immo_demo))
 
     yield
 
@@ -182,6 +183,8 @@ async def lifespan(app: FastAPI):
     scheduler_stop.set()            # a running job stops after its current chunk
     if scheduler_task is not None:
         scheduler_task.cancel()
+        if settings.immo_demo:
+            await asyncio.gather(scheduler_task, return_exceptions=True)
 
     # Shutdown plugins
     stop_plugins(app, get_plugins())

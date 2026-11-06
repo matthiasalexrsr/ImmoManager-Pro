@@ -11,7 +11,6 @@ assistant's conversations (state "reading") and deleted after the days set in th
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import mimetypes
@@ -265,9 +264,17 @@ def _params(store: Any, surface: surfaces.Surface, params: Params, document: Any
             chosen["property_id"] = period.property_id
         if chosen.get("unit_id"):
             unit = store.get_unit(chosen["unit_id"])
+            if chosen.get("property_id") and chosen["property_id"] != unit.property_id:
+                raise HTTPException(422, "Die gewählte Einheit gehört zu einer anderen Immobilie.")
             chosen.setdefault("property_id", unit.property_id)
         if chosen.get("contract_id"):
             contract = store.get_contract(chosen["contract_id"])
+            if chosen.get("property_id") and chosen["property_id"] != contract.property_id:
+                raise HTTPException(422, "Der gewählte Vertrag gehört zu einer anderen Immobilie.")
+            if chosen.get("unit_id") and chosen["unit_id"] != contract.unit_id:
+                raise HTTPException(422, "Der gewählte Vertrag gehört zu einer anderen Einheit.")
+            if chosen.get("tenant_id") and chosen["tenant_id"] != contract.tenant_id:
+                raise HTTPException(422, "Die gewählte Mietpartei gehört nicht zum gewählten Vertrag.")
             chosen.setdefault("property_id", contract.property_id)
         if chosen.get("tenant_id"):
             store.get_tenant(chosen["tenant_id"])
@@ -287,24 +294,18 @@ def _params(store: Any, surface: surfaces.Surface, params: Params, document: Any
     return chosen
 
 
-def _images(source: Source, max_pages: int) -> list[dict]:
-    """Page images for a scan without text layer (needs PyMuPDF), or the photo itself."""
-    if source.media_type in ("image/png", "image/jpeg", "image/webp"):
-        return [{"name": source.filename, "mime": source.media_type, "data_base64": base64.b64encode(source.content).decode("ascii")}]
-    if source.media_type != "application/pdf":
-        return []
+def _images(source: Source, max_pages: int) -> dict:
+    """Untrusted image/PDF parsers run only in the bounded document child."""
+    from .ai_document_images import ImageRendererUnavailable, render_page_images
     try:
-        import fitz  # type: ignore[import-not-found,import-untyped]
-    except ImportError:
-        return []
-    pages = []
-    with fitz.open(stream=source.content, filetype="pdf") as pdf:
-        for number, page in enumerate(pdf):
-            if number >= max_pages:
-                break
-            pages.append({"name": f"{source.filename} Seite {number + 1}.png", "mime": "image/png",
-                          "data_base64": base64.b64encode(page.get_pixmap(dpi=150).tobytes("png")).decode("ascii")})
-    return pages
+        return render_page_images(source.content, source.media_type, source.filename, max_pages)
+    except ImageRendererUnavailable:
+        if source.media_type != "application/pdf" or not source.text.strip():
+            raise
+        # The text reader already required a complete extraction. Missing an
+        # optional PDF rasterizer does not invalidate that complete text layer.
+        return {"images": [], "pages_total": 0, "pages_sent": 0,
+                "omissions": ["Seitenbilder sind ohne lokale PDF-Bildkonvertierung nicht verfügbar. Die KI erhält ausschließlich den vollständig ausgelesenen Dokumenttext."]}
 
 
 # ─── Asking the reader ───────────────────────────────────────────────────────
@@ -340,18 +341,30 @@ def _request(surface: surfaces.Surface, source: Source, known: dict, values: dic
                   "text_truncated": len(source.text) > MAX_TEXT,
                   "version_id": _version(source), "sha256": source.sha256,
                   "omissions": ["Text auf 120.000 Zeichen begrenzt."] if len(source.text) > MAX_TEXT else []}
-    images = []
+    image_info: dict[str, Any] = {"images": [], "pages_total": 0, "pages_sent": 0, "omissions": []}
     if values.get("ai_send_images", True) and (len(text.strip()) < 200 or source.media_type.startswith("image/")):
-        images = _images(source, int(values.get("ai_max_pages") or 4))
+        image_info = _images(source, int(values.get("ai_max_pages") or 4))
+    images = image_info["images"]
+    attachment["image_coverage"] = {key: image_info[key] for key in ("pages_total", "pages_sent")}
+    attachment["omissions"].extend(image_info["omissions"])
     if not text.strip() and not images:
         raise HTTPException(422, "Aus dieser Datei ließ sich kein Text lesen, und Bilder werden nicht gesendet "
                                  "(Einstellung oder fehlendes PyMuPDF für gescannte PDFs). Bitte eine PDF mit Textebene "
                                  "oder ein Foto (JPG/PNG) verwenden.")
+    # Internal record identifiers are for the form, not needed for the model's
+    # label-based reading schema (including on later clarification turns).
+    model_current = {}
+    for name, value in current.items():
+        field = surface.field(name)
+        model_current[name] = (value.get("label") if isinstance(value, dict) and field is not None
+                               and field.kind in ("unit", "tenant") else value)
     request = {"_task": "document_reading", "messages": messages,
-               "context": {"surface": surface.label, "known": surfaces.for_model(known, level), "current_values": current},
+               "context": {"surface": surface.label, "known": surfaces.for_model(known, level), "current_values": model_current},
                "attachments": [attachment, *images],
                "application_clock": {"date": local_today().isoformat(), "timezone": "Europe/Berlin"},
-               "data_scope": "selected", "web_research": False, "local_analysis": {}, "omissions": [],
+               "data_scope": "selected", "web_research": False, "local_analysis": {}, "omissions": attachment["omissions"],
+               "_image_summary": {"page_images": image_info["pages_sent"], "image_pages_total": image_info["pages_total"],
+                                  "image_omissions": image_info["omissions"]},
                "model": model or None, "effort": None}
     return request, len(images)
 
@@ -450,6 +463,8 @@ def _read(store: Any, actor: Any, surface: surfaces.Surface, source: Source, par
     result: dict = {"answer": words or "Die Werte stehen in der Maske.", "known": known, "images": images,
                     "questions": _strings((data or {}).get("questions")), "notes": _strings((data or {}).get("notes")),
                     "dropped": []}
+    result["image_summary"] = request["_image_summary"]
+    result["notes"].extend(request["omissions"])
     if data is None:
         result["notes"].append("Die KI hat keine lesbaren Werte geliefert. Bitte erneut fragen oder die lokalen Regeln nutzen.")
     if surface.rows:
@@ -644,6 +659,7 @@ def start(store: Any, actor: Any, command: StartCommand) -> dict:
                  "read_characters": len(source.text) if reader == "local" else min(len(source.text), MAX_TEXT),
                  "text_truncated": len(source.text) >= 500_000 or (reader != "local" and len(source.text) > MAX_TEXT),
                  "text_available": bool(source.text.strip())}
+    file_info.update(read.get("image_summary") or {})
     found_values = read.get("values") or {}
     duplicates = _duplicates(store, surface, params, found_values, file_info, source.document.id if source.document else None,
                              source.text, bool(values.get("ai_check_duplicates", True)))
@@ -739,7 +755,8 @@ def say(store: Any, actor: Any, identifier: str, command: MessageCommand) -> dic
         data["duplicates"] = _duplicates(store, surface, data["params"], merged, data["file"], document_id, source.text,
                                          bool(values.get("ai_check_duplicates", True)))
     data["questions"] = _strings((answer or {}).get("questions"))
-    data["notes"] = _strings((answer or {}).get("notes"))
+    data["notes"] = [*_strings((answer or {}).get("notes")), *request["omissions"]]
+    data["file"] = {**data["file"], **request["_image_summary"]}
     data["changed"] = sorted(set(changed))
     data["turns"] = data.get("turns", 0) + 1
     with db.work(store, actor.id, write=True, key=command.idempotency_key) as unit:

@@ -479,13 +479,19 @@ def _document(unit, row, data, args):
 def _report(unit, row, data, args):
     from .finance_reports import compute
     definition = args.definition
-    if data.get("data_scope", "selected") == "selected" and not definition.unit_id:
-        selected = context.ContextSelection.model_validate(data.get("_grant_selection", data["context"]))
-        if definition.property_id not in selected.property_ids:
-            raise HTTPException(404, "Ein Immobilien-Gesamtbericht benötigt die ausdrücklich ausgewählte Immobilie.")
+    selected = (context.ContextSelection.model_validate(data.get("_grant_selection", data["context"]))
+                if data.get("data_scope", "selected") == "selected" else None)
     if definition.unit_id:
-        sources = [_permitted(unit, data, "unit", definition.unit_id)]
+        source = _permitted(unit, data, "unit", definition.unit_id)
+        # A selected task/contract/invoice can expose its unit's parent metadata,
+        # but that metadata is not a grant for all financial records of the unit.
+        if selected is not None and definition.unit_id not in selected.unit_ids and (
+                source["values"].get("property_id") not in selected.property_ids):
+            raise HTTPException(404, "Ein Einheiten-Gesamtbericht benötigt die ausdrücklich ausgewählte Einheit oder Immobilie.")
+        sources = [source]
     elif definition.property_id:
+        if selected is not None and definition.property_id not in selected.property_ids:
+            raise HTTPException(404, "Ein Immobilien-Gesamtbericht benötigt die ausdrücklich ausgewählte Immobilie.")
         sources = [_permitted(unit, data, "property", definition.property_id)]
     elif data.get("data_scope") == "authorized":
         # Preserve scope guards for every portfolio whose figures can be used
@@ -579,8 +585,14 @@ def call(store, actor_id: str, run_id: str, lease: str, name: str, arguments: di
             contents["_contexts"] = [{"format": context.FORMAT, "selection": {
                 field: sorted(identifier for kind, identifier in known if kind == target)
                 for field, target in context.SELECTIONS.items()}, "sources": [{"kind": kind, "id": identifier} for kind, identifier in sorted(known)]}]
-            contents["context"] = data["_bundle"]["selection"]
-            contents["context_sources"] = assistant.source_cards(data["_bundle"])
+            # Consulted evidence is shown on the run/message. It must never
+            # replace the user's working selection or authorize a later turn.
+            grant = context.ContextSelection.model_validate(data.get("_grant_selection", data["context"]))
+            chosen = {(kind, identifier) for field, kind in context.SELECTIONS.items()
+                      for identifier in getattr(grant, field)}
+            contents["context"] = grant.model_dump(mode="json")
+            contents["context_sources"] = assistant.source_cards({"sources": [source for source in data["_bundle"]["sources"]
+                if (source["kind"], source["id"]) in chosen]})
             db.put(unit, Conversation, contents, row=conversation)
             return result
     except Exception as exc:

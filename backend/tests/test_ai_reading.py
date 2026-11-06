@@ -121,7 +121,11 @@ def _set_global(case, key, value):
 
 def test_the_reading_prompt_is_chosen_by_the_server_only():
     assert system_prompt({"_task": "document_reading"}) == READING_PROMPT
-    assert system_prompt({}) == SYSTEM_PROMPT and system_prompt({"_task": "anything else"}) == SYSTEM_PROMPT
+    assert system_prompt({}) == SYSTEM_PROMPT
+    from backend.services.assistant_provider_protocol import ProviderError
+    with pytest.raises(ProviderError) as rejected:
+        system_prompt({"_task": "anything else"})
+    assert rejected.value.code == "unsupported_feature"
     assert "untrusted_evidence" in READING_PROMPT and "immomanager-reading" in READING_PROMPT
 
 

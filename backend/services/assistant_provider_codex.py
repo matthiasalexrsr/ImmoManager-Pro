@@ -233,6 +233,7 @@ def login(profile, executable, emit_state, cancelled, codes):
 def execute(profile, executable, request, emit, cancelled):
     if cancelled():
         raise ProviderError('Die Antwort wurde abgebrochen.', 'cancelled')
+    instructions = system_prompt(request)
     mcp = application_mcp(request)
     rpc_options: dict = {'research': bool(request.get('web_research'))}
     if mcp:
@@ -244,7 +245,7 @@ def execute(profile, executable, request, emit, cancelled):
         model = checked_model(request.get('model'))
         work = profile.path / 'work'
         params = {'cwd': str(work), 'approvalPolicy': 'never', 'permissions': 'immomanager', 'ephemeral': True,
-                  'baseInstructions': system_prompt(request), 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
+                  'baseInstructions': instructions, 'developerInstructions': 'Only the explicitly configured immomanager MCP tools are allowed. No shell, filesystem tools, apps, plugins or external conversation history.',
                   'model': model}
         started = rpc.call('thread/start', params)
         active = started.get('activePermissionProfile')
@@ -277,7 +278,6 @@ def execute(profile, executable, request, emit, cancelled):
         if not turn.get('id'):
             raise ProviderError('Der Ergebnisstatus der Anfrage ist unklar. Bitte prüfen.', 'unknown_result', uncertain=True)
         finals: dict[str, dict] = {}
-        deltas: dict[str, str] = {}
         deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
             if cancelled():
@@ -298,21 +298,24 @@ def execute(profile, executable, request, emit, cancelled):
                 item = params.get('item')
                 if not isinstance(item, dict):
                     raise ProviderError('Codex hat einen ungültigen Antwortabschnitt geliefert.', 'protocol_incompatible', uncertain=True)
-                forbidden = {'commandExecution', 'fileChange', 'dynamicToolCall', 'collabAgentToolCall', 'imageView'}
+                # A new native tool must not silently bypass an old blacklist
+                # (for example collabToolCall replaced collabAgentToolCall).
+                passive = {'userMessage', 'functionCallOutput', 'agentMessage', 'plan', 'reasoning', 'contextCompaction'}
                 if item.get('type') == 'mcpToolCall' and (not mcp or item.get('server') != 'immomanager' or item.get('tool') not in mcp['tools'] or item.get('pluginId')):
                     raise ProviderError('Der Kontoclient hat ein nicht freigegebenes Werkzeug angefordert. Der Lauf wurde beendet.', 'unexpected_tool', uncertain=True)
-                if item.get('type') in forbidden or (item.get('type') == 'webSearch' and not request.get('web_research')):
+                if item.get('type') not in passive | {'mcpToolCall', 'webSearch'} or (item.get('type') == 'webSearch' and not request.get('web_research')):
                     raise ProviderError('Der Kontoclient hat ein nicht freigegebenes Werkzeug angefordert. Der Lauf wurde beendet.', 'unexpected_tool', uncertain=True)
             if method == 'item/agentMessage/delta':
                 value = params.get('delta')
                 if isinstance(value, str):
-                    item_id = params.get('itemId', 'answer')
-                    deltas[item_id] = deltas.get(item_id, '') + value
                     emit({'type': 'delta', 'text': value})
             elif method == 'item/completed':
                 item = params.get('item', {})
                 if item.get('type') == 'agentMessage':
-                    finals[item.get('id', 'answer')] = item
+                    identifier = item.get('id', 'answer')
+                    if not isinstance(identifier, str) or not isinstance(item.get('text'), str):
+                        raise ProviderError('Codex hat einen ungültigen Antwortabschnitt geliefert.', 'protocol_incompatible', uncertain=True)
+                    finals[identifier] = item
             elif method == 'turn/completed':
                 completed = params.get('turn', {})
                 if completed.get('id') != turn['id']:
@@ -321,7 +324,8 @@ def execute(profile, executable, request, emit, cancelled):
                     raise public_error(completed.get('error') or completed.get('status'))
                 chosen = [item['text'] for item in finals.values() if item.get('phase') == 'final_answer' and item.get('text')]
                 if not chosen:
-                    chosen = [item['text'] for item in finals.values() if item.get('text')] or list(deltas.values())
+                    chosen = [item['text'] for item in finals.values()
+                              if item.get('phase') in (None, 'partial_answer') and item.get('text')]
                 text = '\n\n'.join(chosen)
                 if not text.strip():
                     raise ProviderError('ChatGPT lieferte keine verwertbare Antwort. Bitte die Anfrage prüfen.', 'empty_answer')

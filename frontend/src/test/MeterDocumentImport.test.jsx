@@ -66,7 +66,7 @@ describe('Dokumente des Messdienstes', () => {
     fireEvent.click(screen.getByRole('button', { name: /Einlesen/ }));
     await screen.findByText('Heizkostenabrechnung');
     expect(readingService.start).toHaveBeenCalledWith({ surface: 'meter_document', document_id: 'doc', file_url: null,
-      params: { property_id: 'p', billing_period_id: 'bp' }, reader: 'claude', instruction: 'Nur die Heizkosten.' });
+      params: { property_id: 'p', billing_period_id: 'bp' }, reader: 'claude', instruction: 'Nur die Heizkosten.', idempotency_key: expect.any(String) });
     expect(screen.getByText('Werte neu gelesen')).toBeInTheDocument();
     expect(screen.getByText(/gehören zu keinem Zähler/)).toBeInTheDocument();
     expect(screen.getByText('bitte prüfen')).toBeInTheDocument();

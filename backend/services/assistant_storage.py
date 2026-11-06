@@ -54,6 +54,7 @@ def public(row) -> dict:
 
 def conversation_public(unit, row):
     result = public(row)
+    result["context"], result["context_sources"] = conversation_selection(unit, row)
     identifier = result.get("active_run_id")
     if identifier:
         from ..db.assistant_models import AssistantRunORM
@@ -61,6 +62,36 @@ def conversation_public(unit, row):
         if active.state not in ("queued", "running"):
             result["active_run_id"] = None
     return result
+
+
+def conversation_selection(unit, row):
+    """The latest actual request is the selection authority, never MCP reads.
+
+    Older versions overwrote the conversation context with every source read.
+    Recover their original selection from the existing owned run, so merely
+    reading parent metadata cannot become a broader grant on the next turn.
+    """
+    from ..db.assistant_models import AssistantRunORM
+    from .assistant import source_cards
+    from .assistant_context import SELECTIONS, ContextSelection
+
+    data = payload(row)
+    latest = page(unit, Message, conversation_id=row.id, limit=1)["items"]
+    if latest and latest[0].get("run_id"):
+        run = get(unit, AssistantRunORM, latest[0]["run_id"])
+        if run.conversation_id != row.id:
+            raise HTTPException(409, "Die Herkunft der Aktenauswahl ist nicht eindeutig.")
+        request = payload(run)
+        selection = ContextSelection.model_validate(request.get("_grant_selection", request.get("context", {})))
+        sources = request["_bundle"]["sources"]
+    else:
+        # An orphaned imported message has no verifiable original grant. Keep
+        # it readable, but require a new explicit source choice before sending.
+        selection = ContextSelection.model_validate({} if latest else data.get("context", {}))
+        sources = data.get("context_sources", [])
+    chosen = {(kind, identifier) for field, kind in SELECTIONS.items() for identifier in getattr(selection, field)}
+    cards = source_cards({"sources": [source for source in sources if (source["kind"], source["id"]) in chosen]})
+    return selection.model_dump(mode="json"), cards
 
 
 def put(unit, model, data: dict, *, row=None, state: str | None = None, conversation_id: str | None = None):

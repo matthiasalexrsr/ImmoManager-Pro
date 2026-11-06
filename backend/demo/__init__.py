@@ -12,6 +12,7 @@ import socket
 import sys
 import weakref
 from pathlib import Path
+from uuid import UUID
 
 MARKER = "immomanager-demo-bw.json"
 SCHEMA = "immomanager-demo-bw/1"
@@ -161,6 +162,19 @@ def install_backend_guards() -> None:
     _guard_installed = True
 
 
+def _defer_assistant_run(method: str, path: str) -> bool:
+    """Only these authenticated endpoints verify the stored provider themselves."""
+    parts = path.split("/")
+    if method != "POST" or len(parts) != 7 or parts[:4] != ["", "api", "v1", "assistant"]:
+        return False
+    if (parts[4], parts[6]) not in {("conversations", "runs"), ("runs", "retry"), ("runs", "cancel")}:
+        return False
+    try:
+        return str(UUID(parts[5])) == parts[5]
+    except ValueError:
+        return False
+
+
 def blocked_action(method: str, path: str) -> bool:
     """Local editing/calculation is real; operations that can leave the workspace stop here."""
     if path.startswith(("/api/v1/updates", "/api/v1/diagnostics", "/api/v1/plugins")):
@@ -172,7 +186,10 @@ def blocked_action(method: str, path: str) -> bool:
     if path.startswith("/api/v1/integrations/") and path.endswith("/run"):
         return True
     if path.startswith("/api/v1/assistant/") and any(part in path for part in ("/login", "/probe", "/runs", "/apply")):
-        return True
+        # This only delegates provider decisions. submit/retry/cancel check
+        # the authenticated owner, current source rights and encrypted stored
+        # conversation provider before even returning an idempotent replay.
+        return not _defer_assistant_run(method, path)
     if path.startswith("/api/v1/communication/") and any(part in path for part in ("/receive", "/confirm", "/retry", "/reconcile")):
         return True
     return any(part in path for part in ("/send", "/publish", "/sync", "/webhook", "/restore", "/restart"))

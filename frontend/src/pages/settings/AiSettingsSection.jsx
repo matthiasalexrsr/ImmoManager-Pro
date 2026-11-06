@@ -18,6 +18,13 @@ export default function AiSettingsSection({ service = aiReadingApi }) {
   useEffect(() => {
     let live = true;
     setError(null);
+    const invalidate = () => {
+      live = false;
+      setOptions(null); setItems(null);
+      setError('Die Sitzung wurde geändert. Bitte erneut anmelden.');
+    };
+    window.addEventListener('workspace-owner', invalidate);
+    window.addEventListener('workspace-logout', invalidate);
     async function load() {
       try {
         const same = api.captureSession();
@@ -32,7 +39,11 @@ export default function AiSettingsSection({ service = aiReadingApi }) {
       }
     }
     load();
-    return () => { live = false; };
+    return () => {
+      live = false;
+      window.removeEventListener('workspace-owner', invalidate);
+      window.removeEventListener('workspace-logout', invalidate);
+    };
   }, [service, attempt]);
 
   if (error) return <section className="panel"><div className="panel-body"><p role="alert">{error}{' '}

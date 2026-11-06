@@ -8,6 +8,7 @@ import { activeRun, runText } from './assistantApi';
 import AssistantAttachment from './AssistantAttachment';
 import AssistantContext from './AssistantContext';
 import { contextHref } from './assistantLinks';
+import { originalRetryReview, workingAttachmentIds } from './assistantRetry';
 import AssistantProposals from './AssistantProposals';
 import AssistantMessageContent from './AssistantMessageContent';
 import { FinancialProof } from './AssistantReportSelection';
@@ -54,7 +55,9 @@ export default function AssistantWorkspace({ owner }) {
   const response = runText(state.run);
   const displayedRun = state.run && response && !state.messages.some(message => message.run_id === state.run.id && message.role === 'assistant');
   const dataScope = state.draft.data_scope || 'authorized';
-  const workingIds = [...new Set([...(state.record?.attachment_ids || state.run?.effective_attachment_ids || []), ...state.draft.attachments.map(item => item.id)])].filter(id => !(state.draft.excluded_attachment_ids || []).includes(id));
+  const workingIds = workingAttachmentIds(state.record, state.run, state.draft);
+  const retryReview = originalRetryReview(state.run, { scope: dataScope, context: state.draft.context, attachmentIds: workingIds,
+    webResearch: !local && Boolean(capability?.web_research) && state.draft.web_research === true, report: state.draft.report });
   const workingFiles = workingIds.map(id => state.draft.attachments.find(item => item.id === id) || state.attachments.find(item => item.id === id) || { id, name: 'Datei aus diesem Chat', byte_length: 0 });
   const removeFile = id => state.changeDraft(previous => ({ ...previous, attachments: previous.attachments.filter(item => item.id !== id), excluded_attachment_ids: [...new Set([...(previous.excluded_attachment_ids || []), id])] }));
   const selectFile = attachment => state.changeDraft(previous => ({ ...previous, attachments: [...previous.attachments.filter(item => item.id !== attachment.id), attachment], excluded_attachment_ids: (previous.excluded_attachment_ids || []).filter(id => id !== attachment.id) }));
@@ -116,6 +119,7 @@ export default function AssistantWorkspace({ owner }) {
         </header>
         {local ? <p className="assistant-mode-note">Lokale Regelprüfung: prüft ausgewählte Angaben, liest verfügbaren Dokumenttext und berechnet vorhandene Auswertungen. Freie Fragen beantwortet ein verbundenes KI-Konto.</p>
           : !providerReady && state.capabilities && <div className="assistant-onboarding"><Sparkles size={23} aria-hidden="true" /><div><strong>Verbinden Sie Ihren Verwaltungsassistenten</strong><p>Mit ChatGPT oder Claude können Sie frei fragen und Verwaltungsaufträge vorbereiten. Ihre Auswahl bestimmt, welche Daten der Assistent nachlesen darf.</p><div className="assistant-inline-actions"><button type="button" className="btn btn-primary" onClick={() => setAccountsOpen(true)}>Kontoverbindung einrichten</button><button type="button" className="btn btn-secondary" disabled={locked || sending} onClick={() => state.chooseProvider('local')}>Lokal prüfen ohne KI-Konto</button></div></div></div>}
+        {!local && providerReady && <p className="assistant-mode-note">Für Antworten werden Ihre Nachricht, der verwendete Chatverlauf, die ausgewählten Arbeitsdateien und die im gewählten Datenzugriff bereitgestellten Akteninhalte an {capability?.label || 'den KI-Anbieter'} übermittelt.</p>}
         {state.error && <div className="assistant-alert error" role="alert"><span>{state.error}</span><button type="button" className="btn btn-sm btn-secondary" disabled={state.busy} onClick={state.retryLoad}>Ansicht erneut laden</button></div>}
         {state.notice && <p className="assistant-alert" role="status">{state.notice}</p>}
         {state.record?.archived && <p className="assistant-alert" role="status">Dieser Chat ist archiviert. Der Verlauf bleibt lesbar; über „Chat verwalten“ können Sie ihn zurückholen.</p>}
@@ -144,9 +148,18 @@ export default function AssistantWorkspace({ owner }) {
             </article>)}
             {displayedRun && <article className="assistant-message"><span className="assistant-avatar"><Sparkles size={16} /></span><div><div className="assistant-message-meta"><strong>{state.capabilities?.providers.find(item => item.id === state.run.provider)?.label || capability?.label || 'Assistent'}</strong><span>{sending ? 'Antwort wird ergänzt …' : runLabels[state.run.state]}</span></div><AssistantMessageContent content={response} /><Sources sources={state.run.sources} attachments={state.attachments} /></div></article>}
           </>}
-          {state.run && <div className="assistant-run" role="status">{sending && <span className="assistant-live-dot" aria-hidden="true" />}<span>{runLabels[state.run.state] || 'Auftrag gespeichert'}</span><details><summary>Auftragsdetails</summary><small>Kennung {state.run.id} · {formatDateTime(state.run.created_at)}</small></details>
+          {state.run && <div className="assistant-run" role="status">{sending && <span className="assistant-live-dot" aria-hidden="true" />}<span>{runLabels[state.run.state] || 'Auftrag gespeichert'}</span><details><summary>Auftragsdetails</summary><small>Kennung {state.run.id} · {formatDateTime(state.run.created_at)}</small>
+            <dl className="assistant-run-permissions" aria-label="Datenumfang der Originalanfrage">
+              <div><dt>Datenzugriff</dt><dd>{retryReview.scopeLabel}</dd></div>
+              <div><dt>Ausgewählte Akten</dt><dd>{retryReview.selectedCount ?? 'Nicht übermittelt'}</dd></div>
+              <div><dt>Arbeitsdateien</dt><dd>{retryReview.fileCount ?? 'Nicht übermittelt'}</dd></div>
+              <div><dt>Internetrecherche</dt><dd>{retryReview.webResearch === null ? 'Nicht übermittelt' : retryReview.webResearch ? 'Zugelassen' : 'Ausgeschaltet'}</dd></div>
+              <div><dt>Lokale Auswertung</dt><dd>{retryReview.hasReport ? 'Enthalten' : 'Keine'}</dd></div>
+            </dl>
+            <p>Eine Wiederholung verarbeitet die Originalfrage mit diesem Datenumfang und dem aktuell gewählten Anbieter und Modell.</p>
+          </details>
             {sending && <button type="button" className="btn btn-sm btn-secondary" disabled={state.busy} onClick={() => state.runCommand('cancel')}><Square size={13} /> Antwort abbrechen</button>}
-            {['failed', 'cancelled', 'blocked', 'unknown'].includes(state.run.state) && <><span>{typeof state.run.error === 'string' ? state.run.error : state.run.error?.message}</span><button type="button" className="btn btn-sm btn-secondary" disabled={state.busy || !providerReady} onClick={() => state.runCommand('retry')}><RefreshCw size={13} /> Neuen Versuch starten</button></>}
+            {['failed', 'cancelled', 'blocked', 'unknown'].includes(state.run.state) && <><span>{typeof state.run.error === 'string' ? state.run.error : state.run.error?.message}</span><button type="button" className="btn btn-sm btn-secondary" disabled={locked || !providerReady || !retryReview.allowed} onClick={() => state.runCommand('retry')}><RefreshCw size={13} /> Originalanfrage wiederholen</button>{!retryReview.allowed && <p className="assistant-retry-reason">{retryReview.reason}</p>}</>}
           </div>}
           {state.run?.verification_status === 'stale' && <p className="assistant-alert error" role="alert">Die Quellen wurden seit Beginn der Analyse geändert. Diese Antwort beschreibt den früheren Stand; bitte die aktuellen Quellen erneut prüfen. Vorschläge aus diesem Lauf können nicht übernommen werden.</p>}
           <AssistantActivity run={state.run} />
@@ -176,7 +189,8 @@ export default function AssistantWorkspace({ owner }) {
             <button type="button" className="btn btn-secondary" disabled={locked || !state.capabilities} onClick={() => input.current?.click()}><Paperclip size={16} /> Dateien und Bilder</button>
             {state.uploading && <span role="status">Datei wird hochgeladen …</span>}
           </div><button className="btn btn-primary assistant-send" type="submit" disabled={!canSubmit}><Send size={16} /> {local ? 'Lokal prüfen' : 'Senden'}</button></div>
-          <label className="assistant-web-option"><input type="checkbox" checked={!local && Boolean(capability?.web_research) && state.draft.web_research === true} disabled={locked || local || !capability?.web_research} onChange={event => state.changeDraft(previous => ({ ...previous, web_research: event.target.checked }))} /> Internetrecherche zulassen{local ? ' · lokale Analyse bleibt offline' : !capability?.web_research ? ' · für diese Verbindung nicht verfügbar' : ''}</label>
+          <label className="assistant-web-option"><input type="checkbox" aria-describedby="assistant-web-help" checked={!local && Boolean(capability?.web_research) && state.draft.web_research === true} disabled={locked || local || !capability?.web_research} onChange={event => state.changeDraft(previous => ({ ...previous, web_research: event.target.checked }))} /> Internetrecherche zulassen{local ? ' · lokale Analyse bleibt offline' : !capability?.web_research ? ' · für diese Verbindung nicht verfügbar' : ''}</label>
+          <p id="assistant-web-help" className="assistant-composer-help">Allgemeine Fachfragen online recherchieren. Suchbegriffe werden an externe Suchdienste übertragen; keine vertraulichen Akteninhalte verwenden.</p>
           <div className="assistant-composer-help">Dateien hier ablegen · Strg + Enter sendet <details className="assistant-file-limits"><summary>Dateigrenzen</summary>{state.capabilities?.attachment_max_bytes ? `Maximal ${formatBytes(state.capabilities.attachment_max_bytes)} je Datei` : ''}{state.capabilities?.max_attachments ? ` · Höchstens ${state.capabilities.max_attachments} Dateien je Nachricht` : ''}{state.capabilities?.request_attachment_max_bytes ? ` · Insgesamt höchstens ${formatBytes(state.capabilities.request_attachment_max_bytes)} je Nachricht` : ''}</details></div>
         </form>
       </section>

@@ -60,7 +60,7 @@ def edit_conversation(store, actor_id, identifier, command: ConversationEdit):
     with db.work(store, actor_id, write=True, key=command.idempotency_key) as unit:
         row = db.conversation(unit, identifier, lock=True)
         if db.replay(unit, operation, command):
-            return db.public(row)
+            return db.conversation_public(unit, row)
         db.revision(row, command.expected_revision)
         data = db.payload(row)
         transport_fields = {"provider", "model", "effort", "data_scope"}.intersection(command.model_fields_set)
@@ -80,7 +80,7 @@ def edit_conversation(store, actor_id, identifier, command: ConversationEdit):
             data["archived"] = command.archived
         row = db.put(unit, Conversation, data, row=row)
         db.receipt(unit, operation, command, row)
-        return db.public(row)
+        return db.conversation_public(unit, row)
 
 
 def list_records(store, actor_id, model=Conversation, *, conversation_id=None, cursor=None, limit=50):
@@ -126,16 +126,23 @@ def get_run(store, actor_id, identifier):
         return run_public(unit, db.owned_child(unit, Run, identifier))
 
 
+def require_demo_local(data):
+    if settings.immo_demo and data.get("provider") != "local":
+        raise HTTPException(409, {"code": "DEMO_EXTERNAL_ACTION_DISABLED",
+            "message": "Diese Aktion überträgt Daten an einen externen Dienst und steht im Demobestand nicht zur Verfügung. Bitte die lokale Analyse wählen."})
+
+
 def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
     from .assistant_context import ContextSelection, build_context
     operation = "run.create:" + identifier
     with db.work(store, actor_id, write=True, key=command.idempotency_key) as unit:
         conversation = db.conversation(unit, identifier, lock=True)
+        data = db.payload(conversation)
+        require_demo_local(data)
         prior = db.replay(unit, operation, command)
         if prior:
             return run_public(unit, db.owned_child(unit, Run, prior))
         db.revision(conversation, command.expected_revision)
-        data = db.payload(conversation)
         if data["archived"]:
             raise HTTPException(409, "Archivierte Gespräche können keine neuen Aufträge erhalten.")
         if data.get("active_run_id"):
@@ -166,7 +173,8 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
             attachment_bytes += db.payload(attachment)["byte_length"]
         if attachment_bytes > settings.assistant_request_attachment_bytes:
             raise HTTPException(413, f"Die ausgewählten Anhänge überschreiten zusammen {settings.assistant_request_attachment_bytes} Byte.")
-        selected_context = command.context if "context" in command.model_fields_set else data.get("context", {})
+        selected_context = (command.context if "context" in command.model_fields_set
+                            else db.conversation_selection(unit, conversation)[0])
         if command.data_scope == "none" and "context" not in command.model_fields_set:
             selected_context = {}
         selection = ContextSelection.model_validate(selected_context)
@@ -200,6 +208,7 @@ def submit(store, actor_id, identifier, command: RunCreate, *, retry_of=None):
                 "sources": [{"kind": kind, "id": source_id} for kind, source_id in sorted(sources)]}]
         data["active_run_id"] = run.id
         data["attachment_ids"] = attachment_ids
+        data["data_scope"] = command.data_scope
         data["context"] = selection.model_dump(mode="json")
         data["context_sources"] = source_cards(bundle)
         db.put(unit, Conversation, data, row=conversation)
@@ -224,6 +233,7 @@ def cancel(store, actor_id, identifier, command):
     operation = "run.cancel:" + identifier
     with db.work(store, actor_id, write=True, key=command.idempotency_key) as unit:
         row = db.owned_child(unit, Run, identifier, lock=True)
+        require_demo_local(db.payload(db.conversation(unit, row.conversation_id, lock=True)))
         if db.replay(unit, operation, command):
             return run_public(unit, row)
         # Cancel targets this immutable run ID. Streaming may have advanced its
@@ -244,9 +254,12 @@ def cancel(store, actor_id, identifier, command):
 def retry(store, actor_id, identifier, command):
     operation = "run.retry:" + identifier
     # Serialize the old run and new submission inside one transaction.
-    from .assistant_context import revalidate_context
+    from .assistant_context import ContextSelection, revalidate_context
     with db.work(store, actor_id, write=True, key=command.idempotency_key) as unit:
         old = db.owned_child(unit, Run, identifier, lock=True)
+        conversation = db.conversation(unit, old.conversation_id, lock=True)
+        conversation_data = db.payload(conversation)
+        require_demo_local(conversation_data)
         prior = db.replay(unit, operation, command)
         if prior:
             return run_public(unit, db.owned_child(unit, Run, prior))
@@ -255,8 +268,13 @@ def retry(store, actor_id, identifier, command):
             raise HTTPException(409, "Nur beendete fehlgeschlagene oder abgebrochene Aufträge können neu gestartet werden.")
         old_data = db.payload(old)
         revalidate_context(unit.store, old_data["_bundle"], actor_id)
-        conversation = db.conversation(unit, old.conversation_id, lock=True)
-        conversation_data = db.payload(conversation)
+        current_selection, _ = db.conversation_selection(unit, conversation)
+        original_selection = ContextSelection.model_validate(
+            old_data.get("_grant_selection", old_data.get("context", {}))).model_dump(mode="json")
+        if (conversation_data.get("data_scope", "selected") != old_data.get("data_scope", "selected")
+                or current_selection != original_selection
+                or set(conversation_data.get("attachment_ids", [])) != set(old_data["attachment_ids"])):
+            raise HTTPException(409, "Die Quellenfreigabe wurde geändert. Bitte eine neue Anfrage mit der aktuellen Akten- und Dateiauswahl senden.")
         if conversation_data.get("active_run_id") and db.get(unit, Run, conversation_data["active_run_id"]).state not in ACTIVE:
             conversation_data["active_run_id"] = None
         if conversation_data.get("active_run_id") or conversation_data["archived"]:

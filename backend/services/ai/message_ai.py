@@ -60,6 +60,9 @@ def _ai_summarize(text: str) -> Optional[ThreadSummaryResult]:
 
         result = pipe(truncated, max_length=200, min_length=30, do_sample=False)
         summary_text = result[0]["summary_text"]
+        if not isinstance(summary_text, str) or not summary_text.strip():
+            return None
+        summary_text = summary_text.strip()[:4000]
 
         # Extract action items with zero-shot classification
         action_items = _extract_action_items(text)

@@ -219,6 +219,10 @@
 .assistant-provider select { font-size: var(--text-xs); }
 .assistant-context-search select { min-width: 0; max-width: 34%; font-size: var(--text-2xs); }
 .assistant-run details { font-size: var(--text-2xs); }
+.assistant-run-permissions { display: grid; gap: .3rem; margin: .6rem 0; }
+.assistant-run-permissions > div { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: .6rem; }
+.assistant-run-permissions dd { margin: 0; overflow-wrap: anywhere; }
+.assistant-run > .assistant-retry-reason { flex-basis: 100%; margin: 0; }
 @media (min-width: 1100px) and (min-height: 750px) {
   .assistant-layout { height: calc(100dvh - 220px); min-height: 0; }
   .assistant-main, .assistant-sidebar { min-height: 0; }

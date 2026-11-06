@@ -22,6 +22,30 @@ def main(folder_argument=None):
     if request_file.stat().st_size > 16 * 1024:
         raise RuntimeError("Text worker request too large")
     request = json.loads(request_file.read_text(encoding="utf8"))
+    if not isinstance(request, dict):
+        raise RuntimeError("Invalid document worker request")
+    action = request.get("action", "read_text")
+    if action == "render_images":
+        from .ai_document_images import MAX_RESPONSE_BYTES, MAX_SOURCE_BYTES, ImageRenderError, render_in_worker
+
+        if set(request) != {"action", "media_type", "filename", "max_pages"}:
+            raise RuntimeError("Invalid image worker request")
+        source = folder / "source.bin"
+        if source.stat().st_size > MAX_SOURCE_BYTES:
+            raise RuntimeError("Image worker input too large")
+        try:
+            value = render_in_worker(source.read_bytes(), request["media_type"], request["filename"], request["max_pages"])
+        except ImageRenderError as error:
+            value = {"error": error.code}
+        raw = json.dumps(value, ensure_ascii=False).encode("utf8")
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise RuntimeError("Image worker response too large")
+        temporary = folder / "result.tmp"
+        temporary.write_bytes(raw)
+        os.replace(temporary, folder / "result.json")
+        return
+    if action != "read_text":
+        raise RuntimeError("Unknown document worker action")
     limits = request["limits"]
     maximum = asdict(Budget())
     if set(limits) != set(maximum) or any(

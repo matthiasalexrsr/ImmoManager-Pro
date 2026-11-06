@@ -7,6 +7,7 @@ Falls back gracefully to the regex pipeline when HF models are unavailable.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Optional
 
 from ..ocr_service import _extract_invoice_fields
@@ -46,6 +47,7 @@ def analyze_document(text: str, use_ai: bool = True) -> DocumentAIResult:
     # Always run regex extraction as baseline
     regex_fields = _extract_invoice_fields(text)
     result = DocumentAIResult(
+        document_type=_infer_document_type_regex(text, regex_fields),
         invoice_number=regex_fields.get("invoice_number"),
         invoice_date=regex_fields.get("invoice_date"),
         total_amount=regex_fields.get("total_amount"),
@@ -55,16 +57,15 @@ def analyze_document(text: str, use_ai: bool = True) -> DocumentAIResult:
 
     if not use_ai or not runtime.is_available:
         # Regex-only mode — infer document type from cost category
-        result.document_type = _infer_document_type_regex(text, regex_fields)
         return result
 
     # --- AI-enhanced analysis ---
     truncated = text[: runtime.config.max_input_length]
 
     # 1. Zero-shot document classification
-    result.document_type, result.document_type_confidence, result.ai_model = (
-        _classify_document(truncated)
-    )
+    document_type, confidence, model = _classify_document(truncated)
+    if document_type is not None:
+        result.document_type, result.document_type_confidence, result.ai_model = document_type, confidence, model
 
     # 2. Summarization
     result.summary = _summarize_document(truncated)
@@ -89,7 +90,12 @@ def _classify_document(text: str) -> tuple[Optional[str], float, Optional[str]]:
     try:
         result = pipe(text[:512], candidate_labels=_DOCUMENT_LABELS, multi_label=False)
         top_label = result["labels"][0]
-        top_score = result["scores"][0]
+        score = result["scores"][0]
+        if isinstance(score, bool):
+            return None, 0.0, None
+        top_score = float(score)
+        if top_label not in _DOCUMENT_LABELS or not math.isfinite(top_score) or not 0 <= top_score <= 1:
+            return None, 0.0, None
         model_id = getattr(pipe.model, "name_or_path", None) or runtime.config.zero_shot_model
         return top_label, round(top_score, 4), model_id
     except Exception:
@@ -108,7 +114,8 @@ def _summarize_document(text: str) -> Optional[str]:
         if len(text.split()) < 30:
             return None
         result = pipe(text, max_length=150, min_length=30, do_sample=False)
-        return result[0]["summary_text"]
+        summary = result[0]["summary_text"]
+        return summary.strip()[:4000] if isinstance(summary, str) and summary.strip() else None
     except Exception:
         logger.warning("Document summarization failed", exc_info=True)
         return None

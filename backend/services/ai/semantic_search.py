@@ -7,6 +7,7 @@ Falls back to keyword-only search when HF models are unavailable.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
@@ -130,6 +131,8 @@ class SemanticSearchIndex:
             semantic_scores: dict[str, float] = {}
             semantic_entries: dict[str, IndexEntry] = {}
             for score, idx in zip(scores[0], indices[0]):
+                if not math.isfinite(float(score)):
+                    raise ValueError("Invalid semantic model score")
                 if idx < 0 or idx >= len(self._entries):
                     continue
                 entry = self._entries[idx]

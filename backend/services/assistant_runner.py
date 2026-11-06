@@ -63,6 +63,104 @@ def record_event(value, event):
         value["events"] = value["events"][-100:]
 
 
+def request_history(unit, row, data, history_page, conversation):
+    """Regrant every historical input; removing a file also removes its derivatives.
+
+    Only transmission is filtered. The encrypted, owner-bound chat stays intact.
+    Old runs did not record transitive input dependencies, so their provenance is
+    conservatively bounded by the conversation's guards and file library.
+    """
+    from .assistant_tools import _permitted
+
+    active_files = set(data["attachment_ids"])
+    current_sources = {(source["kind"], source["id"]) for source in data["_bundle"]["sources"]}
+    legacy_sources = {(source["kind"], source["id"]) for bundle in conversation.get("_contexts", [])
+                      for source in bundle["sources"]}
+    permitted = {}
+    runs = {}
+    legacy_excluded_file = None
+    messages, budget = [], 128000
+    truncated, scope_omitted, file_omitted = history_page["has_more"], False, False
+    dependencies = set(current_sources)
+    attachment_dependencies = set(active_files)
+
+    for item in history_page["items"]:  # newest first; trim only older context
+        text = item["content"]
+        sources = {(source["kind"], source["id"]) for source in item.get("sources", [])}
+        files = set(item.get("attachment_ids", []))
+        prior_id = item.get("run_id")
+        if prior_id == row.id:
+            sources |= current_sources
+            files |= active_files
+        else:
+            if prior_id not in runs:
+                previous = db.get(unit, Run, prior_id) if prior_id else None
+                if previous is not None and previous.conversation_id != row.conversation_id:
+                    raise HTTPException(409, "Die Herkunft eines Gesprächsbeitrags ist nicht eindeutig.")
+                runs[prior_id] = db.payload(previous) if previous is not None else {}
+            previous_data = runs[prior_id]
+            proof = previous_data.get("_history_inputs")
+            if proof is not None:
+                sources |= {(source["kind"], source["id"]) for source in proof["sources"]}
+                files.update(proof["attachment_ids"])
+            else:
+                sources |= legacy_sources
+                files.update(previous_data.get("attachment_ids", []))
+                if legacy_excluded_file is None:
+                    if unit.db is None:
+                        legacy_excluded_file = any(attachment.owner_id == unit.actor_id
+                            and attachment.conversation_id == row.conversation_id and attachment.id not in active_files
+                            for attachment in dbs.memory(unit, Attachment).values())
+                    else:
+                        legacy_excluded_file = unit.db.scalar(select(Attachment.id).where(
+                            Attachment.owner_id == unit.actor_id, Attachment.conversation_id == row.conversation_id,
+                            Attachment.id.not_in(active_files)).limit(1)) is not None
+                if legacy_excluded_file:
+                    file_omitted = True
+                    continue
+                # All currently available files are selected. Their contents
+                # could already be reflected in an older untracked answer.
+                files |= active_files
+        if not files.issubset(active_files):
+            file_omitted = True
+            continue
+        allowed = True
+        for kind, identifier in sorted(sources):
+            key = (kind, identifier)
+            if key not in permitted:
+                try:
+                    _permitted(unit, data, kind, identifier)
+                    permitted[key] = True
+                except HTTPException:
+                    permitted[key] = False
+            allowed &= permitted[key]
+        if not allowed:
+            scope_omitted = True
+            continue
+        if item["role"] == "assistant":
+            text = "[Historische Modellinterpretation vom " + item["created_at"] + "; Zahlen und Quellenstände können überholt sein.]\n" + text
+        if len(text) > budget:
+            truncated = True
+            break
+        messages.append({"role": item["role"], "content": text,
+                         **({"historical_sources": item.get("sources", []),
+                             "historical_financial_summary": item.get("financial_summary")}
+                            if item["role"] == "assistant" else {})})
+        budget -= len(text)
+        dependencies |= sources
+        attachment_dependencies |= files
+    messages.reverse()
+    omissions = (["Verlauf für diesen Verarbeitungsschritt auf die letzten 60 Nachrichten / 128.000 Zeichen begrenzt. Die vollständige Historie bleibt gespeichert."]
+                 if truncated else [])
+    if scope_omitted:
+        omissions.append("Frühere Gesprächsbeiträge mit Fachquellen außerhalb des aktuellen Datenumfangs wurden nicht erneut übertragen; sie bleiben im gespeicherten Verlauf erhalten.")
+    if file_omitted:
+        omissions.append("Frühere Gesprächsbeiträge mit abgewählten Arbeitsdateien oder nicht vollständig zuordenbarer Dateiquelle wurden nicht erneut übertragen; sie bleiben im gespeicherten Verlauf erhalten.")
+    data["_history_inputs"] = {"sources": [{"kind": kind, "id": identifier} for kind, identifier in sorted(dependencies)],
+                               "attachment_ids": sorted(attachment_dependencies)}
+    return messages, omissions
+
+
 def metadata_rows(store, states, limit=100):
     """Installation recovery reads metadata only; never decrypts chat content."""
     if hasattr(store, "db"):
@@ -145,7 +243,10 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
             data = db.payload(row)
             revalidate_context(unit.store, data["_bundle"], actor_id)
             conversation = db.conversation(unit, row.conversation_id)
-            settings = {**db.payload(conversation), **{key: data[key] for key in ("provider", "model", "effort") if key in data}}
+            conversation_data = db.payload(conversation)
+            settings = {**conversation_data, **{key: data[key] for key in ("provider", "model", "effort") if key in data}}
+            service.require_demo_local(conversation_data)
+            service.require_demo_local(settings)
             data.update({key: settings[key] for key in ("provider", "model", "effort")})
             # Before changing to running, all selected bytes must still match.
             attachments = [service.attachment_request(db.owned_child(unit, Attachment, item)) for item in data["attachment_ids"]]
@@ -158,38 +259,7 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
                 data["financial_summary"] = {key: finance[key] for key in ("kind", "currency", "basis", "filters", "totals", "result_hash", "definition") if key in finance}
                 data["financial_summary"]["as_of"] = finance["definition"]["as_of"]
             history_page = db.page(unit, Message, conversation_id=row.conversation_id, limit=60)
-            history = history_page["items"]
-            history_truncated = history_page["has_more"]
-            messages, budget = [], 128000
-            history_scope_omissions = False
-            for item in history:  # newest first; trim only older context
-                text = item["content"]
-                if item["role"] == "assistant":
-                    from .assistant_tools import _permitted
-                    for source in item.get("sources", []):
-                        try:
-                            _permitted(unit, data, source["kind"], source["id"])
-                        except HTTPException:
-                            history_scope_omissions = True
-                            break
-                    else:
-                        source = None
-                    if source is not None:
-                        continue
-                    # Old model interpretations are history, never freshly
-                    # verified facts. Fetch current facts through app tools.
-                    text = "[Historische Modellinterpretation vom " + item["created_at"] + "; Zahlen und Quellenstände können überholt sein.]\n" + text
-                if len(text) > budget:
-                    history_truncated = True
-                    break
-                messages.append({"role": item["role"], "content": text,
-                                 **({"historical_sources": item.get("sources", []), "historical_financial_summary": item.get("financial_summary")}
-                                    if item["role"] == "assistant" else {})})
-                budget -= len(text)
-            messages.reverse()
-            data["omissions"] = ["Verlauf für diesen Verarbeitungsschritt auf die letzten 60 Nachrichten / 128.000 Zeichen begrenzt. Die vollständige Historie bleibt gespeichert."] if history_truncated else []
-            if history_scope_omissions:
-                data["omissions"].append("Frühere Antworten mit Fachquellen außerhalb des aktuellen Datenumfangs wurden nicht erneut übertragen; sie bleiben im gespeicherten Verlauf erhalten.")
+            messages, data["omissions"] = request_history(unit, row, data, history_page, db.payload(conversation))
             data.update(_lease=token, _submitted=True)
             data["events"] = [{"sequence": 1, "type": "status", "message": "Auftrag gestartet."}]
             db.put(unit, Run, data, row=row, state="running")
@@ -275,6 +345,11 @@ def run(store, identifier: str, actor_id: str, *, execute=None):
                 from .assistant_provider_protocol import ProviderError
                 raise ProviderError("Ungültige Antwort", "output_too_large" if isinstance(text, str) else "invalid_response")
             value["response"] = text
+            # Include reads made after request construction, without expanding
+            # the original grant used to authorize this run's application tools.
+            dependencies = {(source["kind"], source["id"]) for source in value["_history_inputs"]["sources"]}
+            dependencies.update((source["kind"], source["id"]) for source in value["_bundle"]["sources"])
+            value["_history_inputs"]["sources"] = [{"kind": kind, "id": identifier} for kind, identifier in sorted(dependencies)]
             value["verification_status"] = "stale" if snapshot_stale else "current"
             stale = snapshot_stale
             if snapshot_stale:

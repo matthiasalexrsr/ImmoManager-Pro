@@ -7,11 +7,10 @@ local rules give. Nothing the model writes is stored or acted on before a person
 """
 from __future__ import annotations
 
-import base64
 import json
 import re
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -55,25 +54,15 @@ INSTRUCTIONS = (TASK + "\nÜbertrage die Angaben in genau einen Block ```immoman
                 "schreibe sonst nichts.\n\n" + SCHEMA)
 
 
-def _image_attachments(content: bytes, media_type: str, filename: str) -> list[dict]:
-    """Page images for a scan without text layer (needs PyMuPDF), or the photo itself."""
-    if media_type in ("image/png", "image/jpeg", "image/webp"):
-        return [{"name": filename, "mime": media_type, "data_base64": base64.b64encode(content).decode("ascii")}]
-    if media_type != "application/pdf":
-        return []
+def _image_attachments(content: bytes, media_type: str, filename: str, *, text: str = "") -> dict:
+    from .ai_document_images import ImageRendererUnavailable, render_page_images
     try:
-        import fitz  # type: ignore[import-not-found,import-untyped]
-    except ImportError:
-        return []
-    pages = []
-    with fitz.open(stream=content, filetype="pdf") as pdf:
-        for number, page in enumerate(pdf):
-            if number >= MAX_PAGES:
-                break
-            image = page.get_pixmap(dpi=150).tobytes("png")
-            pages.append({"name": f"{filename} Seite {number + 1}.png", "mime": "image/png",
-                          "data_base64": base64.b64encode(image).decode("ascii")})
-    return pages
+        return render_page_images(content, media_type, filename, MAX_PAGES)
+    except ImageRendererUnavailable:
+        if media_type != "application/pdf" or not text.strip():
+            raise
+        return {"images": [], "pages_total": 0, "pages_sent": 0,
+                "omissions": ["Seitenbilder sind ohne lokale PDF-Bildkonvertierung nicht verfügbar. Die KI erhält ausschließlich den vollständig ausgelesenen Dokumenttext."]}
 
 
 def _known(facts: Any) -> dict:
@@ -85,15 +74,20 @@ def _known(facts: Any) -> dict:
 
 def request(file: Any, text: str, facts: Any, *, model: Optional[str], today: date) -> dict:
     attachment: dict[str, Any] = {"name": file.filename, "mime": file.media_type, "text": text[:MAX_TEXT],
-                                  "text_truncated": len(text) > MAX_TEXT, "omissions": []}
-    images = _image_attachments(file.content, file.media_type, file.filename) if len(text.strip()) < 200 else []
+                                  "text_truncated": len(text) > MAX_TEXT,
+                                  "omissions": ["Dokumenttext auf 120.000 Zeichen begrenzt."] if len(text) > MAX_TEXT else []}
+    image_info: dict[str, Any] = (_image_attachments(file.content, file.media_type, file.filename, text=text) if len(text.strip()) < 200 else
+                  {"images": [], "pages_total": 0, "pages_sent": 0, "omissions": []})
+    images = image_info["images"]
+    attachment["image_coverage"] = {key: image_info[key] for key in ("pages_total", "pages_sent")}
+    attachment["omissions"].extend(image_info["omissions"])
     if not text.strip() and not images:
         raise HTTPException(422, "Aus dieser Datei ließ sich kein Text lesen, und für Bilder einer gescannten PDF fehlt "
                                  "PyMuPDF. Bitte die PDF mit Textebene oder ein Foto (JPG/PNG) hochladen.")
-    return {"messages": [{"role": "user", "content": INSTRUCTIONS}],
+    return {"_task": "meter_document_extraction", "messages": [{"role": "user", "content": INSTRUCTIONS}],
             "context": {"task": "meter_document_extraction", "sources": [], "property": _known(facts)},
             "attachments": [attachment, *images], "application_clock": {"date": today.isoformat(), "timezone": "Europe/Berlin"},
-            "data_scope": "selected", "web_research": False, "local_analysis": {}, "omissions": [],
+            "data_scope": "selected", "web_research": False, "local_analysis": {}, "omissions": attachment["omissions"],
             "model": model, "effort": None}
 
 
@@ -104,6 +98,22 @@ def _day(value: Any) -> Optional[date]:
         return date.fromisoformat(value[:10])
     except ValueError:
         return None
+
+
+def _number(value: Any, *, money: bool = False) -> Optional[Decimal]:
+    """Model output must fit the same finite ranges as the destination forms."""
+    if not isinstance(value, (str, int, float, Decimal)) or isinstance(value, bool):
+        return None
+    try:
+        number = plain_number(value)
+        maximum = Decimal("9999999999.99") if money else Decimal("1000000000")
+        return number if number is not None and number.is_finite() and abs(number) <= maximum else None
+    except (InvalidOperation, ValueError, TypeError, OverflowError):
+        return None
+
+
+def _rows(value: Any) -> list:
+    return value if isinstance(value, list) else []
 
 
 def parse(text: str) -> Extraction:
@@ -122,40 +132,44 @@ def parse(text: str) -> Extraction:
 
 def parse_data(data: dict) -> Extraction:
     """An answer object in the schema as an Extraction; anything outside the schema is left out."""
+    document_kind = data.get("document_kind")
     result = Extraction(company=str(data["company"])[:80] if isinstance(data.get("company"), str) else None,
-                        kind=str(data["document_kind"]) if data.get("document_kind") in KINDS else "other",
+                        kind=document_kind if isinstance(document_kind, str) and document_kind in KINDS else "other",
                         period_start=_day(data.get("period_start")), period_end=_day(data.get("period_end")),
                         reading_date=_day(data.get("reading_date")))
-    share = plain_number(data.get("consumption_share_percent"))
-    if share is not None and 0 < share < 100:
+    share = _number(data.get("consumption_share_percent"))
+    if share is not None and 0 < share < 100 and share == share.to_integral_value():
         result.consumption_share = int(share)
-    total = plain_number(data.get("total"))
+    elif share is not None:
+        result.notes.append("Der Verbrauchsanteil ist keine gültige ganze Prozentzahl zwischen 1 und 99 und wurde nicht übernommen.")
+    total = _number(data.get("total"), money=True)
     result.total = total if total is not None and total > 0 else None
-    for item in data.get("costs") or []:
+    for item in _rows(data.get("costs")):
         if not isinstance(item, dict):
             continue
-        amount = plain_number(item.get("amount"))
+        amount = _number(item.get("amount"), money=True)
         label = str(item.get("label") or "").strip()[:120]
         if amount is None or amount <= 0 or not label:
             continue
-        category = item.get("category") if item.get("category") in CATEGORIES else "other"
+        category = item.get("category")
+        category = category if isinstance(category, str) and category in CATEGORIES else "other"
         result.costs.append({"label": label, "amount": amount.quantize(Decimal("0.01")), "category": category,
                              "recoverable": item.get("recoverable") is not False, "line": None})
-    for item in data.get("readings") or []:
+    for item in _rows(data.get("readings")):
         if not isinstance(item, dict) or not item.get("serial"):
             continue
-        value = plain_number(item.get("value"))
+        value = _number(item.get("value"))
         if value is None or value < 0:
             continue
         medium, unit = DEVICE_MEDIA.get(str(item.get("device_type") or "").upper(), (None, None))
         result.readings.append({"serial": str(item["serial"])[:40], "medium": medium, "measure_unit": unit, "value": value,
-                                "previous": plain_number(item.get("previous")), "consumption": plain_number(item.get("consumption")),
+                                "previous": _number(item.get("previous")), "consumption": _number(item.get("consumption")),
                                 "sure": True, "date": _day(item.get("date")),
                                 "line": " · ".join(str(item[key]) for key in ("unit_label", "room") if item.get(key)) or None})
-    for item in data.get("unit_results") or []:
+    for item in _rows(data.get("unit_results")):
         if not isinstance(item, dict):
             continue
-        amount = plain_number(item.get("amount"))
+        amount = _number(item.get("amount"), money=True)
         if amount is not None and item.get("unit_label"):
             result.unit_results.append({"label": str(item["unit_label"])[:120], "amount": amount, "line": None})
     if result.total is not None and result.costs:
@@ -172,9 +186,12 @@ def extract(actor_id: str, provider: str, file: Any, text: str, facts: Any, *, m
     if provider not in ("claude", "codex"):
         raise HTTPException(422, "Für die KI-Auswertung bitte Claude oder ChatGPT wählen.")
     try:
-        answer = assistant_providers.execute(actor_id, provider, request(file, text, facts, model=model, today=today),
+        payload = request(file, text, facts, model=model, today=today)
+        answer = assistant_providers.execute(actor_id, provider, payload,
                                              lambda event: None, lambda: False)
     except ProviderError as error:
         raise HTTPException(409 if error.code in ("authentication_required", "client_unavailable") else 502,
                             str(error)) from error
-    return parse(answer.get("text") or "")
+    result = parse(answer.get("text") or "")
+    result.notes.extend(payload["omissions"])
+    return result

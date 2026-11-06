@@ -14,7 +14,10 @@ from . import assistant_context, workspace, workspace_contexts
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 Identifier = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
-Money = Annotated[Decimal, Field(ge=0, decimal_places=2, allow_inf_nan=False)]
+# Match the persisted financial input range before invoice arithmetic. Huge
+# model-provided exponents must become field errors, never Decimal exceptions
+# that turn an otherwise valid provider answer into an unknown result.
+Money = Annotated[Decimal, Field(ge=0, le=Decimal("9999999999.99"), decimal_places=2, allow_inf_nan=False)]
 
 
 class StrictModel(BaseModel):

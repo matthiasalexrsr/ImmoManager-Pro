@@ -143,7 +143,7 @@ def request_wakeup() -> None:
     This is only a latency hint: it never starts a worker, and other processes
     still discover committed work through their regular recovery tick.
     """
-    if not settings.job_scheduler_enabled:
+    if not settings.job_scheduler_enabled and not settings.immo_demo:
         return
     with _lock:
         targets = tuple(_wakeups.items())
@@ -208,8 +208,26 @@ def tick(jobs: JobStore | None = None, runner: JobRunner | None = None,
     return runner.run_until_idle()
 
 
-async def run_forever(interval_seconds: float, stop: threading.Event) -> None:
-    runner = JobRunner(get_job_store(), default_handlers(), stop=stop)
+def assistant_tick(jobs: JobStore, runner: JobRunner) -> list[JobRun]:
+    """Recover/drain only assistant work, inside its own worker DB context."""
+    from ...dependencies import begin_request_scope, end_request_scope
+    from ..assistant_runner import recover
+
+    token = begin_request_scope()
+    try:
+        recover(jobs)
+        return runner.run_until_idle()
+    finally:
+        end_request_scope(token)
+
+
+async def run_forever(interval_seconds: float, stop: threading.Event, *, assistant_only: bool = False) -> None:
+    if assistant_only:
+        from ..assistant_runner import KIND, handler
+        handlers = {KIND: handler}
+    else:
+        handlers = default_handlers()
+    runner = JobRunner(get_job_store(), handlers, stop=stop)
     wakeup = asyncio.Event()
     with _lock:
         _wakeups[wakeup] = asyncio.get_running_loop()
@@ -219,7 +237,18 @@ async def run_forever(interval_seconds: float, stop: threading.Event) -> None:
             # survive until the following wait, including after the last claim.
             wakeup.clear()
             try:
-                await asyncio.to_thread(tick, runner.jobs, runner)
+                if assistant_only:
+                    # On demo shutdown let the current local worker release its
+                    # owned sessions before the application lifespan finishes.
+                    worker = asyncio.create_task(asyncio.to_thread(assistant_tick, runner.jobs, runner))
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        stop.set()
+                        await worker
+                        raise
+                else:
+                    await asyncio.to_thread(tick, runner.jobs, runner)
             except Exception:
                 logger.exception("Scheduler tick failed (retrying next interval)")
             if stop.is_set():

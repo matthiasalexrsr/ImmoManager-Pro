@@ -90,7 +90,7 @@ describe('Lesepanel', () => {
     fireEvent.change(screen.getByLabelText(/Was soll mit dem Dokument geschehen/), { target: { value: 'Als Wasserkosten erfassen.' } });
     fireEvent.click(screen.getByRole('button', { name: /Einlesen/ }));
     await waitFor(() => expect(api.start).toHaveBeenCalledWith({ surface: 'invoice', document_id: null, file_url: '/uploads/documents/x.pdf',
-      params: { property_id: 'p' }, reader: 'claude', instruction: 'Als Wasserkosten erfassen.' }));
+      params: { property_id: 'p' }, reader: 'claude', instruction: 'Als Wasserkosten erfassen.', idempotency_key: expect.any(String) }));
     const table = await screen.findByRole('table');
     expect(within(table).getByText('1.070,00 €')).toBeInTheDocument();
     expect(within(table).getByText('„Gesamtbetrag 1.070,00 EUR“')).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe('Lesepanel', () => {
     expect(within(question).getByText(/gibt es vermutlich schon einen Eintrag/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'In die Maske übernehmen' })).toBeDisabled();
     fireEvent.click(within(question).getByRole('button', { name: 'Öffnen' }));
-    await waitFor(() => expect(api.decide).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), 'use_existing', existing));
+    await waitFor(() => expect(api.decide).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), 'use_existing', existing, expect.any(String)));
     expect(onOpenExisting).toHaveBeenCalledWith(existing, expect.objectContaining({ revision: 2 }));
   });
 

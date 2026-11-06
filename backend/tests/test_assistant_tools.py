@@ -84,7 +84,20 @@ def test_real_mcp_auth_strict_tools_and_persisted_provenance(actor):
         seen.append(connection)
         return {"text": "Aufgabe mit aktuellem Quellenbeleg gefunden."}
 
-    assistant_runner.run(store, run["id"], actor.id, execute=execute)
+    failures = []
+
+    def checked_execute(*args):
+        try:
+            return execute(*args)
+        except Exception as exc:
+            failures.append(exc)
+            raise
+
+    assistant_runner.run(store, run["id"], actor.id, execute=checked_execute)
+    if failures:
+        # Runner correctly hides real provider details. Synthetic test failures
+        # should retain their actual cause rather than only an unknown state.
+        raise failures[0]
     finished = assistant.get_run(store, actor.id, run["id"])
     assert finished["state"] == "completed", finished
     assert [event["status"] for event in finished["activity"]] == ["failed", "completed"]
@@ -306,7 +319,19 @@ def test_tool_budget_is_visible_and_followup_gets_fresh_budget(actor, monkeypatc
     next_run = assistant.submit(store, actor.id, chat["id"], RunCreate(**command(expected_revision=current["revision"],
         content="Bitte fortsetzen", data_scope="authorized")))
     assert next_run["tool_budget"]["used"] == 0
-    assert next_run["sources"] and current["context_sources"]
+    # Consulted evidence remains visible, but never silently becomes a new
+    # explicit selection grant. Authorized research can reread it on demand.
+    assert [source["id"] for source in finished["sources"]] == [selected.id]
+    assert next_run["sources"] == [] and current["context_sources"] == []
+
+    def continue_research(actor_id, provider, request, emit, cancelled):
+        historical = next(item for item in request["messages"] if item["role"] == "assistant")
+        assert [source["id"] for source in historical["historical_sources"]] == [selected.id]
+        assert tool(request["_application_mcp"], "immo_read", {"kind": "property", "id": selected.id})["ok"]
+        return {"text": "Recherche mit neuem Budget fortgesetzt."}
+
+    assistant_runner.run(store, next_run["id"], actor.id, execute=continue_research)
+    assert assistant.get_run(store, actor.id, next_run["id"])["tool_budget"]["used"] == 1
 
 
 def test_excluded_attachment_owner_and_conversation_are_checked(actor):

@@ -337,20 +337,57 @@ _CATEGORY_WORDS = (("heating", ("heizöl", "fernwärme", "heizung", "brennstoff"
                    ("chimney", ("schornstein", "kaminkehrer")), ("cable", ("kabel", "antenne", "breitband")))
 
 
-_COMPANY = re.compile(r"\b(GmbH|AG|KG|OHG|GbR|UG|e\.\s?K\.|e\.\s?V\.|mbH|Stadtwerke|Werke|Versorgung|Service|Handwerk|"
+_COMPANY = re.compile(r"\b(GmbH|AG|KG|OHG|GbR|UG|e\.\s?K\.|e\.\s?V\.|mbH|Stadtwerke|Werke|Versorgung|[a-zäöüß-]*service|Handwerk|"
                       r"Sanitär|Elektro|Dach|Maler|Gebäude|Hausverwaltung|Versicherung|Energie|Wasser)\b", re.IGNORECASE)
+_SENDER_LABEL = re.compile(r"^(Absender|Lieferant|Rechnungssteller|Aussteller|Dienstleister|Firma|Von)(?:\s*:\s*|\s+|$)(.*)$", re.IGNORECASE)
+_RECIPIENT = re.compile(r"^(?:An|Herrn?|Frau|(?:Rechnungs|Leistungs)?empfänger|Kunde|Kundin|Auftraggeber|c/o)\b", re.IGNORECASE)
+_DOCUMENT_HEADING = re.compile(r"^(?:Rechnung|Gutschrift|Mahnung|Angebot|Auftragsbestätigung|Lieferschein|Bescheid|Mietvertrag|Protokoll)\b", re.IGNORECASE)
+_NOT_SENDER = re.compile(r"^(?:Datum|Rechnungsdatum|Kunden(?:nummer|[ -]?Nr)|Auftrags(?:nummer|[ -]?Nr)|Beleg(?:nummer|[ -]?Nr)|"
+                         r"Netto(?:betrag)?|Brutto(?:betrag)?|Gesamtbetrag|Rechnungsbetrag|Summe|Umsatzsteuer|Mehrwertsteuer|MwSt|USt|"
+                         r"Leistungszeitraum|Abrechnungszeitraum|Leistung|Wartung|Reparatur|Montage|Reinigung|Zahlung|IBAN|BIC|"
+                         r"Telefon|Tel|Fax|E-Mail|Internet)(?:\b|\d)", re.IGNORECASE)
 
 
-def _sender(lines: list[str], labelled: Any) -> Optional[str]:
-    """The sender of a letter: a top line that names a company, else a labelled sender ("Lieferant: …") that
-    reads like a name, else the first line."""
-    top = [line for line in lines[:6] if 3 <= len(line) <= 120 and not re.search(r"\d{2}\.\d{2}\.\d{2,4}", line)]
-    company = next((line for line in top if _COMPANY.search(line)), None)
-    if company:
-        return company
-    if isinstance(labelled, str) and re.match(r"[A-Za-zÄÖÜäöüß]", labelled.strip()) and 3 <= len(labelled.strip()) <= 120:
-        return labelled.strip()
-    return top[0] if top else None
+def _sender_name(value: str) -> bool:
+    if not 3 <= len(value) <= 120 or not re.match(r"[A-Za-zÄÖÜäöüß]", value):
+        return False
+    if _DOCUMENT_HEADING.match(value) or _NOT_SENDER.match(value) or _RECIPIENT.match(value):
+        return False
+    return not re.search(r"\d{1,2}\.\d{1,2}\.\d{2,4}|\d+[.,]\d{2}\b|€|\b(?:EUR|USD|CHF)\b|@|https?://|www\.|"
+                         r"\b\w*(?:straße|strasse|str\.|weg|platz|allee|gasse|ring)\s*\d", value, re.IGNORECASE)
+
+
+def _sender(lines: list[str]) -> Optional[str]:
+    """Prefer an explicit sender label, otherwise a plausible company header.
+
+    A heading, amount, address or recipient is not a fallback sender. Unknown
+    identity stays absent rather than guessing from the first document line.
+    """
+    companies = []
+    recipient = False
+    for index, line in enumerate(lines[:20]):
+        labelled = _SENDER_LABEL.fullmatch(line)
+        if labelled and (not recipient or labelled.group(1).casefold() in
+                         ("absender", "lieferant", "rechnungssteller", "aussteller", "dienstleister")):
+            value = labelled.group(2).strip()
+            if not value and index + 1 < len(lines):
+                value = lines[index + 1]
+            if _sender_name(value):
+                return value
+        if _RECIPIENT.match(line):
+            recipient = True
+            continue
+        if _DOCUMENT_HEADING.match(line):
+            recipient = False
+            continue
+        if index < 8 and not recipient and _sender_name(line) and _COMPANY.search(line):
+            companies.append(line)
+    return companies[0] if companies else None
+
+
+def _sender_quote(lines: list[str], sender: str) -> str:
+    return next((line for line in lines if line == sender),
+                next((line for line in lines if sender in line), sender))
 
 
 def _first(pattern: str, text: str) -> Optional[str]:
@@ -396,17 +433,17 @@ def local_values(surface: Surface, text: str, *, filename: str = "", known: Opti
         until = _first(r"gültig\s+bis\s*:?\s*" + _DATE, text)
         if until:
             raw["valid_until"] = {"value": until, "evidence": "gültig bis " + until, "confidence": "medium"}
-        sender = _sender(lines, analysis.supplier)
+        sender = _sender(lines)
         if sender:
-            raw["sender"] = {"value": sender, "confidence": "low"}
+            raw["sender"] = {"value": sender, "evidence": _sender_quote(lines, sender), "confidence": "low"}
         for kind, rows in (("unit", known.get("units") or []), ("tenant", known.get("tenants") or [])):
             hits = [row for row in rows if len(row["label"]) >= 3 and row["label"].casefold() in text.casefold()]
             if len(hits) == 1:
                 raw[kind] = {"value": hits[0]["label"], "evidence": hits[0]["label"], "confidence": "medium"}
     elif surface.id in ("invoice", "cost_item"):
-        supplier = _sender(lines, fields.get("supplier"))
+        supplier = _sender(lines)
         if supplier:
-            raw["supplier"] = {"value": supplier, "confidence": "low"}
+            raw["supplier"] = {"value": supplier, "evidence": _sender_quote(lines, supplier), "confidence": "low"}
         if fields.get("invoice_number"):
             raw["invoice_number"] = {"value": fields["invoice_number"], "confidence": "medium"}
         gross = _amount_after(r"(?:Gesamtbetrag|Rechnungsbetrag|Bruttobetrag|Brutto|zu zahlen|Endbetrag)", text)

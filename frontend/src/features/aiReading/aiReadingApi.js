@@ -10,10 +10,10 @@ export const aiReadingApi = {
   get: id => api.get(`/ai/readings/${encodeURIComponent(id)}`),
   say: (reading, text, idempotency_key = key()) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/messages`,
     { text, expected_revision: reading.revision, idempotency_key }),
-  decide: (reading, action, record) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/decision`,
-    { action, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key: key() }),
-  finish: (reading, outcome, record) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/finish`,
-    { outcome, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key: key() }),
+  decide: (reading, action, record, idempotency_key = key()) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/decision`,
+    { action, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key }),
+  finish: (reading, outcome, record, idempotency_key = key()) => api.post(`/ai/readings/${encodeURIComponent(reading.id)}/finish`,
+    { outcome, record_kind: record?.kind || null, record_id: record?.id || null, expected_revision: reading.revision, idempotency_key }),
   upload: async (file, folder = 'documents') => {
     const form = new FormData();
     form.append('file', file);
@@ -31,9 +31,9 @@ export const READER_HINTS = {
 };
 
 /** The reader to preselect: the person's default if it can read here, else the first connected AI, else the rules. */
-export function preferredReader(options, needsAi = false) {
+export function preferredReader(options, needsAi = false, surface = options?.surfaces?.length === 1 ? options.surfaces[0] : null) {
   const readers = options?.readers || [];
-  const ready = readers.filter(item => item.ai && item.available).map(item => item.id);
+  const ready = options?.ai_enabled === false || surface?.ai_allowed === false ? [] : readers.filter(item => item.ai && item.available).map(item => item.id);
   const preferred = options?.default_reader;
   if (preferred === 'local' && !needsAi) return 'local';
   if (['claude', 'codex'].includes(preferred) && ready.includes(preferred)) return preferred;

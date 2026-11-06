@@ -254,6 +254,8 @@ class SqlJobStore(JobStore):
             return and_(condition, table.c.kind.in_(kinds)) if kinds else condition
 
         expired = and_(RUNS.c.status == "running", RUNS.c.lease_expires_at < now)
+        if kinds:
+            expired = and_(expired, RUNS.c.kind.in_(kinds))
         due = due_in(RUNS)
         claimed = dict(status="running", lease_owner=owner, lease_token=token,
                        lease_expires_at=now + timedelta(seconds=self.lease_seconds), heartbeat_at=now,
@@ -389,7 +391,7 @@ class MemoryJobStore(JobStore):
         with self._lock:
             now = self.clock()
             for run in self._runs.values():
-                if run.status == "running" and run.lease_expires_at and run.lease_expires_at < now \
+                if (not kinds or run.kind in kinds) and run.status == "running" and run.lease_expires_at and run.lease_expires_at < now \
                         and run.attempts >= run.max_attempts:
                     run.status, run.finished_at, run.lease_token = "failed", now, None
                     run.last_error = run.last_error or "Lease expired after the last attempt"

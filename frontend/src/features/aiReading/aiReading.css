@@ -1,4 +1,4 @@
-.ai-reading { display: grid; gap: 12px; }
+.ai-reading { display: grid; gap: 12px; min-width: 0; }
 .ai-reading-inline { margin-bottom: 12px; padding: 12px 14px; }
 .ai-reading-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .ai-reading-head h3 { margin: 0; font-size: var(--text-md, 1rem); }
@@ -30,7 +30,14 @@
 .ai-reading-questions { padding: 10px 14px; border-radius: var(--radius, 12px); background: var(--color-primary-50); }
 .ai-reading-questions ul { margin: 4px 0 0; padding-left: 18px; }
 .ai-reading-notes { margin: 0; padding: 10px 14px 10px 30px; border-radius: var(--radius, 12px); background: var(--color-warning-light); }
-.ai-reading-values td.ai-evidence { max-width: 22rem; color: var(--color-text-secondary); font-size: var(--text-sm, .875rem); overflow-wrap: anywhere; }
+.ai-reading > .table-scroll { min-width: 0; max-width: 100%; }
+.ai-reading table.ai-reading-values { table-layout: fixed; }
+.ai-reading table.ai-reading-values :is(th, td) { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.ai-reading-values thead th:nth-child(1) { width: 23%; }
+.ai-reading-values thead th:nth-child(2) { width: 24%; }
+.ai-reading-values thead th:nth-child(3) { width: 35%; }
+.ai-reading-values thead th:nth-child(4) { width: 18%; }
+.ai-reading-values td.ai-evidence { color: var(--color-text-secondary); font-size: var(--text-sm, .875rem); }
 .ai-reading-values tr.is-changed th, .ai-reading-values tr.is-changed td { background: var(--color-primary-50); }
 .ai-badge { margin-left: 6px; vertical-align: middle; }
 .ai-confidence { font-size: var(--text-sm, .875rem); }

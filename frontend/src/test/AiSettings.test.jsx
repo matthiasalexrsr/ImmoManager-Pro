@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AiSettingsSection from '../pages/settings/AiSettingsSection';
 import { api } from '../api';
@@ -26,6 +26,17 @@ const items = [
 ];
 
 describe('Einstellungen zur KI-Verarbeitung', () => {
+  it.each(['workspace-owner', 'workspace-logout'])('blendet geladene persönliche Vorgaben bei %s aus', async name => {
+    api.get.mockResolvedValue({ items });
+    const service = { options: vi.fn().mockResolvedValue(options) };
+    render(<MemoryRouter><AiSettingsSection service={service} /></MemoryRouter>);
+    await screen.findByLabelText('Von der KI eingetragene Werte in der Maske');
+    act(() => window.dispatchEvent(new Event(name)));
+    expect(screen.queryByLabelText('Von der KI eingetragene Werte in der Maske')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Verbindungen' })).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent('Die Sitzung wurde geändert');
+  });
+
   it('erklärt, was an die KI geht, zeigt Verbindungen, Stellen und nur die KI-Einstellungen in Worten', async () => {
     api.get.mockResolvedValue({ items });
     const service = { options: vi.fn().mockResolvedValue(options) };

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { assistantApi, activeRun, contextSelection } from './assistantApi';
 import { readAssistantDraft, writeAssistantDraft, readAssistantCommand, writeAssistantCommand, clearAssistantCommand } from './assistantDrafts';
+import { originalRetryReview, workingAttachmentIds } from './assistantRetry';
 
 const emptyDraft = () => ({ body: '', attachments: [], context: [], web_research: false, report: null, data_scope: 'authorized', excluded_attachment_ids: [], context_explicit: false });
 const rejected = failure => [400, 403, 404, 409, 413, 415, 422].includes(failure.statusCode);
@@ -14,6 +15,7 @@ export default function useAssistantWorkspace(owner) {
   const selectedId = params.get('conversation') || '';
   const identity = `${owner}:${selectedId || 'new'}`;
   const live = useRef(false), scope = useRef(identity), epoch = useRef(0), operation = useRef(false);
+  const navigationFailure = useRef(null);
   scope.current = identity;
   const [attempt, setAttempt] = useState(0);
   const [capabilities, setCapabilities] = useState(null);
@@ -66,7 +68,7 @@ export default function useAssistantWorkspace(owner) {
 
   useEffect(() => {
     live.current = true;
-    const invalidate = () => { live.current = false; epoch.current += 1; setMessages([]); setDraft(emptyDraft()); setAttachments([]); setRecord(null); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false; setConversations([]); };
+    const invalidate = () => { live.current = false; epoch.current += 1; navigationFailure.current = null; setMessages([]); setDraft(emptyDraft()); setAttachments([]); setRecord(null); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false; setConversations([]); };
     window.addEventListener('workspace-logout', invalidate);
     window.addEventListener('workspace-owner', invalidate);
     return () => { live.current = false; epoch.current += 1; window.removeEventListener('workspace-logout', invalidate); window.removeEventListener('workspace-owner', invalidate); };
@@ -86,6 +88,7 @@ export default function useAssistantWorkspace(owner) {
 
   useEffect(() => {
     const generation = ++epoch.current; const controller = new AbortController(); const session = api.captureSession();
+    if (navigationFailure.current && (navigationFailure.current.owner !== owner || navigationFailure.current.conversationId !== selectedId)) navigationFailure.current = null;
     operation.current = false;
     setRecord(null); setMessages([]); setAttachments([]); setRun(null); setProposals([]); setProposalCursor(null); proposalPagesLoaded.current = false; setPending(null); setEditPending(null);
     setError(''); setPollError(''); setNotice(''); setBusy(false); setUploading(false); setLoading(Boolean(selectedId));
@@ -110,8 +113,13 @@ export default function useAssistantWorkspace(owner) {
       // Restore private buffers only after the server has authorized this conversation.
       draftRef.current = restored; setDraft(restored); setPending(readAssistantCommand(owner, selectedId));
       setEditPending(readAssistantCommand(owner, `edit:${selectedId}`));
+      // The first submission may fail after creating its chat. Carry its error
+      // across that navigation only after this owner is authorized to read it.
+      if (navigationFailure.current?.owner === owner && navigationFailure.current.conversationId === selectedId) {
+        setError(navigationFailure.current.message); navigationFailure.current = null;
+      }
       setConversations(previous => mergeRows(previous, [conversation]));
-    }).catch(failure => { if (live.current && scope.current === identity && !controller.signal.aborted) setError(failure.message); })
+    }).catch(failure => { if (live.current && scope.current === identity && !controller.signal.aborted) { navigationFailure.current = null; setError(failure.message); } })
       .finally(() => { if (live.current && scope.current === identity && !controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [identity, owner, selectedId, attempt]);
@@ -215,11 +223,20 @@ export default function useAssistantWorkspace(owner) {
     catch (failure) {
       current();
       if (rejected(failure)) { clearAssistantCommand(owner, conversation.id, command); setPending(null); }
-      if (!selectedId) navigate(conversation.id);
+      if (!selectedId) {
+        writeAssistantDraft(owner, conversation.id, draftRef.current);
+        navigationFailure.current = { owner, conversationId: conversation.id, message: failure.message };
+        navigate(conversation.id); return;
+      }
       throw failure;
     }
     clearAssistantCommand(owner, conversation.id, command); setPending(null);
-    const cleared = { ...original, body: '', attachments: [], excluded_attachment_ids: [], context_explicit: false };
+    // A person may already be drafting their next message while the server is
+    // acknowledging this one. Only clear the text that was actually submitted,
+    // including when an earlier command is reconciled after a lost response.
+    const latest = draftRef.current;
+    const cleared = { ...latest, body: latest.body === command.request.content ? '' : latest.body,
+      attachments: [], excluded_attachment_ids: [], context_explicit: false };
     writeAssistantDraft(owner, conversation.id, cleared);
     if (!selectedId) { writeAssistantDraft(owner, 'new', emptyDraft()); navigate(conversation.id); }
     else {
@@ -247,6 +264,13 @@ export default function useAssistantWorkspace(owner) {
   });
   const runCommand = action => perform(async current => {
     if (!run) return;
+    if (action === 'retry') {
+      const currentDraft = draftRef.current;
+      const review = originalRetryReview(run, { scope: currentDraft.data_scope, context: currentDraft.context,
+        attachmentIds: workingAttachmentIds(record, run, currentDraft), report: currentDraft.report,
+        webResearch: currentProvider !== 'local' && Boolean(capabilities?.providers.find(item => item.id === currentProvider)?.web_research) && currentDraft.web_research === true });
+      if (!review.allowed) throw new Error(review.reason);
+    }
     const identityKey = `${action}:${run.id}`;
     const command = readAssistantCommand(owner, identityKey) || { kind: action, idempotency_key: crypto.randomUUID(), request: { expected_revision: run.revision } };
     writeAssistantCommand(owner, identityKey, command);

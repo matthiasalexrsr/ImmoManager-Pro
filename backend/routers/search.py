@@ -16,6 +16,7 @@ from ..services.ai.schemas import SearchHit
 from ..services.ai.semantic_search import IndexEntry, search_index
 from ..services.csv_export import spreadsheet_cell
 from ..services.portfolio_scope import require_installation_scope, resource_visible
+from ..storage import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +116,23 @@ def global_search(
         reranked = [h for h in reranked
                     if ((h.entity_type, h.entity_id) in found or resource_visible(h.entity_type, h.entity_id))
                     and not (h.entity_type == "document" and is_restricted(store, "document", h.entity_id))]
-        reranked_results = [
-            {"entity_type": h.entity_type, "id": h.entity_id, "display": h.display, "detail": h.detail,
-             "url": h.url, "score": h.combined_score}
-            for h in reranked
-        ]
+        # The model index is a snapshot. Return today's authorized source values,
+        # never cached names, e-mail addresses or links from an older index build.
+        current = {(item["entity_type"], item["id"]): item for item in results}
+        readers = {"property": store.get_property, "tenant": store.get_tenant, "unit": store.get_unit,
+                   "document": store.get_document, "maintenance": store.get_maintenance_case}
+        reranked_results = []
+        for hit in reranked:
+            item = current.get((hit.entity_type, hit.entity_id))
+            if item is None:
+                reader = readers.get(hit.entity_type)
+                if reader is None:
+                    continue
+                try:
+                    item = gs.to_hit(gs.get_type(hit.entity_type), reader(hit.entity_id))
+                except NotFoundError:
+                    continue
+            reranked_results.append({**item, "score": hit.combined_score})
         return {"query": q, "count": len(reranked_results), "results": reranked_results, "semantic": True,
                 "groups": groups, "document_index": document_text.status(store)}
 

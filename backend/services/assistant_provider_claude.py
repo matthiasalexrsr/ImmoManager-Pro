@@ -244,7 +244,7 @@ def _init(event: dict, web: bool, mcp=None) -> None:
                      and isinstance(servers[0], dict) and servers[0].get('name') == 'immomanager'
                      and servers[0].get('status') == 'connected')
     if (not isinstance(tools, list) or any(not isinstance(tool, str) or tool not in permitted for tool in tools)
-            or not expected.issubset(set(tools)) or not valid_servers or event.get("plugins") or event.get('mcp_server_errors')):
+            or not permitted.issubset(set(tools)) or not valid_servers or event.get("plugins") or event.get('mcp_server_errors')):
         raise ProviderError("Claude hat unerwartete Werkzeuge oder Erweiterungen geladen. Der Vorgang wurde beendet.",
                             "provider_isolation_failed", uncertain=True)
 
@@ -252,6 +252,7 @@ def _init(event: dict, web: bool, mcp=None) -> None:
 def execute(profile: ProfileLease, executable: list[str], request: dict, emit: Callable[[dict], None],
             cancelled: Callable[[], bool]) -> dict:
     _cancel(cancelled)
+    instructions = system_prompt(request)
     web = request.get("web_research") is True
     mcp = application_mcp(request)
     permitted = {"WebSearch"} if web else set()
@@ -268,7 +269,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
             "--no-session-persistence", "--permission-mode", "dontAsk", "--permission-prompts", "none",
             "--disable-slash-commands", "--tools", "WebSearch" if web else "",
             "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-            "--include-partial-messages", "--system-prompt", system_prompt(request)]
+            "--include-partial-messages", "--system-prompt", instructions]
     if permitted:
         argv += ["--allowedTools", ','.join(sorted(permitted))]
     if mcp:
@@ -311,8 +312,6 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
             session_id = turn_id = None
             initialized = False
             size = 0
-            assistant_text: list[str] = []
-            delta_text: list[str] = []
             for channel, line in _events(process, cancelled, EXECUTE_TIMEOUT, submitted=True):
                 if channel != "stdout":
                     continue
@@ -341,7 +340,6 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                     if isinstance(delta, dict) and delta.get("type") == "text_delta" and isinstance(delta.get("text"), str):
                         if not initialized:
                             raise ProviderError("Der Claude-Startstatus fehlt.", "provider_protocol_error", uncertain=True)
-                        delta_text.append(delta["text"])
                         emit({"type": "delta", "text": delta["text"]})
                     block = stream.get("content_block")
                     if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
@@ -351,9 +349,7 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                     if isinstance(message, dict):
                         turn_id = _identifier(message.get("id")) or turn_id
                         for block in message.get("content", []):
-                            if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
-                                assistant_text.append(block["text"])
-                            elif isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
+                            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") not in permitted:
                                 raise ProviderError("Claude hat ein nicht freigegebenes Werkzeug angefordert.", "provider_isolation_failed", uncertain=True)
                 elif event_type == "result":
                     final = event
@@ -365,7 +361,9 @@ def execute(profile: ProfileLease, executable: list[str], request: dict, emit: C
                 raise ProviderError("Claude konnte die Anfrage nicht abschließen. Anmeldung, Kontolimit und Modell prüfen.", "provider_execution_failed", uncertain=True)
             text = final.get("result")
             if not isinstance(text, str):
-                text = "".join(assistant_text) or "".join(delta_text)
+                raise ProviderError("Claude hat keine gültige Abschlussantwort geliefert.", "provider_protocol_error", uncertain=True)
+            if not text.strip():
+                raise ProviderError("Claude lieferte keine verwertbare Antwort. Bitte die Anfrage prüfen.", "empty_answer", uncertain=True)
             result = finish_answer(text)
             result.update(provider_session_id=_identifier(final.get("session_id")) or session_id,
                           provider_turn_id=turn_id, usage=_usage(final.get("usage")))

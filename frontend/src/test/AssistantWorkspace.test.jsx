@@ -14,7 +14,7 @@ vi.mock('../i18n', () => ({ useTranslation: () => ({ t: key => ({ 'ui.buttons.sa
 vi.mock('../utils/workspaceClient', async original => ({ ...await original(), workspace: { list: vi.fn(), get: vi.fn(), put: vi.fn(), remove: vi.fn(), command: () => crypto.randomUUID() } }));
 const stamp = '2026-10-18T09:00:00Z';
 const conversation = (id, provider = 'local') => ({ id, provider, model: null, effort: 'high', revision: 1, title: `Chat ${id}`, created_at: stamp, updated_at: stamp, archived: false, active_run_id: null });
-const run = (id = 'run-1', conversationId = 'a', runState = 'queued') => ({ id, conversation_id: conversationId, state: runState, revision: 1, response: '', events: [], created_at: stamp, updated_at: stamp });
+const run = (id = 'run-1', conversationId = 'a', runState = 'queued') => ({ id, conversation_id: conversationId, state: runState, revision: 1, response: '', events: [], data_scope: 'selected', context: {}, effective_attachment_ids: [], web_research: false, report: null, created_at: stamp, updated_at: stamp });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 function Location() { const location = useLocation(); return <output data-testid="location">{JSON.stringify({ pathname: location.pathname, search: location.search, state: location.state })}</output>; }
 function App() { return <><Location /><Routes><Route path="/assistant" element={<Assistant />} /><Route path="/tasks" element={<h1>Aufgabenformular</h1>} /><Route path="/reports" element={<h1>Auswertungen</h1>} /></Routes></>; }
@@ -270,12 +270,40 @@ describe('assistant providers and explicit cloud controls', () => {
     state.conversations[0].provider = 'codex'; state.connections.codex = { status: 'connected', connected: true, models: [] };
     mount(); await screen.findByText('Verbunden');
     const web = screen.getByRole('checkbox', { name: /Internetrecherche zulassen/ }); expect(web).not.toBeChecked();
+    const researchHelp = screen.getByText('Allgemeine Fachfragen online recherchieren. Suchbegriffe werden an externe Suchdienste übertragen; keine vertraulichen Akteninhalte verwenden.');
+    expect(researchHelp).toBeVisible();
+    expect(web).toHaveAccessibleDescription(researchHelp.textContent);
     fireEvent.click(web); body('Quellen im Internet prüfen'); fireEvent.click(screen.getByRole('button', { name: 'Senden' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/assistant/conversations/a/runs', expect.objectContaining({ web_research: true, expected_revision: 1, idempotency_key: expect.any(String) })));
+    expect(researchHelp).toBeVisible();
   });
 });
 
 describe('private conversations, durable runs and files', () => {
+  it.each([false, true])('keeps a newer draft entered before a delayed submission is confirmed (lost response: %s)', async lost => {
+    const pending = deferred(); const base = api.post.getMockImplementation(); let first = true;
+    api.post.mockImplementation((path, data) => path.endsWith('/runs') && first
+      ? (first = false, pending.promise) : base(path, data));
+    mount(); await ready(); body('Ursprünglicher Auftrag');
+    fireEvent.click(screen.getByRole('button', { name: 'Lokal prüfen', exact: true }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/assistant/conversations/a/runs', expect.objectContaining({ content: 'Ursprünglicher Auftrag' })));
+    body('Nächster, noch nicht gesendeter Auftrag');
+    if (lost) {
+      await act(async () => pending.reject(new Error('Bestätigung ging verloren')));
+      fireEvent.click(await screen.findByRole('button', { name: 'Übermittlung abgleichen' }));
+    } else {
+      const original = api.post.mock.calls.find(([path]) => path.endsWith('/runs'));
+      await act(async () => pending.resolve(await base(...original)));
+    }
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Übermittlung abgleichen' })).toBeNull());
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue('Nächster, noch nicht gesendeter Auftrag');
+    expect(JSON.parse(localStorage.getItem('workspace:owner-a:assistant:draft:a')).body).toBe('Nächster, noch nicht gesendeter Auftrag');
+    const calls = api.post.mock.calls.filter(([path]) => path.endsWith('/runs'));
+    expect(calls).toHaveLength(lost ? 2 : 1);
+    expect(calls.every(([, data]) => data.content === 'Ursprünglicher Auftrag')).toBe(true);
+    if (lost) expect(calls[1][1]).toEqual(calls[0][1]);
+  });
+
   it('keeps separate unsent drafts when switching chats and never sends on plain Enter', async () => {
     mount(); await ready(); body('Entwurf A');
     fireEvent.keyDown(screen.getByLabelText('Ihre Nachricht'), { key: 'Enter' }); expect(api.post).not.toHaveBeenCalled();
@@ -311,6 +339,45 @@ describe('private conversations, durable runs and files', () => {
     await screen.findByRole('heading', { name: 'Erste Frage' }); expect(screen.getByTestId('location')).toHaveTextContent('conversation=new');
   });
 
+  it.each([401, 403, 404, 422, undefined])('keeps a new chat submission error and the latest draft through its first navigation (%s)', async statusCode => {
+    const pending = deferred(); const base = api.post.getMockImplementation();
+    api.post.mockImplementation((path, data) => path.endsWith('/runs') ? pending.promise : base(path, data));
+    mount('/assistant'); await ready(); body('Erste Frage'); fireEvent.click(screen.getByRole('button', { name: 'Lokal prüfen' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/assistant/conversations/new/runs', expect.objectContaining({ content: 'Erste Frage' })));
+    body('Weitergetippter, ungesendeter Auftrag');
+    const message = statusCode ? `Erste Übermittlung abgelehnt (${statusCode})` : 'Bestätigung der ersten Übermittlung verloren';
+    await act(async () => pending.reject(Object.assign(new Error(message), { statusCode })));
+    await screen.findByRole('heading', { name: 'Erste Frage' });
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue('Weitergetippter, ungesendeter Auftrag');
+    expect(JSON.parse(localStorage.getItem('workspace:owner-a:assistant:draft:new')).body).toBe('Weitergetippter, ungesendeter Auftrag');
+    expect(api.post.mock.calls.filter(([path]) => path.endsWith('/runs'))).toHaveLength(1);
+    expect(Boolean(localStorage.getItem('workspace:owner-a:assistant:command:new'))).toBe(![403, 404, 422].includes(statusCode));
+  });
+
+  it('does not expose a new chat submission error or its draft after the application owner changes', async () => {
+    const base = api.post.getMockImplementation();
+    api.post.mockImplementation((path, data) => path.endsWith('/runs') ? Promise.reject(new Error('Privater Übermittlungsfehler A')) : base(path, data));
+    const view = mount('/assistant'); await ready(); body('Privater Auftrag A'); fireEvent.click(screen.getByRole('button', { name: 'Lokal prüfen' }));
+    await screen.findByRole('heading', { name: 'Privater Auftrag A' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Privater Übermittlungsfehler A');
+    state.owner = 'owner-b'; view.rerender(<MemoryRouter><App /></MemoryRouter>); await ready();
+    expect(screen.queryByText('Privater Übermittlungsfehler A')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue('');
+  });
+
+  it('restores a new chat submission error only after the server authorizes that conversation', async () => {
+    const basePost = api.post.getMockImplementation(), baseGet = api.get.getMockImplementation();
+    api.post.mockImplementation((path, data) => path.endsWith('/runs') ? Promise.reject(new Error('Privater ursprünglicher Fehler')) : basePost(path, data));
+    api.get.mockImplementation(path => path === '/assistant/conversations/new'
+      ? Promise.reject(Object.assign(new Error('Dieser Chat ist nicht mehr zugänglich'), { statusCode: 404 })) : baseGet(path));
+    mount('/assistant'); await ready(); body('Privater Auftrag'); fireEvent.click(screen.getByRole('button', { name: 'Lokal prüfen' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Dieser Chat ist nicht mehr zugänglich');
+    expect(screen.queryByText('Privater ursprünglicher Fehler')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Ihre Nachricht')).toBeDisabled();
+    expect(screen.getByLabelText('Ihre Nachricht')).toHaveValue('');
+  });
+
   it('restores a queued run after reload and cancels it with its current revision', async () => {
     state.runs['run-1'] = { ...run(), revision: 4 }; state.conversations[0].active_run_id = 'run-1';
     mount(); await ready(); fireEvent.click(await screen.findByRole('button', { name: 'Antwort abbrechen' }));
@@ -322,9 +389,22 @@ describe('private conversations, durable runs and files', () => {
     state.runs['run-1'] = run('run-1', 'a', 'unknown');
     const base = api.post.getMockImplementation(); let lost = true;
     api.post.mockImplementation((path, data) => path.endsWith('/retry') && lost ? (lost = false, Promise.reject(new Error('Wiederholung unbestätigt'))) : base(path, data));
-    mount(); await ready(); expect(api.post).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: 'Neuen Versuch starten' }));
-    await screen.findByRole('alert'); const first = api.post.mock.calls[0][1]; fireEvent.click(screen.getByRole('button', { name: 'Neuen Versuch starten' }));
+    mount(); await ready(); expect(api.post).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: 'Originalanfrage wiederholen' }));
+    await screen.findByRole('alert'); const first = api.post.mock.calls[0][1]; fireEvent.click(screen.getByRole('button', { name: 'Originalanfrage wiederholen' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2)); expect(api.post.mock.calls[1][1]).toEqual(first);
+  });
+
+  it('blocks an original retry after the current composer restricts the data scope', async () => {
+    state.runs['run-1'] = run('run-1', 'a', 'unknown');
+    mount(); await ready();
+    expect(screen.getByRole('button', { name: 'Originalanfrage wiederholen' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Datenzugriff'), { target: { value: 'none' } });
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/assistant/conversations/a', expect.objectContaining({ data_scope: 'none' })));
+    expect(screen.getByRole('button', { name: 'Originalanfrage wiederholen' })).toBeDisabled();
+    expect(screen.getByText(/aktuelle Datenfreigabe oder Arbeitsauswahl weicht/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Auftragsdetails'));
+    expect(screen.getByLabelText('Datenumfang der Originalanfrage')).toHaveTextContent('Nur ausgewählte Akten');
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('uploads a dropped image, previews it through an authorized blob request, and removes only its selection', async () => {

@@ -6,6 +6,7 @@ No external browser, real account, mail server or customer data is used.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -14,7 +15,9 @@ import socket
 import subprocess
 import sys
 import time
+from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -24,6 +27,48 @@ def free_port():
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         return reservation.getsockname()[1]
+
+
+def verify_ai_image_worker(output: Path) -> dict[str, Any]:
+    """Require real PDF and PNG replies from the source/frozen companion worker."""
+    from PIL import Image
+    from reportlab.pdfgen.canvas import Canvas
+
+    from backend.services.ai_document_images import render_page_images
+
+    picture = BytesIO()
+    Image.new("RGB", (8, 4), (20, 110, 100)).save(picture, "PNG")
+    document = BytesIO()
+    canvas = Canvas(document, pagesize=(144, 72), invariant=1)
+    canvas.drawString(8, 36, "LOCAL AI WORKER")
+    canvas.showPage()
+    canvas.save()
+    receipt: dict[str, Any] = {"packaged_runtime": bool(getattr(sys, "frozen", False)), "action": "render_images", "cases": {}}
+    for name, mime, content, expected_pixels in (
+        ("ai-worker-smoke.png", "image/png", picture.getvalue(), (8, 4)),
+        ("ai-worker-smoke.pdf", "application/pdf", document.getvalue(), (300, 150)),
+    ):
+        digest = hashlib.sha256(content).hexdigest()
+        (output / name).write_bytes(content)
+        item: dict[str, Any] = {"input_sha256": digest, "request": {"action": "render_images", "media_type": mime,
+                "filename": name, "max_pages": 1}}
+        result = render_page_images(content, mime, name, 1)
+        assert result["pages_total"] == result["pages_sent"] == len(result["images"]) == 1
+        assert result["omissions"] == []
+        image = result["images"][0]
+        rendered = base64.b64decode(image["data_base64"], validate=True)
+        assert image["mime"] == "image/png" and rendered.startswith(b"\x89PNG\r\n\x1a\n")
+        pixels = (int.from_bytes(rendered[16:20], "big"), int.from_bytes(rendered[20:24], "big"))
+        assert pixels == expected_pixels, pixels
+        if mime == "image/png":
+            assert rendered == content
+        (output / (name + ".rendered.png")).write_bytes(rendered)
+        item.update(status="rendered", pages_total=1, pages_sent=1, omissions=[], pixels=list(pixels),
+                    image_sha256=hashlib.sha256(rendered).hexdigest(), image_bytes=len(rendered))
+        assert hashlib.sha256((output / name).read_bytes()).hexdigest() == digest
+        receipt["cases"][mime] = item
+    (output / "ai-image-worker-smoke.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    return receipt
 
 
 def packaged_cli(provided, *, platform=None):
@@ -267,6 +312,8 @@ def main(argv=None):
         spin(lambda: bool(printed), 60)
         assert printed[0] and pdf.read_bytes().startswith(b"%PDF-")
         checks["embedded_pdf_print_output"] = True
+        result["ai_image_worker"] = verify_ai_image_worker(output)
+        checks["isolated_ai_image_worker"] = True
         result["ui_checks_completed"] = True
     finally:
         session = window.session
