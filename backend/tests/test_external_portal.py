@@ -32,6 +32,7 @@ from backend.models_ownership import OwnershipShareCreate
 from backend.services import document_versions as archive
 from backend.services import ownership
 from backend.services.external_portal import admin, common
+from backend.services.http_boundary import HTTPBoundaryMiddleware, configured_hosts
 from backend.services.integrations import connection_storage as db
 
 ORIGIN = "https://portal.example.test"
@@ -57,6 +58,13 @@ def portal(monkeypatch):
     monkeypatch.setattr(settings, "portal_enabled", True)
     monkeypatch.setattr(settings, "portal_public_url", ORIGIN)
     monkeypatch.setattr(settings, "portal_local_test_mode", False)
+    # This fixture selects its public URL after importing the shared app. Apply
+    # that exact startup configuration to a fresh middleware stack, and restore
+    # both declaration and previous stack with this fixture's monkeypatch.
+    boundary = next(item for item in app.user_middleware if item.cls is HTTPBoundaryMiddleware)
+    monkeypatch.setitem(boundary.kwargs, "allowed_hosts", configured_hosts(
+        settings.trusted_hosts, settings.cors_origins, settings.portal_public_url, production=settings.is_production))
+    monkeypatch.setattr(app, "middleware_stack", None)
     owner = auth.register_user("office", "office@example.test", "Office", "Secret123", "eigentuemer")
     from backend.models import PortfolioCreate
     portfolio = store.create_portfolio(PortfolioCreate(name="Portfolio"))
@@ -76,6 +84,9 @@ def portal(monkeypatch):
         households.append(dict(tenant=tenant, place=place, contract=contract, invitation=invited, client=client, grant_id=grant_id))
     office = TestClient(app, base_url=ORIGIN, headers={"Authorization": "Bearer " + auth.create_access_token(owner.id)})
     yield dict(owner=owner, portfolio=portfolio, prop=prop, households=households, office=office)
+    office.close()
+    for household in households:
+        household["client"].close()
     purge()
 
 
@@ -110,6 +121,13 @@ def damage(household, image=False):
     result = client.post("/api/v1/portal/me/cases", data={"command": json.dumps(command)}, files=files)
     assert result.status_code == 201, result.text
     return result.json(), command, files
+
+
+def test_explicit_portal_fixture_host_is_allowed_and_foreign_host_still_rejected(portal):
+    client = portal["households"][0]["client"]
+    assert client.get("/api/v1/portal/me").status_code == 200
+    response = client.get("/api/v1/portal/me", headers={"Host": "foreign.example.invalid"})
+    assert response.status_code == 400
 
 
 def test_verified_password_recovery_revokes_sessions_and_all_other_relations(portal):

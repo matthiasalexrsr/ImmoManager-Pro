@@ -112,10 +112,10 @@ def test_source_rows_come_from_the_calculation_snapshot(estate, monkeypatch):
     from backend.services import report_provenance
     _, _, invoice, _, _ = evidence(estate)
     original = report_provenance.enrich
-    def update_after_numbers(source, result, mode):
+    def update_after_numbers(source, result, mode, **kwargs):
         with store.db.get_bind().begin() as connection:
             connection.execute(update(InvoiceORM).where(InvoiceORM.id == invoice.id).values(supplier="Changed after calculation"))
-        return original(source, result, mode)
+        return original(source, result, mode, **kwargs)
     monkeypatch.setattr(report_provenance, "enrich", update_after_numbers)
     result = finance_reports.compute(store, ReportDefinition(kind="performance-period-v2", as_of=date(2026, 1, 31)))
     source = next(item["provenance"] for item in result["sources"] if item["identity"] == "invoice:" + invoice.id)

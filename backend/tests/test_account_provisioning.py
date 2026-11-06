@@ -41,10 +41,22 @@ def test_registration_status_reflects_setup_and_setting(client, monkeypatch):
 def test_self_registered_user_cannot_write(client, monkeypatch):
     """Regression: sign-up used to allow 'techniker', which may write everything."""
     monkeypatch.setattr(settings, "allow_self_registration", True)
-    register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
-    client.post("/api/v1/auth/register", json=_new_user("techniker"))
-    token = client.post("/api/v1/auth/login",
-                        json={"username": "new_techniker", "password": "Secret123"}).json()["access_token"]
+    owner = register_user("owner", "owner@example.com", "Owner", "Secret123", "eigentuemer")
+    registered = client.post("/api/v1/auth/register", json=_new_user("techniker"))
+    assert registered.status_code == 201
+    account = registered.json()
+    assert account["approval_required"] is True and account["is_active"] is False
+    assert account["role"] == "readonly"
+    assert account["portfolio_access"] == "selected" and account["portfolio_ids"] == []
+    credentials = {"username": "new_techniker", "password": "Secret123"}
+    refused = client.post("/api/v1/auth/login", json=credentials)
+    assert refused.status_code == 401 and "access_token" not in refused.json()
+    approved = client.patch("/api/v1/auth/users/" + account["id"],
+        headers={"Authorization": "Bearer " + create_access_token(owner.id)}, json={"is_active": True})
+    assert approved.status_code == 200 and approved.json()["is_active"] is True
+    login = client.post("/api/v1/auth/login", json=credentials)
+    assert login.status_code == 200
+    token = login.json()["access_token"]
     resp = client.post("/api/v1/portfolios", headers={"Authorization": f"Bearer {token}"}, json={"name": "X"})
     assert resp.status_code == 403
 
