@@ -330,7 +330,20 @@ def test_monitor_continues_after_pipe_eof_until_process_exit(tmp_path, monkeypat
 def test_only_darwin_text_uses_the_sampled_mode(monkeypatch, platform, mode):
     from backend.services import document_text_process
     from backend.services.document_text_reader import Budget
-    monkeypatch.setattr(document_text_process.sys, 'platform', platform)
+    host_platform = sys.platform
+    host_lookup = document_text_process.shutil.which
+    host_executable = host_lookup(sys.executable)
+    assert host_executable is not None
+    lookup_platforms = []
+
+    def lookup(command):
+        lookup_platforms.append(sys.platform)
+        assert sys.platform == host_platform
+        assert host_lookup(sys.executable) == host_executable
+        return host_lookup(command)
+
+    monkeypatch.setattr(document_text_process, 'shutil', SimpleNamespace(which=lookup))
+    monkeypatch.setattr(document_text_process, 'sys', SimpleNamespace(platform=platform))
     calls = []
 
     def run(argv, folder, **kwargs):
@@ -338,6 +351,9 @@ def test_only_darwin_text_uses_the_sampled_mode(monkeypatch, platform, mode):
         return 1, '', 'synthetic failure'
     monkeypatch.setattr(validator, '_run', run)
     part = document_text_process.read_isolated(b'synthetic', 'local.txt', {}, Budget())
+    assert sys.platform == host_platform
+    assert lookup_platforms == [host_platform]
+    assert len(calls) == 1
     assert calls[0]['resource_mode'] == mode and calls[0]['max_processes'] == 4
     assert part.complete and part.failed and part.warning and not part.text
 

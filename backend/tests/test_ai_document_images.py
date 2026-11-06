@@ -157,6 +157,13 @@ def test_desktop_smoke_never_renders_after_failed_or_partial_text(tmp_path, monk
     with pytest.raises(AssertionError):
         verify_ai_image_worker(tmp_path)
     assert not (tmp_path / "ai-image-worker-smoke.json").exists()
+    observed = json.loads((tmp_path / "ai-text-worker-observation.json").read_text(encoding="utf-8"))
+    expected = ExtractionPart(**part)
+    assert observed["complete"] is expected.complete and observed["failed"] is expected.failed
+    assert observed["source"] == expected.source and observed["warning"] == expected.warning
+    assert observed["text_characters"] == len(expected.text)
+    assert observed["expected_phrase_found"] is ("LOCAL AI WORKER" in expected.text)
+    assert "text" not in observed
 
 
 def test_real_pdf_is_rendered_only_in_owned_child_with_private_environment(monkeypatch):

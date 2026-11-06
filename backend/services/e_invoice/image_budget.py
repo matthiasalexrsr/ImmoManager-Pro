@@ -48,26 +48,38 @@ class ImageBudget:
     def check(self) -> None:
         try:
             root = self.known.get(self.pid)
-            if root is not None and root[0].is_running():
-                if root[0].create_time() != root[1] or getattr(os, 'getpgid')(self.pid) != self.pid:
-                    raise ImageBudgetError("Image process identity changed")
-                for child in root[0].children(recursive=True):
-                    try:
-                        created = child.create_time()
-                        if created < self.started:
-                            raise ImageBudgetError("Image descendant identity is unavailable")
-                        # Retain the proven descendant before checking its group,
-                        # so an observed escape can also be closed by identity.
-                        previous = self.known.get(child.pid)
-                        if previous is not None and previous[1] != created:
-                            raise ImageBudgetError("Image descendant identity changed")
-                        self.known[child.pid] = (child, created)
-                        if getattr(os, 'getpgid')(child.pid) != self.pid:
-                            raise ImageBudgetError("Image descendant left its owned group")
-                    except (psutil.NoSuchProcess, ProcessLookupError):
-                        continue
-            elif self.process.poll() is None:
-                raise ImageBudgetError("Running image process cannot be measured")
+            try:
+                # Reap our completed child before querying an old/reusable PID.
+                # Darwin can retain is_running() for a zombie while getpgid()
+                # already reports ESRCH. Descendants below still need checking.
+                if self.process.poll() is not None:
+                    self.known.pop(self.pid, None)
+                elif root is not None and root[0].is_running():
+                    if root[0].create_time() != root[1] or getattr(os, 'getpgid')(self.pid) != self.pid:
+                        raise ImageBudgetError("Image process identity changed")
+                    for child in root[0].children(recursive=True):
+                        try:
+                            created = child.create_time()
+                            if created < self.started:
+                                raise ImageBudgetError("Image descendant identity is unavailable")
+                            # Retain the proven descendant before checking its group,
+                            # so an observed escape can also be closed by identity.
+                            previous = self.known.get(child.pid)
+                            if previous is not None and previous[1] != created:
+                                raise ImageBudgetError("Image descendant identity changed")
+                            self.known[child.pid] = (child, created)
+                            if getattr(os, 'getpgid')(child.pid) != self.pid:
+                                raise ImageBudgetError("Image descendant left its owned group")
+                        except (psutil.NoSuchProcess, ProcessLookupError):
+                            continue
+                elif self.process.poll() is None:
+                    raise ImageBudgetError("Running image process cannot be measured")
+            except (psutil.NoSuchProcess, ProcessLookupError) as error:
+                # Exit can also race the individual root identity/group/children
+                # calls. Only our Popen's confirmed completion resolves it.
+                if self.process.poll() is None:
+                    raise ImageBudgetError("Running image process cannot be measured") from error
+                self.known.pop(self.pid, None)
             total = 0
             count = 0
             for pid, (owned, created) in list(self.known.items()):

@@ -111,6 +111,15 @@ def verify_ai_image_worker(output: Path) -> dict[str, Any]:
     # Darwin RSS-bound document wrapper, in both source and frozen runtimes.
     (output / "ai-worker-smoke.pdf").write_bytes(pdf_content)
     text = read_isolated(pdf_content, "ai-worker-smoke.pdf", {}, Budget())
+    # Preserve the actual synthetic reader state even when the mandatory check
+    # fails. This is separate from the success-only aggregate worker receipt.
+    text_observation = {"packaged_runtime": receipt["packaged_runtime"],
+        "complete": text.complete, "failed": text.failed, "source": text.source,
+        "warning": text.warning, "text_characters": len(text.text),
+        "expected_phrase_found": "LOCAL AI WORKER" in text.text,
+        "input_sha256": pdf_digest}
+    (output / "ai-text-worker-observation.json").write_text(
+        json.dumps(text_observation, indent=2) + "\n", encoding="utf-8")
     assert text.complete and not text.failed and text.warning is None and text.source == "pdf_text"
     assert "LOCAL AI WORKER" in text.text
     assert hashlib.sha256((output / "ai-worker-smoke.pdf").read_bytes()).hexdigest() == pdf_digest
