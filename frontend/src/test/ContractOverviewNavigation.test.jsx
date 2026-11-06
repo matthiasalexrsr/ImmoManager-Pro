@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import Contracts from '../pages/Contracts';
@@ -44,7 +44,7 @@ describe('contract overview direct navigation', () => {
     expect(within(overview).getByRole('link', { name: 'Haus am Park' })).toHaveAttribute('href', '/properties/p1');
     expect(within(overview).getByRole('link', { name: 'Aufgaben zur Einheit' })).toHaveAttribute('href', '/tasks?property_id=p1&unit_id=u1');
     expect(within(overview).getByText('31.12.2026')).toBeVisible();
-    expect(screen.getByRole('heading', { name: contract.contract_number })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('heading', { name: contract.contract_number })).toHaveFocus());
   });
   it('opens the authoritative record even when the list fails', async () => {
     state.listFails = true; mount('?focus_id=c1');
