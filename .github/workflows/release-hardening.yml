@@ -1,0 +1,60 @@
+name: Release hardening and persistence
+
+on:
+  push:
+    branches: [main, 'claude/**', 'codex/**', 'pro/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  endurance:
+    name: Five-year ledger, concurrency, crash and restore acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      JOB_SCHEDULER_ENABLED: 'false'
+      BACKUP_SCHEDULE_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned backend validation runtime
+        run: |
+          python -m pip install -r requirements-pip.txt
+          python -m pip install -r requirements.txt -r requirements-bank.txt -c constraints.txt
+          python -m pip check
+      - name: Verify the stress harness and customer promotion boundaries
+        run: python -m pytest tools/xstress backend/tests/test_release_stress_harness.py backend/tests/test_release_artifacts.py backend/tests/test_release_customer_readiness.py backend/tests/test_macos_customer_verification.py backend/tests/test_customer_macos_pipeline.py -q --tb=short --junitxml=artifacts/release-hardening/contracts.xml
+      - name: Run actual five-year synthetic management and failure recovery
+        run: python -m tools.xstress.run --units 120 --years 5 --seed 2026 --skip ui --out artifacts/release-hardening/xstress
+      - name: Run bounded concurrent demo, parser, queue and restart acceptance
+        run: python scripts/release_stress.py --output artifacts/release-hardening/parallel --workers 4 --scale-tasks 512 --operations 640 --assistant-runs 12 --soak-seconds 30 --require-clean-source
+      - name: Run repeated German rules and controlled provider protocol fault corpus
+        run: python scripts/release_stress_ai_corpus.py --output artifacts/release-hardening/ai-corpus --repetitions 3 --require-clean-source
+      - name: Preserve completed and failed hardening evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-hardening-${{ github.sha }}
+          path: |
+            artifacts/release-hardening/contracts.xml
+            artifacts/release-hardening/xstress/run-*/report.md
+            artifacts/release-hardening/xstress/run-*/findings.json
+            artifacts/release-hardening/xstress/run-*/metadata.json
+            artifacts/release-hardening/xstress/run-*/failure.txt
+            artifacts/release-hardening/parallel/report.json
+            artifacts/release-hardening/parallel/report.md
+            artifacts/release-hardening/ai-corpus/report.json
+            artifacts/release-hardening/ai-corpus/report.md
+          if-no-files-found: error
+          retention-days: 30

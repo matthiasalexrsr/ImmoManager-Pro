@@ -40,6 +40,7 @@ jobs:
     outputs:
       desktop_run: ${{ steps.gate.outputs.desktop_run }}
       ci_run: ${{ steps.gate.outputs.ci_run }}
+      hardening_run: ${{ steps.gate.outputs.hardening_run }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -52,12 +53,16 @@ jobs:
           attempt=0
           while [ "$SECONDS" -lt "$deadline" ]; do
             attempt=$((attempt + 1)); complete=true
-            for workflow in ci.yml desktop.yml; do
+            for workflow in ci.yml desktop.yml release-hardening.yml; do
               runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$GITHUB_SHA&per_page=50" \
                 --jq '[.workflow_runs[] | {id, head_sha, status, conclusion}]')
               passed=$(jq -r --arg sha "$GITHUB_SHA" '[.[] | select(.head_sha == $sha and .status == "completed" and .conclusion == "success")] | sort_by(.id) | last | .id // empty' <<< "$runs")
               if [ -n "$passed" ]; then
-                if [ "$workflow" = desktop.yml ]; then desktop_run=$passed; else ci_run=$passed; fi
+                case "$workflow" in
+                  desktop.yml) desktop_run=$passed ;;
+                  ci.yml) ci_run=$passed ;;
+                  release-hardening.yml) hardening_run=$passed ;;
+                esac
                 continue
               fi
               complete=false
@@ -69,6 +74,7 @@ jobs:
             if [ "$complete" = true ]; then
               echo "desktop_run=$desktop_run" >> "$GITHUB_OUTPUT"
               echo "ci_run=$ci_run" >> "$GITHUB_OUTPUT"
+              echo "hardening_run=$hardening_run" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 30
@@ -142,9 +148,10 @@ jobs:
           RELEASE_VERSION: ${{ steps.policy.outputs.version }}
           DESKTOP_RUN: ${{ needs.ci-gate.outputs.desktop_run }}
           CI_RUN: ${{ needs.ci-gate.outputs.ci_run }}
+          HARDENING_RUN: ${{ needs.ci-gate.outputs.hardening_run }}
         run: |
           python scripts/release_artifacts.py stage --version "$RELEASE_VERSION" --commit "$GITHUB_SHA" \
-            --desktop-run "$DESKTOP_RUN" --ci-run "$CI_RUN" --packages artifacts/accepted-native-packages \
+            --desktop-run "$DESKTOP_RUN" --ci-run "$CI_RUN" --hardening-run "$HARDENING_RUN" --packages artifacts/accepted-native-packages \
             --reports artifacts/accepted-native-reports --sources artifacts/accepted-qt-sources --output artifacts/verified-release
       - uses: actions/upload-artifact@v4
         with:
@@ -189,12 +196,37 @@ jobs:
           python scripts/release_artifacts.py publish artifacts/verified-release --version "$RELEASE_VERSION" \
             --commit "$GITHUB_SHA" --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" --allow-unsigned
 
+  customer-macos:
+    name: Sign and accept actual customer macOS packages
+    needs: [ci-gate, native-assets]
+    if: needs.native-assets.outputs.tag != '' && needs.native-assets.outputs.unsigned_beta != 'true'
+    uses: ./.github/workflows/customer-macos.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      source_commit: ${{ github.sha }}
+      desktop_run: ${{ needs.ci-gate.outputs.desktop_run }}
+      version: ${{ needs.native-assets.outputs.version }}
+      signing_identity: ${{ vars.MACOS_SIGNING_IDENTITY }}
+      team_id: ${{ vars.MACOS_TEAM_ID }}
+    secrets:
+      MACOS_SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+      MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+      APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+
   windows:
     name: Windows-Paket bauen, prüfen und veröffentlichen
-    needs: [ci-gate, native-assets]
-    if: needs.native-assets.outputs.unsigned_beta != 'true'
+    needs: [ci-gate, native-assets, customer-macos]
+    if: >-
+      always() && !cancelled() && needs.ci-gate.result == 'success' && needs.native-assets.result == 'success' &&
+      needs.native-assets.outputs.unsigned_beta != 'true' &&
+      (needs.native-assets.outputs.tag == '' || needs.customer-macos.result == 'success')
     permissions:
       contents: write
+      actions: read
       id-token: write
       attestations: write
     runs-on: windows-latest
@@ -244,6 +276,27 @@ jobs:
         with:
           name: Verified-native-release-${{ github.sha }}
           path: artifacts/verified-release
+
+      - name: Download both independently verified signed customer Mac images
+        if: steps.version.outputs.tag != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Customer-macos-*-verified
+          path: artifacts/customer-packages
+      - name: Download matching signed native runtime reports
+        if: steps.version.outputs.tag != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Customer-macos-*-reports
+          path: artifacts/customer-reports
+      - name: Atomically overlay signed Mac bytes after full package and runtime verification
+        if: steps.version.outputs.tag != ''
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python scripts/release_artifacts.py overlay-customer-macos --staged artifacts/verified-release --packages artifacts/customer-packages --reports artifacts/customer-reports --output artifacts/customer-staged --version "$env:RELEASE_VERSION" --commit "$env:GITHUB_SHA"
+          if ($LASTEXITCODE -ne 0) { throw 'Customer Mac packages failed exact-source/runtime promotion' }
 
       - name: Install backend and PyInstaller
         run: |
@@ -372,7 +425,7 @@ jobs:
           RELEASE_PORTABLE: ${{ steps.package.outputs.zip }}
           RELEASE_METADATA: ${{ steps.sbom.outputs.dir }}
         run: |
-          python scripts/release_artifacts.py finalize-signed --staged artifacts/verified-release --installer "$env:RELEASE_INSTALLER" --portable "$env:RELEASE_PORTABLE" --metadata "$env:RELEASE_METADATA" --output artifacts/signed-release --version "$env:RELEASE_VERSION" --commit "$env:GITHUB_SHA"
+          python scripts/release_artifacts.py finalize-signed --staged artifacts/customer-staged --installer "$env:RELEASE_INSTALLER" --portable "$env:RELEASE_PORTABLE" --metadata "$env:RELEASE_METADATA" --output artifacts/signed-release --version "$env:RELEASE_VERSION" --commit "$env:GITHUB_SHA"
 
       - name: Try the package and the update from the previous release
         shell: pwsh

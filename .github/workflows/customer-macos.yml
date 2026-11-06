@@ -1,0 +1,203 @@
+name: Customer macOS Developer ID packages
+
+on:
+  workflow_call:
+    inputs:
+      source_commit:
+        required: true
+        type: string
+      desktop_run:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      signing_identity:
+        required: true
+        type: string
+      team_id:
+        required: true
+        type: string
+    secrets:
+      MACOS_SIGNING_P12_BASE64:
+        required: true
+      MACOS_SIGNING_PASSWORD:
+        required: true
+      APPLE_NOTARY_KEY_BASE64:
+        required: true
+      APPLE_NOTARY_KEY_ID:
+        required: true
+      APPLE_NOTARY_ISSUER_ID:
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  signed-native:
+    name: Customer macOS ${{ matrix.arch }} actual signed runtime
+    environment: customer-release
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      IMMO_BUILD_PURPOSE: core
+      IMMO_BUILD_DOCUMENT_TOOLS: '0'
+      MACOS_SIGNING_IDENTITY: ${{ inputs.signing_identity }}
+      MACOS_TEAM_ID: ${{ inputs.team_id }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      DESKTOP_RUN: ${{ inputs.desktop_run }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      NATIVE_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.arch }}
+      - name: Verify exact caller source and accepted native workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, tomllib
+          from pathlib import Path
+          from scripts.release_artifacts import check_identity
+          from scripts.sign_macos_customer import native
+          version, commit = os.environ['RELEASE_VERSION'], os.environ['SOURCE_COMMIT']
+          check_identity(version, commit)
+          native(os.environ['NATIVE_ARCH'])
+          assert commit == os.environ['GITHUB_SHA'] == subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          assert version == tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          run_id = int(os.environ['DESKTOP_RUN'])
+          assert run_id > 0
+          run = json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}"]))
+          assert (run['head_sha'], run['status'], run['conclusion'], run['path']) == (commit, 'completed', 'success', '.github/workflows/desktop.yml')
+          PY
+      - name: Fail early on missing or invalid protected publisher configuration
+        env:
+          MACOS_SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          from scripts.sign_macos_customer import configuration
+          configuration(dict(os.environ))
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build pinned independent OpenSSL for Intel cryptography
+        if: matrix.arch == 'x64'
+        run: |
+          python scripts/build_macos_openssl.py --output artifacts/native-build/openssl-3.5.9
+          prefix="$GITHUB_WORKSPACE/artifacts/native-build/openssl-3.5.9/install"
+          echo "OPENSSL_DIR=$prefix" >> "$GITHUB_ENV"
+          echo "IMMO_STATIC_OPENSSL_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo 'OPENSSL_STATIC=1' >> "$GITHUB_ENV"
+          echo 'MACOSX_DEPLOYMENT_TARGET=13.0' >> "$GITHUB_ENV"
+      - name: Install exactly pinned native build dependencies
+        run: |
+          python -m pip install -r requirements-pip.txt
+          if [[ "$NATIVE_ARCH" == 'x64' ]]; then
+            test -f "$OPENSSL_DIR/lib/libssl.a"
+            test -f "$OPENSSL_DIR/lib/libcrypto.a"
+            python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
+          else
+            python -m pip install -r requirements.txt -r requirements-build.txt -c constraints.txt
+          fi
+          python -m pip check
+      - name: Verify native OpenSSL linkage and Qt ownership
+        run: |
+          mkdir -p artifacts/customer-reports
+          python scripts/check_macos_crypto.py --output artifacts/customer-reports/macos-openssl-abi.json
+          python scripts/check_qt_ownership.py --output artifacts/customer-reports/qt-ownership.json
+      - name: Download complete Qt sources from the accepted native run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.desktop_run }}
+          name: Qt-Quellen-6.11.3
+          path: artifacts/qt-sources
+      - name: Reverify complete pinned Qt source bytes
+        run: python tools/qt_sources.py
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Build Developer ID app, notarize and staple app and disk image
+        env:
+          MACOS_SIGNING_P12_BASE64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          python scripts/sign_macos_customer.py build --state "$RUNNER_TEMP/immo-customer-signing" \
+            --output artifacts/customer-unverified --version "$RELEASE_VERSION" --commit "$SOURCE_COMMIT" \
+            --architecture "$NATIVE_ARCH" --desktop-run "$DESKTOP_RUN"
+      - name: Remove private publisher state before application checks, including on failure
+        if: always()
+        run: python scripts/sign_macos_customer.py cleanup --state "$RUNNER_TEMP/immo-customer-signing"
+      - name: Exercise exact final read-only mounted image with isolated synthetic profiles
+        run: |
+          python scripts/sign_macos_customer.py runtime \
+            --package "artifacts/customer-unverified/ImmoManager-Pro-$RELEASE_VERSION-macOS-$NATIVE_ARCH.dmg" \
+            --reports artifacts/customer-runtime --version "$RELEASE_VERSION" --commit "$SOURCE_COMMIT" \
+            --architecture "$NATIVE_ARCH" --desktop-run "$DESKTOP_RUN"
+      - name: Independently verify Developer ID, tickets, Gatekeeper and signed runtime
+        run: |
+          package="artifacts/customer-unverified/ImmoManager-Pro-$RELEASE_VERSION-macOS-$NATIVE_ARCH.dmg"
+          python scripts/verify_macos_customer.py --package "$package" --receipt "$package.json" \
+            --output artifacts/customer-verified --version "$RELEASE_VERSION" --commit "$SOURCE_COMMIT" \
+            --architecture "$NATIVE_ARCH" --team-id "$MACOS_TEAM_ID" --reports artifacts/customer-runtime
+      - name: Preserve only the three independently verified customer files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Customer-macos-${{ matrix.arch }}-verified
+          path: artifacts/customer-verified/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Preserve explicit safe signed runtime report files, never profiles or publisher state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Customer-macos-${{ matrix.arch }}-reports
+          path: |
+            artifacts/customer-runtime/native-environment.json
+            artifacts/customer-runtime/source-runtime/verification.json
+            artifacts/customer-runtime/source-runtime/ai-image-worker-smoke.json
+            artifacts/customer-runtime/source-runtime/ai-text-worker-observation.json
+            artifacts/customer-runtime/frozen-runtime/verification.json
+            artifacts/customer-runtime/frozen-runtime/ai-image-worker-smoke.json
+            artifacts/customer-runtime/frozen-runtime/ai-text-worker-observation.json
+            artifacts/customer-runtime/real-gui-runtime/verification.json
+            artifacts/customer-runtime/demo-runtime/verification.json
+            artifacts/customer-runtime/frozen-gui-demo/verification.json
+            artifacts/customer-runtime/qt-demo-ui/verification.json
+            artifacts/customer-runtime/qt-demo-ui/ai-image-worker-smoke.json
+            artifacts/customer-runtime/qt-demo-ui/ai-text-worker-observation.json
+          if-no-files-found: warn
+          retention-days: 30

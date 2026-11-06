@@ -8,6 +8,8 @@ on:
     paths:
       - '.github/workflows/desktop.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/release-hardening.yml'
+      - '.github/workflows/customer-macos.yml'
       - 'backend/**'
       - 'frontend/**'
       - 'tools/**'
@@ -23,6 +25,8 @@ on:
     paths:
       - '.github/workflows/desktop.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/release-hardening.yml'
+      - '.github/workflows/customer-macos.yml'
       - 'backend/**'
       - 'frontend/**'
       - 'tools/**'
@@ -277,7 +281,9 @@ jobs:
             backend/tests/test_windows_installer.py backend/tests/test_dependency_manifests.py \
             backend/tests/test_windows_launcher.py backend/tests/test_e_invoice_runtime_cache.py \
             backend/tests/test_desktop_startup_failure.py backend/tests/test_frozen_desktop_smoke.py \
-            backend/tests/test_demo_runtime_smoke.py backend/tests/test_release_artifacts.py
+            backend/tests/test_demo_runtime_smoke.py backend/tests/test_release_artifacts.py \
+            backend/tests/test_release_customer_readiness.py backend/tests/test_macos_customer_verification.py \
+            backend/tests/test_customer_macos_pipeline.py
       - name: Smoke-test source Qt renderer and local server
         run: python scripts/check_desktop_runtime.py --output artifacts/desktop-reports/source-runtime
       - name: Build actual native GUI and companion CLI
@@ -339,6 +345,28 @@ jobs:
       - name: Package native macOS or Linux build
         if: runner.os != 'Windows'
         run: python scripts/package_native_desktop.py --dist dist --output artifacts/native-packages
+      - name: Prove the customer verifier rejects the actual unsigned Mac image
+        if: runner.os == 'macOS'
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          arch = os.environ['EXPECTED_ARCHITECTURE']
+          image = Path('artifacts/native-packages') / f'ImmoManager-Pro-{version}-macOS-{arch}.dmg'
+          output = Path('artifacts/rejected-customer-mac')
+          command = [sys.executable, 'scripts/verify_macos_customer.py', '--package', str(image),
+            '--receipt', str(image.with_suffix('.dmg.json')), '--output', str(output),
+            '--version', version, '--commit', os.environ['GITHUB_SHA'], '--architecture', arch,
+            '--team-id', 'TESTTEAM01', '--reports', 'artifacts/desktop-reports']
+          result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+          assert result.returncode != 0 and 'Developer ID, expected team or secure timestamp is unverified' in result.stderr, (result.stdout, result.stderr)
+          assert not output.exists(), 'An unsigned validation image became customer eligible'
+          Path('artifacts/desktop-reports/customer-signing-negative.json').write_text(json.dumps({
+            'status': 'expected_unsigned_rejection', 'source_commit': os.environ['GITHUB_SHA'],
+            'architecture': arch, 'returncode': result.returncode,
+            'qualification': 'Real native mount/codesign rejection of ad-hoc test output; no positive signing/notarization acceptance.'}, indent=2) + '\n')
+          PY
       - name: Prepare verified portable Windows installer compiler
         id: inno
         if: runner.os == 'Windows'
