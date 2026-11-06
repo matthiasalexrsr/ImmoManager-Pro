@@ -1,0 +1,122 @@
+name: Diagnose unchanged 6c native PDF on macOS Intel
+
+# Prepared candidate; only Root may upload/start it.
+# This branch prefix matches neither ordinary CI nor native-package push filters.
+on:
+  push:
+    branches: ['transfer/qt-pdf-diagnosis-2026-11-06']
+    paths:
+      - '.github/workflows/native-pdf-diagnostic.yml'
+      - '_diagnostics/native_pdf/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-pdf-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: github.repository == 'matthiasalexrsr/ImmoManager-Pro' && github.actor == 'matthiasalexrsr' && github.ref == 'refs/heads/transfer/qt-pdf-diagnosis-2026-11-06'
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      QT_OPENGL: software
+      QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
+      IMMO_BUILD_PURPOSE: core
+      IMMO_BUILD_DOCUMENT_TOOLS: '0'
+      JOB_SCHEDULER_ENABLED: 'false'
+      BACKUP_SCHEDULE_ENABLED: 'false'
+    steps:
+      - name: Read the owner-reviewed diagnostic helper only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: helper
+          persist-credentials: false
+      - name: Read the exact unchanged failed product commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 6c5b22c8f4e5c9ef142338695e120c5fcc69cf56
+          path: product
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11.9'
+          architecture: x64
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.21.0'
+      - name: Prove the real Mac and record its image
+        run: |
+          mkdir -p "$RUNNER_TEMP/native-pdf-diagnostic"
+          python - <<'PY'
+          import json, os, platform, sys
+          from pathlib import Path
+          assert sys.platform == 'darwin' and platform.machine() == 'x86_64'
+          assert sys.version_info[:3] == (3, 11, 9)
+          result = {'platform': platform.platform(), 'machine': platform.machine(), 'python': sys.version,
+                    'runner_image': os.environ.get('ImageVersion'), 'runner_os': os.environ.get('ImageOS'),
+                    'helper_commit': os.environ['GITHUB_SHA'], 'product_commit': '6c5b22c8f4e5c9ef142338695e120c5fcc69cf56'}
+          (Path(os.environ['RUNNER_TEMP']) / 'native-pdf-diagnostic/environment.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+      - name: Build the same pinned independent Intel OpenSSL
+        working-directory: product
+        run: |
+          python scripts/build_macos_openssl.py --output artifacts/native-build/openssl-3.5.9
+          prefix="$GITHUB_WORKSPACE/product/artifacts/native-build/openssl-3.5.9/install"
+          echo "OPENSSL_DIR=$prefix" >> "$GITHUB_ENV"
+          echo "IMMO_STATIC_OPENSSL_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo 'OPENSSL_STATIC=1' >> "$GITHUB_ENV"
+          echo 'MACOSX_DEPLOYMENT_TARGET=13.0' >> "$GITHUB_ENV"
+      - name: Install exactly the native job's dependency inputs
+        working-directory: product
+        run: |
+          python -m pip install -r requirements-pip.txt
+          test -f "$OPENSSL_DIR/lib/libssl.a"
+          test -f "$OPENSSL_DIR/lib/libcrypto.a"
+          python -m pip install --no-cache-dir --no-binary cryptography -r requirements.txt -r requirements-build.txt -c constraints.txt
+          python -m pip check
+          python -m pip freeze > "$RUNNER_TEMP/native-pdf-diagnostic/installed-python.txt"
+          python scripts/check_macos_crypto.py --output "$RUNNER_TEMP/native-pdf-diagnostic/macos-openssl-abi.json"
+          python scripts/check_qt_ownership.py --output "$RUNNER_TEMP/native-pdf-diagnostic/qt-ownership.json"
+      - name: Build the same actual core frontend
+        working-directory: product/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Run separate fresh processes and preserve every result
+        run: |
+          set -o pipefail
+          status=0
+          for qpa in offscreen cocoa; do
+            for scenario in isolated preceded; do
+              folder="$RUNNER_TEMP/native-pdf-diagnostic/$qpa-$scenario"
+              if python helper/_diagnostics/native_pdf/native_pdf_diagnostic.py \
+                  --product "$GITHUB_WORKSPACE/product" --output "$folder" \
+                  --qpa "$qpa" --scenario "$scenario" 2>&1 \
+                  | python helper/_diagnostics/native_pdf/filter_native_pdf_log.py \
+                  > "$RUNNER_TEMP/native-pdf-diagnostic/$qpa-$scenario.log"; then
+                echo "$qpa/$scenario: original assertions and all diagnostics passed"
+              else
+                code=$?
+                echo "::error::$qpa/$scenario exited $code; original outcome remains a failure"
+                status=1
+              fi
+            done
+          done
+          exit "$status"
+      - name: Preserve original captures and bounded diagnostics, even after a failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-pdf-6c-macos-intel-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-pdf-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
