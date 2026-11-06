@@ -66,10 +66,12 @@ def test_successful_process_emits_no_failure_record(caplog):
 
 @pytest.mark.parametrize("exit_code", [0, 23])
 def test_real_owned_process_keeps_streams_private_and_preserves_its_exit(tmp_path, caplog, exit_code):
+    profile = tmp_path / "immo-e-invoice-diagnostic-process"
+    profile.mkdir(mode=0o700)
     code = f"import sys; print({SENTINEL!r}, file=sys.stderr); sys.exit({exit_code})"
     result = validator._run(
         [sys.executable, "-c", code],
-        tmp_path,
+        profile,
         timeout_seconds=5,
         resource_mode="image",
         file_limit_bytes=1024 * 1024,
