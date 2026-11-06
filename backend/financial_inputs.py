@@ -33,8 +33,10 @@ class FinancialRequest(BaseModel):
     @field_validator("*", mode="before")
     @classmethod
     def valid_money_input(cls, value: Any, info: ValidationInfo) -> Any:
+        if value is None or info.field_name not in MONEY_FIELDS:
+            return value
         stored_record = "id" in cls.model_fields and "created_at" in cls.model_fields
-        if value is None or info.field_name not in MONEY_FIELDS or stored_record:
+        if stored_record:
             return value
         if isinstance(value, bool):
             raise ValueError("Ein Geldbetrag muss eine Zahl sein.")
