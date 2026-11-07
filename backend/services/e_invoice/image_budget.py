@@ -15,6 +15,8 @@ from pathlib import Path
 
 import psutil
 
+from ..document_worker_diagnostics import stage as budget_stage
+
 READY_FILE = "image-budget-ready"
 READY_CONTENT = b"image-rss-ready\n"
 MEMORY_BYTES = 768 * 1024 * 1024
@@ -25,12 +27,18 @@ class ImageBudgetError(RuntimeError):
     pass
 
 
+def _budget_error(stage: str, message: str) -> ImageBudgetError:
+    # Both arguments are fixed constants below, never parser/process text.
+    budget_stage(stage)
+    return ImageBudgetError(message)
+
+
 class ImageBudget:
     """Retain identities only for the child/group created by this request."""
 
     def __init__(self, process, *, max_processes: int = 2, deadline: float | None = None):
         if os.name == "nt" or max_processes < 1 or max_processes > 8:
-            raise ImageBudgetError("Invalid image process boundary")
+            raise _budget_error("budget_configuration", "Invalid image process boundary")
         self.process = process
         self.max_processes = max_processes
         self.deadline = deadline
@@ -39,13 +47,14 @@ class ImageBudget:
         try:
             root = psutil.Process(self.pid)
             if root.ppid() != os.getpid() or getattr(os, 'getpgid')(self.pid) != self.pid:
-                raise ImageBudgetError("Image process ownership is unavailable")
+                raise _budget_error("budget_initial_owner", "Image process ownership is unavailable")
             self.started = root.create_time()
             self.known[self.pid] = (root, self.started)
             self.check()
         except (psutil.Error, OSError) as error:
+            budget_stage("budget_initial_measurement")
             self.close()
-            raise ImageBudgetError("Image process measurement is unavailable") from error
+            raise _budget_error("budget_initial_measurement", "Image process measurement is unavailable") from error
         except BaseException:
             self.close()
             raise
@@ -61,45 +70,51 @@ class ImageBudget:
                     self.known.pop(self.pid, None)
                 elif root is not None and root[0].is_running():
                     if root[0].create_time() != root[1] or getattr(os, 'getpgid')(self.pid) != self.pid:
-                        raise ImageBudgetError("Image process identity changed")
+                        raise _budget_error("budget_root_identity", "Image process identity changed")
                     for child in root[0].children(recursive=True):
                         try:
                             created = child.create_time()
                             if created < self.started:
-                                raise ImageBudgetError("Image descendant identity is unavailable")
+                                raise _budget_error("budget_descendant_identity", "Image descendant identity is unavailable")
                             # Retain the proven descendant before checking its group,
                             # so an observed escape can also be closed by identity.
                             previous = self.known.get(child.pid)
                             if previous is not None and previous[1] != created:
-                                raise ImageBudgetError("Image descendant identity changed")
+                                raise _budget_error("budget_descendant_changed", "Image descendant identity changed")
                             self.known[child.pid] = (child, created)
                             if getattr(os, 'getpgid')(child.pid) != self.pid:
-                                raise ImageBudgetError("Image descendant left its owned group")
+                                raise _budget_error("budget_descendant_escape", "Image descendant left its owned group")
                         except (psutil.NoSuchProcess, ProcessLookupError):
                             continue
                 elif self.process.poll() is None:
-                    raise ImageBudgetError("Running image process cannot be measured")
+                    if root is None or not self._confirm_missing_root_exit():
+                        raise _budget_error("budget_root_unmeasurable", "Running image process cannot be measured")
+                    self.known.pop(self.pid, None)
             except (psutil.NoSuchProcess, ProcessLookupError) as error:
                 # Exit can also race the individual root identity/group/children
                 # calls. Only our Popen's confirmed completion resolves it.
                 if self.process.poll() is None and not self._confirm_missing_root_exit():
-                    raise ImageBudgetError("Running image process cannot be measured") from error
+                    raise _budget_error("budget_root_lookup_unconfirmed", "Running image process cannot be measured") from error
                 self.known.pop(self.pid, None)
             total = 0
             count = 0
             for pid, (owned, created) in list(self.known.items()):
                 try:
                     if not owned.is_running():
+                        if pid == self.pid and self.process.poll() is None and not self._confirm_missing_root_exit():
+                            raise _budget_error("budget_root_measurement_lost", "Running image process lost its measurement")
                         self.known.pop(pid, None)
                         continue
                     if owned.create_time() != created or getattr(os, 'getpgid')(pid) != self.pid:
-                        raise ImageBudgetError("Image process ownership changed")
+                        raise _budget_error("budget_owned_identity", "Image process ownership changed")
                     rss = owned.memory_info().rss  # psutil specifies bytes on every supported OS
                     if type(rss) is not int or rss < 0:
-                        raise ImageBudgetError("Invalid image memory measurement")
+                        raise _budget_error("budget_invalid_rss", "Invalid image memory measurement")
                     total += rss  # Shared pages are conservatively counted for each process.
                     count += 1
-                except (psutil.NoSuchProcess, ProcessLookupError):
+                except (psutil.NoSuchProcess, ProcessLookupError) as error:
+                    if pid == self.pid and self.process.poll() is None and not self._confirm_missing_root_exit():
+                        raise _budget_error("budget_root_measurement_lost", "Running image process lost its measurement") from error
                     self.known.pop(pid, None)
                 except (psutil.AccessDenied, PermissionError):
                     # A root can finish after the identity probe but before
@@ -109,11 +124,11 @@ class ImageBudget:
                         raise
                     self.known.pop(pid, None)
             if self.process.poll() is None and self.pid not in self.known:
-                raise ImageBudgetError("Running image process lost its measurement")
+                raise _budget_error("budget_root_measurement_lost", "Running image process lost its measurement")
             if total > MEMORY_BYTES or count > self.max_processes:
-                raise ImageBudgetError("Image process exceeds its RSS or process budget")
+                raise _budget_error("budget_limits", "Image process exceeds its RSS or process budget")
         except (psutil.Error, OSError) as error:
-            raise ImageBudgetError("Image process measurement failed") from error
+            raise _budget_error("budget_measurement_error", "Image process measurement failed") from error
 
     def _confirm_missing_root_exit(self) -> bool:
         # A disappearing root can be unqueryable just before waitpid reports
@@ -127,7 +142,7 @@ class ImageBudget:
         try:
             code = self.process.wait(timeout=min(EXIT_CONFIRM_SECONDS, remaining))
         except (subprocess.TimeoutExpired, psutil.Error, OSError) as error:
-            raise ImageBudgetError("Own image process exit could not be confirmed") from error
+            raise _budget_error("budget_exit_unconfirmed", "Own image process exit could not be confirmed") from error
         confirmed = self.process.poll()
         return (type(code) is int and type(confirmed) is int and code == confirmed
                 and time.monotonic() <= self.deadline)
