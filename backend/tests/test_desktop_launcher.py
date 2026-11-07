@@ -149,12 +149,14 @@ def test_desktop_log_never_contains_private_control_messages(tmp_path):
     assert session.events.get_nowait() == "ready"
 
 
-def test_version_resource_uses_real_beta_and_distinct_executable_names():
-    fields = version_fields(ROOT, "ImmoManager-Pro.exe", "ImmoManager Pro")
-    assert fields["number"] == (2, 0, 0, 0) and fields["prerelease"]
-    assert fields["strings"]["ProductVersion"] == "2.0.0-beta.1"
-    assert fields["strings"]["FileVersion"] == "2.0.0.0"
-    assert fields["strings"]["OriginalFilename"] == "ImmoManager-Pro.exe"
+@pytest.mark.parametrize("filename", ["ImmoManager-Pro.exe", "ImmoManager-Pro-CLI.exe"])
+def test_version_resource_uses_project_beta_and_executable_name(tmp_path, filename):
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "2.1.3-beta.4"\n', encoding="utf-8")
+    fields = version_fields(tmp_path, filename, "ImmoManager Pro")
+    assert fields["number"] == (2, 1, 3, 0) and fields["prerelease"]
+    assert fields["strings"]["ProductVersion"] == "2.1.3-beta.4"
+    assert fields["strings"]["FileVersion"] == "2.1.3.0"
+    assert fields["strings"]["OriginalFilename"] == filename
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows instance mutex")
