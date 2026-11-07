@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from backend.domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine
+from backend.domain.lease_engine import ChargeConfig, LeaseEngine, PaymentLine, ReceivableLine
 
 
 def test_build_monthly_receivables_basic() -> None:
@@ -115,6 +115,43 @@ def test_allocate_payments_fifo_handles_overpayment() -> None:
     assert result.allocations[0].allocated_amount == Decimal("500.00")
     assert result.unapplied_total == Decimal("200.00")
     assert result.outstanding_total == Decimal("0.00")
+
+
+def test_fifo_resumes_partial_claim_then_skips_zero_claim_on_the_same_due_day() -> None:
+    january = datetime.date(2024, 1, 1)
+    february = datetime.date(2024, 2, 1)
+    first_payment = datetime.date(2024, 1, 5)
+    second_payment = datetime.date(2024, 1, 8)
+    last_payment = datetime.date(2024, 1, 12)
+    zero = Decimal("0.00")
+    receivables = [
+        ReceivableLine(period, period + datetime.timedelta(days=28), period, amount, zero, zero,
+                       amount, claim_key=key)
+        for period, key, amount in [
+            (february, "rent-later", Decimal("4.00")),
+            (january, "c-rent", Decimal("9.99")),
+            (january, "b-zero", zero),
+            (january, "a-carried", Decimal("7.01")),
+        ]
+    ]
+    payments = [
+        PaymentLine(last_payment, Decimal("15.00")),
+        PaymentLine(second_payment, Decimal("6.00")),
+        PaymentLine(first_payment, Decimal("3.00")),
+    ]
+
+    result = LeaseEngine.allocate_payments_fifo(receivables, payments)
+
+    assert [(allocation.receivable_claim_key, allocation.payment_booking_date, allocation.allocated_amount)
+            for allocation in result.allocations] == [
+        ("a-carried", first_payment, Decimal("3.00")),
+        ("a-carried", second_payment, Decimal("4.01")),
+        ("c-rent", second_payment, Decimal("1.99")),
+        ("c-rent", last_payment, Decimal("8.00")),
+        ("rent-later", last_payment, Decimal("4.00")),
+    ]
+    assert result.outstanding_total == zero
+    assert result.unapplied_total == Decimal("3.00")
 
 
 def test_charge_config_rejects_negative_components() -> None:
