@@ -15,7 +15,7 @@ from backend.repositories import SQLAlchemyStore
 from backend.services import finance_reports, report_service
 from backend.services.maintenance_rows import registry
 from backend.services.portfolio_scope import AccessScope, scope_context
-from backend.services.receivable_residuals import cash_reserved
+from backend.services.receivable_residuals import cash_reserved, deposit_evidence_by_contract
 from backend.storage import NotFoundError
 
 
@@ -208,6 +208,67 @@ def test_booking_sources_show_a_restricted_account_only_its_portfolios_bounded_o
             assert {b.id for b in booking_sources(store, FinanceFilter())} == {'cash-0', 'cash-1'}
             # the boundary is applied once, not again inside itself
             assert statements and max(len(statement) for statement in statements) < 10000
+    finally:
+        engine.dispose()
+
+
+def test_summary_keeps_every_portfolio_boundary_for_deposit_evidence(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'deposit-scope.db'}")
+    schema_state.initialise_empty(engine)
+    try:
+        with Session(engine) as session:
+            store = SQLAlchemyStore(session)
+            tenant = store.create_tenant(TenantCreate(full_name="Testmieter"))
+            due = date(2026, 1, 1)
+            settled = date(2026, 1, 12)
+            portfolios, contracts = [], []
+            for key in ("own", "other"):
+                portfolio = store.create_portfolio(PortfolioCreate(name=key))
+                prop = store.create_property(PropertyCreate(
+                    portfolio_id=portfolio.id, name=key, property_type="residential"))
+                unit = store.create_unit(UnitCreate(property_id=prop.id, label=key, unit_type="residential"))
+                contract = store.create_contract(ContractCreate(contract_number=key, property_id=prop.id,
+                    unit_id=unit.id, tenant_id=tenant.id, start_date=due))
+                portfolios.append(portfolio)
+                contracts.append(contract)
+            own, other = contracts
+            account = store.create_account(AccountCreate(
+                portfolio_id=portfolios[1].id, name="Anderes Bankkonto", account_type="bank"))
+            session.execute(insert(BookingORM), [{"id": "other-payout", "account_id": account.id,
+                "booking_date": settled, "amount": Decimal("-50.00"), "status": "booked"}])
+            session.execute(insert(ReceivableORM), [
+                {"id": key, "contract_id": contract.id, "due_date": due, "amount_due": Decimal("100.00"), "status": "open"}
+                for key, contract in (("own-claim", own), ("other-claim", other))
+            ])
+            session.execute(insert(DepositORM), [
+                {"id": "deposit", "contract_id": own.id, "amount": Decimal("500.00")}
+            ])
+            session.execute(insert(DepositSettlementORM), [
+                {"id": "own-settlement", "deposit_id": "deposit", "kind": "final", "settlement_date": settled,
+                 "finalized_at": settled, "status": "finalized"},
+                {"id": "other-settlement", "deposit_id": "deposit", "kind": "retention_release",
+                 "settlement_date": settled, "finalized_at": settled, "status": "finalized",
+                 "payout_booking_id": "other-payout"},
+            ])
+            # Include legacy cross-portfolio associations on both the settlement and the item.
+            session.execute(insert(DepositSettlementItemORM), [
+                {"id": key, "settlement_id": parent, "kind": "receivable", "description": key,
+                 "amount": Decimal(amount), "receivable_id": claim}
+                for key, parent, amount, claim in [
+                    ("own-item", "own-settlement", "20.00", "own-claim"),
+                    ("hidden-settlement-item", "other-settlement", "30.00", "own-claim"),
+                    ("hidden-claim-item", "own-settlement", "40.00", "other-claim"),
+                ]
+            ])
+            session.commit()
+            reader = AccessScope("restricted-reader", "readonly", False, (portfolios[0].id,))
+            with scope_context(reader):
+                assert deposit_evidence_by_contract(store, {own.id}) == {
+                    own.id: [("own-claim", settled, Decimal("20.00"), "deposit", "deposit")]
+                }
+                assert report_service.compute_summary(store, today=due)["finance"]["openReceivables"] == 100.0
+                assert report_service.compute_summary(store, today=settled)["finance"]["openReceivables"] == 80.0
+            assert report_service.compute_summary(store, today=settled)["finance"]["openReceivables"] == 150.0
     finally:
         engine.dispose()
 

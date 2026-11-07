@@ -17,6 +17,7 @@ from backend.models import (
     PropertyCreate,
     TenantCreate,
     UnitCreate,
+    UtilityStatementPatch,
 )
 from backend.routers import billing
 from backend.services.data_snapshot import clear_business_data
@@ -142,3 +143,43 @@ def test_failure_during_freeze_rolls_back_all_documents_and_status(period, monke
         not s.snapshot_hash and not s.final_document and s.status == "draft"
         for s in billing._period_statements(period.id)
     )
+
+
+@pytest.mark.parametrize("with_document", [False, True])
+def test_finalization_preserves_already_sealed_legacy_rows_in_a_mixed_period(period, monkeypatch, with_document):
+    before = sorted(billing._period_statements(period.id), key=lambda row: row.id)
+    needs_status, already_finalized, fresh = before
+    legacy_document = {"title": "Unveränderter historischer Beleg", "facts": [["Einheit", "Alte Bezeichnung"]]} if with_document else None
+    archived_document = {"title": "Bereits abgeschlossener Altbeleg"}
+    fresh_document = json_safe(billing._live_statement_document(fresh, period))
+    expected_hash = statement_snapshot_hash([
+        needs_status.model_copy(update={"final_document": legacy_document}),
+        already_finalized.model_copy(update={"final_document": archived_document}),
+        fresh.model_copy(update={"final_document": fresh_document}),
+    ])
+    store._patch_entity("utility_statement", needs_status.id, UtilityStatementPatch(
+        final_document=legacy_document, snapshot_hash=expected_hash))
+    archived = store._patch_entity("utility_statement", already_finalized.id, UtilityStatementPatch(
+        final_document=archived_document, snapshot_hash=expected_hash, status="finalized"))
+    original = store._patch_entity
+    patches = {}
+
+    @wraps(original)
+    def track(entity_type, entity_id, patch):
+        if entity_type == "utility_statement":
+            assert entity_id not in patches
+            patches[entity_id] = patch.model_dump(exclude_unset=True)
+        return original(entity_type, entity_id, patch)
+
+    monkeypatch.setattr(store, "_patch_entity", track)
+    assert billing.finalize_billing_period(period.id).status == "finalized"
+    final = {row.id: row for row in billing._period_statements(period.id)}
+    assert set(patches) == {needs_status.id, fresh.id}
+    assert patches[needs_status.id] == {"status": "finalized"}
+    assert patches[fresh.id] == {"status": "finalized", "snapshot_hash": expected_hash,
+                                 "final_document": fresh_document}
+    assert final[needs_status.id].final_document == legacy_document
+    assert final[already_finalized.id] == archived
+    assert final[fresh.id].final_document == fresh_document
+    assert all(row.status == "finalized" and row.snapshot_hash == expected_hash for row in final.values())
+    assert statement_snapshot_hash(final.values()) == expected_hash

@@ -91,6 +91,35 @@ def test_whole_review_rechecks_all_10001_current_sources_in_one_scoped_projectio
     assert "WHERE" in queries[0][0]
 
 
+def test_review_booking_projection_respects_scope_and_committed_edits(own_sources, monkeypatch):
+    engine, store, account = own_sources
+    other = store.create_portfolio(PortfolioCreate(name="Separate review portfolio"))
+    foreign = store.create_account(AccountCreate(portfolio_id=other.id, name="Other bank", account_type="bank"))
+    add_sources(store, [
+        source_row(account, "visible", amount=Decimal("1.005"), tax_year=2026, payment_text="Visible cash"),
+        source_row(foreign, "hidden", amount=Decimal("9.99"), payment_text="Other cash"),
+    ])
+    boundary = AccessScope("projection-reader", "readonly", False, (account.portfolio_id,))
+    with scope_context(boundary):
+        expected = review_items(store, date(2026, 1, 3))
+        assert [item["entity_id"] for item in expected] == ["visible"]
+        assert "1,01 €" in expected[0]["detail"]
+
+    def unexpected_full_list():
+        pytest.fail("A clean review should read the scoped booking fields directly")
+
+    monkeypatch.setattr(store, "list_bookings", unexpected_full_list)
+    with scope_context(boundary):
+        assert review_items(store, date(2026, 1, 3)) == expected
+    with Session(engine) as writer:
+        writer.execute(update(BookingORM).where(BookingORM.id == "visible").values(amount=Decimal("2.005")))
+        writer.commit()
+    with scope_context(boundary):
+        current = review_items(store, date(2026, 1, 3))
+    assert [item["entity_id"] for item in current] == ["visible"]
+    assert "2,01 €" in current[0]["detail"]
+
+
 @pytest.mark.parametrize("case", ["missing", "foreign", "revoked", "empty_scope"])
 def test_current_source_boundary_rejects_before_any_unscoped_settlement_read(own_sources, monkeypatch, case):
     _, store, account = own_sources
@@ -229,6 +258,7 @@ def test_real_review_response_matches_the_canonical_path_byte_for_byte(client, y
 
     with monkeypatch.context() as patch:
         patch.setattr(review_service, "accounted_by_booking", canonical)
+        patch.setattr(review_service._ReviewReads, "review_bookings", review_service._ReviewReads.list_bookings)
         expected = client.get("/api/v1/review", params={"as_of": "2025-12-31"})
     concurrency.note_write()  # force the independently computed second response
     current = client.get("/api/v1/review", params={"as_of": "2025-12-31"})
