@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import time
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -323,6 +324,65 @@ def frozen_hook_environment():
     return environment, bundle
 
 
+def watch_initial_document(window, load_succeeded):
+    """Require the owned service and a successful load of its actual document."""
+    service_url = ""
+    loaded_url = ""
+
+    def service_ready(url):
+        nonlocal service_url
+        service_url = url
+
+    def loading_changed(info):
+        nonlocal loaded_url
+        loaded_url = info.url().toString() if info.status() == load_succeeded else ""
+
+    window.serviceReady.connect(service_ready)
+    window.web_view.page().loadingChanged.connect(loading_changed)
+
+    def ready():
+        local = window.policy.local
+        return local(service_url) and local(loaded_url) and local(window.web_view.url().toString())
+
+    return ready
+
+
+def spin_qt(app, predicate, timeout=60, *, deadline=None):
+    end = time.monotonic() + timeout
+    if deadline is not None:
+        end = min(end, deadline)
+    while time.monotonic() < end:
+        app.processEvents()
+        if (deadline is None or time.monotonic() < end) and predicate():
+            return
+        time.sleep(0.02)
+    raise TimeoutError("Embedded application check timed out")
+
+
+def javascript_qt(app, window, code, *, deadline=None):
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("Embedded application check timed out")
+    response = []
+    window.web_view.page().runJavaScript(code, lambda value: response.append(value))
+    spin_qt(app, lambda: bool(response), timeout=10, deadline=deadline)
+    return response[0]
+
+
+def wait_javascript_qt(app, window, code, predicate=bool, timeout=60, *, ready=None):
+    deadline = time.monotonic() + timeout if ready is not None else None
+    value = None
+
+    def check():
+        nonlocal value
+        if ready is not None and not ready():
+            return False
+        value = javascript_qt(app, window, code, deadline=deadline)
+        return predicate(value)
+
+    spin_qt(app, check, timeout, deadline=deadline)
+    return value
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dist", type=Path)
@@ -364,6 +424,7 @@ def main(argv=None):
         for module in (qt[0], qt[3], qt[4]):
             if not Path(module.__file__).resolve(strict=True).is_relative_to(bundle):
                 raise RuntimeError("The frozen UI check loaded Qt from outside its actual bundle")
+    from PySide6.QtWebEngineCore import QWebEngineLoadingInfo
     from PySide6.QtWidgets import QApplication
 
     class SmokeDialogs(standalone.NativeDialogs):
@@ -379,34 +440,16 @@ def main(argv=None):
                               + (["--demo"] if options.demo else []))
     dialogs = SmokeDialogs()
     window = standalone.create_window(args, data, dialogs=dialogs)
+    initial_ready = watch_initial_document(window, QWebEngineLoadingInfo.LoadStatus.LoadSucceededStatus)
     window.resize(1440, 1000)
     window.show()
     checks: dict[str, bool] = {}
     result = {"status": "failed", "profile": "isolated synthetic data", "packaged_runtime": frozen,
               "execution": "frozen-cli-selfcheck" if frozen else "source-runtime", "checks": checks}
 
-    def spin(predicate, timeout=60):
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            app.processEvents()
-            if predicate():
-                return
-            time.sleep(0.02)
-        raise TimeoutError("Embedded application check timed out")
-
-    def javascript(code):
-        response = []
-        window.web_view.page().runJavaScript(code, lambda value: response.append(value))
-        spin(lambda: bool(response), timeout=10)
-        return response[0]
-
-    def wait_js(code, predicate=lambda value: bool(value), timeout=60):
-        value = [None]
-        def check():
-            value[0] = javascript(code)
-            return predicate(value[0])
-        spin(check, timeout)
-        return value[0]
+    spin = partial(spin_qt, app)
+    javascript = partial(javascript_qt, app, window)
+    wait_js = partial(wait_javascript_qt, app, window)
 
     def paint():
         for _ in range(40):
@@ -415,11 +458,12 @@ def main(argv=None):
 
     try:
         if options.demo:
-            wait_js("Boolean(document.querySelector('#login-username') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Demozugang übernehmen'))", timeout=240)
+            wait_js("Boolean(document.querySelector('#login-username') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Demozugang übernehmen'))", timeout=240, ready=initial_ready)
             checks["demo_login_page_in_embedded_renderer"] = True
         else:
-            wait_js("Boolean(document.querySelector('#login-username') && document.querySelector('#login-full-name'))", timeout=120)
+            wait_js("Boolean(document.querySelector('#login-username') && document.querySelector('#login-full-name'))", timeout=120, ready=initial_ready)
             checks["initial_setup_page_in_embedded_renderer"] = True
+        checks["initial_loopback_document_loaded"] = True
         paint()
         window.grab().save(str(output / ("01-demo-anmeldung.png" if options.demo else "01-einrichtung.png")))
         if options.demo:
