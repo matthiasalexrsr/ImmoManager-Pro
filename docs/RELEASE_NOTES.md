@@ -1,8 +1,21 @@
-# Noch nicht veröffentlichter Härtungsstand
+# ImmoManager Pro 2.0.0-beta.2
 
-Diese Änderungen gehören zum neuen Quellstand und ändern keine bereits
-veröffentlichten Tags oder Installationsdateien. Die Freigabe jedes neuen Pakets
-benötigt CI, native Abnahme und den Härtungsworkflow auf genau seinem Commit.
+Diese Beta enthält die Desktop-Anwendung und die Demo Baden-Württemberg.
+Pakete stehen für Windows x64, macOS Intel und Apple Silicon sowie Linux x64
+und ARM64 bereit.
+
+- **Prüfliste und Berichtsübersicht** laden große Bestände mit weniger
+  Datenbankabfragen. Die Berechnungen und die Zugriffsrechte bleiben erhalten.
+- **Nebenkostenabrechnungen** speichern den Abschluss und alle zugehörigen
+  Abrechnungsdaten in einem Vorgang. Schlägt das Speichern fehl, bleibt die
+  Abrechnung im vorherigen Zustand.
+- **Dashboard und Buchungen:** Verlinkte Aufgaben, Fristen und Hinweise öffnen
+  den zugehörigen Eintrag. In Buchungen bleibt die Seitennavigation auch beim
+  Wiederherstellen einer gespeicherten Ansicht bedienbar.
+- **Desktop-Abnahme:** Der erste Start wird im eigenständigen Fenster auf allen
+  fünf Zielplattformen geprüft, einschließlich Intel-Macs.
+
+## Sicherheit und Betrieb
 
 - **Anmeldung:** Zwei-Faktor-Versuche werden gemeinsam je Konto begrenzt und
   gültige Codes nur einmal angenommen. Gleichzeitige Ersteinrichtungen erzeugen
@@ -30,10 +43,10 @@ benötigt CI, native Abnahme und den Härtungsworkflow auf genau seinem Commit.
   Pakete. Fehlende Nachweise werden nicht durch positive Testattrappen ersetzt.
 
 Das konkrete Update-/Restoreverfahren und die Auslieferungsgrenzen stehen in
-[Kommerzielle Auslieferung](COMMERCIAL_RELEASE.md) und
-[Betrieb und Sicherung](OPERATIONS_BACKUP_SECRETS_20261008.md).
+[Kommerzielle Auslieferung](https://github.com/matthiasalexrsr/ImmoManager-Pro/blob/v2.0.0-beta.2/docs/COMMERCIAL_RELEASE.md) und
+[Betrieb und Sicherung](https://github.com/matthiasalexrsr/ImmoManager-Pro/blob/v2.0.0-beta.2/docs/OPERATIONS_BACKUP_SECRETS_20261008.md).
 
-# ImmoManager Pro 2.0.0-beta.1
+## Funktionsumfang und Einrichtung seit 2.0.0-beta.1
 
 **Beta mit eigenständiger Desktop-Anwendung und Demo Baden-Württemberg.** Die Verwaltung öffnet sich im eigenen Programmfenster oder im Standardbrowser. Der Installer bietet beide Startarten an. Für den Desktopbetrieb ist kein installierter Browser und kein WebView2 erforderlich. Sobald 2.0.0 erscheint, bietet die Update-Prüfung es dieser Installation an.
 
