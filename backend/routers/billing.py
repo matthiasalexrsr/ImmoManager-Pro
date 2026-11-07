@@ -531,12 +531,15 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
             detail="Finalisierung nicht möglich: Die Einzelabrechnungen sind veraltet, bitte neu erzeugen",
         )
 
-    # Freeze the document first: the hash covers it, later edits of names cannot change it.
+    # Prepare the exact JSON document covered by the hash before writing.
+    documents: dict[str, Any] = {}
     frozen_statements = []
     for stmt in period_statements:
         if not stmt.snapshot_hash:
-            stmt = store._patch_entity("utility_statement", stmt.id, UtilityStatementPatch(
-                final_document=json_safe(_live_statement_document(stmt, period))))
+            document = UtilityStatementPatch(final_document=json_safe(_live_statement_document(stmt, period)))
+            fields = document.model_dump(exclude_unset=True)
+            stmt = UtilityStatement.model_validate({**stmt.model_dump(), **fields})
+            documents[stmt.id] = fields["final_document"]
         frozen_statements.append(stmt)
     snapshot = _compute_snapshot_hash(period_id, frozen_statements)
     for stmt in frozen_statements:
@@ -544,7 +547,7 @@ def finalize_billing_period(period_id: str) -> BillingPeriod:
         if stmt.status != "finalized":
             patch_data["status"] = "finalized"
         if not stmt.snapshot_hash:
-            patch_data["snapshot_hash"] = snapshot
+            patch_data.update(final_document=documents[stmt.id], snapshot_hash=snapshot)
         if patch_data:
             store._patch_entity("utility_statement", stmt.id, UtilityStatementPatch(**patch_data))
 
