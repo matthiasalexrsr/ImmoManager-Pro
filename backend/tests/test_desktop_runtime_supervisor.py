@@ -9,8 +9,108 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.standalone_policy import LocalOrigin
 from scripts import check_desktop_runtime as check
 from tools.desktop_bundle import required_groups
+
+
+class StartupSignal:
+    def __init__(self):
+        self.callbacks = []
+
+    def connect(self, callback):
+        self.callbacks.append(callback)
+
+    def emit(self, value):
+        for callback in self.callbacks:
+            callback(value)
+
+
+@pytest.fixture
+def startup_probe(monkeypatch):
+    origin = LocalOrigin.from_url("http://127.0.0.1:18791")
+    state = SimpleNamespace(time=0.0, url="about:blank", event_queue=[], calls=[], respond=False)
+    service_signal, loading_signal = StartupSignal(), StartupSignal()
+
+    def sleep(seconds):
+        state.time += seconds
+
+    def pump():
+        if state.event_queue:
+            state.event_queue.pop(0)()
+
+    def run_script(code, callback):
+        state.calls.append((code, state.url, state.time))
+        if state.respond:
+            callback(True)
+
+    def load(status, reported_url, current_url):
+        state.url = current_url
+        loading_signal.emit(SimpleNamespace(status=lambda: status,
+                                            url=lambda: SimpleNamespace(toString=lambda: reported_url)))
+
+    monkeypatch.setattr(check, "time", SimpleNamespace(monotonic=lambda: state.time, sleep=sleep))
+    view = SimpleNamespace(
+        url=lambda: SimpleNamespace(toString=lambda: state.url),
+        page=lambda: SimpleNamespace(loadingChanged=loading_signal, runJavaScript=run_script),
+    )
+    app = SimpleNamespace(processEvents=pump)
+    window = SimpleNamespace(policy=origin, web_view=view, serviceReady=service_signal)
+    return state, app, window, load
+
+
+@pytest.mark.parametrize("synchronize", [False, True])
+def test_startup_does_not_send_setup_script_to_previous_document(startup_probe, synchronize):
+    state, app, window, load = startup_probe
+    local = window.policy.url
+    foreign = "http://127.0.0.1:18792/"
+    ready = check.watch_initial_document(window, "success") if synchronize else None
+
+    def complete():
+        load("success", local, local)
+        state.respond = True
+
+    state.event_queue[:] = [
+        lambda: None,
+        lambda: window.serviceReady.emit(foreign),
+        lambda: load("success", local, local),  # No signal from the owned service yet.
+        lambda: load("started", local, local),
+        lambda: window.serviceReady.emit(local),
+        lambda: load("success", "about:blank", local),
+        lambda: load("success", foreign, local),
+        lambda: load("failure", local, local),
+        lambda: load("success", local, foreign),
+        complete,
+    ]
+    if synchronize:
+        assert check.wait_javascript_qt(app, window, "test setup fields", timeout=120, ready=ready) is True
+        assert [(code, url) for code, url, _ in state.calls] == [("test setup fields", local)]
+        assert not state.event_queue
+    else:
+        # The old ordering sends once to the blank renderer and times out even
+        # though the owned page subsequently loaded.
+        with pytest.raises(TimeoutError):
+            check.wait_javascript_qt(app, window, "test setup fields", timeout=120)
+        assert state.calls == [("test setup fields", "about:blank", 0.0)]
+        assert not state.event_queue
+        assert 10 <= state.time < 10.03
+
+
+def test_initial_callback_shares_the_remaining_budget_and_is_not_retried(startup_probe):
+    state, app, window, load = startup_probe
+    local = window.policy.url
+    ready = check.watch_initial_document(window, "success")
+
+    def finish_late():
+        state.time = 119.9
+        window.serviceReady.emit(local)
+        load("success", local, local)
+
+    state.event_queue[:] = [finish_late]
+    with pytest.raises(TimeoutError):
+        check.wait_javascript_qt(app, window, "test setup fields", timeout=120, ready=ready)
+    assert state.calls == [("test setup fields", local, 119.9)]
+    assert 120 <= state.time < 120.03
 
 
 def native_bundle(tmp_path, platform):
