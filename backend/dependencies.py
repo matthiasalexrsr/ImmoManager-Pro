@@ -17,6 +17,7 @@ Error handling:
 import contextvars
 import logging
 import threading
+from collections import deque
 from collections.abc import Generator
 from typing import Any
 from uuid import uuid4
@@ -135,6 +136,25 @@ def release_request_read_connection(source: Any) -> bool:
     return True
 
 
+def _read_expression_nodes(expression: Any) -> Generator[Any, None, None]:
+    """Expand each live SQL node once within this one guard execution.
+
+    Scope queries share subexpressions. Keep their objects alive so identities
+    cannot be recycled, and retain SQLAlchemy's default child traversal. Nothing
+    survives this execution or substitutes for the caller's safety predicate.
+    """
+    pending = deque([expression])
+    seen: dict[int, Any] = {}
+    while pending:
+        node = pending.popleft()
+        identifier = id(node)
+        if identifier in seen:
+            continue
+        seen[identifier] = node
+        yield node
+        pending.extend(node.get_children())
+
+
 def _guard_request_read_connection(db: Any, transaction: Any, connection: Any) -> None:
     """Track SQL on exactly the request connection, including direct Connection DML.
 
@@ -143,7 +163,6 @@ def _guard_request_read_connection(db: Any, transaction: Any, connection: Any) -
     existing cache guard's outer commit/rollback fence.
     """
     from sqlalchemy import event
-    from sqlalchemy.sql import visitors
     from sqlalchemy.sql.elements import TextClause
     from sqlalchemy.sql.functions import FunctionElement
 
@@ -168,7 +187,7 @@ def _guard_request_read_connection(db: Any, transaction: Any, connection: Any) -
         readonly = expression is not None and getattr(expression, "is_select", False) and not any(
             getattr(node, "is_dml", False) or isinstance(node, TextClause)
             or (isinstance(node, FunctionElement) and not diagnostic and not read_function(node))
-            or getattr(node, "_for_update_arg", None) is not None for node in visitors.iterate(expression))
+            or getattr(node, "_for_update_arg", None) is not None for node in _read_expression_nodes(expression))
         if not readonly:
             from . import concurrency
 
