@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -51,14 +51,13 @@ export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyN
     return () => { controller.abort(); window.removeEventListener('workspace-owner', invalidate); window.removeEventListener('workspace-logout', invalidate); };
   }, [meterId, revision, attempt, actorId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previous = document.activeElement;
     const dialog = dialogRef.current;
     return () => {
       if (previous?.isConnected && (document.activeElement === document.body || dialog?.contains(document.activeElement))) previous.focus();
     };
   }, []);
-  useEffect(() => { if (!covered) closeRef.current?.focus(); }, [covered]);
   useEffect(() => {
     // a form opened from here takes Escape for itself
     const keydown = event => {
@@ -84,8 +83,13 @@ export default function MeterHistory({ meterId, meterLabel, unitLabel, propertyN
   // The authorized parent's history is the authority for membership. Never
   // fetch a supplied child ID from another meter and display it in this one.
   const selectedReading = focusedReadingId ? readings.find(row => row.id === focusedReadingId) : null;
-  useEffect(() => {
-    if (selectedReading && !covered) { readingRef.current?.focus(); readingRef.current?.scrollIntoView?.({ block: 'nearest' }); }
+  useLayoutEffect(() => {
+    if (covered) return;
+    // Focus the authorized destination in the same commit that exposes it.
+    // A single owner also prevents a later default focus from replacing it.
+    const target = selectedReading ? readingRef.current : closeRef.current;
+    target?.focus();
+    if (selectedReading) target?.scrollIntoView?.({ block: 'nearest' });
   }, [selectedReading?.id, covered]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="modal-overlay" role="presentation"
