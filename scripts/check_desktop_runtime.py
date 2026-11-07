@@ -154,6 +154,90 @@ def verify_ai_image_worker(output: Path) -> dict[str, Any]:
     return receipt
 
 
+def verify_ai_image_worker_repeats(output: Path, reference: dict[str, Any]) -> dict[str, Any]:
+    """Three source-only pairs; every call must start a fresh owned worker."""
+    from unittest.mock import patch
+
+    from backend.services.ai_document_images import render_page_images
+    from backend.services.e_invoice import validator
+
+    receipt: dict[str, Any] = {"schema": "immomanager-ai-image-repeat-smoke/1", "packaged_runtime": False,
+        "pairs_expected": 3, "pairs_completed": 0, "worker_starts": 0,
+        "terminated_workers": 0, "zero_exit_workers": 0, "unique_workers": 0, "cases": [], "status": "running"}
+    path = output / "ai-image-worker-repeat-smoke.json"
+    processes: list[Any] = []
+    original_transport = validator.CliProcess
+    failure: BaseException | None = None
+
+    def transport(*args, **kwargs):
+        owned = original_transport(*args, **kwargs)
+        processes.append(owned.process)
+        return owned
+
+    def exit_codes():
+        values = []
+        for owned in processes:
+            try:
+                values.append(owned.poll())
+            except Exception:
+                values.append(None)  # Missing observation can never pass below.
+        return values
+
+    try:
+        assert not getattr(sys, "frozen", False) and reference.get("packaged_runtime") is False
+        assert set(reference["cases"]) == {"image/png", "application/pdf"}
+        # The wrapper observes actual starts without changing any transport,
+        # environment, memory/process/time budget or cleanup argument.
+        with patch.object(validator, "CliProcess", transport):
+            for pair in range(1, 4):
+                for name, mime, pixels in (("ai-worker-smoke.png", "image/png", [8, 4]),
+                                          ("ai-worker-smoke.pdf", "application/pdf", [300, 150])):
+                    receipt["active_case"] = {"pair": pair, "mime": mime}
+                    content = (output / name).read_bytes()
+                    expected = reference["cases"][mime]
+                    digest = hashlib.sha256(content).hexdigest()
+                    assert digest == expected["input_sha256"] and expected["status"] == "rendered"
+                    before = len(processes)
+                    result = render_page_images(content, mime, name, 1)
+                    assert len(processes) == before + 1, "Each repeat must start one fresh owned worker"
+                    assert all(processes[-1] is not owned for owned in processes[:-1]), "A worker must never be reused"
+                    assert type(processes[-1].poll()) is int and processes[-1].poll() == 0
+                    assert result["pages_total"] == result["pages_sent"] == len(result["images"]) == 1
+                    assert result["omissions"] == []
+                    image = result["images"][0]
+                    rendered = base64.b64decode(image["data_base64"], validate=True)
+                    actual_pixels = [int.from_bytes(rendered[16:20], "big"), int.from_bytes(rendered[20:24], "big")]
+                    assert image["mime"] == "image/png" and rendered.startswith(b"\x89PNG\r\n\x1a\n")
+                    assert actual_pixels == pixels == expected["pixels"]
+                    image_digest = hashlib.sha256(rendered).hexdigest()
+                    assert image_digest == expected["image_sha256"] and len(rendered) == expected["image_bytes"]
+                    assert hashlib.sha256((output / name).read_bytes()).hexdigest() == digest
+                    receipt["cases"].append({"pair": pair, "mime": mime, "input_sha256": digest,
+                        "image_sha256": image_digest, "image_bytes": len(rendered), "pixels": actual_pixels,
+                        "pages_total": 1, "pages_sent": 1, "original_unchanged": True})
+                receipt["pairs_completed"] = pair
+        codes = exit_codes()
+        assert len(processes) == len({id(owned) for owned in processes}) == 6
+        assert all(type(code) is int and code == 0 for code in codes)
+        receipt["status"] = "passed"
+        return receipt
+    except BaseException as error:
+        failure = error
+        receipt["status"] = "failed"
+        raise
+    finally:
+        codes = exit_codes()
+        receipt.update(worker_starts=len(processes), unique_workers=len({id(owned) for owned in processes}),
+            terminated_workers=sum(type(code) is int for code in codes),
+            zero_exit_workers=sum(type(code) is int and code == 0 for code in codes))
+        try:
+            path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            if failure is None:
+                raise
+            failure.add_note("The separate repeat smoke receipt could not be written.")
+
+
 def packaged_cli(provided, *, platform=None):
     """Validate the native bundle before executing its fixed diagnostic command."""
     platform = sys.platform if platform is None else platform
@@ -395,7 +479,10 @@ def main(argv=None):
         spin(lambda: bool(printed), 60)
         assert printed[0] and pdf.read_bytes().startswith(b"%PDF-")
         checks["embedded_pdf_print_output"] = True
-        result["ai_image_worker"] = verify_ai_image_worker(output)
+        worker_reference = verify_ai_image_worker(output)
+        result["ai_image_worker"] = worker_reference
+        if not frozen:
+            result["ai_image_worker_repeat"] = verify_ai_image_worker_repeats(output, worker_reference)
         checks["isolated_ai_image_worker"] = True
         result["ui_checks_completed"] = True
     finally:
