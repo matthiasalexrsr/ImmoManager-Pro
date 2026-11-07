@@ -155,7 +155,12 @@ def test_stop_reaps_python_launcher_and_child(tmp_path, monkeypatch, hard):
         else:
             # An orphan can remain a zombie until the OS reaps it; it must not run.
             stat = Path(f"/proc/{child_pid}/stat")
-            assert not stat.exists() or stat.read_text().split()[2] == "Z"
+            try:
+                status = stat.read_text()
+            except FileNotFoundError:
+                pass
+            else:
+                assert status.split()[2] == "Z"
     finally:
         if proc.poll() is None:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True,
