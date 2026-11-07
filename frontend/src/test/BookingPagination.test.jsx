@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Bookings from '../pages/Bookings';
@@ -138,6 +139,59 @@ describe('bounded booking pages', () => {
     expect(screen.getByText('Seite ab 25')).toBeVisible();
     expect(fixture.workspace.get).toHaveBeenCalledTimes(1);
     expect(new URLSearchParams(api.get.mock.calls.at(-1)[0].split('?')[1]).get('skip')).toBe('25');
+  });
+
+  it.each(['commit', 'batched'])('preserves an enabled next-page click during %s restoration', async timing => {
+    fixture.user = { user: { id: 'owner' } };
+    let restoreView;
+    fixture.workspace.get.mockReturnValue(new Promise(resolve => { restoreView = resolve; }));
+    let releaseNext;
+    const requests = [];
+    const requestPage = api.get.getMockImplementation();
+    api.get.mockImplementation((path, options) => {
+      const params = new URLSearchParams(path.split('?')[1]);
+      if (params.get('skip') !== '25') return requestPage(path);
+      requests.push(options.signal);
+      return new Promise(resolve => { releaseNext = () => resolve(reply(params)); });
+    });
+    const saved = { revision: 4, state: {
+      search: '', sort: { key: 'booking_date', direction: 'desc' }, page_size: 25, page_cursor: '0', column_filters: {},
+    } };
+    let clickOnCommit = false;
+    let clicked = false;
+    const clickNext = () => {
+      const button = screen.getByRole('button', { name: 'Weiter', exact: true });
+      expect(button).toBeEnabled();
+      clicked = true;
+      button.click();
+    };
+    render(<Profiler id="bookings" onRender={() => {
+      if (clickOnCommit) {
+        clickOnCommit = false;
+        clickNext();
+      }
+    }}><MemoryRouter><Bookings /></MemoryRouter></Profiler>);
+    const table = await screen.findByRole('table', { name: 'Buchungen' });
+    await waitFor(() => expect(fixture.workspace.get).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      if (timing === 'commit') clickOnCommit = true;
+      restoreView(saved);
+      if (timing === 'batched') {
+        await Promise.resolve();
+        clickNext();
+      }
+    });
+    expect(clicked).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].aborted).toBe(false);
+    expect(table).toBeInTheDocument();
+    expect(table).not.toBeVisible();
+    await act(async () => releaseNext());
+    expect(await screen.findByText('Seite ab 25')).toBeVisible();
+    expect(screen.getByRole('table', { name: 'Buchungen' })).toBe(table);
+    await waitFor(() => expect(fixture.workspace.put.mock.calls.some(([, , command]) =>
+      command.state.page_cursor === '1')).toBe(true), { timeout: 2500 });
+    expect(fixture.workspace.get).toHaveBeenCalledTimes(1);
   });
 
   it('reloads a conflicting authenticated server view into the booking controller and resumes saving', async () => {
