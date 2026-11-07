@@ -229,15 +229,22 @@ def deposit_evidence_by_contract(store, contract_ids):
 
         from ..db.deposit_models import DepositSettlementItemORM, DepositSettlementORM
         from ..db.orm_models import DepositORM
+        deposits, settlements, items = (
+            DepositORM.__table__, DepositSettlementORM.__table__, DepositSettlementItemORM.__table__
+        )
+        joined = items.join(settlements, items.c.settlement_id == settlements.c.id).join(
+            deposits, deposits.c.id == settlements.c.deposit_id
+        )
         keys = sorted(contract_ids)
         for start in range(0, len(keys), 500):
-            query = (select(DepositORM.contract_id, DepositSettlementItemORM.receivable_id, DepositSettlementORM.settlement_date,
-                            DepositSettlementItemORM.amount, DepositORM.id)
-                     .join(DepositSettlementORM, DepositSettlementItemORM.settlement_id == DepositSettlementORM.id)
-                     .join(DepositORM, DepositORM.id == DepositSettlementORM.deposit_id)
-                     .where(DepositORM.contract_id.in_(keys[start:start + 500]), DepositSettlementORM.finalized_at.is_not(None),
-                            DepositSettlementItemORM.kind == "receivable", DepositSettlementItemORM.receivable_id.is_not(None))
-                     .order_by(DepositSettlementItemORM.id))
+            # This projection reads no ORM entities or relationships. The
+            # session scopes each joined table once, without ORM loader criteria.
+            query = (select(deposits.c.contract_id, items.c.receivable_id, settlements.c.settlement_date,
+                            items.c.amount, deposits.c.id)
+                     .select_from(joined)
+                     .where(deposits.c.contract_id.in_(keys[start:start + 500]), settlements.c.finalized_at.is_not(None),
+                            items.c.kind == "receivable", items.c.receivable_id.is_not(None))
+                     .order_by(items.c.id))
             for contract_id, key, day, amount, source in store.db.execute(query):
                 result[contract_id].append((key, day, money(amount), "deposit", source))
         return dict(result)
@@ -252,12 +259,13 @@ def deposit_evidence_by_contract(store, contract_ids):
 
 class ResidualReader:
     """One report's source graph, grouped once; no cross-request or cross-user cache."""
-    def __init__(self, store):
+    def __init__(self, store, *, known_claims: list | None = None):
         self.store = store
         self.claims: dict[str, list] = defaultdict(list)
         self.edges: dict[str, list] = defaultdict(list)
         self.booking_edges: dict[str, list] = defaultdict(list)
-        claims = {r.id: r for r in store.list_receivables()}
+        # A caller can supply its complete, already scoped claim read.
+        claims = {r.id: r for r in (store.list_receivables() if known_claims is None else known_claims)}
         for claim in claims.values():
             self.claims[claim.contract_id].append(claim)
         edges = settlement_rows(store)

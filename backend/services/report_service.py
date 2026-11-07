@@ -148,10 +148,14 @@ def _receivables(store: Any, flt: FinanceFilter) -> list:
     """Receivables of the matching contracts, due in the period."""
     dims = Dimensions(store, flt)
     contracts = _contracts_by_id(store)
+    return _matching_receivables(store.list_receivables(), dims, contracts)
+
+
+def _matching_receivables(receivables: list, dims: Dimensions, contracts: dict[str, Any]) -> list:
     selected = []
-    for receivable in store.list_receivables():
+    for receivable in receivables:
         contract = contracts.get(receivable.contract_id)
-        if contract is None or not dims.contract_matches(contract) or not flt.in_period(receivable.due_date):
+        if contract is None or not dims.contract_matches(contract) or not dims.flt.in_period(receivable.due_date):
             continue
         selected.append(receivable)
     return selected
@@ -166,9 +170,10 @@ def compute_summary(store: Any, flt: FinanceFilter | None = None, today: date | 
     today = today or local_today()
     dims, view = Dimensions(store, flt), OwnerView(store, flt)
     contracts = _contracts_by_id(store)
-    receivables = _receivables(store, flt)
+    claims = store.list_receivables()
+    receivables = _matching_receivables(claims, dims, contracts)
     from .receivable_residuals import ResidualReader
-    residual_reader = ResidualReader(store)
+    residual_reader = ResidualReader(store, known_claims=claims)
     # an owner's part of what is open, on the day each claim is due
     balances = {r.id: view.contract(contracts[r.contract_id], residual_reader.balance(r, today), r.due_date)
                 for r in receivables}

@@ -20,6 +20,7 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 from urllib.parse import quote
 
@@ -49,6 +50,34 @@ class _ReviewReads(CachedReads):
     def __init__(self, store: Any):
         super().__init__(store)
         self._adjustments: list[Any] | None = None
+
+    def review_bookings(self) -> list[Any]:
+        """Read the review and allocation inputs as scoped, immutable SQL rows."""
+        from sqlalchemy import select
+
+        from ..db.orm_models import BookingORM
+        from ..models import Booking
+        from .receivable_residuals import _whole_visible_source_read_allowed
+
+        # Use the same committed-session boundary as the review's source recheck.
+        if not _whole_visible_source_read_allowed(self._store):
+            return self.list_bookings()
+        booking = BookingORM.__table__.c
+        query = select(booking.id, booking.account_id, booking.category_id, booking.unit_id, booking.tenant_id,
+                       booking.booking_date, booking.amount, booking.payment_text, booking.reverses_booking_id,
+                       booking.tax_year)
+        rows = list(self.db.execute(query))
+        for row in rows:
+            key, account, category, unit, tenant, _, amount, payment_text, reverses, tax_year = row
+            if (type(key) is not str or not key or type(account) is not str
+                    or type(amount) not in (int, float) or not isfinite(amount)
+                    or any(value is not None and type(value) is not str
+                           for value in (category, unit, tenant, payment_text, reverses))):
+                return self.list_bookings()
+            if tax_year is not None:
+                # An explicitly assigned tax year still goes through the booking's date validator.
+                Booking.model_validate(row._mapping)
+        return rows
 
     def list_rent_adjustments(self) -> list[Any]:
         # rent_change_kinds asks for the same rows per comparative increase.
@@ -247,7 +276,7 @@ def review_items(store: Any, today: date) -> list[dict]:
                               "Eigentümer und steht dort unter „Ohne Eigentümer“.",
                     "entity_type": "property", "entity_id": prop.id, "link": f"/properties/{prop.id}"})
 
-    bookings = store.list_bookings()
+    bookings = store.review_bookings()
     credited = accounted_by_booking(store, bookings, whole_visible=True)
     # a reversal is decided with the booking it cancels: their rests and amounts add up
     reversed_amount: dict[str, Decimal] = {}
