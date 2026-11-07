@@ -34,12 +34,17 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-bank.txt -c constraints.txt
           python -m pip check
       - name: Verify the stress harness and customer promotion boundaries
+        id: harness
         run: python -m pytest tools/xstress backend/tests/test_release_stress_harness.py backend/tests/test_release_artifacts.py backend/tests/test_release_customer_readiness.py backend/tests/test_macos_customer_verification.py backend/tests/test_customer_macos_pipeline.py -q --tb=short --junitxml=artifacts/release-hardening/contracts.xml
       - name: Run actual five-year synthetic management and failure recovery
         run: python -m tools.xstress.run --units 120 --years 5 --seed 2026 --skip ui --out artifacts/release-hardening/xstress
+      # These suites use their own profiles. Preserve their results when another
+      # suite fails, without suppressing any failure of the job.
       - name: Run bounded concurrent demo, parser, queue and restart acceptance
+        if: ${{ !cancelled() && steps.harness.outcome == 'success' }}
         run: python scripts/release_stress.py --output artifacts/release-hardening/parallel --workers 4 --scale-tasks 512 --operations 640 --assistant-runs 12 --soak-seconds 30 --require-clean-source
       - name: Run repeated German rules and controlled provider protocol fault corpus
+        if: ${{ !cancelled() && steps.harness.outcome == 'success' }}
         run: python scripts/release_stress_ai_corpus.py --output artifacts/release-hardening/ai-corpus --repetitions 3 --require-clean-source
       - name: Preserve completed and failed hardening evidence
         if: always()
