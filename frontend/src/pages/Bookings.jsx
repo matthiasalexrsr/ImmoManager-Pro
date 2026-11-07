@@ -82,7 +82,7 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const [sortBy, setSortBy] = useState('booking_date'), [sortOrder, setSortOrder] = useState('desc');
   const [pageInfo, setPageInfo] = useState({ total: 0, summary: {} });
   const [columnDraft, setColumnDraft] = useState({}), [columnFilters, setColumnFilters] = useState({});
-  const restoredPage = useRef(0), [viewGeneration, setViewGeneration] = useState(0);
+  const restoredPage = useRef(null), [viewGeneration, setViewGeneration] = useState(0);
   const [loadError, setLoadError] = useState(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [modal, setModal] = useState(null);
@@ -144,7 +144,16 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
   const sourceKey = JSON.stringify(sourceFilters);
   const appliedColumnsKey = JSON.stringify(columnFilters);
   useEffect(() => { if (!owner && sortBy === 'owner_part') setSortBy('amount'); }, [owner, sortBy]);
-  useEffect(() => { setPage(restoredPage.current); restoredPage.current = 0; }, [sourceKey, accountId, search, sortBy, sortOrder, pageSize, filter, appliedColumnsKey, viewGeneration]);
+  useEffect(() => {
+    const restore = restoredPage.current;
+    restoredPage.current = null;
+    if (restore) {
+      // The user may have paged while the saved view was being applied.
+      setPage(current => current === restore.before ? restore.target : current);
+    } else {
+      setPage(0);
+    }
+  }, [sourceKey, accountId, search, sortBy, sortOrder, pageSize, filter, appliedColumnsKey, viewGeneration]);
   const query = new URLSearchParams(Object.fromEntries(Object.entries(sourceFilters).filter(([key, value]) => value && key !== 'flow')));
   if (accountId) query.set('account_id', accountId);
   query.set('search', search); query.set('flow', filter); query.set('sort_by', sortBy); query.set('sort_order', sortOrder);
@@ -619,7 +628,9 @@ function BookingsWorkspace({ bookingId, accountId, onClearAccount, sourceFilters
         viewConfig={{ search, sort: { key: sortBy, direction: sortOrder }, page_size: pageSize, page_cursor: String(page), column_filters: { ...columnFilters, ...sourceFilters, account_id: accountId || '', workflow_filter: filter } }}
         onApplyView={config => {
           const restored = Object.fromEntries(Object.entries(config.column_filters || {}).filter(([key]) => !Object.hasOwn(sourceFilters, key) && !['account_id', 'workflow_filter'].includes(key) && columns.some(column => column.key === key && column.filterType)));
-          restoredPage.current = /^\d+$/.test(config.page_cursor || '') ? Number(config.page_cursor) : 0; setViewGeneration(value => value + 1);
+          const target = /^\d+$/.test(config.page_cursor || '') ? Number(config.page_cursor) : 0;
+          restoredPage.current = { before: page, target };
+          setViewGeneration(value => value + 1);
           setColumnDraft(restored); setColumnFilters(restored); setFilter(config.column_filters?.workflow_filter || 'all'); setSearchInput(config.search || ''); setSearch(config.search || '');
           setSortBy(config.sort?.key || 'booking_date'); setSortOrder(config.sort?.direction || 'desc'); setPageSize([10,25,50,100].includes(config.page_size) ? config.page_size : 25); onApplySourceFilters(config);
         }}
