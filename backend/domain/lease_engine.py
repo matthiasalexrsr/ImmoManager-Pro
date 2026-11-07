@@ -373,11 +373,14 @@ class LeaseEngine:
 
         allocations: list[ReceivablePaymentAllocation] = []
 
+        cursor = 0
         for payment in payment_rows:
             while payment["remaining"] > Decimal("0.00"):  # type: ignore[operator]
-                target = next((row for row in receivable_rows if row["remaining"] > Decimal("0.00")), None)  # type: ignore[operator]
-                if target is None:
+                while cursor < len(receivable_rows) and not receivable_rows[cursor]["remaining"] > Decimal("0.00"):  # type: ignore[operator]
+                    cursor += 1
+                if cursor == len(receivable_rows):
                     break
+                target = receivable_rows[cursor]
 
                 amount = min(payment["remaining"], target["remaining"])  # type: ignore[call-overload]
                 allocations.append(
