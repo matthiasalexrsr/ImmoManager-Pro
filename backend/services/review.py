@@ -248,7 +248,7 @@ def review_items(store: Any, today: date) -> list[dict]:
                     "entity_type": "property", "entity_id": prop.id, "link": f"/properties/{prop.id}"})
 
     bookings = store.list_bookings()
-    credited = accounted_by_booking(store, bookings)
+    credited = accounted_by_booking(store, bookings, whole_visible=True)
     # a reversal is decided with the booking it cancels: their rests and amounts add up
     reversed_amount: dict[str, Decimal] = {}
     reversed_rest: dict[str, Decimal] = {}

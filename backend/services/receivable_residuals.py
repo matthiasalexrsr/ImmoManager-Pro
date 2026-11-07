@@ -9,6 +9,7 @@ import json
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -87,8 +88,28 @@ def cash_events(store, booking, edges, reversals=None):
     return result
 
 
-def cash_reserved(store, booking_ids=None):
-    """Shares reserved from each original AND reversal; rent gets exactly the complement."""
+def _whole_visible_source_read_allowed(store: Any) -> bool:
+    """Keep caller-owned, pending or snapshot transactions on the canonical path."""
+    from sqlalchemy.orm import SessionTransactionOrigin
+
+    from ..concurrency import _session, _shareable
+
+    db = _session(store)
+    if db is None or db.in_nested_transaction() or db.info.get("scoped_writer"):
+        return False
+    transaction = db.get_transaction()
+    if transaction is not None and transaction.origin is not SessionTransactionOrigin.AUTOBEGIN:
+        return False
+    return _shareable(db)
+
+
+def cash_reserved(store, booking_ids=None, *, whole_visible: bool = False):
+    """Shares reserved from each original AND reversal; rent gets exactly the complement.
+
+    The whole review already asks for every visible booking. It may recheck the
+    current visible IDs and parents in one projection, retaining only requested
+    sources. This option never grants visibility or replaces the missing-ID check.
+    """
     wanted = set(booking_ids) if booking_ids is not None else {b.id for b in store.list_bookings()}
     rows = Rows.reading(store)
     source_ids = set(wanted)
@@ -102,15 +123,23 @@ def cash_reserved(store, booking_ids=None):
         # Validate every requested source under the current portfolio boundary,
         # without a separate SQL round trip for each cash row in a report.
         parents: dict[str, str | None] = {}
-        keys = sorted(wanted)
         # Built once and marked as bounded: the session would otherwise bound every select inside
         # this boundary again (several seconds for a restricted account's review list).
         boundary = scoped_clause(BookingORM)
-        for start in range(0, len(keys), 500):
-            query = select(BookingORM.id, BookingORM.reverses_booking_id).where(BookingORM.id.in_(keys[start:start + 500]))
+        if wanted and whole_visible and _whole_visible_source_read_allowed(store):
+            query = select(BookingORM.id, BookingORM.reverses_booking_id)
             if boundary is not None:
                 query = query.where(boundary).execution_options(**{BOUNDED: True})
-            parents.update(dict(store.db.execute(query).all()))
+            # A newly visible row was not requested. It cannot contribute a
+            # parent or authorize any extra settlement-source read.
+            parents = {key: parent for key, parent in store.db.execute(query) if key in wanted}
+        else:
+            keys = sorted(wanted)
+            for start in range(0, len(keys), 500):
+                query = select(BookingORM.id, BookingORM.reverses_booking_id).where(BookingORM.id.in_(keys[start:start + 500]))
+                if boundary is not None:
+                    query = query.where(boundary).execution_options(**{BOUNDED: True})
+                parents.update(dict(store.db.execute(query).all()))
         if wanted - parents.keys():
             raise NotFoundError('Buchung nicht gefunden')
         source_ids.update(parent for parent in parents.values() if parent)

@@ -113,12 +113,13 @@ def deposit_shares(store: Any, booking_ids: Iterable[str] | None = None) -> dict
     return dict(shares)
 
 
-def non_rent_shares(store: Any, booking_ids: Iterable[str] | None = None) -> dict[str, Decimal]:
+def non_rent_shares(store: Any, booking_ids: Iterable[str] | None = None, *,
+                    whole_visible: bool = False) -> dict[str, Decimal]:
     """The existing deposit shares plus explicit claim settlements, never labelled as deposits."""
     booking_ids = list(booking_ids) if booking_ids is not None else [b.id for b in store.list_bookings()]
     shares = defaultdict(lambda: ZERO, deposit_shares(store, booking_ids))
     from .receivable_residuals import cash_reserved
-    for key, amount in cash_reserved(store, booking_ids).items():
+    for key, amount in cash_reserved(store, booking_ids, whole_visible=whole_visible).items():
         shares[key] += amount
     return dict(shares)
 
@@ -294,19 +295,20 @@ def credited_by_tenant(store: Any, tenant_ids: Iterable[str] | None = None,
     return credited
 
 
-def accounted_by_booking(store: Any, bookings: list[Any]) -> dict[str, Decimal]:
+def accounted_by_booking(store: Any, bookings: list[Any], *, whole_visible: bool = False) -> dict[str, Decimal]:
     """Review totals without constructing every allocation model twice.
 
     Hidden contract shares still consume a visible booking's budget. Only IDs
     obtained from the caller's scoped booking rows are read unscoped here, just
     as in credited_by_tenant. Legacy/unallocated reversals retain the canonical
     suggestion/mirroring path rather than a second implementation of its rules.
+    Only the whole review opts in to the fresh, complete source projection.
     """
     from .portfolio_scope import scope_context
 
     if not bookings:
         return {}
-    reservations = non_rent_shares(store, [booking.id for booking in bookings])
+    reservations = non_rent_shares(store, [booking.id for booking in bookings], whole_visible=whole_visible)
     wanted = {booking.id for booking in bookings if booking.tenant_id}
     allocated: dict[str, Decimal] = {}
     if hasattr(store, "db"):
